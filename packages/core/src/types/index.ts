@@ -583,7 +583,7 @@ export interface EvidenceRecord {
     resolvedRiskTier: RiskTier | null;
   };
   intentEvidence: IntentEvidence;
-  delegationContextSnapshot: DelegationContextSnapshot;
+  delegationContextSnapshot: DelegationContextSnapshot | null;
   gateDecisions: GateDecision[];
   policyRuleId: string | null;
   policyOutcome: OutcomeLabel | null;
@@ -819,10 +819,10 @@ export interface CompilerComparisonView {
     environment: EnvironmentId;
   };
   delegation: {
-    delegationContextId: Uuid;
-    chainDepth: number;
-    chainHash: Sha256Hex;
-    maxRiskTier: RiskTier;
+    delegationContextId: Uuid | null;
+    chainDepth: number | null;
+    chainHash: Sha256Hex | null;
+    maxRiskTier: RiskTier | null;
   };
   classification: {
     capabilityId: string;

@@ -52,10 +52,10 @@ export function buildCCV(
       environment: record.actionSummary.actorEnvironment,
     },
     delegation: {
-      delegationContextId: record.delegationContextSnapshot.delegationId,
-      chainDepth: record.delegationContextSnapshot.chainDepth,
-      chainHash: record.delegationContextSnapshot.chainHash,
-      maxRiskTier: record.delegationContextSnapshot.maxRiskTier,
+      delegationContextId: record.delegationContextSnapshot?.delegationId ?? null,
+      chainDepth: record.delegationContextSnapshot?.chainDepth ?? null,
+      chainHash: record.delegationContextSnapshot?.chainHash ?? null,
+      maxRiskTier: record.delegationContextSnapshot?.maxRiskTier ?? null,
     },
     classification: {
       capabilityId: record.actionSummary.resolvedCapability ?? '',
