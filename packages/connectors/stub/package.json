@@ -18,7 +18,7 @@
   "exports": {
     ".": {
       "types": "./stub.connector.ts",
-      "default": "./dist/stub.connector.js"
+      "default": "./stub.connector.ts"
     }
   },
   "types": "./stub.connector.ts"
