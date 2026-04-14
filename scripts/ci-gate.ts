@@ -23,6 +23,18 @@ import { execSync, type ExecSyncOptions } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
+// canonicalize is mandatory for hash computation — JSON.stringify(obj, keys) is prohibited (canonicalize.ts header)
+import { canonicalize } from '../packages/core/src/crypto/canonicalize';
+
+// sha256 inline — mirrors sha256() in packages/core/src/crypto/signer.ts.
+// Defined here to avoid importing signer.ts which pulls in @noble/ed25519.
+function sha256(payload: string): string {
+  return crypto.createHash('sha256').update(payload).digest('hex');
+}
+
+const POLICY_SIGNATURE_GATE_EXEMPT = new Set([
+  'fixtures/scenario-08-policy-unsigned/unsigned-policy.json',
+]);
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -138,28 +150,42 @@ function step05_integrationTests(): void {
   pass(5, 'integration tests — all 10 scenario integration tests');
 }
 
-// Step 6: deterministic replay — CCV byte-identical for scenarios 01, 02, 03
+// Step 6: deterministic replay — CCV areComparable fields (§14.4) byte-identical for scenarios 01, 02, 03
+//
+// DIFF-002 resolution (Path A, owner-approved): full compilerView toEqual is structurally
+// impossible due to uuid() in §13.9.10, §13.5, §21.1. This step verifies the 8 deterministic
+// areComparable fields (§14.4) are byte-identical across two independent runScenario calls.
+// Hash files are written by the §27.6 integration test block during step 5.
 function step06_deterministicReplay(): void {
   const replayFile = path.join(RUNS_DIR, 'replay-ccv-hashes.json');
   if (!fs.existsSync(replayFile)) {
     fail(
       6,
       'deterministic replay',
-      `Missing replay CCV hash file: ${replayFile}\nIntegration tests must write this file.`
+      `Missing replay CCV hash file: ${replayFile}\nIntegration tests must write this file (spec §27.6).`
     );
   }
   const data = JSON.parse(fs.readFileSync(replayFile, 'utf-8')) as Record<string, string>;
   const required = ['01-allow-read', '02-allow-create', '03-approval-approved'];
   for (const id of required) {
     if (!data[id]) {
-      fail(6, 'deterministic replay', `Missing CCV hash for scenario ${id} in ${replayFile}`);
+      fail(
+        6,
+        'deterministic replay',
+        `Missing CCV comparable fields for scenario ${id} in ${replayFile}`
+      );
     }
   }
-  // CCV hashes are written by two sequential integration test runs; they must match
+  // run-a = areComparable fields from r1; run-b = from r2; both written by §27.6 test block.
+  // All 8 areComparable fields (§14.4) are deterministic — strings must be identical.
   const runAFile = path.join(RUNS_DIR, 'replay-ccv-hashes-run-a.json');
   const runBFile = path.join(RUNS_DIR, 'replay-ccv-hashes-run-b.json');
   if (!fs.existsSync(runAFile) || !fs.existsSync(runBFile)) {
-    fail(6, 'deterministic replay', `Missing run-a or run-b CCV hash files in ${RUNS_DIR}`);
+    fail(
+      6,
+      'deterministic replay',
+      `Missing run-a or run-b CCV comparable-fields files in ${RUNS_DIR}`
+    );
   }
   const runA = JSON.parse(fs.readFileSync(runAFile, 'utf-8')) as Record<string, string>;
   const runB = JSON.parse(fs.readFileSync(runBFile, 'utf-8')) as Record<string, string>;
@@ -168,11 +194,14 @@ function step06_deterministicReplay(): void {
       fail(
         6,
         'deterministic replay',
-        `CCV hash mismatch for scenario ${id}: runA=${runA[id] ?? 'missing'} runB=${runB[id] ?? 'missing'}`
+        `CCV comparable-fields mismatch for scenario ${id}: runA=${runA[id] ?? 'missing'} runB=${runB[id] ?? 'missing'}`
       );
     }
   }
-  pass(6, 'deterministic replay — scenarios 01, 02, 03 CCV byte-identical');
+  pass(
+    6,
+    'deterministic replay — scenarios 01, 02, 03 areComparable fields (§14.4) byte-identical'
+  );
 }
 
 // Step 7: ledger chain integrity
@@ -193,7 +222,10 @@ async function step07_chainIntegrity(): Promise<void> {
     fail(7, 'ledger chain integrity', 'Integration test ledger is empty');
   }
 
-  // Verify hash chain: each record's prevHash must match the SHA-256 of the previous record body
+  // Verify hash chain and sequence continuity (spec §16.2, chain-verifier.ts law)
+  // CONTRA-604: field is 'previousHash' not 'prevHash'
+  // CONTRA-605: signature must be excluded from body (mirrors chain-verifier.ts)
+  // CONTRA-606: must use sha256(canonicalize(body)) — JSON.stringify(body, keys) is prohibited
   const GENESIS = '0000000000000000000000000000000000000000000000000000000000000000';
   let prevHash = GENESIS;
   let expectedSeq = 1;
@@ -217,19 +249,19 @@ async function step07_chainIntegrity(): Promise<void> {
       );
     }
 
-    // Hash chain
-    if (record['prevHash'] !== prevHash) {
+    // Hash chain — CONTRA-604: field is 'previousHash' (EvidenceRecord type, spec §13.8)
+    if (record['previousHash'] !== prevHash) {
       fail(
         7,
         'ledger chain integrity',
-        `Hash chain break at seq ${expectedSeq}: expected prevHash ${prevHash}, got ${String(record['prevHash'])}`
+        `Hash chain break at seq ${expectedSeq}: expected previousHash ${prevHash}, got ${String(record['previousHash'])}`
       );
     }
 
-    // Compute this record's hash
-    const { recordHash, ...body } = record;
-    const bodyJson = JSON.stringify(body, Object.keys(body).sort());
-    const computed = crypto.createHash('sha256').update(bodyJson).digest('hex');
+    // Re-compute recordHash — CONTRA-605: exclude both recordHash AND signature
+    // CONTRA-606: canonicalize() required; JSON.stringify(body, keys.sort()) is prohibited
+    const { recordHash, signature: _sig, ...body } = record;
+    const computed = sha256(canonicalize(body));
     if (computed !== String(recordHash)) {
       fail(
         7,
@@ -238,7 +270,8 @@ async function step07_chainIntegrity(): Promise<void> {
       );
     }
 
-    prevHash = computed;
+    // Advance chain using stored recordHash (mirrors chain-verifier.ts: prevHash = record.recordHash)
+    prevHash = String(recordHash);
     expectedSeq++;
   }
 
@@ -259,30 +292,27 @@ function step08_ccvIntegrity(): void {
     fail(8, 'CCV integrity', 'Integration test ledger is empty');
   }
 
+  // CONTRA-607: EvidenceRecord is flat — compilerView is a top-level field, not inside 'body'
   let checked = 0;
   for (const line of lines) {
     if (!line) continue;
     const record = JSON.parse(line) as Record<string, unknown>;
-    const body = record['body'] as Record<string, unknown> | undefined;
-    if (!body) {
-      fail(
-        8,
-        'CCV integrity',
-        `Record at seq ${String(record['ledgerSequence'])} missing body field`
-      );
-    }
-    const storedCCV = body!['compilerView'];
+    // compilerView lives at the top level of the JSONL record (MODULAR-009, §14.3)
+    const storedCCV = record['compilerView'];
     if (!storedCCV) {
       fail(
         8,
         'CCV integrity',
-        `Record at seq ${String(record['ledgerSequence'])} missing compilerView in body`
+        `Record at seq ${String(record['ledgerSequence'])} missing compilerView (CCV not inside signed body)`
       );
     }
     checked++;
   }
 
-  pass(8, `CCV integrity — ${checked} records have compilerView inside body`);
+  pass(
+    8,
+    `CCV integrity — ${checked} records verified: compilerView present inside tamper-evident boundary`
+  );
 }
 
 // Step 9: no-certification-language gate
@@ -331,6 +361,8 @@ async function step10_policySigGate(): Promise<void> {
   }
 
   for (const policyPath of policyFiles) {
+    const rel = path.relative(process.cwd(), policyPath).replace(/\\/g, '/');
+    if (POLICY_SIGNATURE_GATE_EXEMPT.has(rel)) continue;
     const raw = JSON.parse(fs.readFileSync(policyPath, 'utf-8')) as Record<string, unknown>;
     const sig = raw['signature'];
     if (!sig || typeof sig !== 'string' || sig.length === 0) {

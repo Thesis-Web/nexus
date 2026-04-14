@@ -90,8 +90,17 @@ import { nowIso, addSeconds } from '../utils/time.js';
 // ─── keypair loaded once ─────────────────────────────────────────────────────
 let controlPlanePair: KeyPair;
 
+// ─── Shared integration ledger (INFRA-003 — ci:gate steps 7 and 8) ──────────
+// All 10 scenarios write to one continuous chain. ci:gate reads this file.
+const INTEGRATION_LEDGER_PATH = path.join(process.cwd(), 'runs', 'test-integration.ledger.jsonl');
+let integrationLedger: JsonlLedgerBackend | null = null;
+
 beforeAll(async () => {
   controlPlanePair = await loadControlPlaneKey();
+  // Initialize shared ledger — delete any prior run's file for a clean chain
+  await fs.mkdir(path.dirname(INTEGRATION_LEDGER_PATH), { recursive: true });
+  await fs.unlink(INTEGRATION_LEDGER_PATH).catch(() => {});
+  integrationLedger = new JsonlLedgerBackend(INTEGRATION_LEDGER_PATH);
 });
 
 // ─── FixtureSetup type (HOLE-404 schema) ─────────────────────────────────────
@@ -360,9 +369,13 @@ async function runScenario(
   const approvalGate = new ApprovalGate(controlPlanePair);
   const executionGate = new ExecutionGate(controlPlanePair);
 
-  // Ledger (temp file per test)
-  const ledgerPath = path.join('/tmp', `nexus-integration-${scenarioId}-${randomUUID()}.jsonl`);
-  const ledger = new JsonlLedgerBackend(ledgerPath);
+  // Ledger — use shared integration ledger when running under the full integration suite
+  // (INFRA-003: all 10 scenarios must write to one continuous chain for ci:gate steps 7-8)
+  const ledger =
+    integrationLedger ??
+    new JsonlLedgerBackend(
+      path.join('/tmp', `nexus-integration-${scenarioId}-${randomUUID()}.jsonl`)
+    );
   const evidenceGate = new EvidenceGate(ledger, controlPlanePair);
 
   // 12. Wire registries
@@ -441,9 +454,7 @@ async function runScenario(
   // 16. Run pipeline
   const evidenceRecord = await pipeline.process(rawAction, context);
 
-  // Clean up temp ledger
-  await fs.unlink(ledgerPath).catch(() => {});
-
+  // No ledger cleanup — shared integrationLedger persists for ci:gate; temp fallback has no ref here
   return { evidenceRecord };
 }
 
@@ -587,7 +598,8 @@ describe('Integration: POC Scenarios (spec §27.3)', () => {
         approval: new ApprovalGate(controlPlanePair),
         execution: new ExecutionGate(controlPlanePair),
         evidence: new EvidenceGate(
-          new JsonlLedgerBackend(`/tmp/nexus-replay-${randomUUID()}.jsonl`),
+          // INFRA-003: use shared ledger so scenario-06's 2 records are in the continuous chain
+          integrationLedger ?? new JsonlLedgerBackend(`/tmp/nexus-replay-${randomUUID()}.jsonl`),
           controlPlanePair
         ),
       },
@@ -683,25 +695,69 @@ describe('Integration: POC Scenarios (spec §27.3)', () => {
 });
 
 describe('Integration: Deterministic Replay Test (spec §27.6)', () => {
-  it('same scenario run twice produces byte-identical CCV (scenarios 01, 02, 03)', async () => {
+  it('same scenario run twice produces byte-identical CCV comparable fields (scenarios 01, 02, 03)', async () => {
+    // DIFF-002 resolution (Path A, owner-approved):
+    // spec §27.6 toEqual on full compilerView is structurally impossible because
+    // §13.9.10 templateId/computedAt, §13.5 grantId, and §21.1 delegationId use uuid()
+    // making executionGrantId, grantTemplateFingerprint, and delegationContextId
+    // non-deterministic across independent runs.
+    //
+    // Resolution: assert the 8 areComparable fields (§14.4) which are the spec's
+    // explicit and exhaustive definition of CCV comparability. All 8 must be
+    // byte-identical for the CCV to be considered deterministically reproducible.
+    //
+    // ci:gate step 6 reads the written hash files and independently verifies.
+
+    const runA: Record<string, string> = {};
+    const runB: Record<string, string> = {};
+
+    // Serialize exactly the 8 areComparable fields (§14.4) with fixed key order.
+    function serializeComparable(ccv: EvidenceRecord['compilerView']): string {
+      return JSON.stringify({
+        blueprintVersion: ccv.meta.blueprintVersion,
+        runtimeContractVersion: ccv.meta.runtimeContractVersion,
+        capabilityTaxonomyVersion: ccv.meta.capabilityTaxonomyVersion,
+        comparisonInputVersion: ccv.meta.comparisonInputVersion,
+        actorClass: ccv.identity.actorClass,
+        environment: ccv.identity.environment,
+        capabilityId: ccv.classification.capabilityId,
+        normalizedActionHash: ccv.meta.normalizedActionHash,
+      });
+    }
+
     for (const id of ['01-allow-read', '02-allow-create', '03-approval-approved'] as ScenarioId[]) {
       const r1 = await runScenario(id, { approvalDecision: 'approved' });
       const r2 = await runScenario(id, { approvalDecision: 'approved' });
 
-      // CCV fields used for comparison must be byte-identical
-      // normalizedActionHash is deterministic for same action content
-      expect(r1.evidenceRecord.compilerView.meta.normalizedActionHash).toBe(
-        r2.evidenceRecord.compilerView.meta.normalizedActionHash
-      );
-      expect(r1.evidenceRecord.compilerView.classification.capabilityId).toBe(
-        r2.evidenceRecord.compilerView.classification.capabilityId
-      );
-      expect(r1.evidenceRecord.compilerView.identity.actorClass).toBe(
-        r2.evidenceRecord.compilerView.identity.actorClass
-      );
-      expect(r1.evidenceRecord.compilerView.identity.environment).toBe(
-        r2.evidenceRecord.compilerView.identity.environment
-      );
+      const c1 = r1.evidenceRecord.compilerView;
+      const c2 = r2.evidenceRecord.compilerView;
+
+      // All 8 areComparable fields (§14.4) must be byte-identical across independent runs
+      expect(c1.meta.blueprintVersion).toBe(c2.meta.blueprintVersion);
+      expect(c1.meta.runtimeContractVersion).toBe(c2.meta.runtimeContractVersion);
+      expect(c1.meta.capabilityTaxonomyVersion).toBe(c2.meta.capabilityTaxonomyVersion);
+      expect(c1.meta.comparisonInputVersion).toBe(c2.meta.comparisonInputVersion);
+      expect(c1.identity.actorClass).toBe(c2.identity.actorClass);
+      expect(c1.identity.environment).toBe(c2.identity.environment);
+      expect(c1.classification.capabilityId).toBe(c2.classification.capabilityId);
+      expect(c1.meta.normalizedActionHash).toBe(c2.meta.normalizedActionHash);
+
+      runA[id] = serializeComparable(c1);
+      runB[id] = serializeComparable(c2);
     }
+
+    // Write hash files for ci:gate step 6 independent disk-level verification.
+    // runs/ is gitignored; created here if absent.
+    const runsDir = path.join(process.cwd(), 'runs');
+    await fs.mkdir(runsDir, { recursive: true });
+    await fs.writeFile(path.join(runsDir, 'replay-ccv-hashes.json'), JSON.stringify(runA, null, 2));
+    await fs.writeFile(
+      path.join(runsDir, 'replay-ccv-hashes-run-a.json'),
+      JSON.stringify(runA, null, 2)
+    );
+    await fs.writeFile(
+      path.join(runsDir, 'replay-ccv-hashes-run-b.json'),
+      JSON.stringify(runB, null, 2)
+    );
   });
 });
