@@ -19,10 +19,23 @@ import {
   type LedgerBackend,
   type EvidenceRecord,
 } from '../types/index.js';
-import { generateControlPlaneKeypair } from '../crypto/key-manager.js';
+import type { KeyPair } from '../crypto/key-manager.js';
+import * as ed25519 from '@noble/ed25519';
+import { base64urlEncode } from '../crypto/signer.js';
 
 const NOW = new Date().toISOString();
 const FUTURE = new Date(Date.now() + 300_000).toISOString();
+
+async function makeEphemeralKeyPair(): Promise<KeyPair> {
+  const privBytes = ed25519.utils.randomPrivateKey();
+  const pubBytes = await ed25519.getPublicKeyAsync(privBytes);
+  return {
+    publicKey: base64urlEncode(pubBytes),
+    privateKey: base64urlEncode(privBytes),
+    generatedAt: new Date().toISOString(),
+    purpose: 'dev',
+  };
+}
 
 function baseAction(): AgentAction {
   return {
@@ -162,14 +175,14 @@ function denyDecision(gateId: string, order: number, code: string): GateDecision
 
 describe('Gate 07 — Evidence', () => {
   it('has gateId gate_07_evidence and gateOrder 7', async () => {
-    const kp = await generateControlPlaneKeypair();
+    const kp = await makeEphemeralKeyPair();
     const gate = new EvidenceGate(makeLedger(), kp);
     expect(gate.gateId).toBe('gate_07_evidence');
     expect(gate.gateOrder).toBe(7);
   });
 
   it('appends an EvidenceRecord to the ledger on every invocation', async () => {
-    const kp = await generateControlPlaneKeypair();
+    const kp = await makeEphemeralKeyPair();
     const ledger = makeLedger();
     const gate = new EvidenceGate(ledger, kp);
     await gate.evaluate(baseAction(), makeCtx(), [
@@ -181,7 +194,7 @@ describe('Gate 07 — Evidence', () => {
   });
 
   it('returns finalOutcome=executed when all prior decisions are pass', async () => {
-    const kp = await generateControlPlaneKeypair();
+    const kp = await makeEphemeralKeyPair();
     const ledger = makeLedger();
     const gate = new EvidenceGate(ledger, kp);
     const ctx = makeCtx();
@@ -207,7 +220,7 @@ describe('Gate 07 — Evidence', () => {
   });
 
   it('returns denied_identity finalOutcome on Gate 01 denial', async () => {
-    const kp = await generateControlPlaneKeypair();
+    const kp = await makeEphemeralKeyPair();
     const ledger = makeLedger();
     const gate = new EvidenceGate(ledger, kp);
     const decisions = [denyDecision(GATE_ID.G01, 1, DENIAL_CODE.ACTOR_NOT_REGISTERED)];
@@ -217,7 +230,7 @@ describe('Gate 07 — Evidence', () => {
   });
 
   it('returns denied_delegation on Gate 03 denial (uses denialCode not reason string)', async () => {
-    const kp = await generateControlPlaneKeypair();
+    const kp = await makeEphemeralKeyPair();
     const ledger = makeLedger();
     const gate = new EvidenceGate(ledger, kp);
     const decisions = [
@@ -231,7 +244,7 @@ describe('Gate 07 — Evidence', () => {
   });
 
   it('EvidenceRecord body contains compilerView (CCV inside body — MODULAR-009)', async () => {
-    const kp = await generateControlPlaneKeypair();
+    const kp = await makeEphemeralKeyPair();
     const ledger = makeLedger();
     const gate = new EvidenceGate(ledger, kp);
     await gate.evaluate(baseAction(), makeCtx(), [passDecision(GATE_ID.G01, 1)]);
@@ -241,7 +254,7 @@ describe('Gate 07 — Evidence', () => {
   });
 
   it('EvidenceRecord has non-empty actorClass and actorEnvironment', async () => {
-    const kp = await generateControlPlaneKeypair();
+    const kp = await makeEphemeralKeyPair();
     const ledger = makeLedger();
     const gate = new EvidenceGate(ledger, kp);
     await gate.evaluate(baseAction(), makeCtx(), [passDecision(GATE_ID.G01, 1)]);
