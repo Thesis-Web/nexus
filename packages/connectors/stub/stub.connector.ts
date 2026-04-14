@@ -5,15 +5,20 @@
  */
 import {
   CAPABILITY_IDS,
-  type Connector, type AgentAction, type ExecutionGrant, type ExecutionResult,
+  type Connector,
+  type AgentAction,
+  type ExecutionGrant,
+  type ExecutionResult,
   type ExecutionGrantTemplate,
 } from '../../core/src/types/index.js';
 import {
-  assertGrantPresent, assertGrantNotExpired, setGrantSecret,
+  assertGrantPresent,
+  assertGrantNotExpired,
+  setGrantSecret,
 } from '../../core/src/execution/grant-vault.js';
 
 function buildActionSummaryText(action: AgentAction): string {
-  const verb   = action.resolvedVerb ?? action.rawVerb;
+  const verb = action.resolvedVerb ?? action.rawVerb;
   const target = action.resolvedTarget
     ? `${action.resolvedTarget.system}/${action.resolvedTarget.resourceType}`
     : action.rawTarget;
@@ -21,7 +26,7 @@ function buildActionSummaryText(action: AgentAction): string {
 }
 
 export class StubConnector implements Connector {
-  readonly systemType       = 'stub';
+  readonly systemType = 'stub';
   readonly connectorVersion = 'v0.1.0';
 
   private calls: Array<{ action: AgentAction; grantId: string }> = [];
@@ -30,7 +35,9 @@ export class StubConnector implements Connector {
     return Object.values(CAPABILITY_IDS);
   }
 
-  canProduceDiff(): boolean { return true; }
+  canProduceDiff(): boolean {
+    return true;
+  }
 
   async produceDiff(action: AgentAction, _template: ExecutionGrantTemplate): Promise<string> {
     return `[STUB DIFF] ${buildActionSummaryText(action)} — preview not available in stub`;
@@ -45,17 +52,21 @@ export class StubConnector implements Connector {
     assertGrantNotExpired(grant);
     this.calls.push({ action, grantId: grant.grantId });
     return {
-      grantId:         grant.grantId,
-      executedAt:      new Date().toISOString(),
-      status:         'success',
-      responseCode:    '200',
-      durationMs:      1,
+      grantId: grant.grantId,
+      executedAt: new Date().toISOString(),
+      status: 'success',
+      responseCode: '200',
+      durationMs: 1,
       redactedSummary: '[STUB] action executed successfully',
-      errorType:       null,
-      errorMessage:    null,
+      errorType: null,
+      errorMessage: null,
     };
   }
 
-  getCalls(): Array<{ action: AgentAction; grantId: string }> { return [...this.calls]; }
-  reset(): void { this.calls = []; }
+  getCalls(): Array<{ action: AgentAction; grantId: string }> {
+    return [...this.calls];
+  }
+  reset(): void {
+    this.calls = [];
+  }
 }

@@ -8,46 +8,97 @@
 import { describe, it, expect, vi } from 'vitest';
 import { IdentityGate } from '../gates/01-identity.gate.js';
 import {
-  DENIAL_CODE, ACTOR_CLASS,
-  type Actor, type Session, type Principal, type DelegationContext,
-  type AgentAction, type PipelineContext,
+  DENIAL_CODE,
+  ACTOR_CLASS,
+  type Actor,
+  type Session,
+  type Principal,
+  type DelegationContext,
+  type AgentAction,
+  type PipelineContext,
 } from '../types/index.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const NOW    = new Date().toISOString();
+const NOW = new Date().toISOString();
 const FUTURE = new Date(Date.now() + 300_000).toISOString();
-const PAST   = new Date(Date.now() - 300_000).toISOString();
+const PAST = new Date(Date.now() - 300_000).toISOString();
 
 const ACTOR: Actor = {
-  actorId: 'actor-001', actorClass: ACTOR_CLASS.HUMAN, principalId: 'principal-001',
-  displayName: 'Test User', environment: 'dev', riskCeiling: 'high',
-  allowedSystems: ['stub'], registeredAt: NOW,
-  owner: null, purpose: null, reviewCadence: null,
+  actorId: 'actor-001',
+  actorClass: ACTOR_CLASS.HUMAN,
+  principalId: 'principal-001',
+  displayName: 'Test User',
+  environment: 'dev',
+  riskCeiling: 'high',
+  allowedSystems: ['stub'],
+  registeredAt: NOW,
+  owner: null,
+  purpose: null,
+  reviewCadence: null,
 };
 const PRINCIPAL: Principal = {
-  principalId: 'principal-001', displayName: 'Test Principal', email: 'test@example.com',
-  registeredAt: NOW, maxDelegableRiskTier: 'high', allowedSystems: ['stub'],
+  principalId: 'principal-001',
+  displayName: 'Test Principal',
+  email: 'test@example.com',
+  registeredAt: NOW,
+  maxDelegableRiskTier: 'high',
+  allowedSystems: ['stub'],
 };
 const SESSION: Session = {
-  sessionId: 'session-001', actorId: 'actor-001', principalId: 'principal-001',
-  delegationId: 'delegation-001', createdAt: NOW, expiresAt: FUTURE,
+  sessionId: 'session-001',
+  actorId: 'actor-001',
+  principalId: 'principal-001',
+  delegationId: 'delegation-001',
+  createdAt: NOW,
+  expiresAt: FUTURE,
 };
 const DELEGATION: DelegationContext = {
-  delegationId: 'delegation-001', principalId: 'principal-001', actorId: 'actor-001',
-  parentDelegationId: null, chainDepth: 0, maxChainDepth: 3,
-  allowedSystems: ['stub'], allowedCapabilities: ['read:record:single'],
-  forbiddenCapabilities: [], maxRiskTier: 'high', allowDownstreamPropagation: false,
-  environment: 'dev', mintedAt: NOW, expiresAt: FUTURE,
-  mintedBy: 'nexus-delegation-engine/v0.1.0', signature: 'test-sig',
+  delegationId: 'delegation-001',
+  principalId: 'principal-001',
+  actorId: 'actor-001',
+  parentDelegationId: null,
+  chainDepth: 0,
+  maxChainDepth: 3,
+  allowedSystems: ['stub'],
+  allowedCapabilities: ['read:record:single'],
+  forbiddenCapabilities: [],
+  maxRiskTier: 'high',
+  allowDownstreamPropagation: false,
+  environment: 'dev',
+  mintedAt: NOW,
+  expiresAt: FUTURE,
+  mintedBy: 'nexus-delegation-engine/v0.1.0',
+  signature: 'test-sig',
 };
 const ACTION: AgentAction = {
-  actionId: 'action-001', receivedAt: NOW, protocol: 'mcp/1.0', adapterVersion: 'v0.1.0',
-  actorId: 'actor-001', principalId: 'principal-001', sessionId: 'session-001',
-  delegationId: 'delegation-001', delegationSequence: 1,
-  tool: 'get_record', rawVerb: 'read', rawTarget: '{}', rawPayload: {},
-  intent: { objectiveSummary: 'read a record', triggeringSource: 'unknown', toolchainContext: 'test', modelId: null, modelConfidence: null, riskNote: null, extractedAt: NOW },
-  resolvedVerb: null, resolvedCapability: null, resolvedTarget: null, resolvedDataClasses: [], resolvedRiskTier: null,
+  actionId: 'action-001',
+  receivedAt: NOW,
+  protocol: 'mcp/1.0',
+  adapterVersion: 'v0.1.0',
+  actorId: 'actor-001',
+  principalId: 'principal-001',
+  sessionId: 'session-001',
+  delegationId: 'delegation-001',
+  delegationSequence: 1,
+  tool: 'get_record',
+  rawVerb: 'read',
+  rawTarget: '{}',
+  rawPayload: {},
+  intent: {
+    objectiveSummary: 'read a record',
+    triggeringSource: 'unknown',
+    toolchainContext: 'test',
+    modelId: null,
+    modelConfidence: null,
+    riskNote: null,
+    extractedAt: NOW,
+  },
+  resolvedVerb: null,
+  resolvedCapability: null,
+  resolvedTarget: null,
+  resolvedDataClasses: [],
+  resolvedRiskTier: null,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -56,35 +107,50 @@ function makeContext(): PipelineContext {
   return {
     sessionId: 'session-001',
     delegationStore: { getById: vi.fn(), save: vi.fn(), listForActor: vi.fn() },
-    policyFile: null, approverRegistry: {} as never,
+    policyFile: null,
+    approverRegistry: {} as never,
     connectorRegistry: { get: vi.fn(), register: vi.fn(), list: vi.fn() },
     channelRegistry: { get: vi.fn(), register: vi.fn(), list: vi.fn() },
-    threatLog: [], startedAt: NOW,
+    threatLog: [],
+    startedAt: NOW,
   } as unknown as PipelineContext;
 }
 
 interface GateOverrides {
-  actor?:      Actor | null;
-  session?:    Session | null;
-  principal?:  Principal | null;
+  actor?: Actor | null;
+  session?: Session | null;
+  principal?: Principal | null;
   delegation?: DelegationContext | null;
 }
 
 function makeGate(overrides: GateOverrides) {
   // Use Object.hasOwn so that passing null explicitly returns null from the mock,
   // not the default value. (null ?? DEFAULT returns DEFAULT — Object.hasOwn avoids this.)
-  const actorVal      = Object.hasOwn(overrides, 'actor')      ? overrides.actor      : ACTOR;
-  const sessionVal    = Object.hasOwn(overrides, 'session')    ? overrides.session    : SESSION;
-  const principalVal  = Object.hasOwn(overrides, 'principal')  ? overrides.principal  : PRINCIPAL;
+  const actorVal = Object.hasOwn(overrides, 'actor') ? overrides.actor : ACTOR;
+  const sessionVal = Object.hasOwn(overrides, 'session') ? overrides.session : SESSION;
+  const principalVal = Object.hasOwn(overrides, 'principal') ? overrides.principal : PRINCIPAL;
   const delegationVal = Object.hasOwn(overrides, 'delegation') ? overrides.delegation : DELEGATION;
 
-  const actorRegistry     = { get: vi.fn().mockResolvedValue(actorVal) };
-  const sessionStore      = { get: vi.fn().mockResolvedValue(sessionVal), create: vi.fn(), invalidate: vi.fn() };
+  const actorRegistry = { get: vi.fn().mockResolvedValue(actorVal) };
+  const sessionStore = {
+    get: vi.fn().mockResolvedValue(sessionVal),
+    create: vi.fn(),
+    invalidate: vi.fn(),
+  };
   const principalRegistry = { get: vi.fn().mockResolvedValue(principalVal), save: vi.fn() };
-  const delegationStore   = { getById: vi.fn().mockResolvedValue(delegationVal), save: vi.fn(), listForActor: vi.fn() };
+  const delegationStore = {
+    getById: vi.fn().mockResolvedValue(delegationVal),
+    save: vi.fn(),
+    listForActor: vi.fn(),
+  };
 
   return {
-    gate: new IdentityGate(actorRegistry as never, sessionStore as never, principalRegistry as never, delegationStore as never),
+    gate: new IdentityGate(
+      actorRegistry as never,
+      sessionStore as never,
+      principalRegistry as never,
+      delegationStore as never
+    ),
   };
 }
 
@@ -137,7 +203,13 @@ describe('Gate 01 — Identity', () => {
   });
 
   it('denies NON_HUMAN_ACTOR_INCOMPLETE when non-human actor missing owner/purpose/reviewCadence', async () => {
-    const nonHuman: Actor = { ...ACTOR, actorClass: ACTOR_CLASS.AUTONOMOUS_AGENT, owner: null, purpose: null, reviewCadence: null };
+    const nonHuman: Actor = {
+      ...ACTOR,
+      actorClass: ACTOR_CLASS.AUTONOMOUS_AGENT,
+      owner: null,
+      purpose: null,
+      reviewCadence: null,
+    };
     const { gate } = makeGate({ actor: nonHuman });
     const result = await gate.evaluate(ACTION, makeContext(), []);
     expect(result.decision.outcome).toBe('deny');
@@ -145,7 +217,13 @@ describe('Gate 01 — Identity', () => {
   });
 
   it('passes for non-human actor when owner/purpose/reviewCadence are present', async () => {
-    const nonHuman: Actor = { ...ACTOR, actorClass: ACTOR_CLASS.AUTONOMOUS_AGENT, owner: 'owner-team', purpose: 'testing', reviewCadence: 'monthly' };
+    const nonHuman: Actor = {
+      ...ACTOR,
+      actorClass: ACTOR_CLASS.AUTONOMOUS_AGENT,
+      owner: 'owner-team',
+      purpose: 'testing',
+      reviewCadence: 'monthly',
+    };
     const { gate } = makeGate({ actor: nonHuman });
     const result = await gate.evaluate(ACTION, makeContext(), []);
     expect(result.decision.outcome).toBe('pass');

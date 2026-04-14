@@ -6,7 +6,7 @@ import { promises as fs } from 'fs';
 import type { LedgerBackend, EvidenceRecord, Uuid } from '../../types/index.js';
 
 export class JsonlLedgerBackend implements LedgerBackend {
-  readonly backendId      = 'jsonl-v1';
+  readonly backendId = 'jsonl-v1';
   readonly backendVersion = 'v0.1.0';
 
   constructor(private readonly ledgerPath: string) {}
@@ -18,12 +18,18 @@ export class JsonlLedgerBackend implements LedgerBackend {
   async listRange(from: number, to: number): Promise<EvidenceRecord[]> {
     const results: EvidenceRecord[] = [];
     let raw: string;
-    try { raw = await fs.readFile(this.ledgerPath, 'utf-8'); } catch { return []; }
+    try {
+      raw = await fs.readFile(this.ledgerPath, 'utf-8');
+    } catch {
+      return [];
+    }
     for (const line of raw.split('\n').filter(Boolean)) {
       try {
         const record = JSON.parse(line) as EvidenceRecord;
         if (record.ledgerSequence >= from && record.ledgerSequence <= to) results.push(record);
-      } catch { continue; }
+      } catch {
+        continue;
+      }
     }
     return results;
   }
@@ -34,22 +40,35 @@ export class JsonlLedgerBackend implements LedgerBackend {
 
   async getByRecordId(recordId: Uuid): Promise<EvidenceRecord | null> {
     let raw: string;
-    try { raw = await fs.readFile(this.ledgerPath, 'utf-8'); } catch { return null; }
+    try {
+      raw = await fs.readFile(this.ledgerPath, 'utf-8');
+    } catch {
+      return null;
+    }
     for (const line of raw.split('\n').filter(Boolean)) {
       try {
         const record = JSON.parse(line) as EvidenceRecord;
         if (record.recordId === recordId) return record;
-      } catch { continue; }
+      } catch {
+        continue;
+      }
     }
     return null;
   }
 
   async getLatestSequence(): Promise<number> {
     let raw: string;
-    try { raw = await fs.readFile(this.ledgerPath, 'utf-8'); } catch { return 0; }
+    try {
+      raw = await fs.readFile(this.ledgerPath, 'utf-8');
+    } catch {
+      return 0;
+    }
     const lines = raw.split('\n').filter(Boolean);
     if (!lines.length) return 0;
-    try { return (JSON.parse(lines[lines.length - 1]!) as EvidenceRecord).ledgerSequence; }
-    catch { return 0; }
+    try {
+      return (JSON.parse(lines[lines.length - 1]!) as EvidenceRecord).ledgerSequence;
+    } catch {
+      return 0;
+    }
   }
 }

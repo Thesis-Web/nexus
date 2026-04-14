@@ -2,7 +2,12 @@
  * CLI Approval Channel (Channel v1) — spec §20.6
  * Dispatches to pending_approvals store. Polls for decision. channelId = 'cli'.
  */
-import type { ApprovalChannel, ApprovalRequest, ApprovalResponse, Uuid } from '../../types/index.js';
+import type {
+  ApprovalChannel,
+  ApprovalRequest,
+  ApprovalResponse,
+  Uuid,
+} from '../../types/index.js';
 import type { PendingApprovalStore } from '../pending-approval-store.js';
 import { sleep } from '../../utils/time.js';
 
@@ -28,23 +33,23 @@ function printApprovalPrompt(req: ApprovalRequest): void {
 }
 
 export class CliApprovalChannel implements ApprovalChannel {
-  readonly channelId      = 'cli';
+  readonly channelId = 'cli';
   readonly channelVersion = 'v0.1.0';
 
   constructor(
-    private readonly store:  PendingApprovalStore,
+    private readonly store: PendingApprovalStore,
     private readonly pollMs: number = 2000
   ) {}
 
   async dispatch(request: ApprovalRequest): Promise<void> {
     await this.store.create({
-      approvalId:   request.approvalId,
-      actionId:     request.actionId,
-      templateId:   request.templateId,
-      requestJson:  JSON.stringify(request),
-      channelId:    this.channelId,
+      approvalId: request.approvalId,
+      actionId: request.actionId,
+      templateId: request.templateId,
+      requestJson: JSON.stringify(request),
+      channelId: this.channelId,
       dispatchedAt: new Date().toISOString(),
-      expiresAt:    request.expiresAt,
+      expiresAt: request.expiresAt,
     });
     printApprovalPrompt(request);
   }

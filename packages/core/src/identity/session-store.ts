@@ -9,18 +9,22 @@ import type Database from 'better-sqlite3';
 import type { Session, Uuid, SessionStore } from '../types/index.js';
 
 interface SessionRow {
-  session_id: string; actor_id: string; principal_id: string;
-  delegation_id: string; created_at: string; expires_at: string;
+  session_id: string;
+  actor_id: string;
+  principal_id: string;
+  delegation_id: string;
+  created_at: string;
+  expires_at: string;
 }
 
 function rowToSession(row: SessionRow): Session {
   return {
-    sessionId:    row.session_id,
-    actorId:      row.actor_id,
-    principalId:  row.principal_id,
+    sessionId: row.session_id,
+    actorId: row.actor_id,
+    principalId: row.principal_id,
     delegationId: row.delegation_id,
-    createdAt:    row.created_at,
-    expiresAt:    row.expires_at,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
   };
 }
 
@@ -29,21 +33,27 @@ export class SqliteSessionStore implements SessionStore {
 
   async get(sessionId: Uuid): Promise<Session | null> {
     // Returns regardless of expiry — Gate 01 owns expiry semantics.
-    const row = this.db
-      .prepare('SELECT * FROM sessions WHERE session_id = ?')
-      .get(sessionId) as SessionRow | undefined;
+    const row = this.db.prepare('SELECT * FROM sessions WHERE session_id = ?').get(sessionId) as
+      | SessionRow
+      | undefined;
     return row ? rowToSession(row) : null;
   }
 
   async create(session: Session): Promise<Session> {
     this.db
-      .prepare(`
+      .prepare(
+        `
         INSERT INTO sessions (session_id, actor_id, principal_id, delegation_id, created_at, expires_at)
         VALUES (?, ?, ?, ?, ?, ?)
-      `)
+      `
+      )
       .run(
-        session.sessionId, session.actorId, session.principalId,
-        session.delegationId, session.createdAt, session.expiresAt
+        session.sessionId,
+        session.actorId,
+        session.principalId,
+        session.delegationId,
+        session.createdAt,
+        session.expiresAt
       );
     return session;
   }

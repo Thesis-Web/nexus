@@ -18,9 +18,15 @@
  * Blueprint: nexus-blueprint-v0-3-6.md §5.1, §5.4, §8.1
  */
 import {
-  GATE_ID, ACTOR_CLASS, DENIAL_CODE,
-  type Gate, type GateResult, type AgentAction,
-  type PipelineContext, type GateDecision, type DelegationStore,
+  GATE_ID,
+  ACTOR_CLASS,
+  DENIAL_CODE,
+  type Gate,
+  type GateResult,
+  type AgentAction,
+  type PipelineContext,
+  type GateDecision,
+  type DelegationStore,
 } from '../types/index.js';
 import type { ActorRegistryStore } from '../types/index.js';
 import type { SqliteSessionStore } from '../identity/session-store.js';
@@ -29,30 +35,36 @@ import type { PrincipalRegistryStore } from '../types/index.js';
 function gateDeny(code: string, reason: string, startMs: number): GateResult {
   return {
     decision: {
-      gateId: GATE_ID.G01, gateOrder: 1, plane: 'control',
-      outcome: 'deny', reason, denialCode: code,
-      policyRuleId: null, evaluatedAt: new Date().toISOString(),
-      durationMs: Date.now() - startMs, metadata: {},
+      gateId: GATE_ID.G01,
+      gateOrder: 1,
+      plane: 'control',
+      outcome: 'deny',
+      reason,
+      denialCode: code,
+      policyRuleId: null,
+      evaluatedAt: new Date().toISOString(),
+      durationMs: Date.now() - startMs,
+      metadata: {},
     },
   };
 }
 
 export class IdentityGate implements Gate {
-  readonly gateId    = GATE_ID.G01;
+  readonly gateId = GATE_ID.G01;
   readonly gateOrder = 1;
-  readonly plane     = 'control' as const;
+  readonly plane = 'control' as const;
 
   constructor(
-    private readonly actorRegistry:     ActorRegistryStore,
-    private readonly sessionStore:      SqliteSessionStore,
+    private readonly actorRegistry: ActorRegistryStore,
+    private readonly sessionStore: SqliteSessionStore,
     private readonly principalRegistry: PrincipalRegistryStore,
-    private readonly delegationStore:   DelegationStore          // HOLE-002
+    private readonly delegationStore: DelegationStore // HOLE-002
   ) {}
 
   async evaluate(
-    action:   AgentAction,
-    context:  PipelineContext,
-    _prior:   GateDecision[]
+    action: AgentAction,
+    context: PipelineContext,
+    _prior: GateDecision[]
   ): Promise<GateResult> {
     const startMs = Date.now();
 
@@ -67,16 +79,20 @@ export class IdentityGate implements Gate {
     }
 
     const principal = await this.principalRegistry.get(action.principalId);
-    if (!principal) return gateDeny(DENIAL_CODE.PRINCIPAL_NOT_RESOLVABLE, 'principal not resolvable', startMs);
+    if (!principal)
+      return gateDeny(DENIAL_CODE.PRINCIPAL_NOT_RESOLVABLE, 'principal not resolvable', startMs);
     if (actor.principalId !== principal.principalId) {
       return gateDeny(DENIAL_CODE.ACTOR_PRINCIPAL_MISMATCH, 'actor/principal mismatch', startMs);
     }
 
     const isNonHuman =
-      actor.actorClass !== ACTOR_CLASS.HUMAN &&
-      actor.actorClass !== ACTOR_CLASS.HUMAN_WITH_COPILOT;
+      actor.actorClass !== ACTOR_CLASS.HUMAN && actor.actorClass !== ACTOR_CLASS.HUMAN_WITH_COPILOT;
     if (isNonHuman && (!actor.owner || !actor.purpose || !actor.reviewCadence)) {
-      return gateDeny(DENIAL_CODE.NON_HUMAN_ACTOR_INCOMPLETE, 'non-human actor registry incomplete', startMs);
+      return gateDeny(
+        DENIAL_CODE.NON_HUMAN_ACTOR_INCOMPLETE,
+        'non-human actor registry incomplete',
+        startMs
+      );
     }
 
     // HOLE-002: resolve delegationContext — Gate 01 is the canonical owner.
@@ -91,17 +107,22 @@ export class IdentityGate implements Gate {
     }
 
     // Write the full identity tuple into context — downstream gates use non-null assertions.
-    context.actor             = actor;
-    context.principal         = principal;
+    context.actor = actor;
+    context.principal = principal;
     context.delegationContext = delegationContext;
 
     return {
       decision: {
-        gateId: GATE_ID.G01, gateOrder: 1, plane: 'control',
-        outcome: 'pass', reason: 'identity verified',
-        denialCode: null, policyRuleId: null,
+        gateId: GATE_ID.G01,
+        gateOrder: 1,
+        plane: 'control',
+        outcome: 'pass',
+        reason: 'identity verified',
+        denialCode: null,
+        policyRuleId: null,
         evaluatedAt: new Date().toISOString(),
-        durationMs: Date.now() - startMs, metadata: {},
+        durationMs: Date.now() - startMs,
+        metadata: {},
       },
     };
   }

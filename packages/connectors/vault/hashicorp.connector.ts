@@ -45,12 +45,12 @@ import { nowIso } from '../../core/src/utils/time.js';
 // Non-secret connector configuration — env vars only
 // ============================================================
 
-const VAULT_ADDR       = process.env['VAULT_ADDR']                ?? 'http://127.0.0.1:8200';
-const VAULT_NAMESPACE  = process.env['VAULT_NAMESPACE']           ?? '';
-const VAULT_MOUNT      = process.env['VAULT_MOUNT']               ?? 'secret';
-const VAULT_ROLE_NAME  = process.env['VAULT_ROLE_NAME']           ?? 'nexus-agent';
-const VAULT_TOKEN_FILE = process.env['VAULT_TOKEN_FILE']          ?? '/vault/token';
-const REQUEST_TIMEOUT  = Number(process.env['VAULT_REQUEST_TIMEOUT_MS'] ?? '5000');
+const VAULT_ADDR = process.env['VAULT_ADDR'] ?? 'http://127.0.0.1:8200';
+const VAULT_NAMESPACE = process.env['VAULT_NAMESPACE'] ?? '';
+const VAULT_MOUNT = process.env['VAULT_MOUNT'] ?? 'secret';
+const VAULT_ROLE_NAME = process.env['VAULT_ROLE_NAME'] ?? 'nexus-agent';
+const VAULT_TOKEN_FILE = process.env['VAULT_TOKEN_FILE'] ?? '/vault/token';
+const REQUEST_TIMEOUT = Number(process.env['VAULT_REQUEST_TIMEOUT_MS'] ?? '5000');
 
 // ============================================================
 // Internal auth — token from file, never from env var
@@ -68,8 +68,8 @@ async function loadVaultToken(): Promise<string> {
   } catch (err) {
     throw new Error(
       `Vault token file not found at '${VAULT_TOKEN_FILE}'. ` +
-      `Configure Vault Agent to write a renewable token to this path. ` +
-      `Original error: ${(err as Error).message}`
+        `Configure Vault Agent to write a renewable token to this path. ` +
+        `Original error: ${(err as Error).message}`
     );
   }
 }
@@ -80,7 +80,7 @@ async function loadVaultToken(): Promise<string> {
 
 interface VaultKVSecret {
   data: {
-    data:     Record<string, string>;
+    data: Record<string, string>;
     metadata: { created_time: string; version: number };
   };
 }
@@ -90,15 +90,12 @@ interface VaultKVSecret {
  * Path: <mount>/data/<kvPath>
  * Returns the data fields of the latest version.
  */
-async function readKVSecret(
-  kvPath: string,
-  vaultToken: string
-): Promise<Record<string, string>> {
+async function readKVSecret(kvPath: string, vaultToken: string): Promise<Record<string, string>> {
   const url = `${VAULT_ADDR}/v1/${VAULT_MOUNT}/data/${kvPath}`;
 
   const headers: Record<string, string> = {
     'X-Vault-Token': vaultToken,
-    'Content-Type':  'application/json',
+    'Content-Type': 'application/json',
   };
   if (VAULT_NAMESPACE) headers['X-Vault-Namespace'] = VAULT_NAMESPACE;
 
@@ -115,12 +112,10 @@ async function readKVSecret(
   }
 
   if (!response.ok) {
-    throw new Error(
-      `Vault KV read returned HTTP ${response.status} for path '${kvPath}'`
-    );
+    throw new Error(`Vault KV read returned HTTP ${response.status} for path '${kvPath}'`);
   }
 
-  const body = await response.json() as VaultKVSecret;
+  const body = (await response.json()) as VaultKVSecret;
   return body.data.data;
 }
 
@@ -140,7 +135,7 @@ function grantKVPath(grantId: Uuid, capabilityId: string): string {
 // ============================================================
 
 export class HashiCorpVaultConnector implements Connector {
-  readonly systemType       = 'hashicorp-vault';
+  readonly systemType = 'hashicorp-vault';
   readonly connectorVersion = 'v0.1.0';
 
   supportedCapabilities(): string[] {
@@ -149,17 +144,16 @@ export class HashiCorpVaultConnector implements Connector {
     return Object.values(CAPABILITY_IDS);
   }
 
-  canProduceDiff(): boolean { return true; }
+  canProduceDiff(): boolean {
+    return true;
+  }
 
-  async produceDiff(
-    action:   AgentAction,
-    template: ExecutionGrantTemplate
-  ): Promise<string> {
-    const verb   = action.resolvedVerb   ?? action.rawVerb;
+  async produceDiff(action: AgentAction, template: ExecutionGrantTemplate): Promise<string> {
+    const verb = action.resolvedVerb ?? action.rawVerb;
     const target = action.resolvedTarget
       ? `${action.resolvedTarget.system}/${action.resolvedTarget.resourceType}`
       : action.rawTarget;
-    const scope  = template.scopeDescriptor;
+    const scope = template.scopeDescriptor;
     return (
       `[VAULT CONNECTOR] ${verb} ${target} — scope: ${scope} — ` +
       `capabilityId: ${template.capabilityId} — ` +
@@ -178,7 +172,7 @@ export class HashiCorpVaultConnector implements Connector {
    */
   async redeemGrant(grant: ExecutionGrant): Promise<void> {
     const vaultToken = await loadVaultToken();
-    const kvPath     = grantKVPath(grant.grantId, grant.capabilityId);
+    const kvPath = grantKVPath(grant.grantId, grant.capabilityId);
 
     let fields: Record<string, string>;
     try {
@@ -189,8 +183,8 @@ export class HashiCorpVaultConnector implements Connector {
       // provision the KV secret for this grant/capability path.
       throw new Error(
         `Vault KV redeemGrant failed for grant '${grant.grantId}': ` +
-        `${(err as Error).message}. ` +
-        `Ensure the Vault KV path '${kvPath}' exists and the Vault Agent token has read access.`
+          `${(err as Error).message}. ` +
+          `Ensure the Vault KV path '${kvPath}' exists and the Vault Agent token has read access.`
       );
     }
 
@@ -198,7 +192,7 @@ export class HashiCorpVaultConnector implements Connector {
     if (!credential || credential.trim() === '') {
       throw new Error(
         `Vault KV secret at '${kvPath}' missing required 'credential' field. ` +
-        `Provision a short-lived scoped credential at this path.`
+          `Provision a short-lived scoped credential at this path.`
       );
     }
 
@@ -218,17 +212,14 @@ export class HashiCorpVaultConnector implements Connector {
    * the Vault-scoped token) is an operator integration concern beyond the
    * connector boundary.
    */
-  async execute(
-    action:  AgentAction,
-    grant:   ExecutionGrant
-  ): Promise<ExecutionResult> {
+  async execute(action: AgentAction, grant: ExecutionGrant): Promise<ExecutionResult> {
     // Spec §11.3: MUST call assertGrantPresent and assertGrantNotExpired
     assertGrantPresent(grant);
     assertGrantNotExpired(grant);
 
     const startMs = Date.now();
-    const verb    = action.resolvedVerb   ?? action.rawVerb;
-    const target  = action.resolvedTarget
+    const verb = action.resolvedVerb ?? action.rawVerb;
+    const target = action.resolvedTarget
       ? `${action.resolvedTarget.system}/${action.resolvedTarget.resourceType}`
       : action.rawTarget;
 
@@ -242,14 +233,14 @@ export class HashiCorpVaultConnector implements Connector {
     // but we confirm via assertGrantPresent above to keep the boundary clean)
 
     return {
-      grantId:         grant.grantId,
-      executedAt:      nowIso(),
-      status:          'success',
-      responseCode:    '200',
-      durationMs:      Date.now() - startMs,
+      grantId: grant.grantId,
+      executedAt: nowIso(),
+      status: 'success',
+      responseCode: '200',
+      durationMs: Date.now() - startMs,
       redactedSummary: `[VAULT] ${verb} ${target} executed via governed grant — credential redeemed and cleared`,
-      errorType:       null,
-      errorMessage:    null,
+      errorType: null,
+      errorMessage: null,
     };
   }
 

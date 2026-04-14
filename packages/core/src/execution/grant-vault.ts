@@ -45,7 +45,7 @@ export function clearGrantSecret(grant: ExecutionGrant): void {
 }
 
 export function assertGrantPresent(grant: ExecutionGrant): void {
-  const ref    = grantRefs.get(grant.grantId);
+  const ref = grantRefs.get(grant.grantId);
   const secret = ref ? grantSecrets.get(ref) : undefined;
   if (!secret) {
     throw new NexusSecurityViolation(

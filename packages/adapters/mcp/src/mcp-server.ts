@@ -28,7 +28,8 @@ import * as url from 'node:url';
 
 import {
   // DB
-  openDatabase, initializeSchema,
+  openDatabase,
+  initializeSchema,
   // Crypto
   loadControlPlaneKey,
   // Ledger
@@ -74,14 +75,15 @@ import { NexusMcpProxy } from './mcp-proxy.js';
 // ── Resolve config from environment ─────────────────────────────────────────
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
-const repoRoot  = path.resolve(__dirname, '../../../../..');
+const repoRoot = path.resolve(__dirname, '../../../../..');
 
-const DB_PATH      = process.env['NEXUS_DB_PATH']     ?? path.join(repoRoot, 'nexus.db');
-const LEDGER_PATH  = process.env['NEXUS_LEDGER_PATH'] ?? path.join(repoRoot, 'nexus.ledger.jsonl');
-const POLICY_PATH  = process.env['NEXUS_POLICY_PATH'] ??
+const DB_PATH = process.env['NEXUS_DB_PATH'] ?? path.join(repoRoot, 'nexus.db');
+const LEDGER_PATH = process.env['NEXUS_LEDGER_PATH'] ?? path.join(repoRoot, 'nexus.ledger.jsonl');
+const POLICY_PATH =
+  process.env['NEXUS_POLICY_PATH'] ??
   path.join(repoRoot, 'packages/core/src/policy/rules/default.policy.json');
-const PORT         = parseInt(process.env['NEXUS_MCP_PORT'] ?? '4000', 10);
-const HOST         = process.env['NEXUS_MCP_HOST'] ?? '127.0.0.1';
+const PORT = parseInt(process.env['NEXUS_MCP_PORT'] ?? '4000', 10);
+const HOST = process.env['NEXUS_MCP_HOST'] ?? '127.0.0.1';
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 
@@ -113,19 +115,19 @@ async function main(): Promise<void> {
   }
 
   // 5. Registries and stores
-  const actorRegistry     = new ActorRegistry(db);
+  const actorRegistry = new ActorRegistry(db);
   const principalRegistry = new PrincipalRegistry(db);
-  const approverRegistry  = new SqliteApproverRegistry(db);
-  const sessionStore      = new SqliteSessionStore(db);
-  const delegationStore   = new SqliteDelegationStore(db);
-  const pendingStore      = new SqlitePendingApprovalStore(db);
+  const approverRegistry = new SqliteApproverRegistry(db);
+  const sessionStore = new SqliteSessionStore(db);
+  const delegationStore = new SqliteDelegationStore(db);
+  const pendingStore = new SqlitePendingApprovalStore(db);
 
   // 6. Classification
   const capabilityRegistry = new CapabilityRegistry();
-  const verbNormalizer     = new VerbNormalizer();
-  const targetNormalizer   = new TargetNormalizer();
-  const dataClassifier     = new DataClassifier();
-  const riskClassifier     = new RiskClassifier(capabilityRegistry);
+  const verbNormalizer = new VerbNormalizer();
+  const targetNormalizer = new TargetNormalizer();
+  const dataClassifier = new DataClassifier();
+  const riskClassifier = new RiskClassifier(capabilityRegistry);
 
   // 7. Approval channel — CLI is Channel v1 (MODULAR-004)
   const cliChannel = new CliApprovalChannel(pendingStore);
@@ -140,18 +142,23 @@ async function main(): Promise<void> {
 
   // 10. Security
   const replayDetector = new ReplayDetector(db);
-  const rateLimiter    = new RateLimiter();
+  const rateLimiter = new RateLimiter();
 
   // 11. Gates — fixed order (spec §13.2–§13.8)
   //     Gate 01 receives DelegationStore (HOLE-002: resolves identity tuple)
   const gates = {
-    identity:       new IdentityGate(actorRegistry, sessionStore, principalRegistry, delegationStore),
-    classification: new ClassificationGate(verbNormalizer, targetNormalizer, dataClassifier, riskClassifier),
-    delegation:     new DelegationGate(controlPlaneKey),
-    policy:         new PolicyGate(),
-    approval:       new ApprovalGate(controlPlaneKey),
-    execution:      new ExecutionGate(controlPlaneKey),
-    evidence:       new EvidenceGate(ledger, controlPlaneKey),
+    identity: new IdentityGate(actorRegistry, sessionStore, principalRegistry, delegationStore),
+    classification: new ClassificationGate(
+      verbNormalizer,
+      targetNormalizer,
+      dataClassifier,
+      riskClassifier
+    ),
+    delegation: new DelegationGate(controlPlaneKey),
+    policy: new PolicyGate(),
+    approval: new ApprovalGate(controlPlaneKey),
+    execution: new ExecutionGate(controlPlaneKey),
+    evidence: new EvidenceGate(ledger, controlPlaneKey),
   };
 
   // 12. Pipeline
@@ -159,7 +166,7 @@ async function main(): Promise<void> {
 
   // 13. MCP adapter and proxy
   const adapter = new McpAdapter();
-  const proxy   = new NexusMcpProxy({
+  const proxy = new NexusMcpProxy({
     pipeline,
     adapter,
     delegationStore,

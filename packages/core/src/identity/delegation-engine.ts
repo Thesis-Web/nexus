@@ -36,16 +36,16 @@ import type { DelegationStore } from '../types/index.js';
 // ============================================================
 
 export interface RootDelegationParams {
-  principalId:                Uuid;
-  actorId:                    Uuid;
-  allowedSystems:             string[];
-  allowedCapabilities:        string[];
-  forbiddenCapabilities:      string[];
-  maxRiskTier:                RiskTier;
+  principalId: Uuid;
+  actorId: Uuid;
+  allowedSystems: string[];
+  allowedCapabilities: string[];
+  forbiddenCapabilities: string[];
+  maxRiskTier: RiskTier;
   allowDownstreamPropagation: boolean;
-  environment:                EnvironmentId;
-  expiresAt:                  IsoTimestamp;
-  maxChainDepth:              number;
+  environment: EnvironmentId;
+  expiresAt: IsoTimestamp;
+  maxChainDepth: number;
 }
 
 /**
@@ -60,14 +60,14 @@ export interface RootDelegationParams {
  */
 export async function mintRootDelegation(
   principal: Principal,
-  actor:     Actor,
-  params:    RootDelegationParams
+  actor: Actor,
+  params: RootDelegationParams
 ): Promise<DelegationContext> {
   // Principal authority ceiling check
   if (riskTierExceeds(params.maxRiskTier, principal.maxDelegableRiskTier)) {
     throw new DelegationError(
       `delegation_exceeds_principal_authority: requested maxRiskTier '${params.maxRiskTier}' ` +
-      `exceeds principal ceiling '${principal.maxDelegableRiskTier}'`
+        `exceeds principal ceiling '${principal.maxDelegableRiskTier}'`
     );
   }
 
@@ -81,30 +81,30 @@ export async function mintRootDelegation(
   if (params.environment !== actor.environment) {
     throw new DelegationError(
       `delegation_environment_mismatch: delegation environment '${params.environment}' ` +
-      `does not match actor environment '${actor.environment}'`
+        `does not match actor environment '${actor.environment}'`
     );
   }
 
   const body = {
-    delegationId:               newUuid(),
-    principalId:                params.principalId,
-    actorId:                    params.actorId,
-    parentDelegationId:         null,
-    chainDepth:                 0,
-    maxChainDepth:              params.maxChainDepth,
-    allowedSystems:             params.allowedSystems,
-    allowedCapabilities:        params.allowedCapabilities,
-    forbiddenCapabilities:      params.forbiddenCapabilities,
-    maxRiskTier:                params.maxRiskTier,
+    delegationId: newUuid(),
+    principalId: params.principalId,
+    actorId: params.actorId,
+    parentDelegationId: null,
+    chainDepth: 0,
+    maxChainDepth: params.maxChainDepth,
+    allowedSystems: params.allowedSystems,
+    allowedCapabilities: params.allowedCapabilities,
+    forbiddenCapabilities: params.forbiddenCapabilities,
+    maxRiskTier: params.maxRiskTier,
     allowDownstreamPropagation: params.allowDownstreamPropagation,
-    environment:                params.environment,
-    mintedAt:                   nowIso(),
-    expiresAt:                  params.expiresAt,
-    mintedBy:                   DELEGATION_ENGINE_ID, // SOLVE-020: never hardcoded
+    environment: params.environment,
+    mintedAt: nowIso(),
+    expiresAt: params.expiresAt,
+    mintedBy: DELEGATION_ENGINE_ID, // SOLVE-020: never hardcoded
   };
 
   const controlPlaneKey = await loadControlPlaneKey();
-  const signature       = await sign(canonicalize(body), controlPlaneKey);
+  const signature = await sign(canonicalize(body), controlPlaneKey);
 
   return { ...body, signature };
 }
@@ -114,13 +114,13 @@ export async function mintRootDelegation(
 // ============================================================
 
 export interface SubDelegationParams {
-  actorId:                    Uuid;   // the sub-actor receiving the delegation
-  allowedSystems:             string[];
-  allowedCapabilities:        string[];
-  forbiddenCapabilities:      string[];
-  maxRiskTier:                RiskTier;
+  actorId: Uuid; // the sub-actor receiving the delegation
+  allowedSystems: string[];
+  allowedCapabilities: string[];
+  forbiddenCapabilities: string[];
+  maxRiskTier: RiskTier;
   allowDownstreamPropagation: boolean;
-  ttlSeconds:                 number;
+  ttlSeconds: number;
 }
 
 /**
@@ -138,8 +138,8 @@ export interface SubDelegationParams {
  */
 export async function mintSubDelegation(
   parentDelegation: DelegationContext,
-  delegationStore:  DelegationStore,
-  params:           SubDelegationParams
+  delegationStore: DelegationStore,
+  params: SubDelegationParams
 ): Promise<DelegationContext> {
   // Guard: parent must be in store (chain integrity)
   const parentInStore = await delegationStore.getById(parentDelegation.delegationId);
@@ -152,14 +152,14 @@ export async function mintSubDelegation(
   if (!parentDelegation.allowDownstreamPropagation) {
     throw new DelegationError(
       `downstream_propagation_not_permitted: parent delegation '${parentDelegation.delegationId}' ` +
-      `does not allow downstream propagation`
+        `does not allow downstream propagation`
     );
   }
 
   if (riskTierExceeds(params.maxRiskTier, parentDelegation.maxRiskTier)) {
     throw new DelegationError(
       `risk_tier_exceeds_delegation_ceiling: requested '${params.maxRiskTier}' ` +
-      `exceeds parent ceiling '${parentDelegation.maxRiskTier}'`
+        `exceeds parent ceiling '${parentDelegation.maxRiskTier}'`
     );
   }
 
@@ -182,29 +182,29 @@ export async function mintSubDelegation(
     );
   }
 
-  const mintedAt  = nowIso();
+  const mintedAt = nowIso();
   const expiresAt = addSeconds(mintedAt, params.ttlSeconds);
 
   const body = {
-    delegationId:               newUuid(),
-    principalId:                parentDelegation.principalId,
-    actorId:                    params.actorId,
-    parentDelegationId:         parentDelegation.delegationId,
-    chainDepth:                 newChainDepth,
-    maxChainDepth:              parentDelegation.maxChainDepth, // ceiling never increases
-    allowedSystems:             params.allowedSystems,
-    allowedCapabilities:        params.allowedCapabilities,
-    forbiddenCapabilities:      params.forbiddenCapabilities,
-    maxRiskTier:                params.maxRiskTier,
+    delegationId: newUuid(),
+    principalId: parentDelegation.principalId,
+    actorId: params.actorId,
+    parentDelegationId: parentDelegation.delegationId,
+    chainDepth: newChainDepth,
+    maxChainDepth: parentDelegation.maxChainDepth, // ceiling never increases
+    allowedSystems: params.allowedSystems,
+    allowedCapabilities: params.allowedCapabilities,
+    forbiddenCapabilities: params.forbiddenCapabilities,
+    maxRiskTier: params.maxRiskTier,
     allowDownstreamPropagation: params.allowDownstreamPropagation,
-    environment:                parentDelegation.environment, // inherited — cannot change
+    environment: parentDelegation.environment, // inherited — cannot change
     mintedAt,
     expiresAt,
-    mintedBy:                   DELEGATION_ENGINE_ID, // SOLVE-020
+    mintedBy: DELEGATION_ENGINE_ID, // SOLVE-020
   };
 
   const controlPlaneKey = await loadControlPlaneKey();
-  const signature       = await sign(canonicalize(body), controlPlaneKey);
+  const signature = await sign(canonicalize(body), controlPlaneKey);
 
   return { ...body, signature };
 }

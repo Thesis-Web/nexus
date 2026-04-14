@@ -17,8 +17,8 @@
  */
 import { promises as fs } from 'fs';
 import { loadControlPlaneKey } from '../packages/core/src/crypto/key-manager.js';
-import { sign }               from '../packages/core/src/crypto/signer.js';
-import { canonicalize }       from '../packages/core/src/crypto/canonicalize.js';
+import { sign } from '../packages/core/src/crypto/signer.js';
+import { canonicalize } from '../packages/core/src/crypto/canonicalize.js';
 
 async function main(): Promise<void> {
   const filepath = process.argv[2];
@@ -53,13 +53,13 @@ async function main(): Promise<void> {
   } catch (err) {
     console.error(
       `Failed to load control-plane key: ${(err as Error).message}\n` +
-      `Run 'pnpm nexus init' to generate keys first.`
+        `Run 'pnpm nexus init' to generate keys first.`
     );
     process.exit(1);
   }
 
   const signature = await sign(canonicalize(body), controlPlaneKey);
-  const signed    = { ...body, signature };
+  const signed = { ...body, signature };
 
   await fs.writeFile(filepath, JSON.stringify(signed, null, 2) + '\n', 'utf-8');
 

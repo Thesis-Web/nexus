@@ -26,7 +26,7 @@ import * as crypto from 'node:crypto';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const REPO_ROOT = path.resolve(path.dirname(new URL(('file://' + __filename)).pathname), '..');
+const REPO_ROOT = path.resolve(path.dirname(new URL('file://' + __filename).pathname), '..');
 
 // Integration test ledger: written by vitest integration tests; read by steps 7–8.
 const INTEGRATION_LEDGER_PATH = path.join(REPO_ROOT, 'runs', 'test-integration.ledger.jsonl');
@@ -55,11 +55,11 @@ const FIXTURE_POLICY_GLOB_SUFFIX = 'policy.json';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
-const GREEN  = '\x1b[32m';
-const RED    = '\x1b[31m';
+const GREEN = '\x1b[32m';
+const RED = '\x1b[31m';
 const YELLOW = '\x1b[33m';
-const BOLD   = '\x1b[1m';
-const RESET  = '\x1b[0m';
+const BOLD = '\x1b[1m';
+const RESET = '\x1b[0m';
 
 function pass(step: number, name: string): void {
   console.log(`${GREEN}${BOLD}✓ Step ${step}: ${name}${RESET}`);
@@ -142,7 +142,11 @@ function step05_integrationTests(): void {
 function step06_deterministicReplay(): void {
   const replayFile = path.join(RUNS_DIR, 'replay-ccv-hashes.json');
   if (!fs.existsSync(replayFile)) {
-    fail(6, 'deterministic replay', `Missing replay CCV hash file: ${replayFile}\nIntegration tests must write this file.`);
+    fail(
+      6,
+      'deterministic replay',
+      `Missing replay CCV hash file: ${replayFile}\nIntegration tests must write this file.`
+    );
   }
   const data = JSON.parse(fs.readFileSync(replayFile, 'utf-8')) as Record<string, string>;
   const required = ['01-allow-read', '02-allow-create', '03-approval-approved'];
@@ -161,7 +165,11 @@ function step06_deterministicReplay(): void {
   const runB = JSON.parse(fs.readFileSync(runBFile, 'utf-8')) as Record<string, string>;
   for (const id of required) {
     if (runA[id] !== runB[id]) {
-      fail(6, 'deterministic replay', `CCV hash mismatch for scenario ${id}: runA=${runA[id] ?? 'missing'} runB=${runB[id] ?? 'missing'}`);
+      fail(
+        6,
+        'deterministic replay',
+        `CCV hash mismatch for scenario ${id}: runA=${runA[id] ?? 'missing'} runB=${runB[id] ?? 'missing'}`
+      );
     }
   }
   pass(6, 'deterministic replay — scenarios 01, 02, 03 CCV byte-identical');
@@ -170,9 +178,17 @@ function step06_deterministicReplay(): void {
 // Step 7: ledger chain integrity
 async function step07_chainIntegrity(): Promise<void> {
   if (!fs.existsSync(INTEGRATION_LEDGER_PATH)) {
-    fail(7, 'ledger chain integrity', `Integration test ledger not found: ${INTEGRATION_LEDGER_PATH}`);
+    fail(
+      7,
+      'ledger chain integrity',
+      `Integration test ledger not found: ${INTEGRATION_LEDGER_PATH}`
+    );
   }
-  const lines = fs.readFileSync(INTEGRATION_LEDGER_PATH, 'utf-8').trim().split('\n').filter(Boolean);
+  const lines = fs
+    .readFileSync(INTEGRATION_LEDGER_PATH, 'utf-8')
+    .trim()
+    .split('\n')
+    .filter(Boolean);
   if (lines.length === 0) {
     fail(7, 'ledger chain integrity', 'Integration test ledger is empty');
   }
@@ -194,14 +210,20 @@ async function step07_chainIntegrity(): Promise<void> {
 
     // Sequence continuity (SEQUENCE_ANOMALY check)
     if (record['ledgerSequence'] !== expectedSeq) {
-      fail(7, 'ledger chain integrity',
-        `Sequence anomaly at record ${i + 1}: expected seq ${expectedSeq}, got ${String(record['ledgerSequence'])}`);
+      fail(
+        7,
+        'ledger chain integrity',
+        `Sequence anomaly at record ${i + 1}: expected seq ${expectedSeq}, got ${String(record['ledgerSequence'])}`
+      );
     }
 
     // Hash chain
     if (record['prevHash'] !== prevHash) {
-      fail(7, 'ledger chain integrity',
-        `Hash chain break at seq ${expectedSeq}: expected prevHash ${prevHash}, got ${String(record['prevHash'])}`);
+      fail(
+        7,
+        'ledger chain integrity',
+        `Hash chain break at seq ${expectedSeq}: expected prevHash ${prevHash}, got ${String(record['prevHash'])}`
+      );
     }
 
     // Compute this record's hash
@@ -209,8 +231,11 @@ async function step07_chainIntegrity(): Promise<void> {
     const bodyJson = JSON.stringify(body, Object.keys(body).sort());
     const computed = crypto.createHash('sha256').update(bodyJson).digest('hex');
     if (computed !== String(recordHash)) {
-      fail(7, 'ledger chain integrity',
-        `recordHash mismatch at seq ${expectedSeq}: stored=${String(recordHash)} computed=${computed}`);
+      fail(
+        7,
+        'ledger chain integrity',
+        `recordHash mismatch at seq ${expectedSeq}: stored=${String(recordHash)} computed=${computed}`
+      );
     }
 
     prevHash = computed;
@@ -225,7 +250,11 @@ function step08_ccvIntegrity(): void {
   if (!fs.existsSync(INTEGRATION_LEDGER_PATH)) {
     fail(8, 'CCV integrity', `Integration test ledger not found: ${INTEGRATION_LEDGER_PATH}`);
   }
-  const lines = fs.readFileSync(INTEGRATION_LEDGER_PATH, 'utf-8').trim().split('\n').filter(Boolean);
+  const lines = fs
+    .readFileSync(INTEGRATION_LEDGER_PATH, 'utf-8')
+    .trim()
+    .split('\n')
+    .filter(Boolean);
   if (lines.length === 0) {
     fail(8, 'CCV integrity', 'Integration test ledger is empty');
   }
@@ -236,11 +265,19 @@ function step08_ccvIntegrity(): void {
     const record = JSON.parse(line) as Record<string, unknown>;
     const body = record['body'] as Record<string, unknown> | undefined;
     if (!body) {
-      fail(8, 'CCV integrity', `Record at seq ${String(record['ledgerSequence'])} missing body field`);
+      fail(
+        8,
+        'CCV integrity',
+        `Record at seq ${String(record['ledgerSequence'])} missing body field`
+      );
     }
     const storedCCV = body!['compilerView'];
     if (!storedCCV) {
-      fail(8, 'CCV integrity', `Record at seq ${String(record['ledgerSequence'])} missing compilerView in body`);
+      fail(
+        8,
+        'CCV integrity',
+        `Record at seq ${String(record['ledgerSequence'])} missing compilerView in body`
+      );
     }
     checked++;
   }
@@ -270,7 +307,11 @@ function step09_noCertLang(): void {
   }
 
   if (violations.length > 0) {
-    fail(9, 'no-certification-language gate', `Prohibited strings found:\n  ${violations.join('\n  ')}`);
+    fail(
+      9,
+      'no-certification-language gate',
+      `Prohibited strings found:\n  ${violations.join('\n  ')}`
+    );
   }
 
   pass(9, `no-certification-language gate — ${jsonFiles.length} artifact files scanned`);
@@ -279,7 +320,9 @@ function step09_noCertLang(): void {
 // Step 10: policy signature gate
 async function step10_policySigGate(): Promise<void> {
   // Find all policy.json files in fixtures/
-  const policyFiles = walkJsonFiles(FIXTURES_DIR).filter(f => f.endsWith(FIXTURE_POLICY_GLOB_SUFFIX));
+  const policyFiles = walkJsonFiles(FIXTURES_DIR).filter(f =>
+    f.endsWith(FIXTURE_POLICY_GLOB_SUFFIX)
+  );
 
   if (policyFiles.length === 0) {
     info('No fixture policy files found — nothing to verify');
@@ -291,7 +334,11 @@ async function step10_policySigGate(): Promise<void> {
     const raw = JSON.parse(fs.readFileSync(policyPath, 'utf-8')) as Record<string, unknown>;
     const sig = raw['signature'];
     if (!sig || typeof sig !== 'string' || sig.length === 0) {
-      fail(10, 'policy signature gate', `Unsigned or empty signature in fixture policy: ${policyPath}`);
+      fail(
+        10,
+        'policy signature gate',
+        `Unsigned or empty signature in fixture policy: ${policyPath}`
+      );
     }
     // Deep check: signature must not be placeholder
     if (String(sig).includes('PLACEHOLDER') || String(sig).includes('__')) {
@@ -321,11 +368,7 @@ function step11_fixtureSecretPrefix(): void {
       continue; // non-parseable files skipped
     }
     for (const [fieldName, value] of flatEntries(obj)) {
-      if (
-        SECRET_FIELD_PATTERN.test(fieldName) &&
-        typeof value === 'string' &&
-        value.length > 0
-      ) {
+      if (SECRET_FIELD_PATTERN.test(fieldName) && typeof value === 'string' && value.length > 0) {
         if (!value.startsWith('FIXTURE_SYNTHETIC_SECRET:')) {
           violations.push(
             `Field '${fieldName}' in ${filePath} must be empty, null, or prefixed with FIXTURE_SYNTHETIC_SECRET:`

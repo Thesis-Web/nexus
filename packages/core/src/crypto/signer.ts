@@ -21,9 +21,9 @@ function base64urlDecode(s: Base64Url): Uint8Array {
 }
 
 export async function sign(payload: string, keyPair: KeyPair): Promise<Base64Url> {
-  const msgBytes  = new TextEncoder().encode(payload);
+  const msgBytes = new TextEncoder().encode(payload);
   const privBytes = base64urlDecode(keyPair.privateKey);
-  const sig       = await ed25519.signAsync(msgBytes, privBytes);
+  const sig = await ed25519.signAsync(msgBytes, privBytes);
   return base64urlEncode(sig);
 }
 

@@ -9,29 +9,30 @@ import { sha256 } from '../crypto/signer.js';
 import { verify } from '../crypto/verifier.js';
 
 export interface ChainError {
-  seq:        number;
-  type:      'hash_chain_break' | 'signature_invalid' | 'sequence_anomaly';
+  seq: number;
+  type: 'hash_chain_break' | 'signature_invalid' | 'sequence_anomaly';
   denialCode: string;
-  detail:     string;
+  detail: string;
 }
 
 export interface ChainVerificationResult {
-  ok:     boolean;
+  ok: boolean;
   errors: ChainError[];
-  checked:number;
+  checked: number;
 }
 
 export async function verifyChain(
-  backend:   LedgerBackend,
-  fromSeq:   number,
-  toSeq:     number,
+  backend: LedgerBackend,
+  fromSeq: number,
+  toSeq: number,
   publicKey: Base64Url
 ): Promise<ChainVerificationResult> {
-  const errors:  ChainError[] = [];
-  const records  = await backend.listRange(fromSeq, toSeq);
-  let prevHash   = fromSeq === 1
-    ? GENESIS_HASH
-    : (await backend.getBySequence(fromSeq - 1))?.recordHash ?? GENESIS_HASH;
+  const errors: ChainError[] = [];
+  const records = await backend.listRange(fromSeq, toSeq);
+  let prevHash =
+    fromSeq === 1
+      ? GENESIS_HASH
+      : ((await backend.getBySequence(fromSeq - 1))?.recordHash ?? GENESIS_HASH);
 
   let expectedSeq = fromSeq;
 
@@ -39,10 +40,10 @@ export async function verifyChain(
     // Sequence continuity — SEQUENCE_ANOMALY emitted here only
     if (record.ledgerSequence !== expectedSeq) {
       errors.push({
-        seq:        record.ledgerSequence,
-        type:       'sequence_anomaly',
+        seq: record.ledgerSequence,
+        type: 'sequence_anomaly',
         denialCode: DENIAL_CODE.SEQUENCE_ANOMALY,
-        detail:     `Expected ledgerSequence ${expectedSeq}, got ${record.ledgerSequence}`,
+        detail: `Expected ledgerSequence ${expectedSeq}, got ${record.ledgerSequence}`,
       });
       expectedSeq = record.ledgerSequence;
     }
@@ -50,10 +51,10 @@ export async function verifyChain(
     // Hash chain
     if (record.previousHash !== prevHash) {
       errors.push({
-        seq:        record.ledgerSequence,
-        type:       'hash_chain_break',
+        seq: record.ledgerSequence,
+        type: 'hash_chain_break',
         denialCode: DENIAL_CODE.CHAIN_INTEGRITY_BROKEN,
-        detail:     `Hash chain break at seq ${record.ledgerSequence}`,
+        detail: `Hash chain break at seq ${record.ledgerSequence}`,
       });
     }
 
@@ -61,10 +62,10 @@ export async function verifyChain(
     const sigValid = await verify(record.recordHash, record.signature, publicKey);
     if (!sigValid) {
       errors.push({
-        seq:        record.ledgerSequence,
-        type:       'signature_invalid',
+        seq: record.ledgerSequence,
+        type: 'signature_invalid',
         denialCode: DENIAL_CODE.CHAIN_INTEGRITY_BROKEN,
-        detail:     `Signature invalid at seq ${record.ledgerSequence}`,
+        detail: `Signature invalid at seq ${record.ledgerSequence}`,
       });
     }
 
@@ -73,10 +74,10 @@ export async function verifyChain(
     const computed = sha256(canonicalize(body));
     if (computed !== record.recordHash) {
       errors.push({
-        seq:        record.ledgerSequence,
-        type:       'hash_chain_break',
+        seq: record.ledgerSequence,
+        type: 'hash_chain_break',
         denialCode: DENIAL_CODE.CHAIN_INTEGRITY_BROKEN,
-        detail:     `recordHash mismatch at seq ${record.ledgerSequence}`,
+        detail: `recordHash mismatch at seq ${record.ledgerSequence}`,
       });
     }
 

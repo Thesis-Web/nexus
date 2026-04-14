@@ -15,59 +15,149 @@ import { sha512 } from '@noble/hashes/sha512';
 import { ApprovalGate } from '../gates/05-approval.gate.js';
 import { loadControlPlaneKey } from '../crypto/key-manager.js';
 import {
-  DENIAL_CODE, OUTCOME_LABEL, APPROVAL_DECISION_LABEL, ACTION_VERB,
-  type AgentAction, type PipelineContext, type ExecutionGrantTemplate,
-  type ApprovalChannel, type ApprovalResponse,
+  DENIAL_CODE,
+  OUTCOME_LABEL,
+  APPROVAL_DECISION_LABEL,
+  ACTION_VERB,
+  type AgentAction,
+  type PipelineContext,
+  type ExecutionGrantTemplate,
+  type ApprovalChannel,
+  type ApprovalResponse,
 } from '../types/index.js';
 
 // @noble/ed25519 v2 requires sha512 setup for sync ops (we use async, but set it anyway)
 ed.etc.sha512Sync = (...m: Parameters<typeof sha512>) => sha512(...m);
 
-const NOW    = new Date().toISOString();
+const NOW = new Date().toISOString();
 const FUTURE = new Date(Date.now() + 300_000).toISOString();
 
 function baseAction(): AgentAction {
   return {
-    actionId: 'a-005', receivedAt: NOW, protocol: 'mcp/1.0', adapterVersion: 'v0.1.0',
-    actorId: 'actor-001', principalId: 'p-001', sessionId: 's-001', delegationId: 'd-001',
-    delegationSequence: 1, tool: 'send_message', rawVerb: 'send', rawTarget: '{}', rawPayload: {},
-    intent: { objectiveSummary: 'send', triggeringSource: 'unknown', toolchainContext: 'test', modelId: null, modelConfidence: null, riskNote: null, extractedAt: NOW },
-    resolvedVerb: ACTION_VERB.SEND, resolvedCapability: 'send:message:internal',
-    resolvedTarget: { system: 'stub', resourceType: 'message', resourceScope: 'single', environment: 'dev', externalFacing: false } as never,
-    resolvedDataClasses: [], resolvedRiskTier: 'high',
+    actionId: 'a-005',
+    receivedAt: NOW,
+    protocol: 'mcp/1.0',
+    adapterVersion: 'v0.1.0',
+    actorId: 'actor-001',
+    principalId: 'p-001',
+    sessionId: 's-001',
+    delegationId: 'd-001',
+    delegationSequence: 1,
+    tool: 'send_message',
+    rawVerb: 'send',
+    rawTarget: '{}',
+    rawPayload: {},
+    intent: {
+      objectiveSummary: 'send',
+      triggeringSource: 'unknown',
+      toolchainContext: 'test',
+      modelId: null,
+      modelConfidence: null,
+      riskNote: null,
+      extractedAt: NOW,
+    },
+    resolvedVerb: ACTION_VERB.SEND,
+    resolvedCapability: 'send:message:internal',
+    resolvedTarget: {
+      system: 'stub',
+      resourceType: 'message',
+      resourceScope: 'single',
+      environment: 'dev',
+      externalFacing: false,
+    } as never,
+    resolvedDataClasses: [],
+    resolvedRiskTier: 'high',
   };
 }
 
 function makeTemplate(channelId: string | null = 'cli'): ExecutionGrantTemplate {
   return {
-    templateId: 'tpl-001', actionId: 'a-005', computedAt: NOW,
-    capabilityId: 'send:message:internal', system: 'stub', environment: 'dev',
-    expiryClass: 'action_scoped', expiresAt: FUTURE, maxUsageCount: 1,
-    allowedPayloadFields: [], redactedPayloadFields: [],
-    resourceBounds: { allowedResourceTypes: ['message'], maxRecords: 1, allowBulk: false, allowExternalFacing: false },
-    scopeDescriptor: 'test scope', credentialSubjectType: 'service',
+    templateId: 'tpl-001',
+    actionId: 'a-005',
+    computedAt: NOW,
+    capabilityId: 'send:message:internal',
+    system: 'stub',
+    environment: 'dev',
+    expiryClass: 'action_scoped',
+    expiresAt: FUTURE,
+    maxUsageCount: 1,
+    allowedPayloadFields: [],
+    redactedPayloadFields: [],
+    resourceBounds: {
+      allowedResourceTypes: ['message'],
+      maxRecords: 1,
+      allowBulk: false,
+      allowExternalFacing: false,
+    },
+    scopeDescriptor: 'test scope',
+    credentialSubjectType: 'service',
     approvalConfig: channelId ? { channelId, timeoutSeconds: 60 } : null,
-    approvalRequired: true, approvalLinkage: null,
-    templateHash: 'testhash', templateFingerprint: 'testfingerprint',
+    approvalRequired: true,
+    approvalLinkage: null,
+    templateHash: 'testhash',
+    templateFingerprint: 'testfingerprint',
     grantTemplateOutcome: OUTCOME_LABEL.REQUIRE_APPROVAL,
   } as unknown as ExecutionGrantTemplate;
 }
 
-function makeCtx(channel: ApprovalChannel | null, template: ExecutionGrantTemplate): PipelineContext {
+function makeCtx(
+  channel: ApprovalChannel | null,
+  template: ExecutionGrantTemplate
+): PipelineContext {
   const channelRegistry = {
     get: vi.fn().mockReturnValue(channel),
-    register: vi.fn(), list: vi.fn(),
+    register: vi.fn(),
+    list: vi.fn(),
   };
   return {
     sessionId: 's-001',
-    actor: { actorId: 'actor-001', actorClass: 'HUMAN', principalId: 'p-001', displayName: 'T', environment: 'dev', riskCeiling: 'high', allowedSystems: ['stub'], registeredAt: NOW, owner: null, purpose: null, reviewCadence: null },
-    principal: { principalId: 'p-001', displayName: 'P', email: 'p@test.com', registeredAt: NOW, maxDelegableRiskTier: 'high', allowedSystems: ['stub'] },
-    delegationContext: { delegationId: 'd-001', principalId: 'p-001', actorId: 'actor-001', parentDelegationId: null, chainDepth: 0, maxChainDepth: 3, allowedSystems: ['stub'], allowedCapabilities: ['send:message:internal'], forbiddenCapabilities: [], maxRiskTier: 'high', allowDownstreamPropagation: false, environment: 'dev', mintedAt: NOW, expiresAt: FUTURE, mintedBy: 'nexus-delegation-engine/v0.1.0', signature: 'sig' },
+    actor: {
+      actorId: 'actor-001',
+      actorClass: 'HUMAN',
+      principalId: 'p-001',
+      displayName: 'T',
+      environment: 'dev',
+      riskCeiling: 'high',
+      allowedSystems: ['stub'],
+      registeredAt: NOW,
+      owner: null,
+      purpose: null,
+      reviewCadence: null,
+    },
+    principal: {
+      principalId: 'p-001',
+      displayName: 'P',
+      email: 'p@test.com',
+      registeredAt: NOW,
+      maxDelegableRiskTier: 'high',
+      allowedSystems: ['stub'],
+    },
+    delegationContext: {
+      delegationId: 'd-001',
+      principalId: 'p-001',
+      actorId: 'actor-001',
+      parentDelegationId: null,
+      chainDepth: 0,
+      maxChainDepth: 3,
+      allowedSystems: ['stub'],
+      allowedCapabilities: ['send:message:internal'],
+      forbiddenCapabilities: [],
+      maxRiskTier: 'high',
+      allowDownstreamPropagation: false,
+      environment: 'dev',
+      mintedAt: NOW,
+      expiresAt: FUTURE,
+      mintedBy: 'nexus-delegation-engine/v0.1.0',
+      signature: 'sig',
+    },
     delegationStore: { getById: vi.fn(), save: vi.fn(), listForActor: vi.fn() },
-    grantTemplate: template, policyFile: null,
+    grantTemplate: template,
+    policyFile: null,
     approverRegistry: { get: vi.fn().mockResolvedValue(null), list: vi.fn(), register: vi.fn() },
     connectorRegistry: { get: vi.fn(), register: vi.fn(), list: vi.fn() },
-    channelRegistry, threatLog: [], startedAt: NOW,
+    channelRegistry,
+    threatLog: [],
+    startedAt: NOW,
   } as unknown as PipelineContext;
 }
 
@@ -103,7 +193,8 @@ describe('Gate 05 — Approval', () => {
     const gate = new ApprovalGate(kp);
     const template = makeTemplate('cli');
     const channel: ApprovalChannel = {
-      channelId: 'cli', channelVersion: 'v0.1.0',
+      channelId: 'cli',
+      channelVersion: 'v0.1.0',
       dispatch: vi.fn().mockResolvedValue(undefined),
       awaitDecision: vi.fn().mockResolvedValue(null),
     };
@@ -119,26 +210,30 @@ describe('Gate 05 — Approval', () => {
 
     // Generate an in-memory Ed25519 key pair for the approver — avoids filesystem CWD issues
     const approverPrivBytes = ed.utils.randomPrivateKey();
-    const approverPubBytes  = await ed.getPublicKey(approverPrivBytes);
-    const approverPubKey    = Buffer.from(approverPubBytes).toString('base64url');
+    const approverPubBytes = await ed.getPublicKey(approverPrivBytes);
+    const approverPubKey = Buffer.from(approverPubBytes).toString('base64url');
 
     // Build unsigned response body
     const approverId = 'approver-001';
     const respBodyForSigning: Omit<ApprovalResponse, 'signature'> = {
-      approvalId: 'apr-001', decidedBy: approverId,
+      approvalId: 'apr-001',
+      decidedBy: approverId,
       decision: APPROVAL_DECISION_LABEL.APPROVED,
-      decidedAt: NOW, channel: 'cli', note: null,
+      decidedAt: NOW,
+      channel: 'cli',
+      note: null,
     };
 
     // Gate 05 canonicalizes body as: JSON.stringify(Object.fromEntries(Object.entries(body).sort()))
-    const bodyStr    = JSON.stringify(Object.fromEntries(Object.entries(respBodyForSigning).sort()));
-    const sigBytes   = await ed.sign(new TextEncoder().encode(bodyStr), approverPrivBytes);
-    const signature  = Buffer.from(sigBytes).toString('base64url');
+    const bodyStr = JSON.stringify(Object.fromEntries(Object.entries(respBodyForSigning).sort()));
+    const sigBytes = await ed.sign(new TextEncoder().encode(bodyStr), approverPrivBytes);
+    const signature = Buffer.from(sigBytes).toString('base64url');
 
     const response: ApprovalResponse = { ...respBodyForSigning, signature };
 
     const channel: ApprovalChannel = {
-      channelId: 'cli', channelVersion: 'v0.1.0',
+      channelId: 'cli',
+      channelVersion: 'v0.1.0',
       dispatch: vi.fn().mockResolvedValue(undefined),
       awaitDecision: vi.fn().mockResolvedValue(response),
     };
@@ -147,10 +242,14 @@ describe('Gate 05 — Approval', () => {
     // Mock approverRegistry to return our test approver's public key
     (ctx as Record<string, unknown>).approverRegistry = {
       get: vi.fn().mockResolvedValue({
-        approverId, displayName: 'Test Approver',
-        publicKey: approverPubKey, channels: ['cli'], registeredAt: NOW,
+        approverId,
+        displayName: 'Test Approver',
+        publicKey: approverPubKey,
+        channels: ['cli'],
+        registeredAt: NOW,
       }),
-      list: vi.fn(), register: vi.fn(),
+      list: vi.fn(),
+      register: vi.fn(),
     };
 
     const result = await gate.evaluate(baseAction(), ctx, []);

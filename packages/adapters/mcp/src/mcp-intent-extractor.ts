@@ -71,19 +71,18 @@ export function extractIntentContext(
 
   // objectiveSummary: derive from tool name; max 500 chars
   const rawSummary = `mcp tool call: ${toolName}`;
-  const objectiveSummary =
-    sanitize(rawSummary, 500) ?? `mcp tool call: ${toolName.slice(0, 480)}`;
+  const objectiveSummary = sanitize(rawSummary, 500) ?? `mcp tool call: ${toolName.slice(0, 480)}`;
 
   // riskNote: from header; max 200 chars; null if absent or blank
   const riskNote = sanitize(riskNoteRaw, 200);
 
   return {
     objectiveSummary,
-    triggeringSource: 'unknown',      // MCP calls are adapter-initiated; source unknown
+    triggeringSource: 'unknown', // MCP calls are adapter-initiated; source unknown
     toolchainContext: adapterLabel,
-    modelId:          modelId ?? null,
+    modelId: modelId ?? null,
     modelConfidence,
     riskNote,
-    extractedAt:      nowIso(),
+    extractedAt: nowIso(),
   };
 }

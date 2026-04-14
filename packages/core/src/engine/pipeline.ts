@@ -6,9 +6,16 @@
  */
 import {
   OUTCOME_LABEL,
-  NexusSecurityViolation, DENIAL_CODE,
-  type AgentAction, type PipelineContext, type EvidenceRecord, type ThreatEvent,
-  type ConnectorRegistry, type ChannelRegistry, type Connector, type ApprovalChannel,
+  NexusSecurityViolation,
+  DENIAL_CODE,
+  type AgentAction,
+  type PipelineContext,
+  type EvidenceRecord,
+  type ThreatEvent,
+  type ConnectorRegistry,
+  type ChannelRegistry,
+  type Connector,
+  type ApprovalChannel,
 } from '../types/index.js';
 import type { IdentityGate } from '../gates/01-identity.gate.js';
 import type { ClassificationGate } from '../gates/02-classification.gate.js';
@@ -24,26 +31,26 @@ import { nextSequence } from '../identity/delegation-store.js';
 import type Database from 'better-sqlite3';
 
 export interface PipelineGates {
-  identity:       IdentityGate;
+  identity: IdentityGate;
   classification: ClassificationGate;
-  delegation:     DelegationGate;
-  policy:         PolicyGate;
-  approval:       ApprovalGate;
-  execution:      ExecutionGate;
-  evidence:       EvidenceGate;
+  delegation: DelegationGate;
+  policy: PolicyGate;
+  approval: ApprovalGate;
+  execution: ExecutionGate;
+  evidence: EvidenceGate;
 }
 
 export class Pipeline {
   constructor(
-    private readonly gates:   PipelineGates,
-    private readonly replay:  ReplayDetector,
+    private readonly gates: PipelineGates,
+    private readonly replay: ReplayDetector,
     private readonly limiter: RateLimiter,
-    private readonly db:      Database.Database
+    private readonly db: Database.Database
   ) {}
 
   async process(
     rawAction: Omit<AgentAction, 'delegationSequence'>,
-    context:   PipelineContext
+    context: PipelineContext
   ): Promise<EvidenceRecord> {
     // === INGRESS SECURITY ===
     // Rate limit
@@ -54,13 +61,20 @@ export class Pipeline {
         const te: ThreatEvent = buildThreatEvent('rate_limit_exceeded', 'ingress', err.message);
         context.threatLog.push(te);
         const action = this.assignSequence(rawAction, context);
-        return this.runGate07(action, context, [{
-          gateId: 'ingress', gateOrder: 0, plane: 'control',
-          outcome: 'deny', reason: err.message,
-          denialCode: DENIAL_CODE.RATE_LIMIT_EXCEEDED,
-          policyRuleId: null, evaluatedAt: new Date().toISOString(),
-          durationMs: 0, metadata: {},
-        }]);
+        return this.runGate07(action, context, [
+          {
+            gateId: 'ingress',
+            gateOrder: 0,
+            plane: 'control',
+            outcome: 'deny',
+            reason: err.message,
+            denialCode: DENIAL_CODE.RATE_LIMIT_EXCEEDED,
+            policyRuleId: null,
+            evaluatedAt: new Date().toISOString(),
+            durationMs: 0,
+            metadata: {},
+          },
+        ]);
       }
       throw err;
     }
@@ -73,13 +87,20 @@ export class Pipeline {
         const te: ThreatEvent = buildThreatEvent('replay_detected', 'ingress', err.message);
         context.threatLog.push(te);
         const action = this.assignSequence(rawAction, context);
-        return this.runGate07(action, context, [{
-          gateId: 'ingress', gateOrder: 0, plane: 'control',
-          outcome: 'deny', reason: err.message,
-          denialCode: DENIAL_CODE.REPLAY_DETECTED,
-          policyRuleId: null, evaluatedAt: new Date().toISOString(),
-          durationMs: 0, metadata: {},
-        }]);
+        return this.runGate07(action, context, [
+          {
+            gateId: 'ingress',
+            gateOrder: 0,
+            plane: 'control',
+            outcome: 'deny',
+            reason: err.message,
+            denialCode: DENIAL_CODE.REPLAY_DETECTED,
+            policyRuleId: null,
+            evaluatedAt: new Date().toISOString(),
+            durationMs: 0,
+            metadata: {},
+          },
+        ]);
       }
       throw err;
     }
@@ -100,9 +121,9 @@ export class Pipeline {
       const result = await gate.evaluate(action, context, decisions);
       decisions.push(result.decision);
 
-      if (result.actionMutations)    Object.assign(action, result.actionMutations);
+      if (result.actionMutations) Object.assign(action, result.actionMutations);
       if (result.delegationSnapshot) context.delegationSnapshot = result.delegationSnapshot;
-      if (result.grantTemplate)      context.grantTemplate      = result.grantTemplate;
+      if (result.grantTemplate) context.grantTemplate = result.grantTemplate;
 
       const isDeny = result.decision.outcome === 'deny' || result.decision.outcome === 'error';
       if (isDeny) return this.runGate07(action, context, decisions);
@@ -115,27 +136,25 @@ export class Pipeline {
       // === GATE 05: Approval (conditional — never on ALLOW paths) ===
       const approvalResult = await this.gates.approval.evaluate(action, context, decisions);
       decisions.push(approvalResult.decision);
-      if (approvalResult.approvalRequest)  context.approvalRequest  = approvalResult.approvalRequest;
-      if (approvalResult.approvalResponse) context.approvalResponse = approvalResult.approvalResponse;
+      if (approvalResult.approvalRequest) context.approvalRequest = approvalResult.approvalRequest;
+      if (approvalResult.approvalResponse)
+        context.approvalResponse = approvalResult.approvalResponse;
 
       const approvalDenied =
-        approvalResult.decision.outcome === 'deny' ||
-        approvalResult.decision.outcome === 'error';
+        approvalResult.decision.outcome === 'deny' || approvalResult.decision.outcome === 'error';
       if (approvalDenied) return this.runGate07(action, context, decisions);
 
       // Gate 05 passed → Gate 06
       const execResult = await this.gates.execution.evaluate(action, context, decisions);
       decisions.push(execResult.decision);
-      if (execResult.grant)           context.executionGrant  = execResult.grant;
+      if (execResult.grant) context.executionGrant = execResult.grant;
       if (execResult.executionResult) context.executionResult = execResult.executionResult;
-
     } else if (outcome === OUTCOME_LABEL.ALLOW) {
       // === GATE 06: Execution (no approval required) ===
       const execResult = await this.gates.execution.evaluate(action, context, decisions);
       decisions.push(execResult.decision);
-      if (execResult.grant)           context.executionGrant  = execResult.grant;
+      if (execResult.grant) context.executionGrant = execResult.grant;
       if (execResult.executionResult) context.executionResult = execResult.executionResult;
-
     } else {
       // DENY or unknown — Gate 07 directly
       return this.runGate07(action, context, decisions);
@@ -147,8 +166,8 @@ export class Pipeline {
 
   /** Gate 07 always runs exactly once per action. Extracted to prevent duplication. */
   private async runGate07(
-    action:    AgentAction,
-    context:   PipelineContext,
+    action: AgentAction,
+    context: PipelineContext,
     decisions: import('../types/index.js').GateDecision[]
   ): Promise<EvidenceRecord> {
     const evidenceResult = await this.gates.evidence.evaluate(action, context, decisions);
@@ -161,7 +180,7 @@ export class Pipeline {
 
   private assignSequence(
     rawAction: Omit<AgentAction, 'delegationSequence'>,
-    context:   PipelineContext
+    context: PipelineContext
   ): AgentAction {
     const seq = nextSequence(this.db, context.delegationContext!.delegationId);
     return { ...rawAction, delegationSequence: seq } as AgentAction;
@@ -169,18 +188,28 @@ export class Pipeline {
 }
 
 // Registry implementations
-export class SimpleConnectorRegistry
-  implements ConnectorRegistry {
+export class SimpleConnectorRegistry implements ConnectorRegistry {
   private readonly map = new Map<string, Connector>();
-  get(systemType: string) { return this.map.get(systemType) ?? null; }
-  register(c: Connector) { this.map.set(c.systemType, c); }
-  list() { return [...this.map.values()]; }
+  get(systemType: string) {
+    return this.map.get(systemType) ?? null;
+  }
+  register(c: Connector) {
+    this.map.set(c.systemType, c);
+  }
+  list() {
+    return [...this.map.values()];
+  }
 }
 
-export class SimpleChannelRegistry
-  implements ChannelRegistry {
+export class SimpleChannelRegistry implements ChannelRegistry {
   private readonly map = new Map<string, ApprovalChannel>();
-  get(channelId: string) { return this.map.get(channelId) ?? null; }
-  register(c: ApprovalChannel) { this.map.set(c.channelId, c); }
-  list() { return [...this.map.values()]; }
+  get(channelId: string) {
+    return this.map.get(channelId) ?? null;
+  }
+  register(c: ApprovalChannel) {
+    this.map.set(c.channelId, c);
+  }
+  list() {
+    return [...this.map.values()];
+  }
 }

@@ -18,7 +18,7 @@ export async function loadPolicyFile(
   filepath: string,
   controlPlaneKey: KeyPair
 ): Promise<LoadedPolicyFile> {
-  const raw    = await fs.readFile(filepath, 'utf-8');
+  const raw = await fs.readFile(filepath, 'utf-8');
   const parsed = JSON.parse(raw) as PolicyFile;
 
   const { signature, ...body } = parsed;
@@ -31,6 +31,6 @@ export async function loadPolicyFile(
   return {
     ...parsed,
     sortedRules: [...parsed.rules].sort((a, b) => a.priority - b.priority),
-    bundleHash:  computePolicyBundleHash(parsed),
+    bundleHash: computePolicyBundleHash(parsed),
   };
 }

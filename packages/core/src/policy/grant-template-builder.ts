@@ -6,10 +6,16 @@
  * No connector, adapter, channel, or interface layer may supplement or override.
  */
 import {
-  OUTCOME_LABEL, EXPIRY_CLASS, EXPIRY_CLASS_SECONDS,
-  NexusSecurityViolation, DENIAL_CODE,
-  type AgentAction, type PolicyRule, type PipelineContext,
-  type ExecutionGrantTemplate, type ResourceBounds,
+  OUTCOME_LABEL,
+  EXPIRY_CLASS,
+  EXPIRY_CLASS_SECONDS,
+  NexusSecurityViolation,
+  DENIAL_CODE,
+  type AgentAction,
+  type PolicyRule,
+  type PipelineContext,
+  type ExecutionGrantTemplate,
+  type ResourceBounds,
 } from '../types/index.js';
 import { canonicalize } from '../crypto/canonicalize.js';
 import { sha256 } from '../crypto/signer.js';
@@ -58,24 +64,24 @@ function buildScopeDescriptor(
   hint: import('../types/index.js').GrantTemplateHint | null | undefined
 ): string {
   const base = `${capabilityId}@${target.system}:${target.resourceType}:${target.resourceScope}`;
-  const ext  = (hint?.allowExternalFacing || target.externalFacing) ? ':external' : '';
+  const ext = hint?.allowExternalFacing || target.externalFacing ? ':external' : '';
   return base + ext;
 }
 
 export function buildGrantTemplate(
-  action:  AgentAction,
-  rule:    PolicyRule | undefined,
+  action: AgentAction,
+  rule: PolicyRule | undefined,
   context: PipelineContext
 ): ExecutionGrantTemplate {
-  const hint        = rule?.grantHint;
+  const hint = rule?.grantHint;
   const expiryClass = hint?.expiryClass ?? EXPIRY_CLASS.ACTION_SCOPED;
-  const maxExpiry   = EXPIRY_CLASS_SECONDS[expiryClass] ?? 30;
+  const maxExpiry = EXPIRY_CLASS_SECONDS[expiryClass] ?? 30;
 
   const resourceBounds: ResourceBounds = {
     allowedResourceTypes: [action.resolvedTarget!.resourceType],
-    maxRecords:           hint?.maxRecords ?? 1,
-    allowBulk:            hint?.allowBulk ?? false,
-    allowExternalFacing:  hint?.allowExternalFacing ?? false,
+    maxRecords: hint?.maxRecords ?? 1,
+    allowBulk: hint?.allowBulk ?? false,
+    allowExternalFacing: hint?.allowExternalFacing ?? false,
   };
 
   const dc = context.delegationContext!; // Gate 01 invariant
@@ -87,28 +93,30 @@ export function buildGrantTemplate(
   }
 
   const credentialSubjectType = resolveCredentialSubjectType(
-    context.actor!.actorClass, action.resolvedTarget!.system
+    context.actor!.actorClass,
+    action.resolvedTarget!.system
   );
   const scopeDescriptor = buildScopeDescriptor(
-    action.resolvedCapability!, action.resolvedTarget!, hint
+    action.resolvedCapability!,
+    action.resolvedTarget!,
+    hint
   );
   const approvalRequired =
-    rule?.outcome === OUTCOME_LABEL.REQUIRE_APPROVAL ||
-    rule?.outcome === OUTCOME_LABEL.ESCALATE;
+    rule?.outcome === OUTCOME_LABEL.REQUIRE_APPROVAL || rule?.outcome === OUTCOME_LABEL.ESCALATE;
 
   const templateBody = {
-    templateId:            newUuid(),
-    actionId:              action.actionId,
-    computedAt:            new Date().toISOString(),
-    capabilityId:          action.resolvedCapability!,
+    templateId: newUuid(),
+    actionId: action.actionId,
+    computedAt: new Date().toISOString(),
+    capabilityId: action.resolvedCapability!,
     scopeDescriptor,
     credentialSubjectType,
     resourceBounds,
-    environmentBound:      action.resolvedTarget!.environment,
+    environmentBound: action.resolvedTarget!.environment,
     expiryClass,
-    maxExpirySeconds:      maxExpiry,
+    maxExpirySeconds: maxExpiry,
     approvalRequired,
-    approvalConfig:        rule?.approvalConfig ?? null,
+    approvalConfig: rule?.approvalConfig ?? null,
   };
 
   // Fingerprint via shared helper — approvalLinkage omitted because it's not in templateBody

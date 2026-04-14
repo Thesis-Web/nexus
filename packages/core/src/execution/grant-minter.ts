@@ -2,8 +2,11 @@
  * Grant minter — spec §13.7 mintGrant
  */
 import {
-  type AgentAction, type ExecutionGrantTemplate,
-  type ApprovalRequest, type ExecutionGrant, type CredentialSubject,
+  type AgentAction,
+  type ExecutionGrantTemplate,
+  type ApprovalRequest,
+  type ExecutionGrant,
+  type CredentialSubject,
 } from '../types/index.js';
 import { canonicalize } from '../crypto/canonicalize.js';
 import { sign } from '../crypto/signer.js';
@@ -17,34 +20,34 @@ function resolveCredentialSubject(
 ): CredentialSubject {
   const subjectType = template.credentialSubjectType as CredentialSubject['subjectType'];
   return {
-    subjectId:   subjectType === 'user_identity' ? action.actorId : `svc:${action.actorId}`,
+    subjectId: subjectType === 'user_identity' ? action.actorId : `svc:${action.actorId}`,
     subjectType,
-    system:      action.resolvedTarget!.system,
+    system: action.resolvedTarget!.system,
   };
 }
 
 export async function mintGrant(
-  action:        AgentAction,
-  template:      ExecutionGrantTemplate,
-  approval:      ApprovalRequest | null,
+  action: AgentAction,
+  template: ExecutionGrantTemplate,
+  approval: ApprovalRequest | null,
   controlPlaneKey: KeyPair
 ): Promise<ExecutionGrant> {
-  const now       = new Date().toISOString();
+  const now = new Date().toISOString();
   const expiresAt = addSeconds(now, template.maxExpirySeconds);
-  const credSub   = resolveCredentialSubject(template, action);
+  const credSub = resolveCredentialSubject(template, action);
 
   const grantBody = {
-    grantId:           newUuid(),
-    actionId:          action.actionId,
-    templateId:        template.templateId,
-    approvalId:        approval?.approvalId ?? null,
-    mintedAt:          now,
+    grantId: newUuid(),
+    actionId: action.actionId,
+    templateId: template.templateId,
+    approvalId: approval?.approvalId ?? null,
+    mintedAt: now,
     expiresAt,
-    capabilityId:      template.capabilityId,
-    scopeDescriptor:   template.scopeDescriptor,
+    capabilityId: template.capabilityId,
+    scopeDescriptor: template.scopeDescriptor,
     credentialSubject: credSub,
-    resourceBounds:    template.resourceBounds,
-    environmentBound:  template.environmentBound,
+    resourceBounds: template.resourceBounds,
+    environmentBound: template.environmentBound,
   };
 
   const signature = await sign(canonicalize(grantBody), controlPlaneKey);

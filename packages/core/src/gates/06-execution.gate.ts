@@ -5,9 +5,16 @@
  * clearGrantSecret() always called in finally — even on NexusSecurityViolation.
  */
 import {
-  GATE_ID, DENIAL_CODE, NexusSecurityViolation,
-  type Gate, type GateResult, type AgentAction,
-  type PipelineContext, type GateDecision, type ExecutionResult, type ThreatEvent,
+  GATE_ID,
+  DENIAL_CODE,
+  NexusSecurityViolation,
+  type Gate,
+  type GateResult,
+  type AgentAction,
+  type PipelineContext,
+  type GateDecision,
+  type ExecutionResult,
+  type ThreatEvent,
 } from '../types/index.js';
 import { assertTemplateIntegrity } from '../policy/grant-template-builder.js';
 import { mintGrant } from '../execution/grant-minter.js';
@@ -16,30 +23,35 @@ import type { KeyPair } from '../crypto/key-manager.js';
 
 function sanitizeError(err: unknown): string {
   if (!(err instanceof Error)) return 'connector_unknown_error';
-  return err.message
-    .replace(/(secret|password|key|token|credential)[=:\s][^\s,;]*/gi, '[REDACTED:SECRET]')
-    .slice(0, 500) || 'connector_error_no_message';
+  return (
+    err.message
+      .replace(/(secret|password|key|token|credential)[=:\s][^\s,;]*/gi, '[REDACTED:SECRET]')
+      .slice(0, 500) || 'connector_error_no_message'
+  );
 }
 
 export class ExecutionGate implements Gate {
-  readonly gateId    = GATE_ID.G06;
+  readonly gateId = GATE_ID.G06;
   readonly gateOrder = 6;
-  readonly plane     = 'data' as const;
+  readonly plane = 'data' as const;
 
   constructor(private readonly controlPlaneKey: KeyPair) {}
 
   async evaluate(
-    action:  AgentAction,
+    action: AgentAction,
     context: PipelineContext,
-    _prior:  GateDecision[]
+    _prior: GateDecision[]
   ): Promise<GateResult> {
-    const startMs  = Date.now();
+    const startMs = Date.now();
     const template = context.grantTemplate!; // orchestrator invariant
 
     // === CONTROL PLANE: verify template integrity and mint grant ===
     assertTemplateIntegrity(template);
     const grant = await mintGrant(
-      action, template, context.approvalRequest ?? null, this.controlPlaneKey
+      action,
+      template,
+      context.approvalRequest ?? null,
+      this.controlPlaneKey
     );
 
     // === DATA PLANE: connector forwarding ===
@@ -47,20 +59,32 @@ export class ExecutionGate implements Gate {
     if (!connector) {
       return {
         decision: {
-          gateId: GATE_ID.G06, gateOrder: 6, plane: 'data',
-          outcome: 'error', reason: `connector not registered: ${action.resolvedTarget!.system}`,
-          denialCode: DENIAL_CODE.CONNECTOR_NOT_REGISTERED, policyRuleId: null,
-          evaluatedAt: new Date().toISOString(), durationMs: Date.now() - startMs, metadata: {},
+          gateId: GATE_ID.G06,
+          gateOrder: 6,
+          plane: 'data',
+          outcome: 'error',
+          reason: `connector not registered: ${action.resolvedTarget!.system}`,
+          denialCode: DENIAL_CODE.CONNECTOR_NOT_REGISTERED,
+          policyRuleId: null,
+          evaluatedAt: new Date().toISOString(),
+          durationMs: Date.now() - startMs,
+          metadata: {},
         },
       };
     }
     if (!connector.supportedCapabilities().includes(action.resolvedCapability!)) {
       return {
         decision: {
-          gateId: GATE_ID.G06, gateOrder: 6, plane: 'data',
-          outcome: 'error', reason: `connector does not support: ${action.resolvedCapability!}`,
-          denialCode: DENIAL_CODE.CONNECTOR_CAP_UNSUPPORTED, policyRuleId: null,
-          evaluatedAt: new Date().toISOString(), durationMs: Date.now() - startMs, metadata: {},
+          gateId: GATE_ID.G06,
+          gateOrder: 6,
+          plane: 'data',
+          outcome: 'error',
+          reason: `connector does not support: ${action.resolvedCapability!}`,
+          denialCode: DENIAL_CODE.CONNECTOR_CAP_UNSUPPORTED,
+          policyRuleId: null,
+          evaluatedAt: new Date().toISOString(),
+          durationMs: Date.now() - startMs,
+          metadata: {},
         },
       };
     }
@@ -76,24 +100,35 @@ export class ExecutionGate implements Gate {
         const threatEvent: ThreatEvent = {
           threatType: 'security_violation',
           detectedAt: new Date().toISOString(),
-          gateId:     GATE_ID.G06,
-          detail:     `Security violation in connector execution: ${err.message}`.slice(0, 300),
+          gateId: GATE_ID.G06,
+          detail: `Security violation in connector execution: ${err.message}`.slice(0, 300),
         };
         context.threatLog.push(threatEvent);
         return {
           decision: {
-            gateId: GATE_ID.G06, gateOrder: 6, plane: 'data',
-            outcome: 'deny', reason: err.message,
-            denialCode: err.denialCode, policyRuleId: null,
-            evaluatedAt: new Date().toISOString(), durationMs: Date.now() - startMs,
-            metadata: { violationType: (err as NexusSecurityViolation & { violationType?: string }).violationType ?? '' },
+            gateId: GATE_ID.G06,
+            gateOrder: 6,
+            plane: 'data',
+            outcome: 'deny',
+            reason: err.message,
+            denialCode: err.denialCode,
+            policyRuleId: null,
+            evaluatedAt: new Date().toISOString(),
+            durationMs: Date.now() - startMs,
+            metadata: {
+              violationType:
+                (err as NexusSecurityViolation & { violationType?: string }).violationType ?? '',
+            },
           },
         };
       }
       // Generic connector error — map to error outcome, no ThreatEvent
       executionResult = {
-        grantId: grant.grantId, executedAt: new Date().toISOString(),
-        status: 'failure', responseCode: null, durationMs: 0,
+        grantId: grant.grantId,
+        executedAt: new Date().toISOString(),
+        status: 'failure',
+        responseCode: null,
+        durationMs: 0,
         redactedSummary: null,
         errorType: 'connector_execution_error',
         errorMessage: sanitizeError(err),
@@ -104,12 +139,16 @@ export class ExecutionGate implements Gate {
 
     return {
       decision: {
-        gateId: GATE_ID.G06, gateOrder: 6, plane: 'data',
-        outcome:    executionResult!.status === 'failure' ? 'error' : 'pass',
-        reason:     `connector execution: ${executionResult!.status}`,
-        denialCode: null, policyRuleId: null,
-        evaluatedAt: new Date().toISOString(), durationMs: Date.now() - startMs,
-        metadata:   { connectorStatus: executionResult!.status },
+        gateId: GATE_ID.G06,
+        gateOrder: 6,
+        plane: 'data',
+        outcome: executionResult!.status === 'failure' ? 'error' : 'pass',
+        reason: `connector execution: ${executionResult!.status}`,
+        denialCode: null,
+        policyRuleId: null,
+        evaluatedAt: new Date().toISOString(),
+        durationMs: Date.now() - startMs,
+        metadata: { connectorStatus: executionResult!.status },
       },
       grant,
       executionResult: executionResult!,

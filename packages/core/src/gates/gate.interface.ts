@@ -9,8 +9,4 @@
  *
  * MODULAR-008: Gate 04 is the sole computation point for ExecutionGrantTemplate law.
  */
-export type {
-  Gate,
-  GateResult,
-  PipelineContext,
-} from '../types/index.js';
+export type { Gate, GateResult, PipelineContext } from '../types/index.js';

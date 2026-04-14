@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
-export function uuid(): string { return randomUUID(); }
+export function uuid(): string {
+  return randomUUID();
+}
 /**
  * Time utilities — spec §10 canonical time functions.
  * All timestamps are ISO 8601 UTC strings.

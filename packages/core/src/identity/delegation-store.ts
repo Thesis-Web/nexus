@@ -5,31 +5,42 @@ import type Database from 'better-sqlite3';
 import type { DelegationContext, Uuid, DelegationStore } from '../types/index.js';
 
 interface DelegationRow {
-  delegation_id: string; principal_id: string; actor_id: string;
-  parent_delegation_id: string | null; chain_depth: number; max_chain_depth: number;
-  allowed_systems: string; allowed_capabilities: string; forbidden_capabilities: string;
-  max_risk_tier: string; allow_downstream_propagation: number; environment: string;
-  minted_at: string; expires_at: string; minted_by: string; signature: string;
+  delegation_id: string;
+  principal_id: string;
+  actor_id: string;
+  parent_delegation_id: string | null;
+  chain_depth: number;
+  max_chain_depth: number;
+  allowed_systems: string;
+  allowed_capabilities: string;
+  forbidden_capabilities: string;
+  max_risk_tier: string;
+  allow_downstream_propagation: number;
+  environment: string;
+  minted_at: string;
+  expires_at: string;
+  minted_by: string;
+  signature: string;
 }
 
 function rowToDelegation(row: DelegationRow): DelegationContext {
   return {
-    delegationId:               row.delegation_id,
-    principalId:                row.principal_id,
-    actorId:                    row.actor_id,
-    parentDelegationId:         row.parent_delegation_id,
-    chainDepth:                 row.chain_depth,
-    maxChainDepth:              row.max_chain_depth,
-    allowedSystems:             JSON.parse(row.allowed_systems) as string[],
-    allowedCapabilities:        JSON.parse(row.allowed_capabilities) as string[],
-    forbiddenCapabilities:      JSON.parse(row.forbidden_capabilities) as string[],
-    maxRiskTier:                row.max_risk_tier,
+    delegationId: row.delegation_id,
+    principalId: row.principal_id,
+    actorId: row.actor_id,
+    parentDelegationId: row.parent_delegation_id,
+    chainDepth: row.chain_depth,
+    maxChainDepth: row.max_chain_depth,
+    allowedSystems: JSON.parse(row.allowed_systems) as string[],
+    allowedCapabilities: JSON.parse(row.allowed_capabilities) as string[],
+    forbiddenCapabilities: JSON.parse(row.forbidden_capabilities) as string[],
+    maxRiskTier: row.max_risk_tier,
     allowDownstreamPropagation: row.allow_downstream_propagation === 1,
-    environment:                row.environment,
-    mintedAt:                   row.minted_at,
-    expiresAt:                  row.expires_at,
-    mintedBy:                   row.minted_by,
-    signature:                  row.signature,
+    environment: row.environment,
+    mintedAt: row.minted_at,
+    expiresAt: row.expires_at,
+    mintedBy: row.minted_by,
+    signature: row.signature,
   };
 }
 
@@ -44,22 +55,35 @@ export class SqliteDelegationStore implements DelegationStore {
   }
 
   async save(dc: DelegationContext): Promise<void> {
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT OR REPLACE INTO delegations
         (delegation_id, principal_id, actor_id, parent_delegation_id, chain_depth,
          max_chain_depth, allowed_systems, allowed_capabilities, forbidden_capabilities,
          max_risk_tier, allow_downstream_propagation, environment,
          minted_at, expires_at, minted_by, signature)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      dc.delegationId, dc.principalId, dc.actorId, dc.parentDelegationId,
-      dc.chainDepth, dc.maxChainDepth,
-      JSON.stringify(dc.allowedSystems),
-      JSON.stringify(dc.allowedCapabilities),
-      JSON.stringify(dc.forbiddenCapabilities),
-      dc.maxRiskTier, dc.allowDownstreamPropagation ? 1 : 0,
-      dc.environment, dc.mintedAt, dc.expiresAt, dc.mintedBy, dc.signature
-    );
+    `
+      )
+      .run(
+        dc.delegationId,
+        dc.principalId,
+        dc.actorId,
+        dc.parentDelegationId,
+        dc.chainDepth,
+        dc.maxChainDepth,
+        JSON.stringify(dc.allowedSystems),
+        JSON.stringify(dc.allowedCapabilities),
+        JSON.stringify(dc.forbiddenCapabilities),
+        dc.maxRiskTier,
+        dc.allowDownstreamPropagation ? 1 : 0,
+        dc.environment,
+        dc.mintedAt,
+        dc.expiresAt,
+        dc.mintedBy,
+        dc.signature
+      );
   }
 
   async listForActor(actorId: Uuid): Promise<DelegationContext[]> {
@@ -77,13 +101,16 @@ export function nextSequence(db: Database.Database, delegationId: Uuid): number 
     .get(delegationId) as { last_sequence: number } | undefined;
 
   if (!row) {
-    db.prepare('INSERT INTO delegation_sequences (delegation_id, last_sequence) VALUES (?, 1)')
-      .run(delegationId);
+    db.prepare('INSERT INTO delegation_sequences (delegation_id, last_sequence) VALUES (?, 1)').run(
+      delegationId
+    );
     return 1;
   }
 
   const next = row.last_sequence + 1;
-  db.prepare('UPDATE delegation_sequences SET last_sequence = ? WHERE delegation_id = ?')
-    .run(next, delegationId);
+  db.prepare('UPDATE delegation_sequences SET last_sequence = ? WHERE delegation_id = ?').run(
+    next,
+    delegationId
+  );
   return next;
 }

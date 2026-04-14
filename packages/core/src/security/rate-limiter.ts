@@ -10,7 +10,7 @@ import { DENIAL_CODE } from '../types/index.js';
 import { NexusSecurityViolation } from '../types/index.js';
 
 interface RateLimitEntry {
-  count:   number;
+  count: number;
   windowStart: number;
 }
 
@@ -23,7 +23,7 @@ export class RateLimiter {
   ) {}
 
   check(key: string): void {
-    const now   = Date.now();
+    const now = Date.now();
     const entry = this.store.get(key);
 
     if (!entry || now - entry.windowStart > this.windowMs) {

@@ -9,37 +9,108 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EvidenceGate } from '../gates/07-evidence.gate.js';
 import {
-  DENIAL_CODE, FINAL_OUTCOME, GATE_ID, ACTION_VERB,
-  type AgentAction, type PipelineContext, type GateDecision, type LedgerBackend, type EvidenceRecord,
+  DENIAL_CODE,
+  FINAL_OUTCOME,
+  GATE_ID,
+  ACTION_VERB,
+  type AgentAction,
+  type PipelineContext,
+  type GateDecision,
+  type LedgerBackend,
+  type EvidenceRecord,
 } from '../types/index.js';
 import { generateControlPlaneKeypair } from '../crypto/key-manager.js';
 
-const NOW    = new Date().toISOString();
+const NOW = new Date().toISOString();
 const FUTURE = new Date(Date.now() + 300_000).toISOString();
 
 function baseAction(): AgentAction {
   return {
-    actionId: 'a-007', receivedAt: NOW, protocol: 'mcp/1.0', adapterVersion: 'v0.1.0',
-    actorId: 'actor-001', principalId: 'p-001', sessionId: 's-001', delegationId: 'd-001',
-    delegationSequence: 1, tool: 'get_record', rawVerb: 'read', rawTarget: '{}', rawPayload: {},
-    intent: { objectiveSummary: 'test', triggeringSource: 'unknown', toolchainContext: 'test', modelId: null, modelConfidence: null, riskNote: null, extractedAt: NOW },
-    resolvedVerb: ACTION_VERB.READ, resolvedCapability: 'read:record:single',
-    resolvedTarget: { system: 'stub', resourceType: 'record', resourceScope: 'single', environment: 'dev', externalFacing: false } as never,
-    resolvedDataClasses: ['internal'], resolvedRiskTier: 'low',
+    actionId: 'a-007',
+    receivedAt: NOW,
+    protocol: 'mcp/1.0',
+    adapterVersion: 'v0.1.0',
+    actorId: 'actor-001',
+    principalId: 'p-001',
+    sessionId: 's-001',
+    delegationId: 'd-001',
+    delegationSequence: 1,
+    tool: 'get_record',
+    rawVerb: 'read',
+    rawTarget: '{}',
+    rawPayload: {},
+    intent: {
+      objectiveSummary: 'test',
+      triggeringSource: 'unknown',
+      toolchainContext: 'test',
+      modelId: null,
+      modelConfidence: null,
+      riskNote: null,
+      extractedAt: NOW,
+    },
+    resolvedVerb: ACTION_VERB.READ,
+    resolvedCapability: 'read:record:single',
+    resolvedTarget: {
+      system: 'stub',
+      resourceType: 'record',
+      resourceScope: 'single',
+      environment: 'dev',
+      externalFacing: false,
+    } as never,
+    resolvedDataClasses: ['internal'],
+    resolvedRiskTier: 'low',
   };
 }
 
 function makeCtx(finalOutcomeSuffix?: 'with_grant'): PipelineContext {
   return {
     sessionId: 's-001',
-    actor: { actorId: 'actor-001', actorClass: 'HUMAN', principalId: 'p-001', displayName: 'T', environment: 'dev', riskCeiling: 'high', allowedSystems: ['stub'], registeredAt: NOW, owner: null, purpose: null, reviewCadence: null },
-    principal: { principalId: 'p-001', displayName: 'P', email: 'p@test.com', registeredAt: NOW, maxDelegableRiskTier: 'high', allowedSystems: ['stub'] },
-    delegationContext: { delegationId: 'd-001', principalId: 'p-001', actorId: 'actor-001', parentDelegationId: null, chainDepth: 0, maxChainDepth: 3, allowedSystems: ['stub'], allowedCapabilities: ['read:record:single'], forbiddenCapabilities: [], maxRiskTier: 'high', allowDownstreamPropagation: false, environment: 'dev', mintedAt: NOW, expiresAt: FUTURE, mintedBy: 'nexus-delegation-engine/v0.1.0', signature: 'sig' },
+    actor: {
+      actorId: 'actor-001',
+      actorClass: 'HUMAN',
+      principalId: 'p-001',
+      displayName: 'T',
+      environment: 'dev',
+      riskCeiling: 'high',
+      allowedSystems: ['stub'],
+      registeredAt: NOW,
+      owner: null,
+      purpose: null,
+      reviewCadence: null,
+    },
+    principal: {
+      principalId: 'p-001',
+      displayName: 'P',
+      email: 'p@test.com',
+      registeredAt: NOW,
+      maxDelegableRiskTier: 'high',
+      allowedSystems: ['stub'],
+    },
+    delegationContext: {
+      delegationId: 'd-001',
+      principalId: 'p-001',
+      actorId: 'actor-001',
+      parentDelegationId: null,
+      chainDepth: 0,
+      maxChainDepth: 3,
+      allowedSystems: ['stub'],
+      allowedCapabilities: ['read:record:single'],
+      forbiddenCapabilities: [],
+      maxRiskTier: 'high',
+      allowDownstreamPropagation: false,
+      environment: 'dev',
+      mintedAt: NOW,
+      expiresAt: FUTURE,
+      mintedBy: 'nexus-delegation-engine/v0.1.0',
+      signature: 'sig',
+    },
     delegationStore: { getById: vi.fn(), save: vi.fn(), listForActor: vi.fn() },
-    policyFile: null, approverRegistry: {} as never,
+    policyFile: null,
+    approverRegistry: {} as never,
     connectorRegistry: { get: vi.fn(), register: vi.fn(), list: vi.fn() },
     channelRegistry: { get: vi.fn(), register: vi.fn(), list: vi.fn() },
-    threatLog: [], startedAt: NOW,
+    threatLog: [],
+    startedAt: NOW,
     delegationSnapshot: undefined,
   } as unknown as PipelineContext;
 }
@@ -47,9 +118,12 @@ function makeCtx(finalOutcomeSuffix?: 'with_grant'): PipelineContext {
 function makeLedger(): LedgerBackend & { appended: EvidenceRecord[] } {
   const appended: EvidenceRecord[] = [];
   return {
-    backendId: 'test', backendVersion: 'v0',
+    backendId: 'test',
+    backendVersion: 'v0',
     appended,
-    append: vi.fn(async (r: EvidenceRecord) => { appended.push(r); }),
+    append: vi.fn(async (r: EvidenceRecord) => {
+      appended.push(r);
+    }),
     getLatestSequence: vi.fn().mockResolvedValue(0),
     getBySequence: vi.fn().mockResolvedValue(null),
     listRange: vi.fn().mockResolvedValue([]),
@@ -57,11 +131,33 @@ function makeLedger(): LedgerBackend & { appended: EvidenceRecord[] } {
 }
 
 function passDecision(gateId: string, order: number): GateDecision {
-  return { gateId, gateOrder: order, plane: 'control', outcome: 'pass', reason: 'ok', denialCode: null, policyRuleId: null, evaluatedAt: NOW, durationMs: 1, metadata: {} };
+  return {
+    gateId,
+    gateOrder: order,
+    plane: 'control',
+    outcome: 'pass',
+    reason: 'ok',
+    denialCode: null,
+    policyRuleId: null,
+    evaluatedAt: NOW,
+    durationMs: 1,
+    metadata: {},
+  };
 }
 
 function denyDecision(gateId: string, order: number, code: string): GateDecision {
-  return { gateId, gateOrder: order, plane: 'control', outcome: 'deny', reason: 'denied', denialCode: code, policyRuleId: null, evaluatedAt: NOW, durationMs: 1, metadata: {} };
+  return {
+    gateId,
+    gateOrder: order,
+    plane: 'control',
+    outcome: 'deny',
+    reason: 'denied',
+    denialCode: code,
+    policyRuleId: null,
+    evaluatedAt: NOW,
+    durationMs: 1,
+    metadata: {},
+  };
 }
 
 describe('Gate 07 — Evidence', () => {
@@ -76,7 +172,10 @@ describe('Gate 07 — Evidence', () => {
     const kp = await generateControlPlaneKeypair();
     const ledger = makeLedger();
     const gate = new EvidenceGate(ledger, kp);
-    await gate.evaluate(baseAction(), makeCtx(), [passDecision(GATE_ID.G01, 1), passDecision(GATE_ID.G02, 2)]);
+    await gate.evaluate(baseAction(), makeCtx(), [
+      passDecision(GATE_ID.G01, 1),
+      passDecision(GATE_ID.G02, 2),
+    ]);
     expect(ledger.append).toHaveBeenCalledOnce();
     expect(ledger.appended).toHaveLength(1);
   });
@@ -86,8 +185,21 @@ describe('Gate 07 — Evidence', () => {
     const ledger = makeLedger();
     const gate = new EvidenceGate(ledger, kp);
     const ctx = makeCtx();
-    ctx.executionResult = { actionId: 'a-007', connectorId: 'stub', executedAt: NOW, status: 'success', summary: 'ok', payload: null };
-    const decisions = [passDecision(GATE_ID.G01, 1), passDecision(GATE_ID.G02, 2), passDecision(GATE_ID.G03, 3), passDecision(GATE_ID.G04, 4), passDecision(GATE_ID.G06, 6)];
+    ctx.executionResult = {
+      actionId: 'a-007',
+      connectorId: 'stub',
+      executedAt: NOW,
+      status: 'success',
+      summary: 'ok',
+      payload: null,
+    };
+    const decisions = [
+      passDecision(GATE_ID.G01, 1),
+      passDecision(GATE_ID.G02, 2),
+      passDecision(GATE_ID.G03, 3),
+      passDecision(GATE_ID.G04, 4),
+      passDecision(GATE_ID.G06, 6),
+    ];
     const result = await gate.evaluate(baseAction(), ctx, decisions);
     expect(result.decision.outcome).toBe('pass');
     const record = ledger.appended[0]!;

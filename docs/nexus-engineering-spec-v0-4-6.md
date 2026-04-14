@@ -1,8 +1,13 @@
 # Nexus — Agent Action Router and Authority Governance Layer
+
 # Engineering Spec v0-4-6
+
 # Owner: James Huson / Lake Area LLC
+
 # Version: v0.4.6 | 2026-04-14
+
 # Governing blueprint: nexus-blueprint-v0-3-6.md
+
 # Supersedes: nexus-engineering-spec-v0-4-6.md
 
 ---
@@ -56,6 +61,7 @@ No new gates, no new governed types, no new layers.
 All 20 approved solve items (SOLVE-001 through SOLVE-020) plus CONTRA-509.
 
 **Law corrections:**
+
 - SOLVE-001 / CONTRA-501: §2 governing precedence and §7.1 /docs filenames updated to v0.3.5 + v0.4.4
 - SOLVE-002 / CONTRA-502: Build instructions v0-2-0 is canonical; supersedes v0-1-0
 - SOLVE-003 / CONTRA-503: §13.9.9–13.9.10 shared templateFingerprintPayload() helper; approvalLinkage excluded by field omission not undefined substitution
@@ -189,23 +195,29 @@ Test fixture carve-out: fixtures MAY contain synthetic secrets labeled with
 ## 5. Resolved Audit Carry-Forwards
 
 ### 5.1 All v0.3.2 Closures (carried forward)
+
 Sessions, delegations, grant-vault, run orchestrator, webhook dead-end, string-matching
 denial, SQLite blobs, 13 undefined helpers, PoC looseness items — all resolved in v0.3.2.
 See §30.2 for full list.
 
 ### 5.2 CONTRA-402 — Gate Interface Signature (carried forward from v0.4.3)
+
 Resolved: §11.1. Gate.evaluate signature is `(action, context, priorDecisions)`.
 
 ### 5.3 CONTRA-403 — Replay Sequence Anomaly (carried forward from v0.4.3)
+
 Resolved: §10.3.5 delegationSequence on AgentAction, §17.1 nextSequence(), §20.1 delegation_sequences table.
 
 ### 5.4 CONTRA-404 — Delegation Chain Silent Truncation (carried forward from v0.4.3)
+
 Resolved: §13.9.12 throws DelegationChainIntegrityError; §13.4 Gate 03 catches and returns CHAIN_INTEGRITY_BROKEN.
 
 ### 5.5–5.11 HOLE-401 through HOLE-406 and HOLE-205/CONTRA-001 (carried forward)
+
 All resolved in v0.4.3. See §30.2.
 
 ### 5.12 New in v0.4.4 — SOLVE-001 through SOLVE-020 + CONTRA-509
+
 All resolved in this spec version. See §30 for closure entries.
 
 ---
@@ -368,7 +380,7 @@ Root `package.json` must include:
 ```json
 {
   "bin": {
-    "nexus":           "packages/interfaces/cli/dist/index.js",
+    "nexus": "packages/interfaces/cli/dist/index.js",
     "nexus-mcp-proxy": "packages/adapters/mcp/dist/mcp-server.js"
   }
 }
@@ -384,16 +396,16 @@ Missing bin wiring is a ci:gate failure.
 ```json
 {
   "scripts": {
-    "format:check":   "prettier --check .",
-    "lint":           "eslint packages --ext .ts",
-    "typecheck":      "tsc --noEmit -p tsconfig.base.json",
-    "test":           "vitest run --reporter=verbose",
+    "format:check": "prettier --check .",
+    "lint": "eslint packages --ext .ts",
+    "typecheck": "tsc --noEmit -p tsconfig.base.json",
+    "test": "vitest run --reporter=verbose",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:threat":    "vitest run --config vitest.threat.config.ts",
-    "build":          "turbo build",
-    "ci:gate":        "tsx scripts/ci-gate.ts",
-    "nexus":          "tsx packages/interfaces/cli/src/index.ts",
-    "nexus:mcp":      "tsx packages/adapters/mcp/src/mcp-server.ts"
+    "test:threat": "vitest run --config vitest.threat.config.ts",
+    "build": "turbo build",
+    "ci:gate": "tsx scripts/ci-gate.ts",
+    "nexus": "tsx packages/interfaces/cli/src/index.ts",
+    "nexus:mcp": "tsx packages/adapters/mcp/src/mcp-server.ts"
   }
 }
 ```
@@ -408,10 +420,10 @@ dev dependency. scripts/ci-gate.ts must exist in the repo layout.
 {
   "$schema": "https://turbo.build/schema.json",
   "pipeline": {
-    "build":    { "dependsOn": ["^build"], "outputs": ["dist/**"] },
-    "typecheck":{ "dependsOn": ["^build"] },
-    "lint":     {},
-    "test":     { "dependsOn": ["build"] }
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "typecheck": { "dependsOn": ["^build"] },
+    "lint": {},
+    "test": { "dependsOn": ["build"] }
   }
 }
 ```
@@ -438,7 +450,6 @@ without owner approval and log entry.
 typecheck → test → ci:gate without inventing missing config files. Any file referenced
 by a script must be present in the declared repo layout. Failure of this assertion is a
 build contract violation.
-
 
 ---
 
@@ -521,12 +532,12 @@ constants. Adapters, connectors, and interfaces import from core types.
 ### 10.1 Primitive Aliases
 
 ```ts
-type Uuid         = string;   // UUID v4 — from crypto.randomUUID()
-type IsoTimestamp = string;   // ISO 8601 UTC — from new Date().toISOString()
-type Sha256Hex    = string;   // 64-char lowercase hex
-type Base64Url    = string;   // URL-safe base64, no padding
-type NonEmpty     = string;   // validated non-empty at construction
-type SemVer       = string;   // e.g. "v0.3.5"
+type Uuid = string; // UUID v4 — from crypto.randomUUID()
+type IsoTimestamp = string; // ISO 8601 UTC — from new Date().toISOString()
+type Sha256Hex = string; // 64-char lowercase hex
+type Base64Url = string; // URL-safe base64, no padding
+type NonEmpty = string; // validated non-empty at construction
+type SemVer = string; // e.g. "v0.3.5"
 ```
 
 ### 10.2 Governed Constants
@@ -538,11 +549,11 @@ version bump. The TypeScript type is `string` — NOT `typeof CONST[keyof typeof
 ```ts
 // Actor classes — open governed type
 export const ACTOR_CLASS = {
-  HUMAN:              'HUMAN',
+  HUMAN: 'HUMAN',
   HUMAN_WITH_COPILOT: 'HUMAN_WITH_COPILOT',
-  SUPERVISED_AGENT:   'SUPERVISED_AGENT',
-  AUTONOMOUS_AGENT:   'AUTONOMOUS_AGENT',
-  SCHEDULED_AGENT:    'SCHEDULED_AGENT',
+  SUPERVISED_AGENT: 'SUPERVISED_AGENT',
+  AUTONOMOUS_AGENT: 'AUTONOMOUS_AGENT',
+  SCHEDULED_AGENT: 'SCHEDULED_AGENT',
   DELEGATED_SUBAGENT: 'DELEGATED_SUBAGENT',
   SERVICE_AUTOMATION: 'SERVICE_AUTOMATION',
 } as const;
@@ -550,14 +561,23 @@ export type ActorClass = string;
 
 // Action verbs — open governed type
 export const ACTION_VERB = {
-  READ: 'read', CREATE: 'create', UPDATE: 'update', DELETE: 'delete',
-  SEND: 'send', PUBLISH: 'publish', EXPORT: 'export', EXECUTE: 'execute',
+  READ: 'read',
+  CREATE: 'create',
+  UPDATE: 'update',
+  DELETE: 'delete',
+  SEND: 'send',
+  PUBLISH: 'publish',
+  EXPORT: 'export',
+  EXECUTE: 'execute',
 } as const;
 export type ActionVerb = string;
 
 // Risk tiers — open governed type (ordered: low < medium < high < critical)
 export const RISK_TIER = {
-  LOW: 'low', MEDIUM: 'medium', HIGH: 'high', CRITICAL: 'critical',
+  LOW: 'low',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+  CRITICAL: 'critical',
 } as const;
 export type RiskTier = string;
 export const RISK_TIER_ORDER: string[] = ['low', 'medium', 'high', 'critical'];
@@ -567,40 +587,51 @@ export function riskTierExceeds(a: RiskTier, ceiling: RiskTier): boolean {
 
 // Data classes — open governed type
 export const DATA_CLASS = {
-  PUBLIC: 'public', INTERNAL: 'internal', CONFIDENTIAL: 'confidential',
-  PII: 'pii', PHI: 'phi', FINANCIAL: 'financial',
+  PUBLIC: 'public',
+  INTERNAL: 'internal',
+  CONFIDENTIAL: 'confidential',
+  PII: 'pii',
+  PHI: 'phi',
+  FINANCIAL: 'financial',
 } as const;
 export type DataClass = string;
 
 // Environments — open governed type
 export const ENVIRONMENT_ID = {
-  DEV: 'dev', STAGING: 'staging', PRODUCTION: 'production',
+  DEV: 'dev',
+  STAGING: 'staging',
+  PRODUCTION: 'production',
 } as const;
 export type EnvironmentId = string;
 
 // Outcome labels (policy gate output) — open governed type
 export const OUTCOME_LABEL = {
-  ALLOW: 'allow', DENY: 'deny', REQUIRE_APPROVAL: 'require_approval', ESCALATE: 'escalate',
+  ALLOW: 'allow',
+  DENY: 'deny',
+  REQUIRE_APPROVAL: 'require_approval',
+  ESCALATE: 'escalate',
 } as const;
 export type OutcomeLabel = string;
 
 // Approval decision labels — open governed type
 export const APPROVAL_DECISION_LABEL = {
-  APPROVED: 'approved', DENIED: 'denied', TIMED_OUT: 'timed_out',
+  APPROVED: 'approved',
+  DENIED: 'denied',
+  TIMED_OUT: 'timed_out',
 } as const;
 export type ApprovalDecisionLabel = string;
 
 // Final outcome labels — open governed type
 export const FINAL_OUTCOME = {
-  EXECUTED:          'executed',
-  DENIED_IDENTITY:   'denied_identity',
-  DENIED_CLASSIF:    'denied_classification',
+  EXECUTED: 'executed',
+  DENIED_IDENTITY: 'denied_identity',
+  DENIED_CLASSIF: 'denied_classification',
   DENIED_DELEGATION: 'denied_delegation',
-  DENIED_POLICY:     'denied_policy',
-  DENIED_APPROVAL:   'denied_approval',
-  DENIED_TIMEOUT:    'denied_timeout',
-  DENIED_THREAT:     'denied_threat',
-  ERROR:             'error',
+  DENIED_POLICY: 'denied_policy',
+  DENIED_APPROVAL: 'denied_approval',
+  DENIED_TIMEOUT: 'denied_timeout',
+  DENIED_THREAT: 'denied_threat',
+  ERROR: 'error',
 } as const;
 export type FinalOutcome = string;
 
@@ -616,78 +647,85 @@ export const GATE_ID = {
 } as const;
 export type GateId = string;
 export const GATE_ORDER: GateId[] = [
-  GATE_ID.G01, GATE_ID.G02, GATE_ID.G03, GATE_ID.G04,
-  GATE_ID.G05, GATE_ID.G06, GATE_ID.G07,
+  GATE_ID.G01,
+  GATE_ID.G02,
+  GATE_ID.G03,
+  GATE_ID.G04,
+  GATE_ID.G05,
+  GATE_ID.G06,
+  GATE_ID.G07,
 ];
 
 // Expiry classes — open governed type
 export const EXPIRY_CLASS = {
-  ACTION_SCOPED:  'action_scoped',   // max 30s
-  SHORT_LIVED:    'short_lived',     // max 60s
-  SESSION_SCOPED: 'session_scoped',  // max 300s
+  ACTION_SCOPED: 'action_scoped', // max 30s
+  SHORT_LIVED: 'short_lived', // max 60s
+  SESSION_SCOPED: 'session_scoped', // max 300s
 } as const;
 export type ExpiryClass = string;
 export const EXPIRY_CLASS_SECONDS: Record<string, number> = {
-  action_scoped: 30, short_lived: 60, session_scoped: 300,
+  action_scoped: 30,
+  short_lived: 60,
+  session_scoped: 300,
 };
 
 // Denial codes — typed denial identifiers for programmatic mapping
 // Used on GateDecision.denialCode. computeFinalOutcome maps on these, not on reason string.
 export const DENIAL_CODE = {
   // Gate 01
-  ACTOR_NOT_REGISTERED:          'actor_not_registered',
-  SESSION_NOT_FOUND:             'session_not_found',
-  SESSION_EXPIRED:               'session_expired',
-  PRINCIPAL_NOT_RESOLVABLE:      'principal_not_resolvable',
-  ACTOR_PRINCIPAL_MISMATCH:      'actor_principal_mismatch',
-  NON_HUMAN_ACTOR_INCOMPLETE:    'non_human_actor_incomplete_registry',
+  ACTOR_NOT_REGISTERED: 'actor_not_registered',
+  SESSION_NOT_FOUND: 'session_not_found',
+  SESSION_EXPIRED: 'session_expired',
+  PRINCIPAL_NOT_RESOLVABLE: 'principal_not_resolvable',
+  ACTOR_PRINCIPAL_MISMATCH: 'actor_principal_mismatch',
+  NON_HUMAN_ACTOR_INCOMPLETE: 'non_human_actor_incomplete_registry',
   // Gate 02
-  UNRESOLVABLE_VERB:             'unresolvable_action_verb',
-  UNRESOLVABLE_TARGET:           'unresolvable_target',
-  UNRESOLVABLE_CAPABILITY:       'unresolvable_capability',
+  UNRESOLVABLE_VERB: 'unresolvable_action_verb',
+  UNRESOLVABLE_TARGET: 'unresolvable_target',
+  UNRESOLVABLE_CAPABILITY: 'unresolvable_capability',
   // Gate 03
-  DELEGATION_SIG_INVALID:        'delegation_signature_invalid',
-  DELEGATION_EXPIRED:            'delegation_expired',
-  CAPABILITY_NOT_IN_DELEGATION:  'capability_not_in_delegation',
-  CAPABILITY_FORBIDDEN:          'capability_explicitly_forbidden',
-  SYSTEM_NOT_IN_DELEGATION:      'system_not_in_delegation',
-  RISK_TIER_EXCEEDS_CEILING:     'risk_tier_exceeds_delegation_ceiling',
-  CHAIN_DEPTH_EXCEEDED:          'chain_depth_ceiling_exceeded',
-  PROPAGATION_NOT_PERMITTED:     'downstream_propagation_not_permitted',
-  ENVIRONMENT_MISMATCH:          'environment_mismatch',
+  DELEGATION_SIG_INVALID: 'delegation_signature_invalid',
+  DELEGATION_EXPIRED: 'delegation_expired',
+  CAPABILITY_NOT_IN_DELEGATION: 'capability_not_in_delegation',
+  CAPABILITY_FORBIDDEN: 'capability_explicitly_forbidden',
+  SYSTEM_NOT_IN_DELEGATION: 'system_not_in_delegation',
+  RISK_TIER_EXCEEDS_CEILING: 'risk_tier_exceeds_delegation_ceiling',
+  CHAIN_DEPTH_EXCEEDED: 'chain_depth_ceiling_exceeded',
+  PROPAGATION_NOT_PERMITTED: 'downstream_propagation_not_permitted',
+  ENVIRONMENT_MISMATCH: 'environment_mismatch',
   // Gate 04
-  POLICY_DENY:                   'policy_deny',
-  DEFAULT_DENY:                  'default_deny',
+  POLICY_DENY: 'policy_deny',
+  DEFAULT_DENY: 'default_deny',
   // Gate 05
-  APPROVAL_TIMEOUT:              'approval_timeout',
-  APPROVAL_DENIED_BY_HUMAN:      'approval_denied_by_human',
-  APPROVAL_SIG_INVALID:          'approval_response_signature_invalid',
-  APPROVAL_CONFIG_MISSING:       'approval_config_missing',
-  APPROVAL_CHANNEL_NOT_FOUND:    'approval_channel_not_found',
+  APPROVAL_TIMEOUT: 'approval_timeout',
+  APPROVAL_DENIED_BY_HUMAN: 'approval_denied_by_human',
+  APPROVAL_SIG_INVALID: 'approval_response_signature_invalid',
+  APPROVAL_CONFIG_MISSING: 'approval_config_missing',
+  APPROVAL_CHANNEL_NOT_FOUND: 'approval_channel_not_found',
   // Gate 06
-  CONNECTOR_NOT_REGISTERED:      'connector_not_registered',
-  CONNECTOR_CAP_UNSUPPORTED:     'connector_capability_unsupported',
+  CONNECTOR_NOT_REGISTERED: 'connector_not_registered',
+  CONNECTOR_CAP_UNSUPPORTED: 'connector_capability_unsupported',
   // Security / ingress
-  REPLAY_DETECTED:               'replay_detected',
-  RATE_LIMIT_EXCEEDED:           'rate_limit_exceeded',
-  BROAD_TOKEN_BYPASS:            'broad_token_bypass',
-  TEMPLATE_INTEGRITY_FAILED:     'template_integrity_failed',
-  GRANT_EXPIRED:                 'grant_expired',
-  SEQUENCE_ANOMALY:              'sequence_anomaly',       // ledger sequence discontinuity — emitted by chain verifier
-  CHAIN_INTEGRITY_BROKEN:        'chain_integrity_broken', // parent delegation not found in store
+  REPLAY_DETECTED: 'replay_detected',
+  RATE_LIMIT_EXCEEDED: 'rate_limit_exceeded',
+  BROAD_TOKEN_BYPASS: 'broad_token_bypass',
+  TEMPLATE_INTEGRITY_FAILED: 'template_integrity_failed',
+  GRANT_EXPIRED: 'grant_expired',
+  SEQUENCE_ANOMALY: 'sequence_anomaly', // ledger sequence discontinuity — emitted by chain verifier
+  CHAIN_INTEGRITY_BROKEN: 'chain_integrity_broken', // parent delegation not found in store
 } as const;
 export type DenialCode = string;
 
 // Version constants
-export const GENESIS_HASH                   = '0000000000000000000000000000000000000000000000000000000000000000';
-export const BLUEPRINT_VERSION: SemVer      = 'v0.3.6';
-export const SPEC_VERSION: SemVer           = 'v0.4.6';
+export const GENESIS_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
+export const BLUEPRINT_VERSION: SemVer = 'v0.3.6';
+export const SPEC_VERSION: SemVer = 'v0.4.6';
 export const CAPABILITY_TAXONOMY_VERSION: SemVer = 'v0.1.0';
-export const COMPARISON_INPUT_VERSION: SemVer    = 'v0.1.0';
+export const COMPARISON_INPUT_VERSION: SemVer = 'v0.1.0';
 
 // Component version constants — used in mintedBy and audit fields
 // Never hardcode version strings in implementation code; use these constants.
-export const NEXUS_VERSION: SemVer         = 'v0.1.0';
+export const NEXUS_VERSION: SemVer = 'v0.1.0';
 export const DELEGATION_ENGINE_ID: NonEmpty = `nexus-delegation-engine/${NEXUS_VERSION}`;
 
 // Replay dedup window — configurable at startup. Default 3600s (1 hour).
@@ -698,40 +736,70 @@ export const REPLAY_DEDUP_TTL_SECONDS = 3600;
 
 // Canonical capability IDs — the v0.1.0 governed set.
 export const CAPABILITY_IDS = {
-  READ_RECORD_SINGLE:       'read:record:single',
-  READ_RECORD_BULK:         'read:record:bulk',
-  READ_RECORD_PII:          'read:record:pii',
-  READ_RECORD_BULK_PII:     'read:record:bulk:pii',
-  CREATE_RECORD_INTERNAL:   'create:record:internal',
-  CREATE_RECORD_EXTERNAL:   'create:record:external',
-  UPDATE_RECORD_INTERNAL:   'update:record:internal',
-  UPDATE_RECORD_EXTERNAL:   'update:record:external',
-  DELETE_RECORD:            'delete:record',
-  DELETE_RECORD_BULK:       'delete:record:bulk',
-  SEND_MESSAGE_INTERNAL:    'send:message:internal',
-  SEND_MESSAGE_EXTERNAL:    'send:message:external',
+  READ_RECORD_SINGLE: 'read:record:single',
+  READ_RECORD_BULK: 'read:record:bulk',
+  READ_RECORD_PII: 'read:record:pii',
+  READ_RECORD_BULK_PII: 'read:record:bulk:pii',
+  CREATE_RECORD_INTERNAL: 'create:record:internal',
+  CREATE_RECORD_EXTERNAL: 'create:record:external',
+  UPDATE_RECORD_INTERNAL: 'update:record:internal',
+  UPDATE_RECORD_EXTERNAL: 'update:record:external',
+  DELETE_RECORD: 'delete:record',
+  DELETE_RECORD_BULK: 'delete:record:bulk',
+  SEND_MESSAGE_INTERNAL: 'send:message:internal',
+  SEND_MESSAGE_EXTERNAL: 'send:message:external',
   PUBLISH_CONTENT_INTERNAL: 'publish:content:internal',
   PUBLISH_CONTENT_EXTERNAL: 'publish:content:external',
-  EXPORT_DATA_SINGLE:       'export:data:single',
-  EXPORT_DATA_BULK:         'export:data:bulk',
-  EXPORT_DATA_BULK_PII:     'export:data:bulk:pii',
-  EXECUTE_QUERY:            'execute:query',
-  EXECUTE_AUTOMATION:       'execute:automation',
+  EXPORT_DATA_SINGLE: 'export:data:single',
+  EXPORT_DATA_BULK: 'export:data:bulk',
+  EXPORT_DATA_BULK_PII: 'export:data:bulk:pii',
+  EXECUTE_QUERY: 'execute:query',
+  EXECUTE_AUTOMATION: 'execute:automation',
 } as const;
 
 // Scenario manifest — canonical map of all 10 POC fixture scenarios.
 // CLI --scenario validates against this manifest. No string concatenation for paths.
 export const SCENARIO_MANIFEST = {
-  '01-allow-read':          { description: 'Low-risk read → ALLOWED → executed',            fixturePath: 'fixtures/scenario-01-allow-read' },
-  '02-allow-create':        { description: 'Medium-risk create → ALLOWED → executed',       fixturePath: 'fixtures/scenario-02-allow-create' },
-  '03-approval-approved':   { description: 'High-risk send → REQUIRE_APPROVAL → approved',  fixturePath: 'fixtures/scenario-03-approval-approved' },
-  '04-approval-denied':     { description: 'High-risk send → REQUIRE_APPROVAL → denied',    fixturePath: 'fixtures/scenario-04-approval-denied' },
-  '05-approval-timeout':    { description: 'High-risk send → REQUIRE_APPROVAL → timeout',   fixturePath: 'fixtures/scenario-05-approval-timeout' },
-  '06-replay-detected':     { description: 'Replay of scenario-01 → REPLAY DETECTED',       fixturePath: 'fixtures/scenario-06-replay-detected' },
-  '07-default-deny':        { description: 'No policy loaded → DEFAULT DENY',               fixturePath: 'fixtures/scenario-07-default-deny' },
-  '08-policy-unsigned':     { description: 'Unsigned policy → REJECTED at load',            fixturePath: 'fixtures/scenario-08-policy-unsigned' },
-  '09-broad-token-bypass':  { description: 'Broad static credential → DENIED threat',       fixturePath: 'fixtures/scenario-09-broad-token-bypass' },
-  '10-delegation-exceeded': { description: 'Sub-agent outside parent bounds → DENIED Gate 03', fixturePath: 'fixtures/scenario-10-delegation-exceeded' },
+  '01-allow-read': {
+    description: 'Low-risk read → ALLOWED → executed',
+    fixturePath: 'fixtures/scenario-01-allow-read',
+  },
+  '02-allow-create': {
+    description: 'Medium-risk create → ALLOWED → executed',
+    fixturePath: 'fixtures/scenario-02-allow-create',
+  },
+  '03-approval-approved': {
+    description: 'High-risk send → REQUIRE_APPROVAL → approved',
+    fixturePath: 'fixtures/scenario-03-approval-approved',
+  },
+  '04-approval-denied': {
+    description: 'High-risk send → REQUIRE_APPROVAL → denied',
+    fixturePath: 'fixtures/scenario-04-approval-denied',
+  },
+  '05-approval-timeout': {
+    description: 'High-risk send → REQUIRE_APPROVAL → timeout',
+    fixturePath: 'fixtures/scenario-05-approval-timeout',
+  },
+  '06-replay-detected': {
+    description: 'Replay of scenario-01 → REPLAY DETECTED',
+    fixturePath: 'fixtures/scenario-06-replay-detected',
+  },
+  '07-default-deny': {
+    description: 'No policy loaded → DEFAULT DENY',
+    fixturePath: 'fixtures/scenario-07-default-deny',
+  },
+  '08-policy-unsigned': {
+    description: 'Unsigned policy → REJECTED at load',
+    fixturePath: 'fixtures/scenario-08-policy-unsigned',
+  },
+  '09-broad-token-bypass': {
+    description: 'Broad static credential → DENIED threat',
+    fixturePath: 'fixtures/scenario-09-broad-token-bypass',
+  },
+  '10-delegation-exceeded': {
+    description: 'Sub-agent outside parent bounds → DENIED Gate 03',
+    fixturePath: 'fixtures/scenario-10-delegation-exceeded',
+  },
 } as const;
 export type ScenarioId = keyof typeof SCENARIO_MANIFEST;
 ```
@@ -742,12 +810,12 @@ export type ScenarioId = keyof typeof SCENARIO_MANIFEST;
 
 ```ts
 interface Principal {
-  principalId:          Uuid;
-  displayName:          NonEmpty;
-  email:                NonEmpty;
-  registeredAt:         IsoTimestamp;
+  principalId: Uuid;
+  displayName: NonEmpty;
+  email: NonEmpty;
+  registeredAt: IsoTimestamp;
   maxDelegableRiskTier: RiskTier;
-  allowedSystems:       string[];
+  allowedSystems: string[];
 }
 ```
 
@@ -755,17 +823,17 @@ interface Principal {
 
 ```ts
 interface Actor {
-  actorId:        Uuid;
-  actorClass:     ActorClass;
-  principalId:    Uuid;
-  displayName:    NonEmpty;
-  environment:    EnvironmentId;
-  riskCeiling:    RiskTier;
+  actorId: Uuid;
+  actorClass: ActorClass;
+  principalId: Uuid;
+  displayName: NonEmpty;
+  environment: EnvironmentId;
+  riskCeiling: RiskTier;
   allowedSystems: string[];
-  registeredAt:   IsoTimestamp;
-  owner?:          NonEmpty;   // required for non-human actors
-  purpose?:        NonEmpty;   // required for non-human actors
-  reviewCadence?:  NonEmpty;   // required for non-human actors
+  registeredAt: IsoTimestamp;
+  owner?: NonEmpty; // required for non-human actors
+  purpose?: NonEmpty; // required for non-human actors
+  reviewCadence?: NonEmpty; // required for non-human actors
 }
 ```
 
@@ -776,22 +844,22 @@ must be present and non-empty. Missing fields → registry rejection.
 
 ```ts
 interface DelegationContext {
-  delegationId:               Uuid;
-  principalId:                Uuid;
-  actorId:                    Uuid;
-  parentDelegationId:         Uuid | null;   // null = root
-  chainDepth:                 number;        // 0 = root
-  maxChainDepth:              number;        // never increased by sub-delegation
-  allowedSystems:             string[];
-  allowedCapabilities:        string[];      // CapabilityId[]
-  forbiddenCapabilities:      string[];
-  maxRiskTier:                RiskTier;
+  delegationId: Uuid;
+  principalId: Uuid;
+  actorId: Uuid;
+  parentDelegationId: Uuid | null; // null = root
+  chainDepth: number; // 0 = root
+  maxChainDepth: number; // never increased by sub-delegation
+  allowedSystems: string[];
+  allowedCapabilities: string[]; // CapabilityId[]
+  forbiddenCapabilities: string[];
+  maxRiskTier: RiskTier;
   allowDownstreamPropagation: boolean;
-  environment:                EnvironmentId; // scoped to this environment only
-  mintedAt:                   IsoTimestamp;
-  expiresAt:                  IsoTimestamp;
-  mintedBy:                   NonEmpty;      // must use DELEGATION_ENGINE_ID constant
-  signature:                  Base64Url;     // Ed25519 over canonicalize() of all fields except signature
+  environment: EnvironmentId; // scoped to this environment only
+  mintedAt: IsoTimestamp;
+  expiresAt: IsoTimestamp;
+  mintedBy: NonEmpty; // must use DELEGATION_ENGINE_ID constant
+  signature: Base64Url; // Ed25519 over canonicalize() of all fields except signature
 }
 ```
 
@@ -799,12 +867,12 @@ interface DelegationContext {
 
 ```ts
 interface Session {
-  sessionId:    Uuid;
-  actorId:      Uuid;
-  principalId:  Uuid;          // derived server-side from actor.principalId; never caller-supplied
+  sessionId: Uuid;
+  actorId: Uuid;
+  principalId: Uuid; // derived server-side from actor.principalId; never caller-supplied
   delegationId: Uuid;
-  createdAt:    IsoTimestamp;
-  expiresAt:    IsoTimestamp;
+  createdAt: IsoTimestamp;
+  expiresAt: IsoTimestamp;
 }
 ```
 
@@ -815,26 +883,26 @@ principalId is rejected. See §20.4 for session creation law.
 
 ```ts
 interface AgentAction {
-  actionId:        Uuid;           // assigned at ingress, never mutated
-  receivedAt:      IsoTimestamp;
-  protocol:        NonEmpty;       // e.g. 'mcp/1.0'
-  adapterVersion:  NonEmpty;
-  actorId:         Uuid;
-  principalId:     Uuid;
-  sessionId:       Uuid;
-  delegationId:    Uuid;
-  delegationSequence: number;      // engine-assigned monotonic counter per delegationId
-                                   // forensic ordering; never adapter-provided
-  tool:            NonEmpty;
-  rawVerb:         NonEmpty;
-  rawTarget:       NonEmpty;
-  rawPayload:      unknown;        // in-memory only; never stored
-  intent:          IntentContext;
-  resolvedVerb:        ActionVerb | null;
-  resolvedCapability:  string | null;
-  resolvedTarget:      ResourceTarget | null;
+  actionId: Uuid; // assigned at ingress, never mutated
+  receivedAt: IsoTimestamp;
+  protocol: NonEmpty; // e.g. 'mcp/1.0'
+  adapterVersion: NonEmpty;
+  actorId: Uuid;
+  principalId: Uuid;
+  sessionId: Uuid;
+  delegationId: Uuid;
+  delegationSequence: number; // engine-assigned monotonic counter per delegationId
+  // forensic ordering; never adapter-provided
+  tool: NonEmpty;
+  rawVerb: NonEmpty;
+  rawTarget: NonEmpty;
+  rawPayload: unknown; // in-memory only; never stored
+  intent: IntentContext;
+  resolvedVerb: ActionVerb | null;
+  resolvedCapability: string | null;
+  resolvedTarget: ResourceTarget | null;
   resolvedDataClasses: DataClass[];
-  resolvedRiskTier:    RiskTier | null;
+  resolvedRiskTier: RiskTier | null;
 }
 ```
 
@@ -842,13 +910,13 @@ interface AgentAction {
 
 ```ts
 interface IntentContext {
-  objectiveSummary: NonEmpty;      // max 500 chars, sanitized
-  triggeringSource: NonEmpty;      // 'user_request'|'schedule'|'event'|'sub_task'|'unknown'
-  toolchainContext: NonEmpty;      // adapter name + version
-  modelId:          string | null;
-  modelConfidence:  number | null; // [0,1]
-  riskNote:         string | null; // max 200 chars, sanitized
-  extractedAt:      IsoTimestamp;
+  objectiveSummary: NonEmpty; // max 500 chars, sanitized
+  triggeringSource: NonEmpty; // 'user_request'|'schedule'|'event'|'sub_task'|'unknown'
+  toolchainContext: NonEmpty; // adapter name + version
+  modelId: string | null;
+  modelConfidence: number | null; // [0,1]
+  riskNote: string | null; // max 200 chars, sanitized
+  extractedAt: IsoTimestamp;
 }
 ```
 
@@ -856,16 +924,16 @@ interface IntentContext {
 
 ```ts
 interface GateDecision {
-  gateId:      GateId;
-  gateOrder:   number;            // 1–7
-  plane:      'control' | 'data';
-  outcome:     string;            // OutcomeLabel | 'pass' | 'error'
-  reason:      NonEmpty;          // human-readable prose
-  denialCode:  DenialCode | null; // typed denial code; null on pass/allow
-  policyRuleId:string | null;     // Gate 04 only
+  gateId: GateId;
+  gateOrder: number; // 1–7
+  plane: 'control' | 'data';
+  outcome: string; // OutcomeLabel | 'pass' | 'error'
+  reason: NonEmpty; // human-readable prose
+  denialCode: DenialCode | null; // typed denial code; null on pass/allow
+  policyRuleId: string | null; // Gate 04 only
   evaluatedAt: IsoTimestamp;
-  durationMs:  number;            // real elapsed ms from gate entry to decision
-  metadata:    Record<string, string | number | boolean | null>;
+  durationMs: number; // real elapsed ms from gate entry to decision
+  metadata: Record<string, string | number | boolean | null>;
 }
 ```
 
@@ -876,11 +944,11 @@ interface GateDecision {
 
 ```ts
 interface ResourceTarget {
-  system:         NonEmpty;
-  resourceType:   NonEmpty;
+  system: NonEmpty;
+  resourceType: NonEmpty;
   resourceScope: 'single' | 'bulk' | 'collection' | 'system';
-  environment:   EnvironmentId;
-  externalFacing:boolean;
+  environment: EnvironmentId;
+  externalFacing: boolean;
 }
 ```
 
@@ -888,20 +956,20 @@ interface ResourceTarget {
 
 ```ts
 interface ExecutionGrantTemplate {
-  templateId:            Uuid;
-  actionId:              Uuid;
-  computedAt:            IsoTimestamp;
-  capabilityId:          string;
-  scopeDescriptor:       NonEmpty;
-  credentialSubjectType: NonEmpty;     // 'user_identity'|'service_identity'|'federated'
-  resourceBounds:        ResourceBounds;
-  environmentBound:      EnvironmentId;
-  expiryClass:           ExpiryClass;
-  maxExpirySeconds:      number;
-  approvalRequired:      boolean;
-  approvalLinkage:       Uuid | null;  // set by Gate 05 after approval
-  approvalConfig:        ApprovalConfig | null; // from matched policy rule
-  templateFingerprint:   Sha256Hex;
+  templateId: Uuid;
+  actionId: Uuid;
+  computedAt: IsoTimestamp;
+  capabilityId: string;
+  scopeDescriptor: NonEmpty;
+  credentialSubjectType: NonEmpty; // 'user_identity'|'service_identity'|'federated'
+  resourceBounds: ResourceBounds;
+  environmentBound: EnvironmentId;
+  expiryClass: ExpiryClass;
+  maxExpirySeconds: number;
+  approvalRequired: boolean;
+  approvalLinkage: Uuid | null; // set by Gate 05 after approval
+  approvalConfig: ApprovalConfig | null; // from matched policy rule
+  templateFingerprint: Sha256Hex;
   // fingerprint = sha256(canonicalize(templateFingerprintPayload(template)))
   // templateFingerprintPayload omits templateFingerprint AND approvalLinkage by field removal.
   // Both buildGrantTemplate and assertTemplateIntegrity use the same helper. See §13.9.10.
@@ -913,9 +981,9 @@ interface ExecutionGrantTemplate {
 ```ts
 interface ResourceBounds {
   allowedResourceTypes: string[];
-  maxRecords:           number | null;
-  allowBulk:            boolean;
-  allowExternalFacing:  boolean;
+  maxRecords: number | null;
+  allowBulk: boolean;
+  allowExternalFacing: boolean;
 }
 ```
 
@@ -923,23 +991,23 @@ interface ResourceBounds {
 
 ```ts
 interface ApprovalRequest {
-  approvalId:           Uuid;
-  actionId:             Uuid;
-  templateId:           Uuid;
-  issuedAt:             IsoTimestamp;
-  expiresAt:            IsoTimestamp;  // = addSeconds(issuedAt, approvalConfig.timeoutSeconds)
-  actionSummary:        NonEmpty;      // max 300 chars
-  contextSummary:       NonEmpty;      // max 500 chars
-  proposedTarget:       ResourceTarget;
-  diff:                 string | null; // connector-produced preview, max 2000 chars
-  estimatedImpact:      NonEmpty;
+  approvalId: Uuid;
+  actionId: Uuid;
+  templateId: Uuid;
+  issuedAt: IsoTimestamp;
+  expiresAt: IsoTimestamp; // = addSeconds(issuedAt, approvalConfig.timeoutSeconds)
+  actionSummary: NonEmpty; // max 300 chars
+  contextSummary: NonEmpty; // max 500 chars
+  proposedTarget: ResourceTarget;
+  diff: string | null; // connector-produced preview, max 2000 chars
+  estimatedImpact: NonEmpty;
   principalDisplayName: NonEmpty;
-  actorDisplayName:     NonEmpty;
-  riskTier:             RiskTier;
-  dataClasses:          DataClass[];
-  modelConfidence:      number | null;
-  riskNote:             string | null;
-  signature:            Base64Url;     // Ed25519 over canonicalize() of all fields except signature
+  actorDisplayName: NonEmpty;
+  riskTier: RiskTier;
+  dataClasses: DataClass[];
+  modelConfidence: number | null;
+  riskNote: string | null;
+  signature: Base64Url; // Ed25519 over canonicalize() of all fields except signature
 }
 ```
 
@@ -951,12 +1019,12 @@ Hardcoded expiry constants are prohibited. This invariant is tested explicitly.
 ```ts
 interface ApprovalResponse {
   approvalId: Uuid;
-  decision:   ApprovalDecisionLabel;
-  decidedBy:  NonEmpty;          // registered approver ID; 'system:timeout' for timeout responses
-  decidedAt:  IsoTimestamp;
-  channel:    NonEmpty;
-  note:       string | null;
-  signature:  Base64Url;         // Ed25519 by approver key; '<none>' for timeout responses
+  decision: ApprovalDecisionLabel;
+  decidedBy: NonEmpty; // registered approver ID; 'system:timeout' for timeout responses
+  decidedAt: IsoTimestamp;
+  channel: NonEmpty;
+  note: string | null;
+  signature: Base64Url; // Ed25519 by approver key; '<none>' for timeout responses
 }
 ```
 
@@ -967,18 +1035,18 @@ See §13.6 for explicit guard.
 
 ```ts
 interface ExecutionGrant {
-  grantId:           Uuid;
-  actionId:          Uuid;
-  templateId:        Uuid;
-  approvalId:        Uuid | null;
-  mintedAt:          IsoTimestamp;
-  expiresAt:         IsoTimestamp;
-  capabilityId:      string;
-  scopeDescriptor:   NonEmpty;
+  grantId: Uuid;
+  actionId: Uuid;
+  templateId: Uuid;
+  approvalId: Uuid | null;
+  mintedAt: IsoTimestamp;
+  expiresAt: IsoTimestamp;
+  capabilityId: string;
+  scopeDescriptor: NonEmpty;
   credentialSubject: CredentialSubject;
-  resourceBounds:    ResourceBounds;
-  environmentBound:  EnvironmentId;
-  signature:         Base64Url;  // Ed25519 over canonicalize() of all fields except signature
+  resourceBounds: ResourceBounds;
+  environmentBound: EnvironmentId;
+  signature: Base64Url; // Ed25519 over canonicalize() of all fields except signature
   // secretValue: NOT on this interface. Lives in grant-vault.ts WeakMap only.
 }
 ```
@@ -987,9 +1055,9 @@ interface ExecutionGrant {
 
 ```ts
 interface CredentialSubject {
-  subjectId:   NonEmpty;
+  subjectId: NonEmpty;
   subjectType: 'user_identity' | 'service_identity' | 'federated';
-  system:      NonEmpty;
+  system: NonEmpty;
 }
 ```
 
@@ -997,14 +1065,14 @@ interface CredentialSubject {
 
 ```ts
 interface ExecutionResult {
-  grantId:         Uuid;
-  executedAt:      IsoTimestamp;
-  status:         'success' | 'failure' | 'partial';
-  responseCode:    string | null;
-  durationMs:      number;
+  grantId: Uuid;
+  executedAt: IsoTimestamp;
+  status: 'success' | 'failure' | 'partial';
+  responseCode: string | null;
+  durationMs: number;
   redactedSummary: string | null;
-  errorType:       string | null;
-  errorMessage:    string | null;
+  errorType: string | null;
+  errorMessage: string | null;
 }
 ```
 
@@ -1012,15 +1080,15 @@ interface ExecutionResult {
 
 ```ts
 interface ExecutionGrantMetadata {
-  grantId:               Uuid;
-  scopeDescriptor:       NonEmpty;
-  credentialSubjectId:   NonEmpty;
+  grantId: Uuid;
+  scopeDescriptor: NonEmpty;
+  credentialSubjectId: NonEmpty;
   credentialSubjectType: string;
-  issuedAt:              IsoTimestamp;
-  expiresAt:             IsoTimestamp;
-  expiryClass:           ExpiryClass;
-  templateFingerprint:   Sha256Hex;
-  approvalLinkage:       Uuid | null;
+  issuedAt: IsoTimestamp;
+  expiresAt: IsoTimestamp;
+  expiryClass: ExpiryClass;
+  templateFingerprint: Sha256Hex;
+  approvalLinkage: Uuid | null;
 }
 ```
 
@@ -1028,16 +1096,16 @@ interface ExecutionGrantMetadata {
 
 ```ts
 interface DelegationContextSnapshot {
-  delegationId:   Uuid;
-  principalId:    Uuid;
-  actorId:        Uuid;
-  chainDepth:     number;
-  chainAncestors: Uuid[];     // all parent delegation IDs, root first
-  chainHash:      Sha256Hex;  // sha256(canonicalize([delegationId, ...chainAncestors]))
+  delegationId: Uuid;
+  principalId: Uuid;
+  actorId: Uuid;
+  chainDepth: number;
+  chainAncestors: Uuid[]; // all parent delegation IDs, root first
+  chainHash: Sha256Hex; // sha256(canonicalize([delegationId, ...chainAncestors]))
   allowedSystems: string[];
-  maxRiskTier:    RiskTier;
-  environment:    EnvironmentId; // delegation-scoped environment; aids environment-mismatch forensics
-  expiresAt:      IsoTimestamp;
+  maxRiskTier: RiskTier;
+  environment: EnvironmentId; // delegation-scoped environment; aids environment-mismatch forensics
+  expiresAt: IsoTimestamp;
 }
 ```
 
@@ -1045,16 +1113,22 @@ interface DelegationContextSnapshot {
 
 ```ts
 type ThreatType =
-  | 'replay_detected'     | 'injection_truncated'    | 'broad_token_bypass'
-  | 'scope_expansion_attempt'                          | 'policy_signature_invalid'
-  | 'approval_response_invalid'                        | 'rate_limit_exceeded'
-  | 'intent_overflow'     | 'environment_mismatch'    | 'security_violation';
+  | 'replay_detected'
+  | 'injection_truncated'
+  | 'broad_token_bypass'
+  | 'scope_expansion_attempt'
+  | 'policy_signature_invalid'
+  | 'approval_response_invalid'
+  | 'rate_limit_exceeded'
+  | 'intent_overflow'
+  | 'environment_mismatch'
+  | 'security_violation';
 
 interface ThreatEvent {
   threatType: ThreatType;
   detectedAt: IsoTimestamp;
-  gateId:     GateId | 'ingress';
-  detail:     NonEmpty;       // max 300 chars, sanitized
+  gateId: GateId | 'ingress';
+  detail: NonEmpty; // max 300 chars, sanitized
 }
 ```
 
@@ -1068,9 +1142,9 @@ interface IntentEvidence {
   objectiveSummary: NonEmpty;
   triggeringSource: NonEmpty;
   toolchainContext: NonEmpty;
-  modelId:          string | null;
-  modelConfidence:  number | null;
-  riskNote:         string | null;
+  modelId: string | null;
+  modelConfidence: number | null;
+  riskNote: string | null;
 }
 ```
 
@@ -1078,73 +1152,72 @@ interface IntentEvidence {
 
 ```ts
 interface EvidenceRecord {
-  recordId:       Uuid;
-  actionId:       Uuid;
-  sessionId:      Uuid;
+  recordId: Uuid;
+  actionId: Uuid;
+  sessionId: Uuid;
   ledgerSequence: number;
   actionSummary: {
-    actionId:             Uuid;
-    receivedAt:           IsoTimestamp;
-    protocol:             string;
-    actorId:              Uuid;
-    actorClass:           ActorClass;       // from actor.actorClass — guaranteed present
-    actorEnvironment:     EnvironmentId;    // from actor.environment — guaranteed present
-    principalId:          Uuid;
-    delegationSequence:   number;          // engine-assigned per-delegation sequence; forensic ordering
-    tool:                 string;
-    resolvedVerb:         ActionVerb | null;
-    resolvedCapability:   string | null;
-    resolvedTarget:       ResourceTarget | null;
-    resolvedDataClasses:  DataClass[];
-    resolvedRiskTier:     RiskTier | null;
+    actionId: Uuid;
+    receivedAt: IsoTimestamp;
+    protocol: string;
+    actorId: Uuid;
+    actorClass: ActorClass; // from actor.actorClass — guaranteed present
+    actorEnvironment: EnvironmentId; // from actor.environment — guaranteed present
+    principalId: Uuid;
+    delegationSequence: number; // engine-assigned per-delegation sequence; forensic ordering
+    tool: string;
+    resolvedVerb: ActionVerb | null;
+    resolvedCapability: string | null;
+    resolvedTarget: ResourceTarget | null;
+    resolvedDataClasses: DataClass[];
+    resolvedRiskTier: RiskTier | null;
   };
-  intentEvidence:            IntentEvidence;
+  intentEvidence: IntentEvidence;
   delegationContextSnapshot: DelegationContextSnapshot;
-  gateDecisions:             GateDecision[];
-  policyRuleId:              string | null;
-  policyOutcome:             OutcomeLabel | null;
-  approvalRequest:           ApprovalRequest | null;
-  approvalResponse:          ApprovalResponse | null;
-  grantMetadata:             ExecutionGrantMetadata | null;
-  executionResult:           ExecutionResult | null;
-  finalOutcome:              FinalOutcome;
-  threatEvents:              ThreatEvent[];
-  compilerView:              CompilerComparisonView;  // inside signed body
-  previousHash:              Sha256Hex;
-  recordHash:                Sha256Hex;   // sha256(canonicalize(record minus recordHash + signature))
-  signature:                 Base64Url;   // Ed25519 over recordHash
+  gateDecisions: GateDecision[];
+  policyRuleId: string | null;
+  policyOutcome: OutcomeLabel | null;
+  approvalRequest: ApprovalRequest | null;
+  approvalResponse: ApprovalResponse | null;
+  grantMetadata: ExecutionGrantMetadata | null;
+  executionResult: ExecutionResult | null;
+  finalOutcome: FinalOutcome;
+  threatEvents: ThreatEvent[];
+  compilerView: CompilerComparisonView; // inside signed body
+  previousHash: Sha256Hex;
+  recordHash: Sha256Hex; // sha256(canonicalize(record minus recordHash + signature))
+  signature: Base64Url; // Ed25519 over recordHash
 }
 ```
 
 delegationSequence in actionSummary is forensic only. It is not in CCV and not part of
 the comparison key.
 
-
 ---
 
 ## 10.4 Capability Taxonomy v0.1.0
 
-| CapabilityId | Verb | Target Type | ResourceScope | ExternalFacing | DefaultRiskTier |
-|---|---|---|---|---|---|
-| `read:record:single` | read | any record | single | false | low |
-| `read:record:bulk` | read | any record | bulk or collection | false | medium |
-| `read:record:pii` | read | pii-tagged | single | false | medium |
-| `read:record:bulk:pii` | read | pii-tagged | bulk | false | high |
-| `create:record:internal` | create | any record | single | false | medium |
-| `create:record:external` | create | any record | single | true | high |
-| `update:record:internal` | update | any record | single | false | medium |
-| `update:record:external` | update | any record | single | true | high |
-| `delete:record` | delete | any record | single | false | high |
-| `delete:record:bulk` | delete | any record | bulk | false | critical |
-| `send:message:internal` | send | message | single | false | medium |
-| `send:message:external` | send | message | single | true | high |
-| `publish:content:internal` | publish | content | single | false | medium |
-| `publish:content:external` | publish | content | single | true | high |
-| `export:data:single` | export | any data | single | false | medium |
-| `export:data:bulk` | export | any data | bulk | false | high |
-| `export:data:bulk:pii` | export | pii data | bulk | false | critical |
-| `execute:query` | execute | query/script | single | false | medium |
-| `execute:automation` | execute | workflow/job | single | false | high |
+| CapabilityId               | Verb    | Target Type  | ResourceScope      | ExternalFacing | DefaultRiskTier |
+| -------------------------- | ------- | ------------ | ------------------ | -------------- | --------------- |
+| `read:record:single`       | read    | any record   | single             | false          | low             |
+| `read:record:bulk`         | read    | any record   | bulk or collection | false          | medium          |
+| `read:record:pii`          | read    | pii-tagged   | single             | false          | medium          |
+| `read:record:bulk:pii`     | read    | pii-tagged   | bulk               | false          | high            |
+| `create:record:internal`   | create  | any record   | single             | false          | medium          |
+| `create:record:external`   | create  | any record   | single             | true           | high            |
+| `update:record:internal`   | update  | any record   | single             | false          | medium          |
+| `update:record:external`   | update  | any record   | single             | true           | high            |
+| `delete:record`            | delete  | any record   | single             | false          | high            |
+| `delete:record:bulk`       | delete  | any record   | bulk               | false          | critical        |
+| `send:message:internal`    | send    | message      | single             | false          | medium          |
+| `send:message:external`    | send    | message      | single             | true           | high            |
+| `publish:content:internal` | publish | content      | single             | false          | medium          |
+| `publish:content:external` | publish | content      | single             | true           | high            |
+| `export:data:single`       | export  | any data     | single             | false          | medium          |
+| `export:data:bulk`         | export  | any data     | bulk               | false          | high            |
+| `export:data:bulk:pii`     | export  | pii data     | bulk               | false          | critical        |
+| `execute:query`            | execute | query/script | single             | false          | medium          |
+| `execute:automation`       | execute | workflow/job | single             | false          | high            |
 
 Capability resolution function: see §13.9.1.
 
@@ -1156,44 +1229,48 @@ Capability resolution function: see §13.9.1.
 
 ```ts
 interface Gate {
-  readonly gateId:    GateId;
+  readonly gateId: GateId;
   readonly gateOrder: number;
-  readonly plane:    'control' | 'data';
+  readonly plane: 'control' | 'data';
   // priorDecisions passed explicitly — not via context — so no context spread occurs.
-  evaluate(action: AgentAction, context: PipelineContext, priorDecisions: GateDecision[]): Promise<GateResult>;
+  evaluate(
+    action: AgentAction,
+    context: PipelineContext,
+    priorDecisions: GateDecision[]
+  ): Promise<GateResult>;
   onDownstreamFailure?(action: AgentAction, failedGate: GateId): Promise<void>;
 }
 
 interface PipelineContext {
-  sessionId:            Uuid;
-  delegationContext:    DelegationContext;
-  delegationStore:      DelegationStore;
-  delegationSnapshot?:  DelegationContextSnapshot;
-  actor:                Actor;
-  principal:            Principal;
-  policyFile:           LoadedPolicyFile | null;
-  approverRegistry:     ApproverRegistry;
-  connectorRegistry:    ConnectorRegistry;
-  channelRegistry:      ChannelRegistry;
-  threatLog:            ThreatEvent[];
-  startedAt:            IsoTimestamp;
-  grantTemplate?:       ExecutionGrantTemplate;
-  executionGrant?:      ExecutionGrant;
-  executionResult?:     ExecutionResult;
-  approvalRequest?:     ApprovalRequest;
-  approvalResponse?:    ApprovalResponse;
-  lastEvidenceRecord?:  EvidenceRecord;
+  sessionId: Uuid;
+  delegationContext: DelegationContext;
+  delegationStore: DelegationStore;
+  delegationSnapshot?: DelegationContextSnapshot;
+  actor: Actor;
+  principal: Principal;
+  policyFile: LoadedPolicyFile | null;
+  approverRegistry: ApproverRegistry;
+  connectorRegistry: ConnectorRegistry;
+  channelRegistry: ChannelRegistry;
+  threatLog: ThreatEvent[];
+  startedAt: IsoTimestamp;
+  grantTemplate?: ExecutionGrantTemplate;
+  executionGrant?: ExecutionGrant;
+  executionResult?: ExecutionResult;
+  approvalRequest?: ApprovalRequest;
+  approvalResponse?: ApprovalResponse;
+  lastEvidenceRecord?: EvidenceRecord;
 }
 
 interface GateResult {
-  decision:            GateDecision;
-  actionMutations?:    Partial<AgentAction>;    // Gate 02 only
-  grantTemplate?:      ExecutionGrantTemplate;  // Gate 04 only
+  decision: GateDecision;
+  actionMutations?: Partial<AgentAction>; // Gate 02 only
+  grantTemplate?: ExecutionGrantTemplate; // Gate 04 only
   delegationSnapshot?: DelegationContextSnapshot; // Gate 03 only
-  grant?:              ExecutionGrant;           // Gate 06 only
-  executionResult?:    ExecutionResult;          // Gate 06 only
-  approvalRequest?:    ApprovalRequest;          // Gate 05 only
-  approvalResponse?:   ApprovalResponse;         // Gate 05 only
+  grant?: ExecutionGrant; // Gate 06 only
+  executionResult?: ExecutionResult; // Gate 06 only
+  approvalRequest?: ApprovalRequest; // Gate 05 only
+  approvalResponse?: ApprovalResponse; // Gate 05 only
 }
 ```
 
@@ -1202,21 +1279,25 @@ interface GateResult {
 ```ts
 interface Adapter {
   readonly adapterProtocol: NonEmpty;
-  readonly adapterVersion:  NonEmpty;
+  readonly adapterVersion: NonEmpty;
   normalize(rawRequest: unknown): Promise<NormalizationResult>;
 }
 
 interface NormalizationResult {
-  ok:     boolean;
-  action?: Omit<AgentAction,
-    'resolvedVerb'|'resolvedCapability'|'resolvedTarget'|
-    'resolvedDataClasses'|'resolvedRiskTier'
+  ok: boolean;
+  action?: Omit<
+    AgentAction,
+    | 'resolvedVerb'
+    | 'resolvedCapability'
+    | 'resolvedTarget'
+    | 'resolvedDataClasses'
+    | 'resolvedRiskTier'
   > & {
-    resolvedVerb:        null;
-    resolvedCapability:  null;
-    resolvedTarget:      null;
+    resolvedVerb: null;
+    resolvedCapability: null;
+    resolvedTarget: null;
     resolvedDataClasses: [];
-    resolvedRiskTier:    null;
+    resolvedRiskTier: null;
   };
   error?: NonEmpty;
 }
@@ -1226,10 +1307,10 @@ interface NormalizationResult {
 
 ```ts
 interface Connector {
-  readonly systemType:       NonEmpty;
+  readonly systemType: NonEmpty;
   readonly connectorVersion: NonEmpty;
   supportedCapabilities(): string[];
-  canProduceDiff():         boolean;
+  canProduceDiff(): boolean;
   produceDiff?(action: AgentAction, template: ExecutionGrantTemplate): Promise<string | null>;
   execute(action: AgentAction, grant: ExecutionGrant): Promise<ExecutionResult>;
   redeemGrant(grant: ExecutionGrant): Promise<void>;
@@ -1245,7 +1326,7 @@ separately from generic errors — see §13.7.
 ```ts
 // packages/connectors/stub/stub.connector.ts
 class StubConnector implements Connector {
-  readonly systemType       = 'stub';
+  readonly systemType = 'stub';
   readonly connectorVersion = 'v0.1.0';
   private calls: { action: AgentAction; grantId: Uuid }[] = [];
 
@@ -1253,7 +1334,9 @@ class StubConnector implements Connector {
     return Object.values(CAPABILITY_IDS);
   }
 
-  canProduceDiff(): boolean { return true; }
+  canProduceDiff(): boolean {
+    return true;
+  }
 
   async produceDiff(action: AgentAction): Promise<string> {
     return `[STUB DIFF] ${buildActionSummaryText(action)} — preview not available in stub`;
@@ -1268,19 +1351,23 @@ class StubConnector implements Connector {
     assertGrantNotExpired(grant);
     this.calls.push({ action, grantId: grant.grantId });
     return {
-      grantId:         grant.grantId,
-      executedAt:      nowIso(),
-      status:         'success',
-      responseCode:    '200',
-      durationMs:      1,
+      grantId: grant.grantId,
+      executedAt: nowIso(),
+      status: 'success',
+      responseCode: '200',
+      durationMs: 1,
       redactedSummary: '[STUB] action executed successfully',
-      errorType:       null,
-      errorMessage:    null,
+      errorType: null,
+      errorMessage: null,
     };
   }
 
-  getCalls() { return [...this.calls]; }
-  reset()    { this.calls = []; }
+  getCalls() {
+    return [...this.calls];
+  }
+  reset() {
+    this.calls = [];
+  }
 }
 ```
 
@@ -1291,7 +1378,7 @@ the reference production connector but is NOT used in fixture scenarios.
 
 ```ts
 interface ApprovalChannel {
-  readonly channelId:      NonEmpty;
+  readonly channelId: NonEmpty;
   readonly channelVersion: NonEmpty;
   dispatch(request: ApprovalRequest): Promise<void>;
   awaitDecision(approvalId: Uuid, timeoutMs: number): Promise<ApprovalResponse | null>;
@@ -1302,7 +1389,7 @@ interface ApprovalChannel {
 
 ```ts
 interface LedgerBackend {
-  readonly backendId:      NonEmpty;
+  readonly backendId: NonEmpty;
   readonly backendVersion: NonEmpty;
   append(record: EvidenceRecord): Promise<void>;
   getByRecordId(recordId: Uuid): Promise<EvidenceRecord | null>;
@@ -1318,10 +1405,10 @@ No DELETE or UPDATE method may exist on this interface.
 
 ```ts
 interface Approver {
-  approverId:   NonEmpty;     // matches ApprovalResponse.decidedBy
-  displayName:  NonEmpty;
-  publicKey:    Base64Url;    // Ed25519 public key, 32 bytes base64url
-  channels:     NonEmpty[];
+  approverId: NonEmpty; // matches ApprovalResponse.decidedBy
+  displayName: NonEmpty;
+  publicKey: Base64Url; // Ed25519 public key, 32 bytes base64url
+  channels: NonEmpty[];
   registeredAt: IsoTimestamp;
 }
 
@@ -1361,59 +1448,59 @@ interface DelegationStore {
 
 ```ts
 interface PolicyFile {
-  version:        '1.0';
-  bundleId:       Uuid;
-  bundleVersion:  NonEmpty;
-  issuer:         NonEmpty;
-  issuedAt:       IsoTimestamp;
-  signature:      Base64Url;    // Ed25519 over canonicalize() of all fields except signature
+  version: '1.0';
+  bundleId: Uuid;
+  bundleVersion: NonEmpty;
+  issuer: NonEmpty;
+  issuedAt: IsoTimestamp;
+  signature: Base64Url; // Ed25519 over canonicalize() of all fields except signature
   defaultOutcome: 'deny';
-  rules:          PolicyRule[];
+  rules: PolicyRule[];
 }
 
 interface LoadedPolicyFile extends PolicyFile {
-  sortedRules: PolicyRule[];  // pre-sorted by priority ascending at load time; immutable
-  bundleHash:  Sha256Hex;     // pre-computed at load time; written to CCV
+  sortedRules: PolicyRule[]; // pre-sorted by priority ascending at load time; immutable
+  bundleHash: Sha256Hex; // pre-computed at load time; written to CCV
 }
 
 interface PolicyRule {
-  ruleId:         NonEmpty;
-  description:    NonEmpty;
-  priority:       number;     // lower number = higher priority; first match wins
-  conditions:     PolicyCondition;
-  outcome:        OutcomeLabel;
-  approvalConfig: ApprovalConfig | null;  // required when outcome === 'require_approval'
-  grantHint:      GrantTemplateHint | null;
+  ruleId: NonEmpty;
+  description: NonEmpty;
+  priority: number; // lower number = higher priority; first match wins
+  conditions: PolicyCondition;
+  outcome: OutcomeLabel;
+  approvalConfig: ApprovalConfig | null; // required when outcome === 'require_approval'
+  grantHint: GrantTemplateHint | null;
 }
 
 interface PolicyCondition {
-  actorClasses?:   ActorClass[];
-  capabilities?:   string[];
-  actionVerbs?:    ActionVerb[];
-  riskTiers?:      RiskTier[];
-  dataClasses?:    DataClass[];
+  actorClasses?: ActorClass[];
+  capabilities?: string[];
+  actionVerbs?: ActionVerb[];
+  riskTiers?: RiskTier[];
+  dataClasses?: DataClass[];
   // dataClasses matching is ANY (OR) logic.
   // AND/ALL matching reserved for a future spec version; not supported in v0.4.4.
-  dataClassMatchMode?: 'any';   // fixed to 'any'; reserved
-  environments?:   EnvironmentId[];
+  dataClassMatchMode?: 'any'; // fixed to 'any'; reserved
+  environments?: EnvironmentId[];
   externalFacing?: boolean;
-  maxChainDepth?:  number;
+  maxChainDepth?: number;
 }
 
 interface ApprovalConfig {
-  channelId:     NonEmpty;    // single channel ID for this POC — not a list
-  timeoutSeconds:number;      // 30 <= x <= 3600
-  onTimeout:    'deny';       // always 'deny', non-configurable
+  channelId: NonEmpty; // single channel ID for this POC — not a list
+  timeoutSeconds: number; // 30 <= x <= 3600
+  onTimeout: 'deny'; // always 'deny', non-configurable
 }
 // Note: channels[] array from v0.4.3 is replaced by channelId: string.
 // Ordered multi-channel fallback is deferred to Channel v2 specification.
 // Any code that treats channelId as an array is a build violation.
 
 interface GrantTemplateHint {
-  expiryClass?:         ExpiryClass;
-  allowBulk?:           boolean;
+  expiryClass?: ExpiryClass;
+  allowBulk?: boolean;
   allowExternalFacing?: boolean;
-  maxRecords?:          number;
+  maxRecords?: number;
 }
 ```
 
@@ -1430,7 +1517,7 @@ function computePolicyBundleHash(policyFile: PolicyFile): Sha256Hex {
 
 ```ts
 async function loadPolicyFile(filepath: string): Promise<LoadedPolicyFile> {
-  const raw    = await fs.readFile(filepath, 'utf-8');
+  const raw = await fs.readFile(filepath, 'utf-8');
   const parsed = PolicyFileSchema.parse(JSON.parse(raw));
 
   const { signature, ...body } = parsed;
@@ -1443,7 +1530,7 @@ async function loadPolicyFile(filepath: string): Promise<LoadedPolicyFile> {
   return {
     ...parsed,
     sortedRules: [...parsed.rules].sort((a, b) => a.priority - b.priority),
-    bundleHash:  computePolicyBundleHash(parsed),
+    bundleHash: computePolicyBundleHash(parsed),
   };
 }
 ```
@@ -1500,7 +1587,6 @@ Policy loader behavior:
 }
 ```
 
-
 ---
 
 ## 13. Gate Implementations
@@ -1512,6 +1598,7 @@ Gate 05 and Gate 06 are not in the main gate array. They are invoked explicitly 
 on Gate 04's outcome. Gate 07 always runs exactly once, unconditionally.
 
 Invariants enforced by this structure:
+
 - Gate 05 is never invoked on ALLOW paths.
 - Gate 05 is invoked at most once per action.
 - Gate 06 is never invoked before Gate 04 passes.
@@ -1545,7 +1632,9 @@ async function process(action: AgentAction, context: PipelineContext): Promise<E
 
   // === POST-GATE-04 BRANCH — explicit on OutcomeLabel ===
   const policyOutcome = context.grantTemplate?.approvalRequired
-    ? (context.grantTemplate.approvalRequired ? 'require_approval' : 'allow')
+    ? context.grantTemplate.approvalRequired
+      ? 'require_approval'
+      : 'allow'
     : decisions[decisions.length - 1]!.outcome;
 
   const outcome = decisions[decisions.length - 1]!.outcome; // Gate 04 outcome
@@ -1554,11 +1643,11 @@ async function process(action: AgentAction, context: PipelineContext): Promise<E
     // === GATE 05: Approval ===
     const approvalResult = await approvalGate.evaluate(action, context, decisions);
     decisions.push(approvalResult.decision);
-    if (approvalResult.approvalRequest)  context.approvalRequest  = approvalResult.approvalRequest;
+    if (approvalResult.approvalRequest) context.approvalRequest = approvalResult.approvalRequest;
     if (approvalResult.approvalResponse) context.approvalResponse = approvalResult.approvalResponse;
 
-    const approvalDenied = approvalResult.decision.outcome === 'deny' ||
-                           approvalResult.decision.outcome === 'error';
+    const approvalDenied =
+      approvalResult.decision.outcome === 'deny' || approvalResult.decision.outcome === 'error';
     if (approvalDenied) {
       // Gate 05 denied — skip Gate 06, run Gate 07
       return runGate07(action, context, decisions);
@@ -1567,16 +1656,14 @@ async function process(action: AgentAction, context: PipelineContext): Promise<E
     // Gate 05 passed — run Gate 06
     const execResult = await executionGate.evaluate(action, context, decisions);
     decisions.push(execResult.decision);
-    if (execResult.grant)           context.executionGrant  = execResult.grant;
+    if (execResult.grant) context.executionGrant = execResult.grant;
     if (execResult.executionResult) context.executionResult = execResult.executionResult;
-
   } else if (outcome === OUTCOME_LABEL.ALLOW) {
     // === GATE 06: Execution (no approval required) ===
     const execResult = await executionGate.evaluate(action, context, decisions);
     decisions.push(execResult.decision);
-    if (execResult.grant)           context.executionGrant  = execResult.grant;
+    if (execResult.grant) context.executionGrant = execResult.grant;
     if (execResult.executionResult) context.executionResult = execResult.executionResult;
-
   } else {
     // DENY or unknown outcome — run Gate 07 directly
     return runGate07(action, context, decisions);
@@ -1588,13 +1675,14 @@ async function process(action: AgentAction, context: PipelineContext): Promise<E
 
 // Gate 07 always runs exactly once per action. Extracted to prevent duplication.
 async function runGate07(
-  action:    AgentAction,
-  context:   PipelineContext,
+  action: AgentAction,
+  context: PipelineContext,
   decisions: GateDecision[]
 ): Promise<EvidenceRecord> {
   const evidenceResult = await evidenceGate.evaluate(action, context, decisions);
   decisions.push(evidenceResult.decision);
-  if (!context.lastEvidenceRecord) throw new Error('invariant: lastEvidenceRecord must be set by Gate 07');
+  if (!context.lastEvidenceRecord)
+    throw new Error('invariant: lastEvidenceRecord must be set by Gate 07');
   return context.lastEvidenceRecord;
 }
 ```
@@ -1603,38 +1691,61 @@ async function runGate07(
 
 ```ts
 async function evaluateIdentity(
-  action:   AgentAction,
-  context:  PipelineContext,
-  _prior:   GateDecision[]
+  action: AgentAction,
+  context: PipelineContext,
+  _prior: GateDecision[]
 ): Promise<GateResult> {
   const startMs = Date.now();
 
   const actor = await actorRegistry.get(action.actorId);
-  if (!actor) return gateDeny(GATE_ID.G01, 1, DENIAL_CODE.ACTOR_NOT_REGISTERED,
-    'actor not registered', startMs);
+  if (!actor)
+    return gateDeny(
+      GATE_ID.G01,
+      1,
+      DENIAL_CODE.ACTOR_NOT_REGISTERED,
+      'actor not registered',
+      startMs
+    );
 
   // SessionStore.get() returns the session regardless of expiry.
   // Gate 01 owns the expiry check — the store does not filter by expiry.
   const session = await sessionStore.get(action.sessionId);
-  if (!session) return gateDeny(GATE_ID.G01, 1, DENIAL_CODE.SESSION_NOT_FOUND,
-    'session not found', startMs);
-  if (new Date(session.expiresAt) <= new Date()) return gateDeny(GATE_ID.G01, 1,
-    DENIAL_CODE.SESSION_EXPIRED, 'session expired', startMs);
+  if (!session)
+    return gateDeny(GATE_ID.G01, 1, DENIAL_CODE.SESSION_NOT_FOUND, 'session not found', startMs);
+  if (new Date(session.expiresAt) <= new Date())
+    return gateDeny(GATE_ID.G01, 1, DENIAL_CODE.SESSION_EXPIRED, 'session expired', startMs);
 
   const principal = await principalRegistry.get(action.principalId);
-  if (!principal) return gateDeny(GATE_ID.G01, 1, DENIAL_CODE.PRINCIPAL_NOT_RESOLVABLE,
-    'principal not resolvable', startMs);
-  if (actor.principalId !== principal.principalId) return gateDeny(GATE_ID.G01, 1,
-    DENIAL_CODE.ACTOR_PRINCIPAL_MISMATCH, 'actor/principal mismatch', startMs);
+  if (!principal)
+    return gateDeny(
+      GATE_ID.G01,
+      1,
+      DENIAL_CODE.PRINCIPAL_NOT_RESOLVABLE,
+      'principal not resolvable',
+      startMs
+    );
+  if (actor.principalId !== principal.principalId)
+    return gateDeny(
+      GATE_ID.G01,
+      1,
+      DENIAL_CODE.ACTOR_PRINCIPAL_MISMATCH,
+      'actor/principal mismatch',
+      startMs
+    );
 
-  const isNonHuman = actor.actorClass !== ACTOR_CLASS.HUMAN &&
-                     actor.actorClass !== ACTOR_CLASS.HUMAN_WITH_COPILOT;
+  const isNonHuman =
+    actor.actorClass !== ACTOR_CLASS.HUMAN && actor.actorClass !== ACTOR_CLASS.HUMAN_WITH_COPILOT;
   if (isNonHuman && (!actor.owner || !actor.purpose || !actor.reviewCadence)) {
-    return gateDeny(GATE_ID.G01, 1, DENIAL_CODE.NON_HUMAN_ACTOR_INCOMPLETE,
-      'non-human actor registry incomplete', startMs);
+    return gateDeny(
+      GATE_ID.G01,
+      1,
+      DENIAL_CODE.NON_HUMAN_ACTOR_INCOMPLETE,
+      'non-human actor registry incomplete',
+      startMs
+    );
   }
 
-  context.actor     = actor;
+  context.actor = actor;
   context.principal = principal;
   return gatePass(GATE_ID.G01, 1, startMs);
 }
@@ -1644,35 +1755,62 @@ async function evaluateIdentity(
 
 ```ts
 async function evaluateClassification(
-  action:  AgentAction,
+  action: AgentAction,
   context: PipelineContext,
-  _prior:  GateDecision[]
+  _prior: GateDecision[]
 ): Promise<GateResult> {
   const startMs = Date.now();
 
   const verb = verbNormalizer.normalize(action.rawVerb);
-  if (!verb) return gateClassifDeny(GATE_ID.G02, 2, DENIAL_CODE.UNRESOLVABLE_VERB,
-    'unresolvable action verb', startMs);
+  if (!verb)
+    return gateClassifDeny(
+      GATE_ID.G02,
+      2,
+      DENIAL_CODE.UNRESOLVABLE_VERB,
+      'unresolvable action verb',
+      startMs
+    );
 
-  const target = targetNormalizer.normalize(action.rawTarget, action.tool, context.actor.environment);
-  if (!target) return gateClassifDeny(GATE_ID.G02, 2, DENIAL_CODE.UNRESOLVABLE_TARGET,
-    'unresolvable target', startMs);
+  const target = targetNormalizer.normalize(
+    action.rawTarget,
+    action.tool,
+    context.actor.environment
+  );
+  if (!target)
+    return gateClassifDeny(
+      GATE_ID.G02,
+      2,
+      DENIAL_CODE.UNRESOLVABLE_TARGET,
+      'unresolvable target',
+      startMs
+    );
 
-  const dataClasses  = dataClassifier.classify(action.intent, target, verb);
+  const dataClasses = dataClassifier.classify(action.intent, target, verb);
   const capabilityId = resolveCapability(verb, target, dataClasses);
-  if (!capabilityId) return gateClassifDeny(GATE_ID.G02, 2, DENIAL_CODE.UNRESOLVABLE_CAPABILITY,
-    'unresolvable capability', startMs);
+  if (!capabilityId)
+    return gateClassifDeny(
+      GATE_ID.G02,
+      2,
+      DENIAL_CODE.UNRESOLVABLE_CAPABILITY,
+      'unresolvable capability',
+      startMs
+    );
 
-  const riskTier = riskClassifier.compute(capabilityId, dataClasses, target.environment, target.externalFacing);
+  const riskTier = riskClassifier.compute(
+    capabilityId,
+    dataClasses,
+    target.environment,
+    target.externalFacing
+  );
 
   return {
     decision: gatePass(GATE_ID.G02, 2, startMs).decision,
     actionMutations: {
-      resolvedVerb:        verb,
-      resolvedCapability:  capabilityId,
-      resolvedTarget:      target,
+      resolvedVerb: verb,
+      resolvedCapability: capabilityId,
+      resolvedTarget: target,
       resolvedDataClasses: dataClasses,
-      resolvedRiskTier:    riskTier,
+      resolvedRiskTier: riskTier,
     },
   };
 }
@@ -1684,60 +1822,101 @@ Risk tier computation rule: see §13.9.2.
 
 ```ts
 async function evaluateDelegation(
-  action:  AgentAction,
+  action: AgentAction,
   context: PipelineContext,
-  _prior:  GateDecision[]
+  _prior: GateDecision[]
 ): Promise<GateResult> {
   const startMs = Date.now();
-  const dc      = context.delegationContext;
+  const dc = context.delegationContext;
 
   const { signature, ...body } = dc;
-  if (!await crypto.verify(canonicalize(body), signature, controlPlanePublicKey)) {
-    return gateDeny(GATE_ID.G03, 3, DENIAL_CODE.DELEGATION_SIG_INVALID,
-      'delegation signature invalid', startMs);
+  if (!(await crypto.verify(canonicalize(body), signature, controlPlanePublicKey))) {
+    return gateDeny(
+      GATE_ID.G03,
+      3,
+      DENIAL_CODE.DELEGATION_SIG_INVALID,
+      'delegation signature invalid',
+      startMs
+    );
   }
 
   if (new Date(dc.expiresAt) <= new Date()) {
-    return gateDeny(GATE_ID.G03, 3, DENIAL_CODE.DELEGATION_EXPIRED,
-      'delegation expired', startMs);
+    return gateDeny(GATE_ID.G03, 3, DENIAL_CODE.DELEGATION_EXPIRED, 'delegation expired', startMs);
   }
 
   if (!dc.allowedCapabilities.includes(action.resolvedCapability!)) {
-    return gateDeny(GATE_ID.G03, 3, DENIAL_CODE.CAPABILITY_NOT_IN_DELEGATION,
-      'capability not in delegation', startMs);
+    return gateDeny(
+      GATE_ID.G03,
+      3,
+      DENIAL_CODE.CAPABILITY_NOT_IN_DELEGATION,
+      'capability not in delegation',
+      startMs
+    );
   }
 
   if (dc.forbiddenCapabilities.includes(action.resolvedCapability!)) {
-    return gateDeny(GATE_ID.G03, 3, DENIAL_CODE.CAPABILITY_FORBIDDEN,
-      'capability explicitly forbidden', startMs);
+    return gateDeny(
+      GATE_ID.G03,
+      3,
+      DENIAL_CODE.CAPABILITY_FORBIDDEN,
+      'capability explicitly forbidden',
+      startMs
+    );
   }
 
   if (!dc.allowedSystems.includes(action.resolvedTarget!.system)) {
-    return gateDeny(GATE_ID.G03, 3, DENIAL_CODE.SYSTEM_NOT_IN_DELEGATION,
-      'system not in delegation', startMs);
+    return gateDeny(
+      GATE_ID.G03,
+      3,
+      DENIAL_CODE.SYSTEM_NOT_IN_DELEGATION,
+      'system not in delegation',
+      startMs
+    );
   }
 
   if (riskTierExceeds(action.resolvedRiskTier!, dc.maxRiskTier)) {
-    return gateDeny(GATE_ID.G03, 3, DENIAL_CODE.RISK_TIER_EXCEEDS_CEILING,
-      'risk tier exceeds delegation ceiling', startMs);
+    return gateDeny(
+      GATE_ID.G03,
+      3,
+      DENIAL_CODE.RISK_TIER_EXCEEDS_CEILING,
+      'risk tier exceeds delegation ceiling',
+      startMs
+    );
   }
 
-  if (context.actor.actorClass === ACTOR_CLASS.DELEGATED_SUBAGENT &&
-      dc.chainDepth >= dc.maxChainDepth) {
-    return gateDeny(GATE_ID.G03, 3, DENIAL_CODE.CHAIN_DEPTH_EXCEEDED,
-      'chain depth ceiling exceeded', startMs);
+  if (
+    context.actor.actorClass === ACTOR_CLASS.DELEGATED_SUBAGENT &&
+    dc.chainDepth >= dc.maxChainDepth
+  ) {
+    return gateDeny(
+      GATE_ID.G03,
+      3,
+      DENIAL_CODE.CHAIN_DEPTH_EXCEEDED,
+      'chain depth ceiling exceeded',
+      startMs
+    );
   }
 
   if (dc.parentDelegationId !== null && !dc.allowDownstreamPropagation) {
-    return gateDeny(GATE_ID.G03, 3, DENIAL_CODE.PROPAGATION_NOT_PERMITTED,
-      'downstream propagation not permitted', startMs);
+    return gateDeny(
+      GATE_ID.G03,
+      3,
+      DENIAL_CODE.PROPAGATION_NOT_PERMITTED,
+      'downstream propagation not permitted',
+      startMs
+    );
   }
 
   // Environment must match — blueprint §8.3 law
   if (action.resolvedTarget!.environment !== dc.environment) {
-    return gateDeny(GATE_ID.G03, 3, DENIAL_CODE.ENVIRONMENT_MISMATCH,
+    return gateDeny(
+      GATE_ID.G03,
+      3,
+      DENIAL_CODE.ENVIRONMENT_MISMATCH,
       `environment mismatch: delegation scoped to ${dc.environment}, ` +
-      `action targets ${action.resolvedTarget!.environment}`, startMs);
+        `action targets ${action.resolvedTarget!.environment}`,
+      startMs
+    );
   }
 
   // Build delegation snapshot — throws DelegationChainIntegrityError if parent missing
@@ -1746,8 +1925,7 @@ async function evaluateDelegation(
     delegationSnapshot = await buildDelegationSnapshotFromChain(dc, context.delegationStore);
   } catch (err) {
     if (err instanceof DelegationChainIntegrityError) {
-      return gateDeny(GATE_ID.G03, 3, DENIAL_CODE.CHAIN_INTEGRITY_BROKEN,
-        err.message, startMs);
+      return gateDeny(GATE_ID.G03, 3, DENIAL_CODE.CHAIN_INTEGRITY_BROKEN, err.message, startMs);
     }
     throw err;
   }
@@ -1763,51 +1941,64 @@ async function evaluateDelegation(
 
 ```ts
 async function evaluatePolicy(
-  action:  AgentAction,
+  action: AgentAction,
   context: PipelineContext,
-  _prior:  GateDecision[]
+  _prior: GateDecision[]
 ): Promise<GateResult> {
   const startMs = Date.now();
 
   if (!context.policyFile) {
-    return gateDeny(GATE_ID.G04, 4, DENIAL_CODE.DEFAULT_DENY,
-      'no valid policy bundle loaded', startMs);
+    return gateDeny(
+      GATE_ID.G04,
+      4,
+      DENIAL_CODE.DEFAULT_DENY,
+      'no valid policy bundle loaded',
+      startMs
+    );
   }
 
   const envelope = {
-    actorClass:     context.actor.actorClass,
-    capability:     action.resolvedCapability!,
-    verb:           action.resolvedVerb!,
-    riskTier:       action.resolvedRiskTier!,
-    dataClasses:    action.resolvedDataClasses,
-    environment:    action.resolvedTarget!.environment,
+    actorClass: context.actor.actorClass,
+    capability: action.resolvedCapability!,
+    verb: action.resolvedVerb!,
+    riskTier: action.resolvedRiskTier!,
+    dataClasses: action.resolvedDataClasses,
+    environment: action.resolvedTarget!.environment,
     externalFacing: action.resolvedTarget!.externalFacing,
-    chainDepth:     context.delegationContext.chainDepth,
+    chainDepth: context.delegationContext.chainDepth,
   };
 
-  const matchedRule  = context.policyFile.sortedRules.find(r => matchesCondition(r.conditions, envelope));
-  const outcome      = matchedRule?.outcome ?? OUTCOME_LABEL.DENY;
-  const policyRuleId = matchedRule?.ruleId  ?? 'default_deny';
+  const matchedRule = context.policyFile.sortedRules.find(r =>
+    matchesCondition(r.conditions, envelope)
+  );
+  const outcome = matchedRule?.outcome ?? OUTCOME_LABEL.DENY;
+  const policyRuleId = matchedRule?.ruleId ?? 'default_deny';
 
   if (outcome === OUTCOME_LABEL.DENY) {
-    return gateDeny(GATE_ID.G04, 4, DENIAL_CODE.POLICY_DENY,
-      `policy deny: rule ${policyRuleId}`, startMs, policyRuleId);
+    return gateDeny(
+      GATE_ID.G04,
+      4,
+      DENIAL_CODE.POLICY_DENY,
+      `policy deny: rule ${policyRuleId}`,
+      startMs,
+      policyRuleId
+    );
   }
 
   const template = buildGrantTemplate(action, matchedRule, context);
 
   return {
     decision: {
-      gateId:      GATE_ID.G04,
-      gateOrder:   4,
-      plane:       'control',
+      gateId: GATE_ID.G04,
+      gateOrder: 4,
+      plane: 'control',
       outcome,
-      reason:      `policy rule matched: ${policyRuleId}`,
-      denialCode:  null,
+      reason: `policy rule matched: ${policyRuleId}`,
+      denialCode: null,
       policyRuleId,
       evaluatedAt: nowIso(),
-      durationMs:  Date.now() - startMs,
-      metadata:    {},
+      durationMs: Date.now() - startMs,
+      metadata: {},
     },
     grantTemplate: template,
   };
@@ -1818,19 +2009,24 @@ async function evaluatePolicy(
 
 ```ts
 async function evaluateApproval(
-  action:  AgentAction,
+  action: AgentAction,
   context: PipelineContext,
-  _prior:  GateDecision[]
+  _prior: GateDecision[]
 ): Promise<GateResult> {
-  const startMs      = Date.now();
+  const startMs = Date.now();
   // Gate 04 must have set context.grantTemplate before Gate 05 is invoked.
   // Orchestrator invariant: Gate 05 is never called unless Gate 04 passed.
-  const template     = context.grantTemplate!;
+  const template = context.grantTemplate!;
   const approvalConfig = template.approvalConfig;
 
   if (!approvalConfig) {
-    return gateDeny(GATE_ID.G05, 5, DENIAL_CODE.APPROVAL_CONFIG_MISSING,
-      'approval required but template carries no config', startMs);
+    return gateDeny(
+      GATE_ID.G05,
+      5,
+      DENIAL_CODE.APPROVAL_CONFIG_MISSING,
+      'approval required but template carries no config',
+      startMs
+    );
   }
 
   // Attempt diff from connector — non-fatal if unavailable
@@ -1840,76 +2036,121 @@ async function evaluateApproval(
     try {
       diff = await connector.produceDiff!(action, template);
       if (diff && diff.length > 2000) diff = diff.slice(0, 2000) + '...[TRUNCATED]';
-    } catch { diff = null; }
+    } catch {
+      diff = null;
+    }
   }
 
   const requestBody = await buildApprovalRequest(action, template, context, diff);
-  const sig         = await crypto.sign(canonicalize(requestBody), controlPlaneKey);
+  const sig = await crypto.sign(canonicalize(requestBody), controlPlaneKey);
   const signedRequest: ApprovalRequest = { ...requestBody, signature: sig };
 
   // Use channelId (string) directly — not channels[0]
   const channelId = approvalConfig.channelId;
-  const channel   = context.channelRegistry.get(channelId);
+  const channel = context.channelRegistry.get(channelId);
   if (!channel) {
-    return gateDeny(GATE_ID.G05, 5, DENIAL_CODE.APPROVAL_CHANNEL_NOT_FOUND,
-      `channel ${channelId} not registered`, startMs);
+    return gateDeny(
+      GATE_ID.G05,
+      5,
+      DENIAL_CODE.APPROVAL_CHANNEL_NOT_FOUND,
+      `channel ${channelId} not registered`,
+      startMs
+    );
   }
 
   await channel.dispatch(signedRequest);
 
   const timeoutMs = approvalConfig.timeoutSeconds * 1000;
-  const response  = await channel.awaitDecision(signedRequest.approvalId, timeoutMs);
+  const response = await channel.awaitDecision(signedRequest.approvalId, timeoutMs);
 
   if (!response) {
     const timeoutResponse: ApprovalResponse = {
       approvalId: signedRequest.approvalId,
-      decision:   APPROVAL_DECISION_LABEL.TIMED_OUT,
-      decidedBy:  'system:timeout',
-      decidedAt:  nowIso(),
-      channel:    channelId,
-      note:       null,
-      signature:  '<none>',
+      decision: APPROVAL_DECISION_LABEL.TIMED_OUT,
+      decidedBy: 'system:timeout',
+      decidedAt: nowIso(),
+      channel: channelId,
+      note: null,
+      signature: '<none>',
     };
-    return gateDenyWithApproval(GATE_ID.G05, 5, DENIAL_CODE.APPROVAL_TIMEOUT,
-      'approval timed out', startMs, signedRequest, timeoutResponse);
+    return gateDenyWithApproval(
+      GATE_ID.G05,
+      5,
+      DENIAL_CODE.APPROVAL_TIMEOUT,
+      'approval timed out',
+      startMs,
+      signedRequest,
+      timeoutResponse
+    );
   }
 
-  if (!await verifyApproverSignature(response, context.approverRegistry)) {
-    return gateDenyWithApproval(GATE_ID.G05, 5, DENIAL_CODE.APPROVAL_SIG_INVALID,
-      'approval response signature invalid', startMs, signedRequest, response);
+  if (!(await verifyApproverSignature(response, context.approverRegistry))) {
+    return gateDenyWithApproval(
+      GATE_ID.G05,
+      5,
+      DENIAL_CODE.APPROVAL_SIG_INVALID,
+      'approval response signature invalid',
+      startMs,
+      signedRequest,
+      response
+    );
   }
 
   if (response.decision === APPROVAL_DECISION_LABEL.DENIED) {
-    return gateDenyWithApproval(GATE_ID.G05, 5, DENIAL_CODE.APPROVAL_DENIED_BY_HUMAN,
-      'approval denied by human', startMs, signedRequest, response);
+    return gateDenyWithApproval(
+      GATE_ID.G05,
+      5,
+      DENIAL_CODE.APPROVAL_DENIED_BY_HUMAN,
+      'approval denied by human',
+      startMs,
+      signedRequest,
+      response
+    );
   }
 
   template.approvalLinkage = signedRequest.approvalId;
 
   return {
     decision: {
-      gateId:      GATE_ID.G05, gateOrder: 5, plane: 'control',
-      outcome:     'pass', reason: `approval granted by ${response.decidedBy}`,
-      denialCode:  null, policyRuleId: null, evaluatedAt: nowIso(),
-      durationMs:  Date.now() - startMs, metadata: {},
+      gateId: GATE_ID.G05,
+      gateOrder: 5,
+      plane: 'control',
+      outcome: 'pass',
+      reason: `approval granted by ${response.decidedBy}`,
+      denialCode: null,
+      policyRuleId: null,
+      evaluatedAt: nowIso(),
+      durationMs: Date.now() - startMs,
+      metadata: {},
     },
-    approvalRequest:  signedRequest,
+    approvalRequest: signedRequest,
     approvalResponse: response,
   };
 }
 
 function gateDenyWithApproval(
-  gateId: GateId, order: number, code: DenialCode, reason: string,
-  startMs: number, req: ApprovalRequest, resp: ApprovalResponse
+  gateId: GateId,
+  order: number,
+  code: DenialCode,
+  reason: string,
+  startMs: number,
+  req: ApprovalRequest,
+  resp: ApprovalResponse
 ): GateResult {
   return {
     decision: {
-      gateId, gateOrder: order, plane: 'control',
-      outcome: 'deny', reason, denialCode: code,
-      policyRuleId: null, evaluatedAt: nowIso(),
-      durationMs: Date.now() - startMs, metadata: {},
+      gateId,
+      gateOrder: order,
+      plane: 'control',
+      outcome: 'deny',
+      reason,
+      denialCode: code,
+      policyRuleId: null,
+      evaluatedAt: nowIso(),
+      durationMs: Date.now() - startMs,
+      metadata: {},
     },
-    approvalRequest:  req,
+    approvalRequest: req,
     approvalResponse: resp,
   };
 }
@@ -1919,9 +2160,9 @@ function gateDenyWithApproval(
 
 ```ts
 async function evaluateExecution(
-  action:  AgentAction,
+  action: AgentAction,
   context: PipelineContext,
-  _prior:  GateDecision[]
+  _prior: GateDecision[]
 ): Promise<GateResult> {
   const startMs = Date.now();
   // Gate 04 must have set context.grantTemplate before Gate 06 is invoked.
@@ -1935,12 +2176,22 @@ async function evaluateExecution(
   // === DATA PLANE: Connector forwarding ===
   const connector = context.connectorRegistry.get(action.resolvedTarget!.system);
   if (!connector) {
-    return gateError(GATE_ID.G06, 6, DENIAL_CODE.CONNECTOR_NOT_REGISTERED,
-      'connector not registered for system: ' + action.resolvedTarget!.system, startMs);
+    return gateError(
+      GATE_ID.G06,
+      6,
+      DENIAL_CODE.CONNECTOR_NOT_REGISTERED,
+      'connector not registered for system: ' + action.resolvedTarget!.system,
+      startMs
+    );
   }
   if (!connector.supportedCapabilities().includes(action.resolvedCapability!)) {
-    return gateError(GATE_ID.G06, 6, DENIAL_CODE.CONNECTOR_CAP_UNSUPPORTED,
-      'connector does not support capability: ' + action.resolvedCapability!, startMs);
+    return gateError(
+      GATE_ID.G06,
+      6,
+      DENIAL_CODE.CONNECTOR_CAP_UNSUPPORTED,
+      'connector does not support capability: ' + action.resolvedCapability!,
+      startMs
+    );
   }
 
   await connector.redeemGrant(grant);
@@ -1954,24 +2205,32 @@ async function evaluateExecution(
       const threatEvent: ThreatEvent = {
         threatType: 'security_violation',
         detectedAt: nowIso(),
-        gateId:     GATE_ID.G06,
-        detail:     `Security violation in connector execution: ${err.message}`.slice(0, 300),
+        gateId: GATE_ID.G06,
+        detail: `Security violation in connector execution: ${err.message}`.slice(0, 300),
       };
       context.threatLog.push(threatEvent);
       return {
         decision: {
-          gateId:      GATE_ID.G06, gateOrder: 6, plane: 'data',
-          outcome:     'deny', reason: err.message,
-          denialCode:  err.denialCode, policyRuleId: null,
-          evaluatedAt: nowIso(), durationMs: Date.now() - startMs,
-          metadata:    { violationType: err.violationType },
+          gateId: GATE_ID.G06,
+          gateOrder: 6,
+          plane: 'data',
+          outcome: 'deny',
+          reason: err.message,
+          denialCode: err.denialCode,
+          policyRuleId: null,
+          evaluatedAt: nowIso(),
+          durationMs: Date.now() - startMs,
+          metadata: { violationType: err.violationType },
         },
       };
     }
     // Generic connector error — map to error outcome, no ThreatEvent
     executionResult = {
-      grantId: grant.grantId, executedAt: nowIso(),
-      status: 'failure', responseCode: null, durationMs: 0,
+      grantId: grant.grantId,
+      executedAt: nowIso(),
+      status: 'failure',
+      responseCode: null,
+      durationMs: 0,
       redactedSummary: null,
       errorType: 'connector_execution_error',
       errorMessage: sanitizeError(err),
@@ -1982,12 +2241,16 @@ async function evaluateExecution(
 
   return {
     decision: {
-      gateId:      GATE_ID.G06, gateOrder: 6, plane: 'data',
-      outcome:     executionResult!.status === 'failure' ? 'error' : 'pass',
-      reason:      `connector execution: ${executionResult!.status}`,
-      denialCode:  null, policyRuleId: null, evaluatedAt: nowIso(),
-      durationMs:  Date.now() - startMs,
-      metadata:    { connectorStatus: executionResult!.status },
+      gateId: GATE_ID.G06,
+      gateOrder: 6,
+      plane: 'data',
+      outcome: executionResult!.status === 'failure' ? 'error' : 'pass',
+      reason: `connector execution: ${executionResult!.status}`,
+      denialCode: null,
+      policyRuleId: null,
+      evaluatedAt: nowIso(),
+      durationMs: Date.now() - startMs,
+      metadata: { connectorStatus: executionResult!.status },
     },
     grant,
     executionResult: executionResult!,
@@ -1995,24 +2258,24 @@ async function evaluateExecution(
 }
 
 async function mintGrant(
-  action:   AgentAction,
+  action: AgentAction,
   template: ExecutionGrantTemplate,
   approval: ApprovalRequest | null
 ): Promise<ExecutionGrant> {
   const expiresAt = addSeconds(nowIso(), template.maxExpirySeconds);
-  const credSub   = resolveCredentialSubject(template, action);
+  const credSub = resolveCredentialSubject(template, action);
   const grantBody = {
-    grantId:           uuid(),
-    actionId:          action.actionId,
-    templateId:        template.templateId,
-    approvalId:        approval?.approvalId ?? null,
-    mintedAt:          nowIso(),
+    grantId: uuid(),
+    actionId: action.actionId,
+    templateId: template.templateId,
+    approvalId: approval?.approvalId ?? null,
+    mintedAt: nowIso(),
     expiresAt,
-    capabilityId:      template.capabilityId,
-    scopeDescriptor:   template.scopeDescriptor,
+    capabilityId: template.capabilityId,
+    scopeDescriptor: template.scopeDescriptor,
     credentialSubject: credSub,
-    resourceBounds:    template.resourceBounds,
-    environmentBound:  template.environmentBound,
+    resourceBounds: template.resourceBounds,
+    environmentBound: template.environmentBound,
   };
   const signature = await crypto.sign(canonicalize(grantBody), controlPlaneKey);
   return { ...grantBody, signature };
@@ -2023,54 +2286,54 @@ async function mintGrant(
 
 ```ts
 async function evaluateEvidence(
-  action:    AgentAction,
-  context:   PipelineContext,
+  action: AgentAction,
+  context: PipelineContext,
   decisions: GateDecision[]
 ): Promise<GateResult> {
   const startMs = Date.now();
 
-  const prevRecord   = await ledger.getBySequence(await ledger.getLatestSequence());
-  const prevHash     = prevRecord?.recordHash ?? GENESIS_HASH;
+  const prevRecord = await ledger.getBySequence(await ledger.getLatestSequence());
+  const prevHash = prevRecord?.recordHash ?? GENESIS_HASH;
   const nextSequence = (prevRecord?.ledgerSequence ?? 0) + 1;
 
-  const delegationSnapshot = context.delegationSnapshot
-    ?? buildMinimalDelegationSnapshot(context.delegationContext);
+  const delegationSnapshot =
+    context.delegationSnapshot ?? buildMinimalDelegationSnapshot(context.delegationContext);
 
-  const actionSummary  = buildRedactedActionSummary(action, context.actor);
-  const grantMeta      = context.executionGrant
+  const actionSummary = buildRedactedActionSummary(action, context.actor);
+  const grantMeta = context.executionGrant
     ? buildGrantMetadata(context.executionGrant, context.grantTemplate!)
     : null;
-  const intentEv       = buildIntentEvidence(action.intent);
-  const finalOutcome   = computeFinalOutcome(decisions);
+  const intentEv = buildIntentEvidence(action.intent);
+  const finalOutcome = computeFinalOutcome(decisions);
   const policyDecision = decisions.find(d => d.gateId === GATE_ID.G04);
 
   const recordBodyPreCCV = {
-    recordId:                  uuid(),
-    actionId:                  action.actionId,
-    sessionId:                 action.sessionId,
-    ledgerSequence:            nextSequence,
+    recordId: uuid(),
+    actionId: action.actionId,
+    sessionId: action.sessionId,
+    ledgerSequence: nextSequence,
     actionSummary,
-    intentEvidence:            intentEv,
+    intentEvidence: intentEv,
     delegationContextSnapshot: delegationSnapshot,
-    gateDecisions:             decisions,
-    policyRuleId:              policyDecision?.policyRuleId ?? null,
-    policyOutcome:             policyDecision ? (policyDecision.outcome as OutcomeLabel) : null,
-    approvalRequest:           context.approvalRequest  ?? null,
-    approvalResponse:          context.approvalResponse ?? null,
-    grantMetadata:             grantMeta,
-    executionResult:           context.executionResult
-                                 ? redactExecutionResult(context.executionResult, action.resolvedDataClasses)
-                                 : null,
+    gateDecisions: decisions,
+    policyRuleId: policyDecision?.policyRuleId ?? null,
+    policyOutcome: policyDecision ? (policyDecision.outcome as OutcomeLabel) : null,
+    approvalRequest: context.approvalRequest ?? null,
+    approvalResponse: context.approvalResponse ?? null,
+    grantMetadata: grantMeta,
+    executionResult: context.executionResult
+      ? redactExecutionResult(context.executionResult, action.resolvedDataClasses)
+      : null,
     finalOutcome,
-    threatEvents:              context.threatLog,
-    previousHash:              prevHash,
+    threatEvents: context.threatLog,
+    previousHash: prevHash,
   };
 
-  const compilerView   = buildCCV(recordBodyPreCCV, context);
+  const compilerView = buildCCV(recordBodyPreCCV, context);
   const recordBodyFull = { ...recordBodyPreCCV, compilerView };
 
   const recordHash = sha256(canonicalize(recordBodyFull));
-  const signature  = await crypto.sign(recordHash, controlPlaneKey);
+  const signature = await crypto.sign(recordHash, controlPlaneKey);
   const record: EvidenceRecord = { ...recordBodyFull, recordHash, signature };
 
   await ledger.append(record);
@@ -2078,29 +2341,41 @@ async function evaluateEvidence(
 
   return {
     decision: {
-      gateId:      GATE_ID.G07, gateOrder: 7, plane: 'control',
-      outcome:     'pass', reason: 'evidence record written',
-      denialCode:  null, policyRuleId: null, evaluatedAt: nowIso(),
-      durationMs:  Date.now() - startMs,
-      metadata:    { ledgerSequence: nextSequence },
+      gateId: GATE_ID.G07,
+      gateOrder: 7,
+      plane: 'control',
+      outcome: 'pass',
+      reason: 'evidence record written',
+      denialCode: null,
+      policyRuleId: null,
+      evaluatedAt: nowIso(),
+      durationMs: Date.now() - startMs,
+      metadata: { ledgerSequence: nextSequence },
     },
   };
 }
 
 function computeFinalOutcome(decisions: GateDecision[]): FinalOutcome {
   for (const d of decisions) {
-    if (d.outcome === 'pass' || d.outcome === 'allow'   ||
-        d.outcome === OUTCOME_LABEL.REQUIRE_APPROVAL    ||
-        d.outcome === OUTCOME_LABEL.ESCALATE) continue;
+    if (
+      d.outcome === 'pass' ||
+      d.outcome === 'allow' ||
+      d.outcome === OUTCOME_LABEL.REQUIRE_APPROVAL ||
+      d.outcome === OUTCOME_LABEL.ESCALATE
+    )
+      continue;
     if (d.outcome === 'error') return FINAL_OUTCOME.ERROR;
 
     const code = d.denialCode;
-    if (code === DENIAL_CODE.APPROVAL_TIMEOUT)   return FINAL_OUTCOME.DENIED_TIMEOUT;
-    if (code === DENIAL_CODE.REPLAY_DETECTED     ||
-        code === DENIAL_CODE.RATE_LIMIT_EXCEEDED ||
-        code === DENIAL_CODE.BROAD_TOKEN_BYPASS  ||
-        code === DENIAL_CODE.TEMPLATE_INTEGRITY_FAILED ||
-        code === DENIAL_CODE.GRANT_EXPIRED)       return FINAL_OUTCOME.DENIED_THREAT;
+    if (code === DENIAL_CODE.APPROVAL_TIMEOUT) return FINAL_OUTCOME.DENIED_TIMEOUT;
+    if (
+      code === DENIAL_CODE.REPLAY_DETECTED ||
+      code === DENIAL_CODE.RATE_LIMIT_EXCEEDED ||
+      code === DENIAL_CODE.BROAD_TOKEN_BYPASS ||
+      code === DENIAL_CODE.TEMPLATE_INTEGRITY_FAILED ||
+      code === DENIAL_CODE.GRANT_EXPIRED
+    )
+      return FINAL_OUTCOME.DENIED_THREAT;
 
     // Gate 06 NexusSecurityViolation — also denied_threat
     if (d.gateId === GATE_ID.G06 && d.outcome === 'deny') return FINAL_OUTCOME.DENIED_THREAT;
@@ -2122,24 +2397,31 @@ All helpers defined in `packages/core/src/utils/helpers.ts` unless noted otherwi
 ### 13.9.1 resolveCapability
 
 ```ts
-function resolveCapability(verb: ActionVerb, target: ResourceTarget, dataClasses: DataClass[]): string | null {
+function resolveCapability(
+  verb: ActionVerb,
+  target: ResourceTarget,
+  dataClasses: DataClass[]
+): string | null {
   const hasPii = dataClasses.some(dc => dc === DATA_CLASS.PII || dc === DATA_CLASS.PHI);
   const isBulk = target.resourceScope === 'bulk' || target.resourceScope === 'collection';
-  const isExt  = target.externalFacing;
+  const isExt = target.externalFacing;
   if (verb === ACTION_VERB.READ) {
     if (hasPii && isBulk) return 'read:record:bulk:pii';
-    if (hasPii)           return 'read:record:pii';
-    if (isBulk)           return 'read:record:bulk';
+    if (hasPii) return 'read:record:pii';
+    if (isBulk) return 'read:record:bulk';
     return 'read:record:single';
   }
-  if (verb === ACTION_VERB.CREATE)  return isExt ? 'create:record:external'  : 'create:record:internal';
-  if (verb === ACTION_VERB.UPDATE)  return isExt ? 'update:record:external'  : 'update:record:internal';
-  if (verb === ACTION_VERB.DELETE)  return isBulk ? 'delete:record:bulk'     : 'delete:record';
-  if (verb === ACTION_VERB.SEND)    return isExt ? 'send:message:external'   : 'send:message:internal';
-  if (verb === ACTION_VERB.PUBLISH) return isExt ? 'publish:content:external': 'publish:content:internal';
+  if (verb === ACTION_VERB.CREATE)
+    return isExt ? 'create:record:external' : 'create:record:internal';
+  if (verb === ACTION_VERB.UPDATE)
+    return isExt ? 'update:record:external' : 'update:record:internal';
+  if (verb === ACTION_VERB.DELETE) return isBulk ? 'delete:record:bulk' : 'delete:record';
+  if (verb === ACTION_VERB.SEND) return isExt ? 'send:message:external' : 'send:message:internal';
+  if (verb === ACTION_VERB.PUBLISH)
+    return isExt ? 'publish:content:external' : 'publish:content:internal';
   if (verb === ACTION_VERB.EXPORT) {
     if (hasPii && isBulk) return 'export:data:bulk:pii';
-    if (isBulk)           return 'export:data:bulk';
+    if (isBulk) return 'export:data:bulk';
     return 'export:data:single';
   }
   if (verb === ACTION_VERB.EXECUTE) {
@@ -2155,14 +2437,23 @@ function resolveCapability(verb: ActionVerb, target: ResourceTarget, dataClasses
 ### 13.9.2 computeRiskTier
 
 ```ts
-function computeRiskTier(capabilityId: string, dataClasses: DataClass[], environment: EnvironmentId, externalFacing: boolean): RiskTier {
+function computeRiskTier(
+  capabilityId: string,
+  dataClasses: DataClass[],
+  environment: EnvironmentId,
+  externalFacing: boolean
+): RiskTier {
   const capEntry = capabilityRegistry.get(capabilityId);
   let tier = capEntry.defaultRiskTier;
-  if (dataClasses.some(dc => dc === DATA_CLASS.PII || dc === DATA_CLASS.PHI || dc === DATA_CLASS.FINANCIAL)) {
+  if (
+    dataClasses.some(
+      dc => dc === DATA_CLASS.PII || dc === DATA_CLASS.PHI || dc === DATA_CLASS.FINANCIAL
+    )
+  ) {
     tier = elevateRiskTier(tier, RISK_TIER.MEDIUM);
   }
   if (environment === ENVIRONMENT_ID.PRODUCTION) tier = elevateRiskTier(tier, RISK_TIER.MEDIUM);
-  if (externalFacing)                            tier = elevateRiskTier(tier, RISK_TIER.HIGH);
+  if (externalFacing) tier = elevateRiskTier(tier, RISK_TIER.HIGH);
   return tier;
 }
 function elevateRiskTier(current: RiskTier, minimum: RiskTier): RiskTier {
@@ -2174,12 +2465,12 @@ function elevateRiskTier(current: RiskTier, minimum: RiskTier): RiskTier {
 
 ```ts
 function buildActionSummaryText(action: AgentAction): string {
-  const verb   = action.resolvedVerb ?? action.rawVerb;
+  const verb = action.resolvedVerb ?? action.rawVerb;
   const target = action.resolvedTarget
     ? `${action.resolvedTarget.system}/${action.resolvedTarget.resourceType}`
     : action.rawTarget;
-  const scope  = action.resolvedTarget?.resourceScope ?? 'single';
-  const ext    = action.resolvedTarget?.externalFacing ? ' (external)' : '';
+  const scope = action.resolvedTarget?.resourceScope ?? 'single';
+  const ext = action.resolvedTarget?.externalFacing ? ' (external)' : '';
   return `${verb} ${target} [${scope}]${ext}`;
 }
 ```
@@ -2187,10 +2478,15 @@ function buildActionSummaryText(action: AgentAction): string {
 ### 13.9.4 computeEstimatedImpact
 
 ```ts
-function computeEstimatedImpact(riskTier: RiskTier, dataClasses: DataClass[], target: ResourceTarget): NonEmpty {
+function computeEstimatedImpact(
+  riskTier: RiskTier,
+  dataClasses: DataClass[],
+  target: ResourceTarget
+): NonEmpty {
   const parts: string[] = [`${riskTier.toUpperCase()} risk`];
   if (target.externalFacing) parts.push('external-facing');
-  if (target.resourceScope === 'bulk' || target.resourceScope === 'collection') parts.push('bulk operation');
+  if (target.resourceScope === 'bulk' || target.resourceScope === 'collection')
+    parts.push('bulk operation');
   if (dataClasses.length > 0) parts.push(`data: ${[...dataClasses].sort().join(', ')}`);
   return parts.join(' | ');
 }
@@ -2200,33 +2496,37 @@ function computeEstimatedImpact(riskTier: RiskTier, dataClasses: DataClass[], ta
 
 ```ts
 async function buildApprovalRequest(
-  action:   AgentAction,
+  action: AgentAction,
   template: ExecutionGrantTemplate,
-  context:  PipelineContext,
-  diff:     string | null
+  context: PipelineContext,
+  diff: string | null
 ): Promise<Omit<ApprovalRequest, 'signature'>> {
-  const issuedAt  = nowIso();
+  const issuedAt = nowIso();
   // expiresAt must equal addSeconds(issuedAt, approvalConfig.timeoutSeconds).
   // Hardcoded constants are prohibited. Invariant tested in §27.
   const expiresAt = addSeconds(issuedAt, template.approvalConfig!.timeoutSeconds);
 
   return {
-    approvalId:           uuid(),
-    actionId:             action.actionId,
-    templateId:           template.templateId,
+    approvalId: uuid(),
+    actionId: action.actionId,
+    templateId: template.templateId,
     issuedAt,
     expiresAt,
-    actionSummary:        buildActionSummaryText(action).slice(0, 300),
-    contextSummary:       action.intent.objectiveSummary.slice(0, 500),
-    proposedTarget:       action.resolvedTarget!,
+    actionSummary: buildActionSummaryText(action).slice(0, 300),
+    contextSummary: action.intent.objectiveSummary.slice(0, 500),
+    proposedTarget: action.resolvedTarget!,
     diff,
-    estimatedImpact:      computeEstimatedImpact(action.resolvedRiskTier!, action.resolvedDataClasses, action.resolvedTarget!),
+    estimatedImpact: computeEstimatedImpact(
+      action.resolvedRiskTier!,
+      action.resolvedDataClasses,
+      action.resolvedTarget!
+    ),
     principalDisplayName: context.principal.displayName,
-    actorDisplayName:     context.actor.displayName,
-    riskTier:             action.resolvedRiskTier!,
-    dataClasses:          action.resolvedDataClasses,
-    modelConfidence:      action.intent.modelConfidence,
-    riskNote:             action.intent.riskNote,
+    actorDisplayName: context.actor.displayName,
+    riskTier: action.resolvedRiskTier!,
+    dataClasses: action.resolvedDataClasses,
+    modelConfidence: action.intent.modelConfidence,
+    riskNote: action.intent.riskNote,
   };
 }
 ```
@@ -2234,7 +2534,10 @@ async function buildApprovalRequest(
 ### 13.9.6 resolveCredentialSubjectType
 
 ```ts
-function resolveCredentialSubjectType(actorClass: ActorClass, _system: string): 'user_identity' | 'service_identity' | 'federated' {
+function resolveCredentialSubjectType(
+  actorClass: ActorClass,
+  _system: string
+): 'user_identity' | 'service_identity' | 'federated' {
   if (actorClass === ACTOR_CLASS.HUMAN || actorClass === ACTOR_CLASS.HUMAN_WITH_COPILOT) {
     return 'user_identity';
   }
@@ -2245,9 +2548,13 @@ function resolveCredentialSubjectType(actorClass: ActorClass, _system: string): 
 ### 13.9.7 buildScopeDescriptor
 
 ```ts
-function buildScopeDescriptor(capabilityId: string, target: ResourceTarget, hint: GrantTemplateHint | null | undefined): NonEmpty {
+function buildScopeDescriptor(
+  capabilityId: string,
+  target: ResourceTarget,
+  hint: GrantTemplateHint | null | undefined
+): NonEmpty {
   const base = `${capabilityId}@${target.system}:${target.resourceType}:${target.resourceScope}`;
-  const ext  = (hint?.allowExternalFacing || target.externalFacing) ? ':external' : '';
+  const ext = hint?.allowExternalFacing || target.externalFacing ? ':external' : '';
   return base + ext;
 }
 ```
@@ -2255,12 +2562,15 @@ function buildScopeDescriptor(capabilityId: string, target: ResourceTarget, hint
 ### 13.9.8 resolveCredentialSubject (Gate 06)
 
 ```ts
-function resolveCredentialSubject(template: ExecutionGrantTemplate, action: AgentAction): CredentialSubject {
+function resolveCredentialSubject(
+  template: ExecutionGrantTemplate,
+  action: AgentAction
+): CredentialSubject {
   const subjectType = template.credentialSubjectType as CredentialSubject['subjectType'];
   return {
-    subjectId:   subjectType === 'user_identity' ? action.actorId : `svc:${action.actorId}`,
+    subjectId: subjectType === 'user_identity' ? action.actorId : `svc:${action.actorId}`,
     subjectType,
-    system:      action.resolvedTarget!.system,
+    system: action.resolvedTarget!.system,
   };
 }
 ```
@@ -2286,10 +2596,16 @@ function assertTemplateIntegrity(template: ExecutionGrantTemplate): void {
   const { templateFingerprint, approvalLinkage, ...body } = template;
   const expected = sha256(canonicalize(templateFingerprintPayload(body)));
   if (expected !== template.templateFingerprint) {
-    throw new NexusSecurityViolation('template_fingerprint_mismatch', DENIAL_CODE.TEMPLATE_INTEGRITY_FAILED);
+    throw new NexusSecurityViolation(
+      'template_fingerprint_mismatch',
+      DENIAL_CODE.TEMPLATE_INTEGRITY_FAILED
+    );
   }
   if (template.approvalRequired && !template.approvalLinkage) {
-    throw new NexusSecurityViolation('approval_required_but_linkage_absent', DENIAL_CODE.TEMPLATE_INTEGRITY_FAILED);
+    throw new NexusSecurityViolation(
+      'approval_required_but_linkage_absent',
+      DENIAL_CODE.TEMPLATE_INTEGRITY_FAILED
+    );
   }
 }
 ```
@@ -2297,31 +2613,52 @@ function assertTemplateIntegrity(template: ExecutionGrantTemplate): void {
 ### 13.9.10 buildGrantTemplate (Gate 04)
 
 ```ts
-function buildGrantTemplate(action: AgentAction, rule: PolicyRule | undefined, context: PipelineContext): ExecutionGrantTemplate {
-  const hint        = rule?.grantHint;
+function buildGrantTemplate(
+  action: AgentAction,
+  rule: PolicyRule | undefined,
+  context: PipelineContext
+): ExecutionGrantTemplate {
+  const hint = rule?.grantHint;
   const expiryClass = hint?.expiryClass ?? EXPIRY_CLASS.ACTION_SCOPED;
-  const maxExpiry   = EXPIRY_CLASS_SECONDS[expiryClass] ?? 30;
+  const maxExpiry = EXPIRY_CLASS_SECONDS[expiryClass] ?? 30;
   const resourceBounds: ResourceBounds = {
     allowedResourceTypes: [action.resolvedTarget!.resourceType],
-    maxRecords:    hint?.maxRecords ?? 1,
-    allowBulk:     hint?.allowBulk ?? false,
+    maxRecords: hint?.maxRecords ?? 1,
+    allowBulk: hint?.allowBulk ?? false,
     allowExternalFacing: hint?.allowExternalFacing ?? false,
   };
   const dc = context.delegationContext;
   if (!dc.allowedSystems.includes(action.resolvedTarget!.system)) {
-    throw new NexusSecurityViolation('grant_template_exceeds_delegation_scope', DENIAL_CODE.BROAD_TOKEN_BYPASS);
+    throw new NexusSecurityViolation(
+      'grant_template_exceeds_delegation_scope',
+      DENIAL_CODE.BROAD_TOKEN_BYPASS
+    );
   }
-  const credentialSubjectType = resolveCredentialSubjectType(context.actor.actorClass, action.resolvedTarget!.system);
-  const scopeDescriptor       = buildScopeDescriptor(action.resolvedCapability!, action.resolvedTarget!, hint);
+  const credentialSubjectType = resolveCredentialSubjectType(
+    context.actor.actorClass,
+    action.resolvedTarget!.system
+  );
+  const scopeDescriptor = buildScopeDescriptor(
+    action.resolvedCapability!,
+    action.resolvedTarget!,
+    hint
+  );
 
   // Build the template body without fingerprint or approvalLinkage
   const templateBody = {
-    templateId: uuid(), actionId: action.actionId, computedAt: nowIso(),
-    capabilityId: action.resolvedCapability!, scopeDescriptor, credentialSubjectType,
-    resourceBounds, environmentBound: action.resolvedTarget!.environment,
-    expiryClass, maxExpirySeconds: maxExpiry,
-    approvalRequired: rule?.outcome === OUTCOME_LABEL.REQUIRE_APPROVAL || rule?.outcome === OUTCOME_LABEL.ESCALATE,
-    approvalConfig:   rule?.approvalConfig ?? null,
+    templateId: uuid(),
+    actionId: action.actionId,
+    computedAt: nowIso(),
+    capabilityId: action.resolvedCapability!,
+    scopeDescriptor,
+    credentialSubjectType,
+    resourceBounds,
+    environmentBound: action.resolvedTarget!.environment,
+    expiryClass,
+    maxExpirySeconds: maxExpiry,
+    approvalRequired:
+      rule?.outcome === OUTCOME_LABEL.REQUIRE_APPROVAL || rule?.outcome === OUTCOME_LABEL.ESCALATE,
+    approvalConfig: rule?.approvalConfig ?? null,
   };
 
   // Fingerprint using shared helper — approvalLinkage omitted by not being in templateBody at all
@@ -2340,9 +2677,9 @@ function buildIntentEvidence(intent: IntentContext): IntentEvidence {
     objectiveSummary: intent.objectiveSummary,
     triggeringSource: intent.triggeringSource,
     toolchainContext: intent.toolchainContext,
-    modelId:          intent.modelId,
-    modelConfidence:  intent.modelConfidence,
-    riskNote:         intent.riskNote,
+    modelId: intent.modelId,
+    modelConfidence: intent.modelConfidence,
+    riskNote: intent.riskNote,
   };
 }
 ```
@@ -2356,7 +2693,10 @@ class DelegationChainIntegrityError extends Error {
   }
 }
 
-async function buildDelegationSnapshotFromChain(dc: DelegationContext, store: DelegationStore): Promise<DelegationContextSnapshot> {
+async function buildDelegationSnapshotFromChain(
+  dc: DelegationContext,
+  store: DelegationStore
+): Promise<DelegationContextSnapshot> {
   const ancestors: Uuid[] = [];
   let current = dc;
   while (current.parentDelegationId !== null) {
@@ -2368,31 +2708,31 @@ async function buildDelegationSnapshotFromChain(dc: DelegationContext, store: De
     current = parent;
   }
   return {
-    delegationId:   dc.delegationId,
-    principalId:    dc.principalId,
-    actorId:        dc.actorId,
-    chainDepth:     dc.chainDepth,
+    delegationId: dc.delegationId,
+    principalId: dc.principalId,
+    actorId: dc.actorId,
+    chainDepth: dc.chainDepth,
     chainAncestors: ancestors,
-    chainHash:      sha256(canonicalize([dc.delegationId, ...ancestors])),
+    chainHash: sha256(canonicalize([dc.delegationId, ...ancestors])),
     allowedSystems: dc.allowedSystems,
-    maxRiskTier:    dc.maxRiskTier,
-    environment:    dc.environment,
-    expiresAt:      dc.expiresAt,
+    maxRiskTier: dc.maxRiskTier,
+    environment: dc.environment,
+    expiresAt: dc.expiresAt,
   };
 }
 
 function buildMinimalDelegationSnapshot(dc: DelegationContext): DelegationContextSnapshot {
   return {
-    delegationId:   dc.delegationId,
-    principalId:    dc.principalId,
-    actorId:        dc.actorId,
-    chainDepth:     dc.chainDepth,
+    delegationId: dc.delegationId,
+    principalId: dc.principalId,
+    actorId: dc.actorId,
+    chainDepth: dc.chainDepth,
     chainAncestors: [],
-    chainHash:      sha256(canonicalize([dc.delegationId])),
+    chainHash: sha256(canonicalize([dc.delegationId])),
     allowedSystems: dc.allowedSystems,
-    maxRiskTier:    dc.maxRiskTier,
-    environment:    dc.environment,
-    expiresAt:      dc.expiresAt,
+    maxRiskTier: dc.maxRiskTier,
+    environment: dc.environment,
+    expiresAt: dc.expiresAt,
   };
 }
 ```
@@ -2400,22 +2740,25 @@ function buildMinimalDelegationSnapshot(dc: DelegationContext): DelegationContex
 ### 13.9.13 buildRedactedActionSummary (Gate 07)
 
 ```ts
-function buildRedactedActionSummary(action: AgentAction, actor: Actor): EvidenceRecord['actionSummary'] {
+function buildRedactedActionSummary(
+  action: AgentAction,
+  actor: Actor
+): EvidenceRecord['actionSummary'] {
   return {
-    actionId:            action.actionId,
-    receivedAt:          action.receivedAt,
-    protocol:            action.protocol,
-    actorId:             action.actorId,
-    actorClass:          actor.actorClass,
-    actorEnvironment:    actor.environment,
-    principalId:         action.principalId,
-    delegationSequence:  action.delegationSequence,  // forensic ordering; not in CCV
-    tool:                action.tool,
-    resolvedVerb:        action.resolvedVerb,
-    resolvedCapability:  action.resolvedCapability,
-    resolvedTarget:      action.resolvedTarget,
+    actionId: action.actionId,
+    receivedAt: action.receivedAt,
+    protocol: action.protocol,
+    actorId: action.actorId,
+    actorClass: actor.actorClass,
+    actorEnvironment: actor.environment,
+    principalId: action.principalId,
+    delegationSequence: action.delegationSequence, // forensic ordering; not in CCV
+    tool: action.tool,
+    resolvedVerb: action.resolvedVerb,
+    resolvedCapability: action.resolvedCapability,
+    resolvedTarget: action.resolvedTarget,
     resolvedDataClasses: action.resolvedDataClasses,
-    resolvedRiskTier:    action.resolvedRiskTier,
+    resolvedRiskTier: action.resolvedRiskTier,
   };
 }
 ```
@@ -2423,17 +2766,20 @@ function buildRedactedActionSummary(action: AgentAction, actor: Actor): Evidence
 ### 13.9.14 buildGrantMetadata (Gate 07)
 
 ```ts
-function buildGrantMetadata(grant: ExecutionGrant, template: ExecutionGrantTemplate): ExecutionGrantMetadata {
+function buildGrantMetadata(
+  grant: ExecutionGrant,
+  template: ExecutionGrantTemplate
+): ExecutionGrantMetadata {
   return {
-    grantId:               grant.grantId,
-    scopeDescriptor:       grant.scopeDescriptor,
-    credentialSubjectId:   grant.credentialSubject.subjectId,
+    grantId: grant.grantId,
+    scopeDescriptor: grant.scopeDescriptor,
+    credentialSubjectId: grant.credentialSubject.subjectId,
     credentialSubjectType: grant.credentialSubject.subjectType,
-    issuedAt:              grant.mintedAt,
-    expiresAt:             grant.expiresAt,
-    expiryClass:           template.expiryClass,
-    templateFingerprint:   template.templateFingerprint,
-    approvalLinkage:       grant.approvalId,
+    issuedAt: grant.mintedAt,
+    expiresAt: grant.expiresAt,
+    expiryClass: template.expiryClass,
+    templateFingerprint: template.templateFingerprint,
+    approvalLinkage: grant.approvalId,
   };
 }
 ```
@@ -2443,11 +2789,14 @@ function buildGrantMetadata(grant: ExecutionGrant, template: ExecutionGrantTempl
 ```ts
 function redactExecutionResult(result: ExecutionResult, dataClasses: DataClass[]): ExecutionResult {
   let summary = result.redactedSummary;
-  if (dataClasses.includes(DATA_CLASS.PHI))            summary = REDACTION_MARKERS.PHI;
-  else if (dataClasses.includes(DATA_CLASS.PII))       summary = REDACTION_MARKERS.PII;
+  if (dataClasses.includes(DATA_CLASS.PHI)) summary = REDACTION_MARKERS.PHI;
+  else if (dataClasses.includes(DATA_CLASS.PII)) summary = REDACTION_MARKERS.PII;
   else if (dataClasses.includes(DATA_CLASS.FINANCIAL)) summary = REDACTION_MARKERS.FINANCIAL;
   const errorMessage = result.errorMessage
-    ? result.errorMessage.replace(/(secret|password|key|token|credential)[=:\s][^\s,;]*/gi, '[REDACTED:SECRET]')
+    ? result.errorMessage.replace(
+        /(secret|password|key|token|credential)[=:\s][^\s,;]*/gi,
+        '[REDACTED:SECRET]'
+      )
     : null;
   return { ...result, redactedSummary: summary, errorMessage };
 }
@@ -2469,19 +2818,24 @@ function sanitizeError(err: unknown): string {
 
 ```ts
 interface PolicyEvalEnvelope {
-  actorClass: ActorClass; capability: string; verb: ActionVerb;
-  riskTier: RiskTier; dataClasses: DataClass[]; environment: EnvironmentId;
-  externalFacing: boolean; chainDepth: number;
+  actorClass: ActorClass;
+  capability: string;
+  verb: ActionVerb;
+  riskTier: RiskTier;
+  dataClasses: DataClass[];
+  environment: EnvironmentId;
+  externalFacing: boolean;
+  chainDepth: number;
 }
 function matchesCondition(cond: PolicyCondition, env: PolicyEvalEnvelope): boolean {
-  if (cond.actorClasses && !cond.actorClasses.includes(env.actorClass))  return false;
-  if (cond.capabilities && !cond.capabilities.includes(env.capability))  return false;
-  if (cond.actionVerbs  && !cond.actionVerbs.includes(env.verb))         return false;
-  if (cond.riskTiers    && !cond.riskTiers.includes(env.riskTier))       return false;
-  if (cond.dataClasses  && !cond.dataClasses.some(dc => env.dataClasses.includes(dc))) return false;
+  if (cond.actorClasses && !cond.actorClasses.includes(env.actorClass)) return false;
+  if (cond.capabilities && !cond.capabilities.includes(env.capability)) return false;
+  if (cond.actionVerbs && !cond.actionVerbs.includes(env.verb)) return false;
+  if (cond.riskTiers && !cond.riskTiers.includes(env.riskTier)) return false;
+  if (cond.dataClasses && !cond.dataClasses.some(dc => env.dataClasses.includes(dc))) return false;
   if (cond.environments && !cond.environments.includes(env.environment)) return false;
   if (cond.externalFacing !== undefined && cond.externalFacing !== env.externalFacing) return false;
-  if (cond.maxChainDepth  !== undefined && env.chainDepth > cond.maxChainDepth) return false;
+  if (cond.maxChainDepth !== undefined && env.chainDepth > cond.maxChainDepth) return false;
   return true;
 }
 ```
@@ -2490,28 +2844,74 @@ function matchesCondition(cond: PolicyCondition, env: PolicyEvalEnvelope): boole
 
 ```ts
 function gatePass(gateId: GateId, order: number, startMs: number): GateResult {
-  return { decision: {
-    gateId, gateOrder: order, plane: 'control',
-    outcome: 'pass', reason: 'gate passed', denialCode: null,
-    policyRuleId: null, evaluatedAt: nowIso(), durationMs: Date.now() - startMs, metadata: {},
-  }};
+  return {
+    decision: {
+      gateId,
+      gateOrder: order,
+      plane: 'control',
+      outcome: 'pass',
+      reason: 'gate passed',
+      denialCode: null,
+      policyRuleId: null,
+      evaluatedAt: nowIso(),
+      durationMs: Date.now() - startMs,
+      metadata: {},
+    },
+  };
 }
-function gateDeny(gateId: GateId, order: number, code: DenialCode, reason: string, startMs: number, ruleId?: string): GateResult {
-  return { decision: {
-    gateId, gateOrder: order, plane: 'control',
-    outcome: 'deny', reason, denialCode: code,
-    policyRuleId: ruleId ?? null, evaluatedAt: nowIso(), durationMs: Date.now() - startMs, metadata: {},
-  }};
+function gateDeny(
+  gateId: GateId,
+  order: number,
+  code: DenialCode,
+  reason: string,
+  startMs: number,
+  ruleId?: string
+): GateResult {
+  return {
+    decision: {
+      gateId,
+      gateOrder: order,
+      plane: 'control',
+      outcome: 'deny',
+      reason,
+      denialCode: code,
+      policyRuleId: ruleId ?? null,
+      evaluatedAt: nowIso(),
+      durationMs: Date.now() - startMs,
+      metadata: {},
+    },
+  };
 }
-function gateClassifDeny(gateId: GateId, order: number, code: DenialCode, reason: string, startMs: number): GateResult {
+function gateClassifDeny(
+  gateId: GateId,
+  order: number,
+  code: DenialCode,
+  reason: string,
+  startMs: number
+): GateResult {
   return gateDeny(gateId, order, code, reason, startMs);
 }
-function gateError(gateId: GateId, order: number, code: DenialCode, reason: string, startMs: number): GateResult {
-  return { decision: {
-    gateId, gateOrder: order, plane: 'data',
-    outcome: 'error', reason, denialCode: code,
-    policyRuleId: null, evaluatedAt: nowIso(), durationMs: Date.now() - startMs, metadata: {},
-  }};
+function gateError(
+  gateId: GateId,
+  order: number,
+  code: DenialCode,
+  reason: string,
+  startMs: number
+): GateResult {
+  return {
+    decision: {
+      gateId,
+      gateOrder: order,
+      plane: 'data',
+      outcome: 'error',
+      reason,
+      denialCode: code,
+      policyRuleId: null,
+      evaluatedAt: nowIso(),
+      durationMs: Date.now() - startMs,
+      metadata: {},
+    },
+  };
 }
 ```
 
@@ -2529,7 +2929,6 @@ class NexusSecurityViolation extends Error {
 }
 ```
 
-
 ---
 
 ## 14. Compiler Comparison View Law
@@ -2539,35 +2938,45 @@ class NexusSecurityViolation extends Error {
 ```ts
 interface CompilerComparisonView {
   meta: {
-    blueprintVersion:          SemVer;
-    runtimeContractVersion:    SemVer;
+    blueprintVersion: SemVer;
+    runtimeContractVersion: SemVer;
     capabilityTaxonomyVersion: SemVer;
-    comparisonInputVersion:    SemVer;
-    normalizedActionHash:      Sha256Hex;
-    policyBundleHash:          Sha256Hex;
+    comparisonInputVersion: SemVer;
+    normalizedActionHash: Sha256Hex;
+    policyBundleHash: Sha256Hex;
   };
   identity: {
-    actorId: Uuid; actorClass: ActorClass;
-    principalId: Uuid; environment: EnvironmentId;
+    actorId: Uuid;
+    actorClass: ActorClass;
+    principalId: Uuid;
+    environment: EnvironmentId;
   };
   delegation: {
-    delegationContextId: Uuid; chainDepth: number;
-    chainHash: Sha256Hex; maxRiskTier: RiskTier;
+    delegationContextId: Uuid;
+    chainDepth: number;
+    chainHash: Sha256Hex;
+    maxRiskTier: RiskTier;
   };
   classification: {
-    capabilityId: string; actionVerb: ActionVerb;
-    dataClasses: DataClass[]; riskTier: RiskTier;
+    capabilityId: string;
+    actionVerb: ActionVerb;
+    dataClasses: DataClass[];
+    riskTier: RiskTier;
   };
   policyAndApproval: {
-    policyRuleId: string | null; outcomeLabel: OutcomeLabel | null;
-    approvalRequired: boolean; approvalDecisionLabel: ApprovalDecisionLabel | null;
+    policyRuleId: string | null;
+    outcomeLabel: OutcomeLabel | null;
+    approvalRequired: boolean;
+    approvalDecisionLabel: ApprovalDecisionLabel | null;
   };
   authorityAndExecution: {
-    executionGrantId: Uuid | null; credentialSubjectType: string | null;
-    scopeDescriptor: string | null; expiryClass: ExpiryClass | null;
+    executionGrantId: Uuid | null;
+    credentialSubjectType: string | null;
+    scopeDescriptor: string | null;
+    expiryClass: ExpiryClass | null;
     grantTemplateFingerprint: Sha256Hex | null;
   };
-  result: { finalOutcome: FinalOutcome; errorCodeFamily: string | null; };
+  result: { finalOutcome: FinalOutcome; errorCodeFamily: string | null };
 }
 ```
 
@@ -2578,15 +2987,15 @@ delegationSequence is NOT a CCV field. It is forensic-only in actionSummary.
 ```ts
 function computeNormalizedActionHash(action: EvidenceRecord['actionSummary']): Sha256Hex {
   const normalized = {
-    tool:               action.tool,
-    resolvedVerb:       action.resolvedVerb,
+    tool: action.tool,
+    resolvedVerb: action.resolvedVerb,
     resolvedCapability: action.resolvedCapability,
-    targetSystem:       action.resolvedTarget?.system ?? null,
+    targetSystem: action.resolvedTarget?.system ?? null,
     targetResourceType: action.resolvedTarget?.resourceType ?? null,
-    targetScope:        action.resolvedTarget?.resourceScope ?? null,
-    externalFacing:     action.resolvedTarget?.externalFacing ?? null,
-    dataClasses:        [...action.resolvedDataClasses].sort(),
-    riskTier:           action.resolvedRiskTier,
+    targetScope: action.resolvedTarget?.resourceScope ?? null,
+    externalFacing: action.resolvedTarget?.externalFacing ?? null,
+    dataClasses: [...action.resolvedDataClasses].sort(),
+    riskTier: action.resolvedRiskTier,
   };
   return sha256(canonicalize(normalized));
 }
@@ -2596,52 +3005,52 @@ function computeNormalizedActionHash(action: EvidenceRecord['actionSummary']): S
 
 ```ts
 function buildCCV(
-  record:  Omit<EvidenceRecord, 'compilerView' | 'recordHash' | 'signature'>,
+  record: Omit<EvidenceRecord, 'compilerView' | 'recordHash' | 'signature'>,
   context: PipelineContext
 ): CompilerComparisonView {
   const policyDecision = record.gateDecisions.find(d => d.gateId === GATE_ID.G04);
   return {
     meta: {
-      blueprintVersion:          BLUEPRINT_VERSION,
-      runtimeContractVersion:    SPEC_VERSION,
+      blueprintVersion: BLUEPRINT_VERSION,
+      runtimeContractVersion: SPEC_VERSION,
       capabilityTaxonomyVersion: CAPABILITY_TAXONOMY_VERSION,
-      comparisonInputVersion:    COMPARISON_INPUT_VERSION,
-      normalizedActionHash:      computeNormalizedActionHash(record.actionSummary),
-      policyBundleHash:          context.policyFile?.bundleHash ?? sha256(canonicalize('no_policy')),
+      comparisonInputVersion: COMPARISON_INPUT_VERSION,
+      normalizedActionHash: computeNormalizedActionHash(record.actionSummary),
+      policyBundleHash: context.policyFile?.bundleHash ?? sha256(canonicalize('no_policy')),
     },
     identity: {
-      actorId:     record.actionSummary.actorId,
-      actorClass:  record.actionSummary.actorClass,
+      actorId: record.actionSummary.actorId,
+      actorClass: record.actionSummary.actorClass,
       principalId: record.actionSummary.principalId,
       environment: record.actionSummary.actorEnvironment,
     },
     delegation: {
       delegationContextId: record.delegationContextSnapshot.delegationId,
-      chainDepth:          record.delegationContextSnapshot.chainDepth,
-      chainHash:           record.delegationContextSnapshot.chainHash,
-      maxRiskTier:         record.delegationContextSnapshot.maxRiskTier,
+      chainDepth: record.delegationContextSnapshot.chainDepth,
+      chainHash: record.delegationContextSnapshot.chainHash,
+      maxRiskTier: record.delegationContextSnapshot.maxRiskTier,
     },
     classification: {
       capabilityId: record.actionSummary.resolvedCapability ?? '',
-      actionVerb:   record.actionSummary.resolvedVerb ?? '',
-      dataClasses:  [...record.actionSummary.resolvedDataClasses].sort(),
-      riskTier:     record.actionSummary.resolvedRiskTier ?? '',
+      actionVerb: record.actionSummary.resolvedVerb ?? '',
+      dataClasses: [...record.actionSummary.resolvedDataClasses].sort(),
+      riskTier: record.actionSummary.resolvedRiskTier ?? '',
     },
     policyAndApproval: {
-      policyRuleId:          record.policyRuleId,
-      outcomeLabel:          record.policyOutcome,
-      approvalRequired:      record.approvalRequest !== null,
+      policyRuleId: record.policyRuleId,
+      outcomeLabel: record.policyOutcome,
+      approvalRequired: record.approvalRequest !== null,
       approvalDecisionLabel: record.approvalResponse?.decision ?? null,
     },
     authorityAndExecution: {
-      executionGrantId:         record.grantMetadata?.grantId              ?? null,
-      credentialSubjectType:    record.grantMetadata?.credentialSubjectType ?? null,
-      scopeDescriptor:          record.grantMetadata?.scopeDescriptor       ?? null,
-      expiryClass:              record.grantMetadata?.expiryClass           ?? null,
-      grantTemplateFingerprint: record.grantMetadata?.templateFingerprint   ?? null,
+      executionGrantId: record.grantMetadata?.grantId ?? null,
+      credentialSubjectType: record.grantMetadata?.credentialSubjectType ?? null,
+      scopeDescriptor: record.grantMetadata?.scopeDescriptor ?? null,
+      expiryClass: record.grantMetadata?.expiryClass ?? null,
+      grantTemplateFingerprint: record.grantMetadata?.templateFingerprint ?? null,
     },
     result: {
-      finalOutcome:    record.finalOutcome,
+      finalOutcome: record.finalOutcome,
       errorCodeFamily: record.executionResult?.errorType ?? null,
     },
   };
@@ -2653,14 +3062,14 @@ function buildCCV(
 ```ts
 function areComparable(a: CompilerComparisonView, b: CompilerComparisonView): boolean {
   return (
-    a.meta.blueprintVersion          === b.meta.blueprintVersion &&
-    a.meta.runtimeContractVersion    === b.meta.runtimeContractVersion &&
+    a.meta.blueprintVersion === b.meta.blueprintVersion &&
+    a.meta.runtimeContractVersion === b.meta.runtimeContractVersion &&
     a.meta.capabilityTaxonomyVersion === b.meta.capabilityTaxonomyVersion &&
-    a.meta.comparisonInputVersion    === b.meta.comparisonInputVersion &&
-    a.identity.actorClass            === b.identity.actorClass &&
-    a.identity.environment           === b.identity.environment &&
-    a.classification.capabilityId    === b.classification.capabilityId &&
-    a.meta.normalizedActionHash      === b.meta.normalizedActionHash
+    a.meta.comparisonInputVersion === b.meta.comparisonInputVersion &&
+    a.identity.actorClass === b.identity.actorClass &&
+    a.identity.environment === b.identity.environment &&
+    a.classification.capabilityId === b.classification.capabilityId &&
+    a.meta.normalizedActionHash === b.meta.normalizedActionHash
   );
 }
 ```
@@ -2675,8 +3084,10 @@ function areComparable(a: CompilerComparisonView, b: CompilerComparisonView): bo
 
 ```ts
 interface KeyPair {
-  publicKey: Base64Url; privateKey: Base64Url;
-  generatedAt: IsoTimestamp; purpose: 'control_plane' | 'approver' | 'dev';
+  publicKey: Base64Url;
+  privateKey: Base64Url;
+  generatedAt: IsoTimestamp;
+  purpose: 'control_plane' | 'approver' | 'dev';
 }
 ```
 
@@ -2688,9 +3099,11 @@ Generated by `scripts/gen-keys.ts`. Gitignored in production.
 management API mutation routes.
 
 **Approver Key Contract** (SOLVE-006): Per-approver keypairs stored at:
+
 ```
 keys/approvers/<approverId>.keypair.json
 ```
+
 The `keys/approvers/` directory is always gitignored. Keys are loaded exclusively by
 `key-manager.ts` using the `approverId` as the lookup key. No other code path loads
 approver private keys directly.
@@ -2700,31 +3113,33 @@ approver private keys directly.
 async function loadApproverKey(approverId: NonEmpty): Promise<KeyPair> {
   const keyPath = path.join('keys', 'approvers', `${approverId}.keypair.json`);
   try {
-    const raw  = await fs.readFile(keyPath, 'utf-8');
+    const raw = await fs.readFile(keyPath, 'utf-8');
     const pair = JSON.parse(raw) as KeyPair;
     if (pair.purpose !== 'approver') {
       throw new Error(`key at ${keyPath} has purpose '${pair.purpose}', expected 'approver'`);
     }
     return pair;
   } catch (err) {
-    throw new Error(`Approver key not found for approverId '${approverId}': ${(err as Error).message}`);
+    throw new Error(
+      `Approver key not found for approverId '${approverId}': ${(err as Error).message}`
+    );
   }
 }
 
 async function loadControlPlaneKey(): Promise<KeyPair> {
   const keyPath = process.env.NEXUS_KEY_PATH ?? path.join('keys', 'dev.keypair.json');
-  const raw     = await fs.readFile(keyPath, 'utf-8');
+  const raw = await fs.readFile(keyPath, 'utf-8');
   return JSON.parse(raw) as KeyPair;
 }
 
 async function generateApproverKeypair(approverId: NonEmpty): Promise<void> {
   const privateKey = ed25519.utils.randomPrivateKey();
-  const publicKey  = await ed25519.getPublicKeyAsync(privateKey);
+  const publicKey = await ed25519.getPublicKeyAsync(privateKey);
   const pair: KeyPair = {
-    publicKey:    base64urlEncode(publicKey),
-    privateKey:   base64urlEncode(privateKey),
-    generatedAt:  nowIso(),
-    purpose:      'approver',
+    publicKey: base64urlEncode(publicKey),
+    privateKey: base64urlEncode(privateKey),
+    generatedAt: nowIso(),
+    purpose: 'approver',
   };
   const keyPath = path.join('keys', 'approvers', `${approverId}.keypair.json`);
   await fs.mkdir(path.dirname(keyPath), { recursive: true });
@@ -2740,14 +3155,24 @@ approver key in production paths. Fixture usage must prefix any secret values wi
 
 ```ts
 async function sign(payload: string, keyPair: KeyPair): Promise<Base64Url> {
-  const msgBytes  = new TextEncoder().encode(payload);
+  const msgBytes = new TextEncoder().encode(payload);
   const privBytes = base64urlDecode(keyPair.privateKey);
   return base64urlEncode(await ed25519.sign(msgBytes, privBytes));
 }
-async function verify(payload: string, signature: Base64Url, publicKey: Base64Url): Promise<boolean> {
+async function verify(
+  payload: string,
+  signature: Base64Url,
+  publicKey: Base64Url
+): Promise<boolean> {
   try {
-    return await ed25519.verify(base64urlDecode(signature), new TextEncoder().encode(payload), base64urlDecode(publicKey));
-  } catch { return false; }
+    return await ed25519.verify(
+      base64urlDecode(signature),
+      new TextEncoder().encode(payload),
+      base64urlDecode(publicKey)
+    );
+  } catch {
+    return false;
+  }
 }
 ```
 
@@ -2767,18 +3192,32 @@ function sha256(payload: string): Sha256Hex {
 export function canonicalize(val: unknown): string {
   // undefined is illegal in canonical payloads.
   // Keys with undefined values are stripped. Non-key undefined throws.
-  if (val === null)      return 'null';
-  if (val === undefined) throw new TypeError('canonicalize: undefined is not a legal canonical value — use null or omit the field');
+  if (val === null) return 'null';
+  if (val === undefined)
+    throw new TypeError(
+      'canonicalize: undefined is not a legal canonical value — use null or omit the field'
+    );
   if (typeof val !== 'object') return JSON.stringify(val);
   if (Array.isArray(val)) {
-    return '[' + val.map(v => {
-      if (v === undefined) throw new TypeError('canonicalize: undefined element in array — use null or remove the element');
-      return canonicalize(v);
-    }).join(',') + ']';
+    return (
+      '[' +
+      val
+        .map(v => {
+          if (v === undefined)
+            throw new TypeError(
+              'canonicalize: undefined element in array — use null or remove the element'
+            );
+          return canonicalize(v);
+        })
+        .join(',') +
+      ']'
+    );
   }
-  const obj  = val as Record<string, unknown>;
+  const obj = val as Record<string, unknown>;
   // Strip keys whose value is undefined — they are not part of the canonical payload.
-  const keys = Object.keys(obj).filter(k => obj[k] !== undefined).sort();
+  const keys = Object.keys(obj)
+    .filter(k => obj[k] !== undefined)
+    .sort();
   const pairs = keys.map(k => JSON.stringify(k) + ':' + canonicalize(obj[k]!));
   return '{' + pairs.join(',') + '}';
 }
@@ -2793,8 +3232,12 @@ omit the field. This law applies to all signature, hash, and fingerprint computa
 
 ```ts
 import { randomUUID } from 'crypto';
-export function uuid(): Uuid         { return randomUUID(); }
-export function nowIso(): IsoTimestamp { return new Date().toISOString(); }
+export function uuid(): Uuid {
+  return randomUUID();
+}
+export function nowIso(): IsoTimestamp {
+  return new Date().toISOString();
+}
 export function addSeconds(iso: IsoTimestamp, seconds: number): IsoTimestamp {
   return new Date(new Date(iso).getTime() + seconds * 1000).toISOString();
 }
@@ -2811,7 +3254,8 @@ export function sleep(ms: number): Promise<void> {
 
 ```ts
 class JsonlLedgerBackend implements LedgerBackend {
-  readonly backendId = 'jsonl-v1'; readonly backendVersion = 'v0.1.0';
+  readonly backendId = 'jsonl-v1';
+  readonly backendVersion = 'v0.1.0';
   constructor(private readonly ledgerPath: string) {}
 
   async append(record: EvidenceRecord): Promise<void> {
@@ -2821,10 +3265,18 @@ class JsonlLedgerBackend implements LedgerBackend {
   async listRange(from: number, to: number): Promise<EvidenceRecord[]> {
     const results: EvidenceRecord[] = [];
     let raw: string;
-    try { raw = await fs.readFile(this.ledgerPath, 'utf-8'); } catch { return []; }
+    try {
+      raw = await fs.readFile(this.ledgerPath, 'utf-8');
+    } catch {
+      return [];
+    }
     for (const line of raw.split('\n').filter(Boolean)) {
       let record: EvidenceRecord;
-      try { record = JSON.parse(line) as EvidenceRecord; } catch { continue; }
+      try {
+        record = JSON.parse(line) as EvidenceRecord;
+      } catch {
+        continue;
+      }
       if (record.ledgerSequence >= from && record.ledgerSequence <= to) results.push(record);
     }
     return results;
@@ -2836,10 +3288,18 @@ class JsonlLedgerBackend implements LedgerBackend {
 
   async getByRecordId(recordId: Uuid): Promise<EvidenceRecord | null> {
     let raw: string;
-    try { raw = await fs.readFile(this.ledgerPath, 'utf-8'); } catch { return null; }
+    try {
+      raw = await fs.readFile(this.ledgerPath, 'utf-8');
+    } catch {
+      return null;
+    }
     for (const line of raw.split('\n').filter(Boolean)) {
       let record: EvidenceRecord;
-      try { record = JSON.parse(line) as EvidenceRecord; } catch { continue; }
+      try {
+        record = JSON.parse(line) as EvidenceRecord;
+      } catch {
+        continue;
+      }
       if (record.recordId === recordId) return record;
     }
     return null;
@@ -2847,11 +3307,18 @@ class JsonlLedgerBackend implements LedgerBackend {
 
   async getLatestSequence(): Promise<number> {
     let raw: string;
-    try { raw = await fs.readFile(this.ledgerPath, 'utf-8'); } catch { return 0; }
+    try {
+      raw = await fs.readFile(this.ledgerPath, 'utf-8');
+    } catch {
+      return 0;
+    }
     const lines = raw.split('\n').filter(Boolean);
     if (!lines.length) return 0;
-    try { return (JSON.parse(lines[lines.length - 1]!) as EvidenceRecord).ledgerSequence; }
-    catch { return 0; }
+    try {
+      return (JSON.parse(lines[lines.length - 1]!) as EvidenceRecord).ledgerSequence;
+    } catch {
+      return 0;
+    }
   }
 }
 ```
@@ -2863,23 +3330,24 @@ any gap or regression in ledgerSequence. Blueprint §9.3 + §11.9 law.
 
 ```ts
 interface ChainError {
-  seq:        number;
-  type:      'hash_chain_break' | 'signature_invalid' | 'sequence_anomaly';
-  denialCode: DenialCode;  // CHAIN_INTEGRITY_BROKEN or SEQUENCE_ANOMALY
-  detail:     string;
+  seq: number;
+  type: 'hash_chain_break' | 'signature_invalid' | 'sequence_anomaly';
+  denialCode: DenialCode; // CHAIN_INTEGRITY_BROKEN or SEQUENCE_ANOMALY
+  detail: string;
 }
 
 async function verifyChain(
-  backend:   LedgerBackend,
-  fromSeq:   number,
-  toSeq:     number,
+  backend: LedgerBackend,
+  fromSeq: number,
+  toSeq: number,
   publicKey: Base64Url
 ): Promise<ChainVerificationResult> {
-  const errors:  ChainError[] = [];
-  const records  = await backend.listRange(fromSeq, toSeq);
-  let prevHash   = fromSeq === 1
-    ? GENESIS_HASH
-    : (await backend.getBySequence(fromSeq - 1))?.recordHash ?? GENESIS_HASH;
+  const errors: ChainError[] = [];
+  const records = await backend.listRange(fromSeq, toSeq);
+  let prevHash =
+    fromSeq === 1
+      ? GENESIS_HASH
+      : ((await backend.getBySequence(fromSeq - 1))?.recordHash ?? GENESIS_HASH);
 
   let expectedSeq = fromSeq;
 
@@ -2887,10 +3355,10 @@ async function verifyChain(
     // Sequence continuity check — emit SEQUENCE_ANOMALY on gap or regression
     if (record.ledgerSequence !== expectedSeq) {
       errors.push({
-        seq:        record.ledgerSequence,
-        type:       'sequence_anomaly',
+        seq: record.ledgerSequence,
+        type: 'sequence_anomaly',
         denialCode: DENIAL_CODE.SEQUENCE_ANOMALY,
-        detail:     `Expected ledgerSequence ${expectedSeq}, got ${record.ledgerSequence}`,
+        detail: `Expected ledgerSequence ${expectedSeq}, got ${record.ledgerSequence}`,
       });
       // Advance expectedSeq to record's actual value to continue checking from here
       expectedSeq = record.ledgerSequence;
@@ -2899,10 +3367,10 @@ async function verifyChain(
     // Hash chain check
     if (record.previousHash !== prevHash) {
       errors.push({
-        seq:        record.ledgerSequence,
-        type:       'hash_chain_break',
+        seq: record.ledgerSequence,
+        type: 'hash_chain_break',
         denialCode: DENIAL_CODE.CHAIN_INTEGRITY_BROKEN,
-        detail:     `Expected previousHash ${prevHash}, got ${record.previousHash}`,
+        detail: `Expected previousHash ${prevHash}, got ${record.previousHash}`,
       });
     }
 
@@ -2910,10 +3378,10 @@ async function verifyChain(
     const isValid = await verify(record.recordHash, record.signature, publicKey);
     if (!isValid) {
       errors.push({
-        seq:        record.ledgerSequence,
-        type:       'signature_invalid',
+        seq: record.ledgerSequence,
+        type: 'signature_invalid',
         denialCode: DENIAL_CODE.CHAIN_INTEGRITY_BROKEN,
-        detail:     `Signature invalid on sequence ${record.ledgerSequence}`,
+        detail: `Signature invalid on sequence ${record.ledgerSequence}`,
       });
     }
 
@@ -2922,9 +3390,9 @@ async function verifyChain(
   }
 
   return {
-    ok:         errors.length === 0,
+    ok: errors.length === 0,
     checkedFrom: fromSeq,
-    checkedTo:   toSeq,
+    checkedTo: toSeq,
     recordCount: records.length,
     errors,
   };
@@ -2949,11 +3417,14 @@ class ReplayDetector {
       new Date(Date.now() - REPLAY_DEDUP_TTL_SECONDS * 1000).toISOString()
     );
     const hit = await this.db.get<{ action_id: string }>(
-      `SELECT action_id FROM replay_cache WHERE action_id = ?`, actionId
+      `SELECT action_id FROM replay_cache WHERE action_id = ?`,
+      actionId
     );
     if (hit) return 'replay';
     await this.db.run(
-      `INSERT INTO replay_cache(action_id, seen_at) VALUES (?, ?)`, actionId, nowIso()
+      `INSERT INTO replay_cache(action_id, seen_at) VALUES (?, ?)`,
+      actionId,
+      nowIso()
     );
     return 'ok';
   }
@@ -2969,7 +3440,8 @@ class ReplayDetector {
       delegationId
     );
     const row = await this.db.get<{ last_sequence: number }>(
-      `SELECT last_sequence FROM delegation_sequences WHERE delegation_id = ?`, delegationId
+      `SELECT last_sequence FROM delegation_sequences WHERE delegation_id = ?`,
+      delegationId
     );
     return row?.last_sequence ?? 1;
   }
@@ -2992,7 +3464,7 @@ function sanitizeIntentField(raw: string | null | undefined, maxLen: number): st
   if (!raw) return '';
   let s = raw.replace(/[^\x20-\x7E\n\t]/g, '');
   const truncated = s.length > maxLen;
-  return (truncated ? s.slice(0, maxLen) + ' [TRUNCATED]' : s);
+  return truncated ? s.slice(0, maxLen) + ' [TRUNCATED]' : s;
 }
 ```
 
@@ -3010,8 +3482,11 @@ class RateLimiter {
   private readonly MAX_PER_MINUTE = 60;
   check(actorId: Uuid): 'ok' | 'rate_limited' {
     const now = Date.now();
-    const b   = this.buckets.get(actorId) ?? { count: 0, windowStart: now };
-    if (now - b.windowStart > 60_000) { this.buckets.set(actorId, { count: 1, windowStart: now }); return 'ok'; }
+    const b = this.buckets.get(actorId) ?? { count: 0, windowStart: now };
+    if (now - b.windowStart > 60_000) {
+      this.buckets.set(actorId, { count: 1, windowStart: now });
+      return 'ok';
+    }
     b.count++;
     this.buckets.set(actorId, b);
     return b.count > this.MAX_PER_MINUTE ? 'rate_limited' : 'ok';
@@ -3023,7 +3498,8 @@ class RateLimiter {
 
 ```ts
 function assertGrantPresent(grant: ExecutionGrant | undefined): asserts grant is ExecutionGrant {
-  if (!grant) throw new NexusSecurityViolation('execution_without_grant', DENIAL_CODE.BROAD_TOKEN_BYPASS);
+  if (!grant)
+    throw new NexusSecurityViolation('execution_without_grant', DENIAL_CODE.BROAD_TOKEN_BYPASS);
 }
 function assertGrantNotExpired(grant: ExecutionGrant): void {
   if (new Date(grant.expiresAt) <= new Date())
@@ -3056,9 +3532,13 @@ API call. Gate 06 `finally`: `clearGrantSecret(grant)`. This applies even on Nex
 
 ```ts
 export const REDACTION_MARKERS = {
-  PII: '[REDACTED:PII]', PHI: '[REDACTED:PHI]', FINANCIAL: '[REDACTED:FINANCIAL]',
-  SECRET: '[REDACTED:SECRET]', PROMPT: '[REDACTED:RAW_PROMPT]',
-  REASONING: '[REDACTED:REASONING]', OVERFLOW: '[TRUNCATED:OVERFLOW]',
+  PII: '[REDACTED:PII]',
+  PHI: '[REDACTED:PHI]',
+  FINANCIAL: '[REDACTED:FINANCIAL]',
+  SECRET: '[REDACTED:SECRET]',
+  PROMPT: '[REDACTED:RAW_PROMPT]',
+  REASONING: '[REDACTED:REASONING]',
+  OVERFLOW: '[TRUNCATED:OVERFLOW]',
 } as const;
 ```
 
@@ -3079,14 +3559,14 @@ HTTP server wrapping an upstream MCP server. Operator changes `mcpServer` URL to
 
 ```ts
 const VERB_PREFIX_MAP: [string[], ActionVerb][] = [
-  [['get_','fetch_','read_','list_','search_','find_','retrieve_'], ACTION_VERB.READ],
-  [['create_','add_','insert_','new_','post_'],                    ACTION_VERB.CREATE],
-  [['update_','edit_','modify_','patch_','set_','put_'],           ACTION_VERB.UPDATE],
-  [['delete_','remove_','destroy_','purge_'],                      ACTION_VERB.DELETE],
-  [['send_','message_','email_','notify_','alert_'],               ACTION_VERB.SEND],
-  [['publish_','broadcast_','release_'],                           ACTION_VERB.PUBLISH],
-  [['export_','download_','dump_'],                                ACTION_VERB.EXPORT],
-  [['execute_','run_','invoke_','trigger_','call_'],               ACTION_VERB.EXECUTE],
+  [['get_', 'fetch_', 'read_', 'list_', 'search_', 'find_', 'retrieve_'], ACTION_VERB.READ],
+  [['create_', 'add_', 'insert_', 'new_', 'post_'], ACTION_VERB.CREATE],
+  [['update_', 'edit_', 'modify_', 'patch_', 'set_', 'put_'], ACTION_VERB.UPDATE],
+  [['delete_', 'remove_', 'destroy_', 'purge_'], ACTION_VERB.DELETE],
+  [['send_', 'message_', 'email_', 'notify_', 'alert_'], ACTION_VERB.SEND],
+  [['publish_', 'broadcast_', 'release_'], ACTION_VERB.PUBLISH],
+  [['export_', 'download_', 'dump_'], ACTION_VERB.EXPORT],
+  [['execute_', 'run_', 'invoke_', 'trigger_', 'call_'], ACTION_VERB.EXECUTE],
 ];
 function inferVerbFromMcp(mcp: McpRequest): string {
   const tool = (mcp.method ?? mcp.tool ?? '').toLowerCase();
@@ -3096,18 +3576,26 @@ function inferVerbFromMcp(mcp: McpRequest): string {
   return ACTION_VERB.EXECUTE;
 }
 function inferTargetFromMcp(mcp: McpRequest): string {
-  const resourceType = mcp.params?.resourceType ?? mcp.params?.resource
-    ?? extractToolNameSuffix(mcp.method ?? mcp.tool ?? '');
+  const resourceType =
+    mcp.params?.resourceType ??
+    mcp.params?.resource ??
+    extractToolNameSuffix(mcp.method ?? mcp.tool ?? '');
   const system = extractHeader(mcp, 'X-Nexus-Target-System') ?? 'unknown';
-  const scope  = inferResourceScope(mcp);
+  const scope = inferResourceScope(mcp);
   // ADAPTER ENVIRONMENT LAW (blueprint §5.4):
   // Adapters MUST NOT set or override environment. Environment is authoritative from
   // actor registry only. X-Nexus-Environment header is intentionally NOT read.
   // ACTOR_ENVIRONMENT sentinel triggers Gate 02 to use actor.environment.
   const ext = isExternalFacingMcp(mcp);
-  return JSON.stringify({ system, resourceType, resourceScope: scope, environment: 'ACTOR_ENVIRONMENT', externalFacing: ext });
+  return JSON.stringify({
+    system,
+    resourceType,
+    resourceScope: scope,
+    environment: 'ACTOR_ENVIRONMENT',
+    externalFacing: ext,
+  });
 }
-function inferResourceScope(mcp: McpRequest): 'single'|'bulk'|'collection'|'system' {
+function inferResourceScope(mcp: McpRequest): 'single' | 'bulk' | 'collection' | 'system' {
   if (Array.isArray(mcp.params?.ids)) return 'bulk';
   if (mcp.params?.filter !== undefined || mcp.params?.query !== undefined) return 'collection';
   if (mcp.params?.id !== undefined) return 'single';
@@ -3116,8 +3604,12 @@ function inferResourceScope(mcp: McpRequest): 'single'|'bulk'|'collection'|'syst
 function isExternalFacingMcp(mcp: McpRequest): boolean {
   if (extractHeader(mcp, 'X-Nexus-External-Facing') === 'true') return true;
   const tool = (mcp.method ?? mcp.tool ?? '').toLowerCase();
-  return tool.includes('_external') || tool.includes('_email') ||
-         tool.includes('_webhook')  || tool.includes('_publish');
+  return (
+    tool.includes('_external') ||
+    tool.includes('_email') ||
+    tool.includes('_webhook') ||
+    tool.includes('_publish')
+  );
 }
 function extractToolNameSuffix(toolName: string): string {
   const parts = toolName.toLowerCase().split('_').filter(Boolean);
@@ -3137,21 +3629,20 @@ any `ACTOR_ENVIRONMENT` sentinel from the raw target.
 
 Required headers:
 
-| Header | Required | Description |
-|---|---|---|
-| `X-Nexus-Actor-Id` | Yes | UUID of registered actor |
-| `X-Nexus-Principal-Id` | Yes | UUID of principal |
-| `X-Nexus-Session-Id` | Yes | UUID of existing session — must already exist in store |
-| `X-Nexus-Delegation-Id` | Yes | UUID of active delegation context |
-| `X-Nexus-Target-System` | No | Target system identifier; defaults to 'unknown' |
-| `X-Nexus-External-Facing` | No | 'true' if action targets external systems |
-| `X-Nexus-Model-Id` | No | Model identifier for intent evidence |
-| `X-Nexus-Model-Confidence` | No | Float [0,1] |
-| `X-Nexus-Risk-Note` | No | Short risk note |
+| Header                     | Required | Description                                            |
+| -------------------------- | -------- | ------------------------------------------------------ |
+| `X-Nexus-Actor-Id`         | Yes      | UUID of registered actor                               |
+| `X-Nexus-Principal-Id`     | Yes      | UUID of principal                                      |
+| `X-Nexus-Session-Id`       | Yes      | UUID of existing session — must already exist in store |
+| `X-Nexus-Delegation-Id`    | Yes      | UUID of active delegation context                      |
+| `X-Nexus-Target-System`    | No       | Target system identifier; defaults to 'unknown'        |
+| `X-Nexus-External-Facing`  | No       | 'true' if action targets external systems              |
+| `X-Nexus-Model-Id`         | No       | Model identifier for intent evidence                   |
+| `X-Nexus-Model-Confidence` | No       | Float [0,1]                                            |
+| `X-Nexus-Risk-Note`        | No       | Short risk note                                        |
 
 `X-Nexus-Environment` is intentionally absent. Environment is not a header adapters may
 provide. `X-Nexus-Session-Id` references an existing session — no auto-creation occurs.
-
 
 ---
 
@@ -3292,6 +3783,7 @@ nexus session start --actor <actorId> --delegation <delegationId> [--ttl <second
 ```
 
 Implementation:
+
 1. Look up actor from actorId — throw if not found.
 2. Derive `principalId = actor.principalId` — never accept from CLI argument.
 3. Load delegation by delegationId — throw if not found.
@@ -3302,6 +3794,7 @@ Implementation:
 **Explicit creation path (Management API)**:
 
 `POST /sessions` body:
+
 ```json
 { "actorId": "...", "delegationId": "...", "ttlSeconds": 3600 }
 ```
@@ -3309,6 +3802,7 @@ Implementation:
 `principalId` is NOT in the request body. It is derived server-side from actor.principalId.
 The server validates `actor.principalId === delegation.principalId` and rejects the request
 with HTTP 400 if there is a mismatch. Returns:
+
 ```json
 { "ok": true, "data": { "sessionId": "...", "expiresAt": "..." } }
 ```
@@ -3353,14 +3847,22 @@ nexus delegate \
 Calls `mintRootDelegation(principal, actor, params)` then `delegationStore.save(dc)`. Returns delegationId.
 
 `POST /delegations` body:
+
 ```json
 {
-  "principalId": "...", "actorId": "...", "allowedSystems": ["system1"],
-  "allowedCapabilities": ["read:record:single"], "forbiddenCapabilities": [],
-  "maxRiskTier": "high", "allowDownstreamPropagation": false,
-  "environment": "production", "ttlSeconds": 3600, "maxChainDepth": 3
+  "principalId": "...",
+  "actorId": "...",
+  "allowedSystems": ["system1"],
+  "allowedCapabilities": ["read:record:single"],
+  "forbiddenCapabilities": [],
+  "maxRiskTier": "high",
+  "allowDownstreamPropagation": false,
+  "environment": "production",
+  "ttlSeconds": 3600,
+  "maxChainDepth": 3
 }
 ```
+
 Returns `{ "ok": true, "data": { "delegationId": "...", "expiresAt": "..." } }`.
 
 `GET /delegations/:delegationId` — returns the delegation context (signature included).
@@ -3369,11 +3871,17 @@ Returns `{ "ok": true, "data": { "delegationId": "...", "expiresAt": "..." } }`.
 
 ```ts
 interface PendingApprovalStore {
-  create(approval: { approvalId: Uuid; actionId: Uuid; templateId: Uuid;
-    requestJson: string; channelId: string; dispatchedAt: IsoTimestamp;
-    expiresAt: IsoTimestamp }): Promise<void>;
+  create(approval: {
+    approvalId: Uuid;
+    actionId: Uuid;
+    templateId: Uuid;
+    requestJson: string;
+    channelId: string;
+    dispatchedAt: IsoTimestamp;
+    expiresAt: IsoTimestamp;
+  }): Promise<void>;
   getStatus(approvalId: Uuid): Promise<{ status: string; responseJson: string | null } | null>;
-  getRequest(approvalId: Uuid): Promise<string | null>;  // returns stored requestJson or null
+  getRequest(approvalId: Uuid): Promise<string | null>; // returns stored requestJson or null
   resolve(approvalId: Uuid, status: 'approved' | 'denied', responseJson: string): Promise<void>;
   markTimedOut(approvalId: Uuid): Promise<void>;
 }
@@ -3392,8 +3900,8 @@ No approval-signing logic may be duplicated across surfaces.
 async function decideApproval(
   approvalId: Uuid,
   approverId: NonEmpty,
-  decision:   'approved' | 'denied',
-  note?:      string
+  decision: 'approved' | 'denied',
+  note?: string
 ): Promise<ApprovalResponse> {
   // 1. Load pending record — reject if not found
   const row = await pendingApprovalStore.getStatus(approvalId);
@@ -3401,7 +3909,9 @@ async function decideApproval(
 
   // 2. Reject if not pending
   if (row.status !== 'pending') {
-    throw new ApprovalDecisionError(`Approval ${approvalId} status is '${row.status}', expected 'pending'`);
+    throw new ApprovalDecisionError(
+      `Approval ${approvalId} status is '${row.status}', expected 'pending'`
+    );
   }
 
   // 3. Parse stored ApprovalRequest via getRequest()
@@ -3420,13 +3930,12 @@ async function decideApproval(
   // 6. Build response body
   const responseBody: Omit<ApprovalResponse, 'signature'> = {
     approvalId,
-    decision: decision === 'approved'
-      ? APPROVAL_DECISION_LABEL.APPROVED
-      : APPROVAL_DECISION_LABEL.DENIED,
+    decision:
+      decision === 'approved' ? APPROVAL_DECISION_LABEL.APPROVED : APPROVAL_DECISION_LABEL.DENIED,
     decidedBy: approverId,
     decidedAt: nowIso(),
-    channel:   'cli',
-    note:      note ?? null,
+    channel: 'cli',
+    note: note ?? null,
   };
 
   // 7. Sign with approver key
@@ -3440,7 +3949,10 @@ async function decideApproval(
 }
 
 class ApprovalDecisionError extends Error {
-  constructor(message: string) { super(message); this.name = 'ApprovalDecisionError'; }
+  constructor(message: string) {
+    super(message);
+    this.name = 'ApprovalDecisionError';
+  }
 }
 ```
 
@@ -3451,18 +3963,22 @@ re-implement signing logic independently.
 
 ```ts
 class CliApprovalChannel implements ApprovalChannel {
-  readonly channelId = 'cli'; readonly channelVersion = 'v0.1.0';
-  constructor(private readonly store: PendingApprovalStore, private readonly pollMs = 2000) {}
+  readonly channelId = 'cli';
+  readonly channelVersion = 'v0.1.0';
+  constructor(
+    private readonly store: PendingApprovalStore,
+    private readonly pollMs = 2000
+  ) {}
 
   async dispatch(request: ApprovalRequest): Promise<void> {
     await this.store.create({
-      approvalId:    request.approvalId,
-      actionId:      request.actionId,
-      templateId:    request.templateId,
-      requestJson:   JSON.stringify(request),
-      channelId:     this.channelId,
-      dispatchedAt:  nowIso(),
-      expiresAt:     request.expiresAt,
+      approvalId: request.approvalId,
+      actionId: request.actionId,
+      templateId: request.templateId,
+      requestJson: JSON.stringify(request),
+      channelId: this.channelId,
+      dispatchedAt: nowIso(),
+      expiresAt: request.expiresAt,
     });
     printApprovalPrompt(request);
   }
@@ -3492,11 +4008,11 @@ Fixture path is derived from `SCENARIO_MANIFEST[id].fixturePath`. No string conc
 
 ```ts
 async function executeRun(options: RunOptions): Promise<void> {
-  const runId  = 'RUN-' + uuid().slice(0, 8).toUpperCase();
+  const runId = 'RUN-' + uuid().slice(0, 8).toUpperCase();
   const outDir = options.outDir ?? path.join('runs', runId);
   await fs.mkdir(outDir, { recursive: true });
 
-  const runDb     = await openDatabase(path.join(outDir, 'run.db'));
+  const runDb = await openDatabase(path.join(outDir, 'run.db'));
   await applySchema(runDb);
   const runLedger = new JsonlLedgerBackend(path.join(outDir, '08-evidence-ledger.jsonl'));
 
@@ -3532,9 +4048,11 @@ async function executeRun(options: RunOptions): Promise<void> {
 ```ts
 async function mintRootDelegation(
   principal: Principal,
-  actor:     Actor,
-  allowed:   Omit<DelegationContext, 'delegationId'|'parentDelegationId'|'chainDepth'|
-                                      'mintedAt'|'mintedBy'|'signature'>
+  actor: Actor,
+  allowed: Omit<
+    DelegationContext,
+    'delegationId' | 'parentDelegationId' | 'chainDepth' | 'mintedAt' | 'mintedBy' | 'signature'
+  >
 ): Promise<DelegationContext> {
   // Principal authority ceiling check
   if (riskTierExceeds(allowed.maxRiskTier, principal.maxDelegableRiskTier)) {
@@ -3554,18 +4072,18 @@ async function mintRootDelegation(
   if (allowed.environment !== actor.environment) {
     throw new DelegationError(
       `delegation_environment_mismatch: delegation environment '${allowed.environment}' ` +
-      `does not match actor environment '${actor.environment}'`
+        `does not match actor environment '${actor.environment}'`
     );
   }
 
   // mintedBy uses DELEGATION_ENGINE_ID constant — never a hardcoded string
   const body = {
     ...allowed,
-    delegationId:        uuid(),
-    parentDelegationId:  null,
-    chainDepth:          0,
-    mintedAt:            nowIso(),
-    mintedBy:            DELEGATION_ENGINE_ID,  // "nexus-delegation-engine/v0.1.0"
+    delegationId: uuid(),
+    parentDelegationId: null,
+    chainDepth: 0,
+    mintedAt: nowIso(),
+    mintedBy: DELEGATION_ENGINE_ID, // "nexus-delegation-engine/v0.1.0"
   };
   const signature = await crypto.sign(canonicalize(body), controlPlaneKey);
   return { ...body, signature };
@@ -3666,8 +4184,8 @@ in `packages/core/src/approval/decision-service.ts`. No other file may read from
 async function handleApprove(
   approvalId: Uuid,
   approverId: NonEmpty,
-  note?:      string,
-  decision:   'approved' | 'denied' = 'approved'
+  note?: string,
+  decision: 'approved' | 'denied' = 'approved'
 ): Promise<void> {
   try {
     const response = await decideApproval(approvalId, approverId, decision, note);
@@ -3694,6 +4212,7 @@ The CLI does not duplicate any of that logic.
 Express on port 7701.
 
 **Trust boundary law (SOLVE-008)**:
+
 - Binds exclusively to `127.0.0.1`. Not `0.0.0.0`.
 - All routes (GET and POST) require `Authorization: Bearer <admin-token>`.
 - Admin token loaded from `keys/admin.token` at startup. If the file does not exist,
@@ -3708,7 +4227,7 @@ server.listen(7701, '127.0.0.1', () => {
 
 // Admin token middleware — applied to all routes
 function adminAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const auth  = req.headers.authorization ?? '';
+  const auth = req.headers.authorization ?? '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!token || !timingSafeStringEqual(token, adminToken)) {
     res.status(401).json({ ok: false, error: 'Unauthorized' });
@@ -3769,18 +4288,23 @@ app.post('/sessions', async (req, res) => {
   const delegation = await delegationStore.getById(delegationId);
   if (!delegation) return res.status(400).json({ ok: false, error: 'delegation not found' });
   if (actor.principalId !== delegation.principalId) {
-    return res.status(400).json({ ok: false, error: 'actor.principalId does not match delegation.principalId' });
+    return res
+      .status(400)
+      .json({ ok: false, error: 'actor.principalId does not match delegation.principalId' });
   }
   const session: Session = {
-    sessionId:    uuid(),
-    actorId:      actor.actorId,
-    principalId:  actor.principalId,  // server-side derivation
+    sessionId: uuid(),
+    actorId: actor.actorId,
+    principalId: actor.principalId, // server-side derivation
     delegationId: delegation.delegationId,
-    createdAt:    nowIso(),
-    expiresAt:    addSeconds(nowIso(), ttlSeconds),
+    createdAt: nowIso(),
+    expiresAt: addSeconds(nowIso(), ttlSeconds),
   };
   await sessionStore.create(session);
-  return res.json({ ok: true, data: { sessionId: session.sessionId, expiresAt: session.expiresAt } });
+  return res.json({
+    ok: true,
+    data: { sessionId: session.sessionId, expiresAt: session.expiresAt },
+  });
 });
 ```
 
@@ -3794,21 +4318,21 @@ service. The API does not re-implement signing logic. Same signing path as CLI.
 
 Every run produces these artifacts in `/runs/RUN-<id>/`:
 
-| Filename | Description |
-|---|---|
-| `01-ingest-log.json` | Actions received, timestamps, ingress results, adapter info |
-| `02-session-manifest.json` | Sessions and actors active in this run |
-| `03-actor-manifest.json` | Actor registry snapshots at run time |
-| `04-delegation-registry.json` | Delegation contexts active, chain snapshots |
-| `05-gate-decision-log.json` | All gate decisions for all actions, ordered by ledger sequence |
-| `06-policy-evaluation-log.json` | Policy rule evaluations with outcomes and matched rules |
-| `07-approval-record-log.json` | All ApprovalRequests + ApprovalResponses (signed artifacts) |
-| `08-evidence-ledger.jsonl` | Append-only hash-chained evidence records |
-| `09-threat-detection-log.json` | All ThreatEvents detected |
-| `10-execution-result-log.json` | Execution results, redacted |
-| `11-token-posture-report.json` | Token posture at run time |
-| `12-run-summary.md` | Human-readable run summary with scenario outcomes |
-| `00-failure-log.json` | Written on pipeline crash before graceful stop |
+| Filename                        | Description                                                    |
+| ------------------------------- | -------------------------------------------------------------- |
+| `01-ingest-log.json`            | Actions received, timestamps, ingress results, adapter info    |
+| `02-session-manifest.json`      | Sessions and actors active in this run                         |
+| `03-actor-manifest.json`        | Actor registry snapshots at run time                           |
+| `04-delegation-registry.json`   | Delegation contexts active, chain snapshots                    |
+| `05-gate-decision-log.json`     | All gate decisions for all actions, ordered by ledger sequence |
+| `06-policy-evaluation-log.json` | Policy rule evaluations with outcomes and matched rules        |
+| `07-approval-record-log.json`   | All ApprovalRequests + ApprovalResponses (signed artifacts)    |
+| `08-evidence-ledger.jsonl`      | Append-only hash-chained evidence records                      |
+| `09-threat-detection-log.json`  | All ThreatEvents detected                                      |
+| `10-execution-result-log.json`  | Execution results, redacted                                    |
+| `11-token-posture-report.json`  | Token posture at run time                                      |
+| `12-run-summary.md`             | Human-readable run summary with scenario outcomes              |
+| `00-failure-log.json`           | Written on pipeline crash before graceful stop                 |
 
 Artifact filenames must match exactly. Any deviation is a ci:gate failure.
 `08-evidence-ledger.jsonl` is the canonical ledger for the run — chain verification
@@ -3820,20 +4344,32 @@ Artifact filenames must match exactly. Any deviation is a ci:gate failure.
 
 ```ts
 interface TokenPostureReport {
-  generatedAt: IsoTimestamp; runId: string;
-  actors: ActorPosture[]; grantPatterns: GrantPatternSummary[]; violations: PostureViolation[];
+  generatedAt: IsoTimestamp;
+  runId: string;
+  actors: ActorPosture[];
+  grantPatterns: GrantPatternSummary[];
+  violations: PostureViolation[];
 }
 interface ActorPosture {
-  actorId: Uuid; actorClass: ActorClass; owner: string | null;
-  environment: EnvironmentId; grantCount: number; maxRiskSeen: RiskTier; hasOwner: boolean;
+  actorId: Uuid;
+  actorClass: ActorClass;
+  owner: string | null;
+  environment: EnvironmentId;
+  grantCount: number;
+  maxRiskSeen: RiskTier;
+  hasOwner: boolean;
 }
 interface GrantPatternSummary {
-  capabilityId: string; count: number; expiryClasses: ExpiryClass[];
-  externalFacing: boolean; approvalRequired: boolean;
+  capabilityId: string;
+  count: number;
+  expiryClasses: ExpiryClass[];
+  externalFacing: boolean;
+  approvalRequired: boolean;
 }
 interface PostureViolation {
   type: 'unowned_non_human_actor' | 'broad_scope_detected' | 'missing_review_cadence';
-  detail: string; actorId: Uuid;
+  detail: string;
+  actorId: Uuid;
 }
 ```
 
@@ -3842,33 +4378,41 @@ interface PostureViolation {
 ## 26. Validation Gates
 
 ### 26.1 Default-Deny Gate
+
 `policyFile null` → Gate 04 returns DENY, `denialCode: DENIAL_CODE.DEFAULT_DENY`.
 
 ### 26.2 Grant Template Uniqueness Gate
+
 `buildGrantTemplate` called more than once for same `actionId` → throws.
 
 ### 26.3 Evidence Always-Write Gate
+
 Pipeline orchestrator enforces Gate 07 runs for every action. Null guard on
 `lastEvidenceRecord` (§13.1).
 
 ### 26.4 No-Certification-Language Gate
+
 Reject any artifact containing:
 `"approved by system"` `"authorized by engine"` `"Nexus certifies"`
 `"system confirms compliance"` `"this action is safe"` `"compliant action"`
 Post-write validation during ci:gate.
 
 ### 26.5 Secret-In-Evidence Gate
+
 Reject any EvidenceRecord with field named `secretValue`, `secret`, `password`, `privateKey`
 carrying a non-empty string. Post-write Zod schema check during ci:gate.
 
 ### 26.6 Ledger Chain Gate
+
 Chain verifier must pass from record 1 to final record. Any gap, hash break, sequence
 anomaly, or signature failure = ci:gate failure.
 
 ### 26.7 Policy Signature Gate
+
 All policy files in `fixtures/` must have valid Ed25519 signatures. Unsigned file = ci:gate failure.
 
 ### 26.8 CCV Integrity Gate
+
 For each EvidenceRecord in integration test ledger: re-derive CCV from record body; assert
 it matches stored `compilerView`; re-compute `recordHash` over full body including CCV;
 assert matches stored `record.recordHash`. Any mismatch = ci:gate failure. Confirms CCV
@@ -3888,7 +4432,7 @@ function validateFixtureSecrets(fixtureDir: string): void {
         if (!value.startsWith('FIXTURE_SYNTHETIC_SECRET:')) {
           throw new Error(
             `Fixture secret violation: field '${fieldName}' in ${file.path} ` +
-            `must be empty, null, or prefixed with FIXTURE_SYNTHETIC_SECRET:`
+              `must be empty, null, or prefixed with FIXTURE_SYNTHETIC_SECRET:`
           );
         }
       }
@@ -3902,6 +4446,7 @@ function validateFixtureSecrets(fixtureDir: string): void {
 ## 27. Testing Requirements
 
 ### 27.1 Unit Tests
+
 One test file per gate. Nominal path, all denial paths, boundary conditions, error handling.
 Min 95% line coverage on all files in `packages/core/src/gates/`.
 
@@ -3922,7 +4467,9 @@ Min 95% line coverage on all files in `packages/core/src/gates/`.
 
 ```ts
 test('scenario-03: high-risk send with approval', async () => {
-  const { evidenceRecord } = await runScenario('03-approval-approved', { approvalDecision: 'approved' });
+  const { evidenceRecord } = await runScenario('03-approval-approved', {
+    approvalDecision: 'approved',
+  });
   expect(evidenceRecord.finalOutcome).toBe(FINAL_OUTCOME.EXECUTED);
   expect(evidenceRecord.approvalResponse?.decision).toBe(APPROVAL_DECISION_LABEL.APPROVED);
   expect(evidenceRecord.compilerView.policyAndApproval.approvalRequired).toBe(true);
@@ -3968,7 +4515,11 @@ test('chain verifier emits SEQUENCE_ANOMALY on ledger sequence gap', async () =>
   await backend.append(record3);
   const result = await verifyChain(backend, 1, 3, testPublicKey);
   expect(result.ok).toBe(false);
-  expect(result.errors.some(e => e.type === 'sequence_anomaly' && e.denialCode === DENIAL_CODE.SEQUENCE_ANOMALY)).toBe(true);
+  expect(
+    result.errors.some(
+      e => e.type === 'sequence_anomaly' && e.denialCode === DENIAL_CODE.SEQUENCE_ANOMALY
+    )
+  ).toBe(true);
 });
 ```
 
@@ -3985,6 +4536,7 @@ test('replay produces identical CCV for scenarios 01, 02, 03', async () => {
 ```
 
 ### 27.7 Snapshot Policy
+
 Markdown summaries may use normalized snapshots (timestamps stripped). JSON artifacts compared structurally.
 
 ---

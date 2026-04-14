@@ -4,7 +4,10 @@
  */
 import {
   APPROVAL_DECISION_LABEL,
-  type Uuid, type NonEmpty, type ApprovalResponse, type ApprovalRequest,
+  type Uuid,
+  type NonEmpty,
+  type ApprovalResponse,
+  type ApprovalRequest,
 } from '../types/index.js';
 import { canonicalize } from '../crypto/canonicalize.js';
 import { sign } from '../crypto/signer.js';
@@ -21,9 +24,9 @@ export class ApprovalDecisionError extends Error {
 export async function decideApproval(
   approvalId: Uuid,
   approverId: NonEmpty,
-  decision:   'approved' | 'denied',
-  note:       string | undefined,
-  store:      PendingApprovalStore
+  decision: 'approved' | 'denied',
+  note: string | undefined,
+  store: PendingApprovalStore
 ): Promise<ApprovalResponse> {
   // 1. Load pending record
   const row = await store.getStatus(approvalId);
@@ -31,7 +34,9 @@ export async function decideApproval(
 
   // 2. Reject if not pending
   if (row.status !== 'pending') {
-    throw new ApprovalDecisionError(`Approval ${approvalId} status is '${row.status}', expected 'pending'`);
+    throw new ApprovalDecisionError(
+      `Approval ${approvalId} status is '${row.status}', expected 'pending'`
+    );
   }
 
   // 3. Load request via getRequest() — required method (BS-102)
@@ -50,13 +55,12 @@ export async function decideApproval(
   // 6. Build response body
   const responseBody: Omit<ApprovalResponse, 'signature'> = {
     approvalId,
-    decision: decision === 'approved'
-      ? APPROVAL_DECISION_LABEL.APPROVED
-      : APPROVAL_DECISION_LABEL.DENIED,
+    decision:
+      decision === 'approved' ? APPROVAL_DECISION_LABEL.APPROVED : APPROVAL_DECISION_LABEL.DENIED,
     decidedBy: approverId,
     decidedAt: new Date().toISOString(),
-    channel:   'cli',
-    note:      note ?? null,
+    channel: 'cli',
+    note: note ?? null,
   };
 
   // 7. Sign with approver key

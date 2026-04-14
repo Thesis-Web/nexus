@@ -11,7 +11,11 @@
  *
  * Approver key generation writes to keys/approvers/<approverId>.keypair.json.
  */
-import { generateControlPlaneKeypair, generateAdminToken, generateApproverKeypair } from '../packages/core/src/crypto/key-manager.js';
+import {
+  generateControlPlaneKeypair,
+  generateAdminToken,
+  generateApproverKeypair,
+} from '../packages/core/src/crypto/key-manager.js';
 
 const args = process.argv.slice(2);
 

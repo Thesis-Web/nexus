@@ -26,14 +26,14 @@ export class TargetNormalizer {
     // Simple colon-separated: system:resourceType[:scope]
     const parts = rawTarget.split(':');
     if (parts.length >= 2) {
-      const system       = parts[0]?.trim() || 'unknown';
+      const system = parts[0]?.trim() || 'unknown';
       const resourceType = parts[1]?.trim() || 'resource';
-      const scope        = (parts[2]?.trim() as ResourceTarget['resourceScope']) ?? 'single';
+      const scope = (parts[2]?.trim() as ResourceTarget['resourceScope']) ?? 'single';
       return {
         system,
         resourceType,
         resourceScope: this.normalizeScope(scope),
-        environment:   actorEnvironment,
+        environment: actorEnvironment,
         externalFacing: false,
       };
     }
@@ -41,10 +41,10 @@ export class TargetNormalizer {
     // Fallback: treat entire string as system, derive resourceType from tool
     if (rawTarget.trim()) {
       return {
-        system:         rawTarget.trim(),
-        resourceType:   this.extractToolSuffix(tool),
-        resourceScope:  'single',
-        environment:    actorEnvironment,
+        system: rawTarget.trim(),
+        resourceType: this.extractToolSuffix(tool),
+        resourceScope: 'single',
+        environment: actorEnvironment,
         externalFacing: false,
       };
     }
@@ -56,13 +56,13 @@ export class TargetNormalizer {
     obj: Record<string, unknown>,
     actorEnvironment: EnvironmentId
   ): ResourceTarget {
-    const env = (obj['environment'] as string | undefined);
+    const env = obj['environment'] as string | undefined;
     return {
-      system:         (obj['system']        as string) || 'unknown',
-      resourceType:   (obj['resourceType']  as string) || 'resource',
-      resourceScope:  this.normalizeScope((obj['resourceScope'] as string) ?? 'single'),
+      system: (obj['system'] as string) || 'unknown',
+      resourceType: (obj['resourceType'] as string) || 'resource',
+      resourceScope: this.normalizeScope((obj['resourceScope'] as string) ?? 'single'),
       // Replace ACTOR_ENVIRONMENT sentinel with authoritative actor environment
-      environment:    (env === 'ACTOR_ENVIRONMENT' || !env) ? actorEnvironment : env,
+      environment: env === 'ACTOR_ENVIRONMENT' || !env ? actorEnvironment : env,
       externalFacing: Boolean(obj['externalFacing']),
     };
   }

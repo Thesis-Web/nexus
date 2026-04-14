@@ -38,8 +38,8 @@ import { extractIntentContext, type McpRequestHeaders } from './mcp-intent-extra
 // ── Adapter identity ─────────────────────────────────────────────────────────
 
 const ADAPTER_PROTOCOL = 'mcp/1.0' as const;
-const ADAPTER_VERSION  = 'v0.1.0' as const;
-const ADAPTER_LABEL    = `mcp-adapter/${ADAPTER_VERSION}` as const;
+const ADAPTER_VERSION = 'v0.1.0' as const;
+const ADAPTER_LABEL = `mcp-adapter/${ADAPTER_VERSION}` as const;
 
 // ── McpRequest shape ─────────────────────────────────────────────────────────
 // Represents the normalized HTTP body + header bundle handed to the normalizer.
@@ -47,26 +47,26 @@ const ADAPTER_LABEL    = `mcp-adapter/${ADAPTER_VERSION}` as const;
 // Some clients use "tool" directly. Both are supported per §19.2 spec code.
 
 export interface McpRequest {
-  method?:  string;
-  tool?:    string;
-  params?:  Record<string, unknown>;
-  headers:  McpRequestHeaders;
+  method?: string;
+  tool?: string;
+  params?: Record<string, unknown>;
+  headers: McpRequestHeaders;
   // JSON-RPC 2.0 fields
   jsonrpc?: string;
-  id?:      string | number | null;
+  id?: string | number | null;
 }
 
 // ── §19.2 VERB_PREFIX_MAP (spec-exact) ───────────────────────────────────────
 
 const VERB_PREFIX_MAP: [string[], ActionVerb][] = [
   [['get_', 'fetch_', 'read_', 'list_', 'search_', 'find_', 'retrieve_'], ACTION_VERB.READ],
-  [['create_', 'add_', 'insert_', 'new_', 'post_'],                       ACTION_VERB.CREATE],
-  [['update_', 'edit_', 'modify_', 'patch_', 'set_', 'put_'],             ACTION_VERB.UPDATE],
-  [['delete_', 'remove_', 'destroy_', 'purge_'],                          ACTION_VERB.DELETE],
-  [['send_', 'message_', 'email_', 'notify_', 'alert_'],                  ACTION_VERB.SEND],
-  [['publish_', 'broadcast_', 'release_'],                                ACTION_VERB.PUBLISH],
-  [['export_', 'download_', 'dump_'],                                     ACTION_VERB.EXPORT],
-  [['execute_', 'run_', 'invoke_', 'trigger_', 'call_'],                  ACTION_VERB.EXECUTE],
+  [['create_', 'add_', 'insert_', 'new_', 'post_'], ACTION_VERB.CREATE],
+  [['update_', 'edit_', 'modify_', 'patch_', 'set_', 'put_'], ACTION_VERB.UPDATE],
+  [['delete_', 'remove_', 'destroy_', 'purge_'], ACTION_VERB.DELETE],
+  [['send_', 'message_', 'email_', 'notify_', 'alert_'], ACTION_VERB.SEND],
+  [['publish_', 'broadcast_', 'release_'], ACTION_VERB.PUBLISH],
+  [['export_', 'download_', 'dump_'], ACTION_VERB.EXPORT],
+  [['execute_', 'run_', 'invoke_', 'trigger_', 'call_'], ACTION_VERB.EXECUTE],
 ];
 
 // ── §19.2 helper functions (spec-exact names and logic) ──────────────────────
@@ -96,14 +96,9 @@ function extractToolNameSuffix(toolName: string): string {
 }
 
 /** §19.2 inferResourceScope — spec-exact. */
-function inferResourceScope(
-  mcp: McpRequest
-): 'single' | 'bulk' | 'collection' | 'system' {
+function inferResourceScope(mcp: McpRequest): 'single' | 'bulk' | 'collection' | 'system' {
   if (Array.isArray(mcp.params?.['ids'])) return 'bulk';
-  if (
-    mcp.params?.['filter'] !== undefined ||
-    mcp.params?.['query'] !== undefined
-  )
+  if (mcp.params?.['filter'] !== undefined || mcp.params?.['query'] !== undefined)
     return 'collection';
   if (mcp.params?.['id'] !== undefined) return 'single';
   return 'single';
@@ -135,14 +130,14 @@ function inferTargetFromMcp(mcp: McpRequest): string {
     (mcp.params?.['resource'] as string | undefined) ??
     extractToolNameSuffix(mcp.method ?? mcp.tool ?? '');
   const system = extractHeader(mcp, 'X-Nexus-Target-System') ?? 'unknown';
-  const scope   = inferResourceScope(mcp);
-  const ext     = isExternalFacingMcp(mcp);
+  const scope = inferResourceScope(mcp);
+  const ext = isExternalFacingMcp(mcp);
   // ACTOR_ENVIRONMENT sentinel — Gate 02 replaces with actor.environment
   return JSON.stringify({
     system,
     resourceType,
-    resourceScope:  scope,
-    environment:    'ACTOR_ENVIRONMENT',
+    resourceScope: scope,
+    environment: 'ACTOR_ENVIRONMENT',
     externalFacing: ext,
   });
 }
@@ -150,23 +145,21 @@ function inferTargetFromMcp(mcp: McpRequest): string {
 // ── Required header extraction ───────────────────────────────────────────────
 
 interface RequiredHeaders {
-  actorId:      string;
-  principalId:  string;
-  sessionId:    string;
+  actorId: string;
+  principalId: string;
+  sessionId: string;
   delegationId: string;
 }
 
-function extractRequiredHeaders(
-  mcp: McpRequest
-): RequiredHeaders | { error: string } {
-  const actorId      = extractHeader(mcp, 'X-Nexus-Actor-Id');
-  const principalId  = extractHeader(mcp, 'X-Nexus-Principal-Id');
-  const sessionId    = extractHeader(mcp, 'X-Nexus-Session-Id');
+function extractRequiredHeaders(mcp: McpRequest): RequiredHeaders | { error: string } {
+  const actorId = extractHeader(mcp, 'X-Nexus-Actor-Id');
+  const principalId = extractHeader(mcp, 'X-Nexus-Principal-Id');
+  const sessionId = extractHeader(mcp, 'X-Nexus-Session-Id');
   const delegationId = extractHeader(mcp, 'X-Nexus-Delegation-Id');
 
-  if (!actorId)      return { error: 'Missing required header: X-Nexus-Actor-Id' };
-  if (!principalId)  return { error: 'Missing required header: X-Nexus-Principal-Id' };
-  if (!sessionId)    return { error: 'Missing required header: X-Nexus-Session-Id' };
+  if (!actorId) return { error: 'Missing required header: X-Nexus-Actor-Id' };
+  if (!principalId) return { error: 'Missing required header: X-Nexus-Principal-Id' };
+  if (!sessionId) return { error: 'Missing required header: X-Nexus-Session-Id' };
   if (!delegationId) return { error: 'Missing required header: X-Nexus-Delegation-Id' };
 
   return { actorId, principalId, sessionId, delegationId };
@@ -176,15 +169,11 @@ function extractRequiredHeaders(
 
 export class McpAdapter implements Adapter {
   readonly adapterProtocol = ADAPTER_PROTOCOL;
-  readonly adapterVersion  = ADAPTER_VERSION;
+  readonly adapterVersion = ADAPTER_VERSION;
 
   async normalize(rawRequest: unknown): Promise<NormalizationResult> {
     // Validate that rawRequest has the expected shape
-    if (
-      rawRequest == null ||
-      typeof rawRequest !== 'object' ||
-      !('headers' in rawRequest)
-    ) {
+    if (rawRequest == null || typeof rawRequest !== 'object' || !('headers' in rawRequest)) {
       return { ok: false, error: 'Invalid MCP request: missing headers field' };
     }
 
@@ -207,35 +196,39 @@ export class McpAdapter implements Adapter {
 
     // Build the AgentAction with all classification fields null (Gate 02 resolves)
     // delegationSequence is assigned by the pipeline at ingress — never by the adapter
-    const action: Omit<AgentAction,
-      'resolvedVerb' | 'resolvedCapability' | 'resolvedTarget' |
-      'resolvedDataClasses' | 'resolvedRiskTier'
+    const action: Omit<
+      AgentAction,
+      | 'resolvedVerb'
+      | 'resolvedCapability'
+      | 'resolvedTarget'
+      | 'resolvedDataClasses'
+      | 'resolvedRiskTier'
     > & {
-      resolvedVerb:        null;
-      resolvedCapability:  null;
-      resolvedTarget:      null;
+      resolvedVerb: null;
+      resolvedCapability: null;
+      resolvedTarget: null;
       resolvedDataClasses: [];
-      resolvedRiskTier:    null;
+      resolvedRiskTier: null;
     } = {
-      actionId:            newUuid() as Uuid,
-      receivedAt:          nowIso(),
-      protocol:            ADAPTER_PROTOCOL,
-      adapterVersion:      ADAPTER_VERSION,
-      actorId:             hdrs.actorId as Uuid,
-      principalId:         hdrs.principalId as Uuid,
-      sessionId:           hdrs.sessionId as Uuid,
-      delegationId:        hdrs.delegationId as Uuid,
-      delegationSequence:  0,               // pipeline.process() assigns real sequence at ingress
-      tool:                toolName,
-      rawVerb:             inferVerbFromMcp(mcp),
-      rawTarget:           inferTargetFromMcp(mcp),
-      rawPayload:          mcp.params ?? {},
+      actionId: newUuid() as Uuid,
+      receivedAt: nowIso(),
+      protocol: ADAPTER_PROTOCOL,
+      adapterVersion: ADAPTER_VERSION,
+      actorId: hdrs.actorId as Uuid,
+      principalId: hdrs.principalId as Uuid,
+      sessionId: hdrs.sessionId as Uuid,
+      delegationId: hdrs.delegationId as Uuid,
+      delegationSequence: 0, // pipeline.process() assigns real sequence at ingress
+      tool: toolName,
+      rawVerb: inferVerbFromMcp(mcp),
+      rawTarget: inferTargetFromMcp(mcp),
+      rawPayload: mcp.params ?? {},
       intent,
-      resolvedVerb:        null,
-      resolvedCapability:  null,
-      resolvedTarget:      null,
+      resolvedVerb: null,
+      resolvedCapability: null,
+      resolvedTarget: null,
       resolvedDataClasses: [],
-      resolvedRiskTier:    null,
+      resolvedRiskTier: null,
     };
 
     return { ok: true, action };

@@ -5,18 +5,22 @@ import type Database from 'better-sqlite3';
 import type { Principal, Uuid, PrincipalRegistryStore } from '../types/index.js';
 
 interface PrincipalRow {
-  principal_id: string; display_name: string; email: string;
-  registered_at: string; max_risk_tier: string; allowed_systems: string;
+  principal_id: string;
+  display_name: string;
+  email: string;
+  registered_at: string;
+  max_risk_tier: string;
+  allowed_systems: string;
 }
 
 function rowToPrincipal(row: PrincipalRow): Principal {
   return {
-    principalId:          row.principal_id,
-    displayName:          row.display_name,
-    email:                row.email,
-    registeredAt:         row.registered_at,
+    principalId: row.principal_id,
+    displayName: row.display_name,
+    email: row.email,
+    registeredAt: row.registered_at,
     maxDelegableRiskTier: row.max_risk_tier,
-    allowedSystems:       JSON.parse(row.allowed_systems) as string[],
+    allowedSystems: JSON.parse(row.allowed_systems) as string[],
   };
 }
 
@@ -32,14 +36,19 @@ export class PrincipalRegistry implements PrincipalRegistryStore {
 
   async register(principal: Principal): Promise<Principal> {
     this.db
-      .prepare(`
+      .prepare(
+        `
         INSERT INTO principals
           (principal_id, display_name, email, registered_at, max_risk_tier, allowed_systems)
         VALUES (?, ?, ?, ?, ?, ?)
-      `)
+      `
+      )
       .run(
-        principal.principalId, principal.displayName, principal.email,
-        principal.registeredAt, principal.maxDelegableRiskTier,
+        principal.principalId,
+        principal.displayName,
+        principal.email,
+        principal.registeredAt,
+        principal.maxDelegableRiskTier,
         JSON.stringify(principal.allowedSystems)
       );
     return principal;

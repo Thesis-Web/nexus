@@ -51,40 +51,37 @@ import type { McpAdapter } from './mcp-normalizer.js';
 // ── NexusMcpProxy ────────────────────────────────────────────────────────────
 
 export interface ProxyDependencies {
-  pipeline:          Pipeline;
-  adapter:           McpAdapter;
-  delegationStore:   DelegationStore;   // injected; Gate 01 reads it to resolve delegationContext
-  policyFile:        LoadedPolicyFile | null;
-  approverRegistry:  ApproverRegistry;
+  pipeline: Pipeline;
+  adapter: McpAdapter;
+  delegationStore: DelegationStore; // injected; Gate 01 reads it to resolve delegationContext
+  policyFile: LoadedPolicyFile | null;
+  approverRegistry: ApproverRegistry;
   connectorRegistry: ConnectorRegistry;
-  channelRegistry:   ChannelRegistry;
+  channelRegistry: ChannelRegistry;
 }
 
 export class NexusMcpProxy {
-  private readonly pipeline:          Pipeline;
-  private readonly adapter:           McpAdapter;
-  private readonly delegationStore:   DelegationStore;
-  private readonly policyFile:        LoadedPolicyFile | null;
-  private readonly approverRegistry:  ApproverRegistry;
+  private readonly pipeline: Pipeline;
+  private readonly adapter: McpAdapter;
+  private readonly delegationStore: DelegationStore;
+  private readonly policyFile: LoadedPolicyFile | null;
+  private readonly approverRegistry: ApproverRegistry;
   private readonly connectorRegistry: ConnectorRegistry;
-  private readonly channelRegistry:   ChannelRegistry;
+  private readonly channelRegistry: ChannelRegistry;
 
   constructor(deps: ProxyDependencies) {
-    this.pipeline          = deps.pipeline;
-    this.adapter           = deps.adapter;
-    this.delegationStore   = deps.delegationStore;
-    this.policyFile        = deps.policyFile;
-    this.approverRegistry  = deps.approverRegistry;
+    this.pipeline = deps.pipeline;
+    this.adapter = deps.adapter;
+    this.delegationStore = deps.delegationStore;
+    this.policyFile = deps.policyFile;
+    this.approverRegistry = deps.approverRegistry;
     this.connectorRegistry = deps.connectorRegistry;
-    this.channelRegistry   = deps.channelRegistry;
+    this.channelRegistry = deps.channelRegistry;
   }
 
   // ── Request handler ────────────────────────────────────────────────────────
 
-  async handleRequest(
-    req: IncomingMessage,
-    res: ServerResponse
-  ): Promise<void> {
+  async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     // 1. Read body
     let body: unknown;
     try {
@@ -102,7 +99,7 @@ export class NexusMcpProxy {
     const normalized = await this.adapter.normalize(mcpRequest);
     if (!normalized.ok || !normalized.action) {
       sendJson(res, 422, {
-        ok:    false,
+        ok: false,
         error: normalized.error ?? 'Normalization failed',
       });
       return;
@@ -114,14 +111,14 @@ export class NexusMcpProxy {
     //    actor, principal, delegationContext are intentionally absent (HOLE-002).
     //    Gate 01 resolves the identity tuple using delegationStore and other registries.
     const context: PipelineContext = {
-      sessionId:        action.sessionId,
-      delegationStore:  this.delegationStore,
-      policyFile:       this.policyFile,
+      sessionId: action.sessionId,
+      delegationStore: this.delegationStore,
+      policyFile: this.policyFile,
       approverRegistry: this.approverRegistry,
       connectorRegistry: this.connectorRegistry,
-      channelRegistry:  this.channelRegistry,
-      threatLog:        [],
-      startedAt:        nowIso(),
+      channelRegistry: this.channelRegistry,
+      threatLog: [],
+      startedAt: nowIso(),
       // actor, principal, delegationContext — populated by Gate 01 (HOLE-002)
     };
 
@@ -132,7 +129,7 @@ export class NexusMcpProxy {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       sendJson(res, 500, {
-        ok:    false,
+        ok: false,
         error: `Pipeline error: ${message}`,
       });
       return;
@@ -142,16 +139,16 @@ export class NexusMcpProxy {
     const outcome = evidenceRecord.finalOutcome;
     if (outcome === FINAL_OUTCOME.EXECUTED) {
       sendJson(res, 200, {
-        ok:             true,
-        finalOutcome:   outcome,
+        ok: true,
+        finalOutcome: outcome,
         evidenceRecord,
       });
     } else {
       // All denial and error paths: 403 with evidence record so caller can inspect.
       // Gate 07 always wrote evidence — the record is always present.
       sendJson(res, 403, {
-        ok:             false,
-        finalOutcome:   outcome,
+        ok: false,
+        finalOutcome: outcome,
         evidenceRecord,
       });
     }
@@ -189,7 +186,7 @@ function lowerCaseHeaders(
 function sendJson(res: ServerResponse, statusCode: number, body: unknown): void {
   const payload = JSON.stringify(body);
   res.writeHead(statusCode, {
-    'Content-Type':   'application/json',
+    'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(payload),
   });
   res.end(payload);

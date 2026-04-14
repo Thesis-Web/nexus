@@ -1,9 +1,15 @@
 # Nexus — Agent Action Router and Authority Governance Layer
+
 # System Blueprint v0-3-6
+
 # Owner: James Huson / Lake Area LLC
+
 # Version: v0.3.6 | 2026-04-14
+
 # Supersedes: nexus-blueprint-v0-3-5.md
+
 # Canonical law: this document
+
 # Engineering spec: nexus-engineering-spec-v0-4-6.md
 
 ---
@@ -58,15 +64,15 @@ No new gates, no new layers, no new governed types.
 
 5. §10 Human approval law: Three changes:
    a. ApprovalRequest expiry must equal policy approvalConfig.timeoutSeconds — not a
-      hardcoded constant. Invariant: signed expiresAt equals runtime timeout window
-      (SOLVE-005).
+   hardcoded constant. Invariant: signed expiresAt equals runtime timeout window
+   (SOLVE-005).
    b. Approver private-key contract added: approver keys stored at
-      keys/approvers/<approverId>.keypair.json (gitignored). Loaded exclusively via
-      key-manager.ts by approverId. All approval commands require explicit approverId.
-      Dev key fallback permitted in test fixtures only (SOLVE-006).
+   keys/approvers/<approverId>.keypair.json (gitignored). Loaded exclusively via
+   key-manager.ts by approverId. All approval commands require explicit approverId.
+   Dev key fallback permitted in test fixtures only (SOLVE-006).
    c. ApprovalConfig carries a single channelId field (string), not a channels array.
-      Ordered multi-channel fallback is deferred to Channel v2 specification. Treating
-      channelId as an array is a build violation (SOLVE-016).
+   Ordered multi-channel fallback is deferred to Channel v2 specification. Treating
+   channelId as an array is a build violation (SOLVE-016).
 
 6. §11.5 Evidence minimums: delegationSequence added as required evidence field — forensic
    ordering and per-delegation action counter. Not a CCV field; forensic only (SOLVE-009).
@@ -96,11 +102,11 @@ No new gates, no new layers, no new governed types.
 
 11. §15 POC boundary: Three additions:
     a. MCP session auto-create is explicitly prohibited. No adapter may create a session
-       from caller-supplied headers (SOLVE-007).
+    from caller-supplied headers (SOLVE-007).
     b. CLI and MCP proxy bin wiring is law: package.json must define nexus and
-       nexus-mcp-proxy bin entries. Build is not operational without them (SOLVE-012).
+    nexus-mcp-proxy bin entries. Build is not operational without them (SOLVE-012).
     c. Fixture scenarios are resolved via SCENARIO_MANIFEST governed constant — not by
-       string concatenation. nexus run --scenario accepts a manifest key only (SOLVE-019).
+    string concatenation. nexus run --scenario accepts a manifest key only (SOLVE-019).
 
 12. §17 Drift prevention: Four new rules added reflecting approved law hardening (SOLVE-007,
     SOLVE-008, SOLVE-016, SOLVE-017).
@@ -327,15 +333,15 @@ connector forwarding, result capture, and redaction before evidence write.
 
 **Gate-to-Plane Assignment:**
 
-| Gate | Plane |
-|---|---|
-| Gate 01 — Identity | Control |
-| Gate 02 — Classification | Control |
-| Gate 03 — Delegation | Control |
-| Gate 04 — Policy | Control |
-| Gate 05 — Approval | Control |
-| Gate 06 — Execution | Control (grant minting) + Data (connector forwarding) |
-| Gate 07 — Evidence | Control |
+| Gate                     | Plane                                                 |
+| ------------------------ | ----------------------------------------------------- |
+| Gate 01 — Identity       | Control                                               |
+| Gate 02 — Classification | Control                                               |
+| Gate 03 — Delegation     | Control                                               |
+| Gate 04 — Policy         | Control                                               |
+| Gate 05 — Approval       | Control                                               |
+| Gate 06 — Execution      | Control (grant minting) + Data (connector forwarding) |
+| Gate 07 — Evidence       | Control                                               |
 
 Gate 06 is hybrid. The grant minting sub-step is control-plane law. The connector forwarding
 sub-step is data-plane operation. These two sub-steps must be physically distinct and must
