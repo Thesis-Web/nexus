@@ -703,25 +703,5 @@ describe('Integration: Deterministic Replay Test (spec §27.6)', () => {
         r2.evidenceRecord.compilerView.identity.environment
       );
     }
-    // Write CCV hash files for ci:gate step 6 — spec §26.4
-    const runsDir = path.resolve('runs');
-    await fs.mkdir(runsDir, { recursive: true });
-    const runA: Record<string, string> = {};
-    const runB: Record<string, string> = {};
-    for (const id of ['01-allow-read', '02-allow-create', '03-approval-approved'] as ScenarioId[]) {
-      const rx = await runScenario(id, { approvalDecision: 'approved' });
-      const ry = await runScenario(id, { approvalDecision: 'approved' });
-      runA[id] = JSON.stringify(rx.evidenceRecord.compilerView);
-      runB[id] = JSON.stringify(ry.evidenceRecord.compilerView);
-    }
-    await fs.writeFile(
-      path.join(runsDir, 'replay-ccv-hashes-run-a.json'),
-      JSON.stringify(runA, null, 2)
-    );
-    await fs.writeFile(
-      path.join(runsDir, 'replay-ccv-hashes-run-b.json'),
-      JSON.stringify(runB, null, 2)
-    );
-    await fs.writeFile(path.join(runsDir, 'replay-ccv-hashes.json'), JSON.stringify(runA, null, 2));
   });
 });
