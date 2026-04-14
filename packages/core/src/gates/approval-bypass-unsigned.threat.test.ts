@@ -130,6 +130,7 @@ describe('Threat: Approval Bypass — Unsigned Response (spec §13.6)', () => {
     const context: Partial<PipelineContext> = {
       grantTemplate: makeGrantTemplate(),
       approverRegistry: fakeApproverRegistry as any,
+      connectorRegistry: { get: () => null, register: () => {}, list: () => [] } as any,
       channelRegistry: {
         get: (id: string) => (id === 'test-channel' ? fakeChannel : null),
         register: () => {},

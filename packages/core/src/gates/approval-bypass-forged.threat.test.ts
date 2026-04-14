@@ -151,6 +151,7 @@ describe('Threat: Approval Bypass — Forged Response (spec §13.6)', () => {
     const context: Partial<PipelineContext> = {
       grantTemplate: template,
       approverRegistry: fakeApproverRegistry as any,
+      connectorRegistry: { get: () => null, register: () => {}, list: () => [] } as any,
       channelRegistry: channelRegistry as any,
       actor: {
         actorId: randomUUID(),

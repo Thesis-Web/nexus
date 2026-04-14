@@ -1,8 +1,8 @@
 /**
  * Threat test 7 — Policy Manipulation: Unsigned Policy
  * Spec §12.3, §27.2 item 7
- * Policy file without valid Ed25519 signature → PolicySignatureError at load time.
- * Unsigned policies must never be loaded into the engine.
+ * loadPolicyFile(path, controlPlaneKey) — takes 2 args; key is not loaded internally.
+ * Unsigned or tampered policy → PolicySignatureError.
  */
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { randomUUID } from 'crypto';
@@ -50,11 +50,13 @@ describe('Threat: Policy Manipulation — Unsigned Policy (spec §12.3)', () => 
           approvalConfig: null,
         },
       ],
-      signature: '', // empty — not signed
+      signature: '',
     };
     await fs.writeFile(policyPath, JSON.stringify(unsignedPolicy, null, 2), 'utf-8');
 
-    await expect(loadPolicyFile(policyPath)).rejects.toThrow(PolicySignatureError);
+    await expect(loadPolicyFile(policyPath, controlPlanePair)).rejects.toThrow(
+      PolicySignatureError
+    );
   });
 
   it('throws PolicySignatureError when policy signature is invalid (tampered)', async () => {
@@ -66,29 +68,31 @@ describe('Threat: Policy Manipulation — Unsigned Policy (spec §12.3)', () => 
       runtimeContractVersion: 'v0.4.6',
       capabilityTaxonomyVersion: 'v0.1.0',
       rules: [],
-      // A plausible base64url signature that does not verify against this body
       signature:
         'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
     };
     await fs.writeFile(policyPath, JSON.stringify(tamperedPolicy, null, 2), 'utf-8');
 
-    await expect(loadPolicyFile(policyPath)).rejects.toThrow(PolicySignatureError);
+    await expect(loadPolicyFile(policyPath, controlPlanePair)).rejects.toThrow(
+      PolicySignatureError
+    );
   });
 
-  it('does not load a policy file that was signed with a different key', async () => {
+  it('does not load a policy file signed with a different (wrong) key', async () => {
     const policyPath = makeTmpPath();
-    const wrongKeySignedPolicy = {
+    const wrongKeyPolicy = {
       policyId: randomUUID(),
       version: 'v0.1.0',
       blueprintVersion: 'v0.3.6',
       runtimeContractVersion: 'v0.4.6',
       capabilityTaxonomyVersion: 'v0.1.0',
       rules: [],
-      // controlPlanePair.publicKey is the correct key — this signature was made with a different key
       signature: 'ZmFrZXNpZ25hdHVyZWZha2VzaWduYXR1cmVmYWtlc2lnbmF0dXJlZmFrZXNpZ25hdHVyZQ',
     };
-    await fs.writeFile(policyPath, JSON.stringify(wrongKeySignedPolicy, null, 2), 'utf-8');
+    await fs.writeFile(policyPath, JSON.stringify(wrongKeyPolicy, null, 2), 'utf-8');
 
-    await expect(loadPolicyFile(policyPath)).rejects.toThrow(PolicySignatureError);
+    await expect(loadPolicyFile(policyPath, controlPlanePair)).rejects.toThrow(
+      PolicySignatureError
+    );
   });
 });

@@ -107,6 +107,7 @@ describe('Threat: Approval Bypass — Timeout (spec §13.6)', () => {
         list: async () => [],
         register: async () => {},
       } as any,
+      connectorRegistry: { get: () => null, register: () => {}, list: () => [] } as any,
       channelRegistry: {
         get: (id: string) => (id === 'test-channel' ? timeoutChannel : null),
         register: () => {},
