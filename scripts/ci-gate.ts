@@ -26,7 +26,7 @@ import * as crypto from 'node:crypto';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const REPO_ROOT = path.resolve(path.dirname(new URL(('file://' + __filename)).pathname), '..');
 
 // Integration test ledger: written by vitest integration tests; read by steps 7–8.
 const INTEGRATION_LEDGER_PATH = path.join(REPO_ROOT, 'runs', 'test-integration.ledger.jsonl');
