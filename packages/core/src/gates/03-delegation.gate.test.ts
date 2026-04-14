@@ -125,7 +125,7 @@ function makeContext(
 describe('Gate 03 — Delegation', () => {
 
   it('has gateId gate_03_delegation and gateOrder 3', () => {
-    const gate = new DelegationGate();
+    const gate = new DelegationGate(controlPlanePair);
     expect(gate.gateId).toBe(GATE_ID.G03);
     expect(gate.gateOrder).toBe(3);
     expect(gate.plane).toBe('control');
@@ -133,7 +133,7 @@ describe('Gate 03 — Delegation', () => {
 
   it('passes on valid delegation with correct signature', async () => {
     const dc     = await makeSignedDelegation();
-    const gate   = new DelegationGate();
+    const gate   = new DelegationGate(controlPlanePair);
     const action = makeAction({
       resolvedCapability: 'read:record:single',
       resolvedTarget: {
@@ -157,7 +157,7 @@ describe('Gate 03 — Delegation', () => {
       signature: dc.signature.slice(0, -4) + 'XXXX',
     };
 
-    const gate   = new DelegationGate();
+    const gate   = new DelegationGate(controlPlanePair);
     const result = await gate.evaluate(makeAction(), makeContext(tampered) as PipelineContext, []);
 
     expect(result.decision.outcome).toBe('deny');
@@ -166,7 +166,7 @@ describe('Gate 03 — Delegation', () => {
 
   it('denies DELEGATION_EXPIRED when delegation is past expiresAt', async () => {
     const dc   = await makeSignedDelegation({ expiresAt: addSeconds(nowIso(), -60) });
-    const gate = new DelegationGate();
+    const gate = new DelegationGate(controlPlanePair);
 
     const result = await gate.evaluate(makeAction(), makeContext(dc) as PipelineContext, []);
 
@@ -176,7 +176,7 @@ describe('Gate 03 — Delegation', () => {
 
   it('denies CAPABILITY_NOT_IN_DELEGATION when capability not allowed', async () => {
     const dc     = await makeSignedDelegation({ allowedCapabilities: ['create:record:internal'] });
-    const gate   = new DelegationGate();
+    const gate   = new DelegationGate(controlPlanePair);
     const action = makeAction({ resolvedCapability: 'read:record:single' });
 
     const result = await gate.evaluate(action, makeContext(dc) as PipelineContext, []);
@@ -187,7 +187,7 @@ describe('Gate 03 — Delegation', () => {
 
   it('denies SYSTEM_NOT_IN_DELEGATION when action system not in allowedSystems', async () => {
     const dc     = await makeSignedDelegation({ allowedSystems: ['other-system'] });
-    const gate   = new DelegationGate();
+    const gate   = new DelegationGate(controlPlanePair);
     const action = makeAction({
       resolvedCapability: 'read:record:single',
       resolvedTarget: {
@@ -205,7 +205,7 @@ describe('Gate 03 — Delegation', () => {
   it('denies ENVIRONMENT_MISMATCH when action target env differs from delegation env', async () => {
     // Delegation scoped to 'production'; action resolves to 'dev'
     const dc     = await makeSignedDelegation({ environment: 'production' });
-    const gate   = new DelegationGate();
+    const gate   = new DelegationGate(controlPlanePair);
     const action = makeAction({
       resolvedCapability: 'read:record:single',
       resolvedTarget: {
@@ -239,7 +239,7 @@ describe('Gate 03 — Delegation', () => {
       listForActor: async () => [],
     };
 
-    const gate   = new DelegationGate();
+    const gate   = new DelegationGate(controlPlanePair);
     const action = makeAction({
       resolvedCapability: 'read:record:single',
       resolvedTarget: {
