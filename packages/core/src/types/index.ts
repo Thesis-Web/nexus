@@ -581,11 +581,11 @@ export interface Gate {
 
 export interface PipelineContext {
   sessionId:            Uuid;
-  delegationContext?:   DelegationContext;   // populated by Gate 01 (HOLE-002)
+  delegationContext?:   DelegationContext;
   delegationStore:      DelegationStore;
   delegationSnapshot?:  DelegationContextSnapshot;
-  actor?:               Actor;               // populated by Gate 01 (HOLE-002)
-  principal?:           Principal;           // populated by Gate 01 (HOLE-002)
+  actor?:               Actor;
+  principal?:           Principal;
   policyFile:           LoadedPolicyFile | null;
   approverRegistry:     ApproverRegistry;
   connectorRegistry:    ConnectorRegistry;
@@ -762,27 +762,49 @@ export interface GrantTemplateHint {
 // ============================================================
 
 export interface CompilerComparisonView {
-  version:            SemVer;      // COMPARISON_INPUT_VERSION
-  actionId:           Uuid;
-  resolvedVerb:       ActionVerb | null;
-  resolvedCapability: string | null;
-  resolvedRiskTier:   RiskTier | null;
-  resolvedDataClasses:DataClass[];
-  resolvedTarget: {
-    system:         string | null;
-    resourceType:   string | null;
-    resourceScope:  string | null;
-    externalFacing: boolean | null;
-  } | null;
-  policyBundleId:     Uuid | null;
-  policyBundleHash:   Sha256Hex | null;
-  policyRuleId:       string | null;
-  policyOutcome:      OutcomeLabel | null;
-  grantTemplateId:    Uuid | null;
-  templateFingerprint:Sha256Hex | null;
-  approvalId:         Uuid | null;
-  finalOutcome:       FinalOutcome;
-  computedAt:         IsoTimestamp;
+  meta: {
+    blueprintVersion:          SemVer;
+    runtimeContractVersion:    SemVer;
+    capabilityTaxonomyVersion: SemVer;
+    comparisonInputVersion:    SemVer;
+    normalizedActionHash:      Sha256Hex;
+    policyBundleHash:          Sha256Hex;
+  };
+  identity: {
+    actorId:     Uuid;
+    actorClass:  ActorClass;
+    principalId: Uuid;
+    environment: EnvironmentId;
+  };
+  delegation: {
+    delegationContextId: Uuid;
+    chainDepth:          number;
+    chainHash:           Sha256Hex;
+    maxRiskTier:         RiskTier;
+  };
+  classification: {
+    capabilityId: string;
+    actionVerb:   ActionVerb;
+    dataClasses:  DataClass[];
+    riskTier:     RiskTier;
+  };
+  policyAndApproval: {
+    policyRuleId:          string | null;
+    outcomeLabel:          OutcomeLabel | null;
+    approvalRequired:      boolean;
+    approvalDecisionLabel: ApprovalDecisionLabel | null;
+  };
+  authorityAndExecution: {
+    executionGrantId:         Uuid | null;
+    credentialSubjectType:    string | null;
+    scopeDescriptor:          string | null;
+    expiryClass:              ExpiryClass | null;
+    grantTemplateFingerprint: Sha256Hex | null;
+  };
+  result: {
+    finalOutcome:    FinalOutcome;
+    errorCodeFamily: string | null;
+  };
 }
 
 // ============================================================

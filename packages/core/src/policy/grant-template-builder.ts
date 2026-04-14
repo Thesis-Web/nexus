@@ -78,7 +78,7 @@ export function buildGrantTemplate(
     allowExternalFacing:  hint?.allowExternalFacing ?? false,
   };
 
-  const dc = context.delegationContext;
+  const dc = context.delegationContext!; // Gate 01 invariant
   if (!dc.allowedSystems.includes(action.resolvedTarget!.system)) {
     throw new NexusSecurityViolation(
       'grant_template_exceeds_delegation_scope',
@@ -87,7 +87,7 @@ export function buildGrantTemplate(
   }
 
   const credentialSubjectType = resolveCredentialSubjectType(
-    context.actor.actorClass, action.resolvedTarget!.system
+    context.actor!.actorClass, action.resolvedTarget!.system
   );
   const scopeDescriptor = buildScopeDescriptor(
     action.resolvedCapability!, action.resolvedTarget!, hint

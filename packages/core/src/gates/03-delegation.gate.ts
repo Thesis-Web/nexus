@@ -61,7 +61,7 @@ export class DelegationGate implements Gate {
     if (riskTierExceeds(action.resolvedRiskTier!, dc.maxRiskTier)) {
       return deny(DENIAL_CODE.RISK_TIER_EXCEEDS_CEILING, 'risk tier exceeds delegation ceiling', startMs);
     }
-    if (context.actor!.actorClass === ACTOR_CLASS.DELEGATED_SUBAGENT // Gate 01 invariant &&
+    if (context.actor!.actorClass === ACTOR_CLASS.DELEGATED_SUBAGENT && // Gate 01 invariant
         dc.chainDepth >= dc.maxChainDepth) {
       return deny(DENIAL_CODE.CHAIN_DEPTH_EXCEEDED, 'chain depth ceiling exceeded', startMs);
     }

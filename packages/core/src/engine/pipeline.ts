@@ -8,6 +8,7 @@ import {
   OUTCOME_LABEL,
   NexusSecurityViolation, DENIAL_CODE,
   type AgentAction, type PipelineContext, type EvidenceRecord, type ThreatEvent,
+  type ConnectorRegistry, type ChannelRegistry, type Connector, type ApprovalChannel,
 } from '../types/index.js';
 import type { IdentityGate } from '../gates/01-identity.gate.js';
 import type { ClassificationGate } from '../gates/02-classification.gate.js';
@@ -162,24 +163,24 @@ export class Pipeline {
     rawAction: Omit<AgentAction, 'delegationSequence'>,
     context:   PipelineContext
   ): AgentAction {
-    const seq = nextSequence(this.db, rawAction.delegationId); // HOLE-002: delegationId from action; context.delegationContext populated later by Gate 01
+    const seq = nextSequence(this.db, context.delegationContext.delegationId);
     return { ...rawAction, delegationSequence: seq } as AgentAction;
   }
 }
 
 // Registry implementations
 export class SimpleConnectorRegistry
-  implements import('../types/index.js').ConnectorRegistry {
-  private readonly map = new Map<string, import('../types/index.js').Connector>();
+  implements ConnectorRegistry {
+  private readonly map = new Map<string, Connector>();
   get(systemType: string) { return this.map.get(systemType) ?? null; }
-  register(c: import('../types/index.js').Connector) { this.map.set(c.systemType, c); }
+  register(c: Connector) { this.map.set(c.systemType, c); }
   list() { return [...this.map.values()]; }
 }
 
 export class SimpleChannelRegistry
-  implements import('../types/index.js').ChannelRegistry {
-  private readonly map = new Map<string, import('../types/index.js').ApprovalChannel>();
+  implements ChannelRegistry {
+  private readonly map = new Map<string, ApprovalChannel>();
   get(channelId: string) { return this.map.get(channelId) ?? null; }
-  register(c: import('../types/index.js').ApprovalChannel) { this.map.set(c.channelId, c); }
+  register(c: ApprovalChannel) { this.map.set(c.channelId, c); }
   list() { return [...this.map.values()]; }
 }

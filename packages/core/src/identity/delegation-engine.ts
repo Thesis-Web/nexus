@@ -28,7 +28,7 @@ import {
 import { sign } from '../crypto/signer.js';
 import { canonicalize } from '../crypto/canonicalize.js';
 import { loadControlPlaneKey } from '../crypto/key-manager.js';
-import { uuid, nowIso, addSeconds } from '../utils/time.js';
+import { uuid as newUuid, nowIso, addSeconds } from '../utils/time.js';
 import type { DelegationStore } from '../types/index.js';
 
 // ============================================================
@@ -86,7 +86,7 @@ export async function mintRootDelegation(
   }
 
   const body = {
-    delegationId:               uuid(),
+    delegationId:               newUuid(),
     principalId:                params.principalId,
     actorId:                    params.actorId,
     parentDelegationId:         null,
@@ -186,7 +186,7 @@ export async function mintSubDelegation(
   const expiresAt = addSeconds(mintedAt, params.ttlSeconds);
 
   const body = {
-    delegationId:               uuid(),
+    delegationId:               newUuid(),
     principalId:                parentDelegation.principalId,
     actorId:                    params.actorId,
     parentDelegationId:         parentDelegation.delegationId,

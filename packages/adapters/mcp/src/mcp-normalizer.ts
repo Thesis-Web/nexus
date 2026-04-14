@@ -207,7 +207,10 @@ export class McpAdapter implements Adapter {
 
     // Build the AgentAction with all classification fields null (Gate 02 resolves)
     // delegationSequence is assigned by the pipeline at ingress — never by the adapter
-    const action: Omit<AgentAction, 'delegationSequence'> & {
+    const action: Omit<AgentAction,
+      'resolvedVerb' | 'resolvedCapability' | 'resolvedTarget' |
+      'resolvedDataClasses' | 'resolvedRiskTier'
+    > & {
       resolvedVerb:        null;
       resolvedCapability:  null;
       resolvedTarget:      null;
@@ -222,7 +225,7 @@ export class McpAdapter implements Adapter {
       principalId:         hdrs.principalId as Uuid,
       sessionId:           hdrs.sessionId as Uuid,
       delegationId:        hdrs.delegationId as Uuid,
-      // delegationSequence intentionally absent — assigned by pipeline.process() at ingress
+      delegationSequence:  0,               // pipeline.process() assigns real sequence at ingress
       tool:                toolName,
       rawVerb:             inferVerbFromMcp(mcp),
       rawTarget:           inferTargetFromMcp(mcp),

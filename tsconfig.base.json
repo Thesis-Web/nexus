@@ -4,11 +4,6 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022"],
-    "outDir": "dist",
-    "rootDir": "src",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
     "strict": true,
     "noImplicitAny": true,
     "exactOptionalPropertyTypes": true,
@@ -25,5 +20,19 @@
       "@nexus/core": ["packages/core/src/index.ts"]
     }
   },
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+  "include": [
+    "packages/core/src/**/*.ts",
+    "packages/adapters/*/src/**/*.ts",
+    "packages/connectors/*/src/**/*.ts",
+    "packages/interfaces/*/src/**/*.ts",
+    "scripts/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/dist/**",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/*.integration.test.ts",
+    "**/*.threat.test.ts"
+  ]
 }
