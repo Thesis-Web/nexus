@@ -1,0 +1,18 @@
+{
+  "name": "@nexus/connector-stub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/stub.connector.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@nexus/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.30",
+    "typescript": "^5.8.3"
+  }
+}

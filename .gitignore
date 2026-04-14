@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# Runtime databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Ledger run outputs
+runs/
+
+# Keys — gitignore law per spec §7.1 and blueprint §10
+# dev.keypair.json: gitignored in production; committed for dev/CI
+# admin.token: always gitignored — generated at nexus init
+# approver keys: always gitignored — per-approver keypairs
+keys/admin.token
+keys/approvers/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor artifacts
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test coverage
+coverage/
+
+# Logs
+*.log

@@ -1,0 +1,7 @@
+packages:
+  - 'packages/core'
+  - 'packages/adapters/mcp'
+  - 'packages/connectors/vault'
+  - 'packages/connectors/stub'
+  - 'packages/interfaces/cli'
+  - 'packages/interfaces/api'
