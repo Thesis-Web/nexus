@@ -1,0 +1,62 @@
+{
+  "scenarioId": "03-approval-approved",
+  "description": "High-risk send \u2192 REQUIRE_APPROVAL \u2192 approved \u2192 executed",
+  "principal": {
+    "principalId": "6ba7b813-9dad-11d1-80b4-00c04fd430c8",
+    "displayName": "Principal 3",
+    "email": "principal3@nexus-fixture.local",
+    "maxDelegableRiskTier": "critical",
+    "allowedSystems": [
+      "stub"
+    ]
+  },
+  "actor": {
+    "actorId": "6ba7b814-9dad-11d1-80b4-00c04fd430c8",
+    "actorClass": "supervised_agent",
+    "displayName": "Send Agent 3",
+    "environment": "dev",
+    "riskCeiling": "critical",
+    "allowedSystems": [
+      "stub"
+    ],
+    "owner": "Nexus Test Suite",
+    "purpose": "POC integration fixture testing",
+    "reviewCadence": "weekly"
+  },
+  "delegation": {
+    "allowedSystems": [
+      "stub"
+    ],
+    "allowedCapabilities": [
+      "send:message:external"
+    ],
+    "forbiddenCapabilities": [],
+    "maxRiskTier": "critical",
+    "allowDownstreamPropagation": false,
+    "environment": "dev",
+    "ttlSeconds": 3600,
+    "maxChainDepth": 1
+  },
+  "action": {
+    "tool": "send_message",
+    "rawVerb": "send",
+    "rawTarget": "{\"system\": \"stub\", \"resourceType\": \"message\", \"resourceScope\": \"single\", \"externalFacing\": true}",
+    "adapterVersion": "fixture/v0.1.0",
+    "intent": {
+      "objectiveSummary": "Send an external message via stub system \u2014 requires approval",
+      "triggeringSource": "user_request",
+      "toolchainContext": "fixture-runner/v0.1.0",
+      "modelId": null,
+      "modelConfidence": null,
+      "riskNote": "External-facing high-risk send"
+    }
+  },
+  "approver": {
+    "actorId": "6ba7b820-9dad-11d1-80b4-00c04fd430c8",
+    "displayName": "Carol Approver",
+    "email": "carol@nexus-fixture.local"
+  },
+  "policyFile": "packages/core/src/policy/rules/default.policy.json",
+  "sessionTtlSeconds": 3600,
+  "expectedFinalOutcome": "executed"
+}

@@ -1,0 +1,19 @@
+{
+  "policyId": "unsigned-policy-fixture",
+  "version": "v0.1.0",
+  "blueprintVersion": "v0.3.6",
+  "runtimeContractVersion": "v0.4.6",
+  "capabilityTaxonomyVersion": "v0.1.0",
+  "rules": [
+    {
+      "ruleId": "unsigned-allow-all",
+      "description": "Intentionally unsigned \u2014 should fail at load",
+      "priority": 1,
+      "outcome": "allow",
+      "conditions": {},
+      "grantHint": null,
+      "approvalConfig": null
+    }
+  ],
+  "signature": ""
+}

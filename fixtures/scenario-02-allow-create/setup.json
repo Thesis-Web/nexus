@@ -1,0 +1,57 @@
+{
+  "scenarioId": "02-allow-create",
+  "description": "Medium-risk create \u2192 ALLOWED \u2192 executed",
+  "principal": {
+    "principalId": "6ba7b811-9dad-11d1-80b4-00c04fd430c8",
+    "displayName": "Bob Principal",
+    "email": "bob@nexus-fixture.local",
+    "maxDelegableRiskTier": "high",
+    "allowedSystems": [
+      "stub"
+    ]
+  },
+  "actor": {
+    "actorId": "6ba7b812-9dad-11d1-80b4-00c04fd430c8",
+    "actorClass": "supervised_agent",
+    "displayName": "Create Agent",
+    "environment": "dev",
+    "riskCeiling": "high",
+    "allowedSystems": [
+      "stub"
+    ],
+    "owner": "Nexus Test Suite",
+    "purpose": "POC integration fixture testing",
+    "reviewCadence": "weekly"
+  },
+  "delegation": {
+    "allowedSystems": [
+      "stub"
+    ],
+    "allowedCapabilities": [
+      "create:record:internal"
+    ],
+    "forbiddenCapabilities": [],
+    "maxRiskTier": "high",
+    "allowDownstreamPropagation": false,
+    "environment": "dev",
+    "ttlSeconds": 3600,
+    "maxChainDepth": 1
+  },
+  "action": {
+    "tool": "create_record",
+    "rawVerb": "create",
+    "rawTarget": "stub:record:single",
+    "adapterVersion": "fixture/v0.1.0",
+    "intent": {
+      "objectiveSummary": "Create a new internal record in the stub system",
+      "triggeringSource": "user_request",
+      "toolchainContext": "fixture-runner/v0.1.0",
+      "modelId": null,
+      "modelConfidence": null,
+      "riskNote": null
+    }
+  },
+  "policyFile": "packages/core/src/policy/rules/default.policy.json",
+  "sessionTtlSeconds": 3600,
+  "expectedFinalOutcome": "executed"
+}

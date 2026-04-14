@@ -114,7 +114,8 @@ export class EvidenceGate implements Gate {
     const nextSeq = prevSeq + 1;
 
     const delegationSnapshot =
-      context.delegationSnapshot ?? buildMinimalDelegationSnapshot(context.delegationContext!); // Gate 01 invariant
+      context.delegationSnapshot ??
+      (context.delegationContext ? buildMinimalDelegationSnapshot(context.delegationContext) : null);
 
     const actionSummary: EvidenceRecord['actionSummary'] = {
       actionId: action.actionId,

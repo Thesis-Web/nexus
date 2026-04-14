@@ -1,0 +1,57 @@
+{
+  "scenarioId": "07-default-deny",
+  "description": "No policy loaded \u2192 DEFAULT DENY",
+  "principal": {
+    "principalId": "6ba7b81b-9dad-11d1-80b4-00c04fd430c8",
+    "displayName": "Deny Principal",
+    "email": "deny@nexus-fixture.local",
+    "maxDelegableRiskTier": "high",
+    "allowedSystems": [
+      "stub"
+    ]
+  },
+  "actor": {
+    "actorId": "6ba7b81c-9dad-11d1-80b4-00c04fd430c8",
+    "actorClass": "supervised_agent",
+    "displayName": "Deny Agent",
+    "environment": "dev",
+    "riskCeiling": "medium",
+    "allowedSystems": [
+      "stub"
+    ],
+    "owner": "Nexus Test Suite",
+    "purpose": "POC integration fixture testing",
+    "reviewCadence": "weekly"
+  },
+  "delegation": {
+    "allowedSystems": [
+      "stub"
+    ],
+    "allowedCapabilities": [
+      "read:record:single"
+    ],
+    "forbiddenCapabilities": [],
+    "maxRiskTier": "medium",
+    "allowDownstreamPropagation": false,
+    "environment": "dev",
+    "ttlSeconds": 3600,
+    "maxChainDepth": 1
+  },
+  "action": {
+    "tool": "read_record",
+    "rawVerb": "read",
+    "rawTarget": "stub:record:single",
+    "adapterVersion": "fixture/v0.1.0",
+    "intent": {
+      "objectiveSummary": "Read a record \u2014 no policy loaded, should be default-denied",
+      "triggeringSource": "user_request",
+      "toolchainContext": "fixture-runner/v0.1.0",
+      "modelId": null,
+      "modelConfidence": null,
+      "riskNote": null
+    }
+  },
+  "policyFile": null,
+  "sessionTtlSeconds": 3600,
+  "expectedFinalOutcome": "denied_policy"
+}

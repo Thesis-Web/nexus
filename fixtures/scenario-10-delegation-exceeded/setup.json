@@ -1,0 +1,57 @@
+{
+  "scenarioId": "10-delegation-exceeded",
+  "description": "DELEGATED_SUBAGENT requests capability outside delegation \u2192 denied_delegation",
+  "principal": {
+    "principalId": "6ba7b822-9dad-11d1-80b4-00c04fd430c8",
+    "displayName": "Sub Principal",
+    "email": "sub@nexus-fixture.local",
+    "maxDelegableRiskTier": "high",
+    "allowedSystems": [
+      "stub"
+    ]
+  },
+  "actor": {
+    "actorId": "6ba7b823-9dad-11d1-80b4-00c04fd430c8",
+    "actorClass": "delegated_subagent",
+    "displayName": "Sub Agent",
+    "environment": "dev",
+    "riskCeiling": "medium",
+    "allowedSystems": [
+      "stub"
+    ],
+    "owner": "Nexus Test Suite",
+    "purpose": "POC integration fixture testing",
+    "reviewCadence": "weekly"
+  },
+  "delegation": {
+    "allowedSystems": [
+      "stub"
+    ],
+    "allowedCapabilities": [
+      "read:record:single"
+    ],
+    "forbiddenCapabilities": [],
+    "maxRiskTier": "medium",
+    "allowDownstreamPropagation": true,
+    "environment": "dev",
+    "ttlSeconds": 3600,
+    "maxChainDepth": 1
+  },
+  "action": {
+    "tool": "create_record",
+    "rawVerb": "create",
+    "rawTarget": "stub:record:single",
+    "adapterVersion": "fixture/v0.1.0",
+    "intent": {
+      "objectiveSummary": "Create a record \u2014 outside delegation bounds (read only allowed)",
+      "triggeringSource": "user_request",
+      "toolchainContext": "fixture-runner/v0.1.0",
+      "modelId": null,
+      "modelConfidence": null,
+      "riskNote": "Delegation expansion attempt"
+    }
+  },
+  "policyFile": "packages/core/src/policy/rules/default.policy.json",
+  "sessionTtlSeconds": 3600,
+  "expectedFinalOutcome": "denied_delegation"
+}

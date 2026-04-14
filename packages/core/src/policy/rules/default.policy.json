@@ -11,10 +11,18 @@
       "description": "Allow supervised agents to read single records in dev",
       "priority": 10,
       "conditions": {
-        "actorClasses": ["SUPERVISED_AGENT"],
-        "capabilities": ["read:record:single"],
-        "riskTiers": ["low"],
-        "environments": ["dev"]
+        "actorClasses": [
+          "supervised_agent"
+        ],
+        "capabilities": [
+          "read:record:single"
+        ],
+        "riskTiers": [
+          "low"
+        ],
+        "environments": [
+          "dev"
+        ]
       },
       "outcome": "allow",
       "approvalConfig": null,
@@ -28,10 +36,18 @@
       "description": "Allow supervised agents to create internal records in dev",
       "priority": 15,
       "conditions": {
-        "actorClasses": ["SUPERVISED_AGENT"],
-        "capabilities": ["create:record:internal"],
-        "riskTiers": ["medium"],
-        "environments": ["dev"]
+        "actorClasses": [
+          "supervised_agent"
+        ],
+        "capabilities": [
+          "create:record:internal"
+        ],
+        "riskTiers": [
+          "medium"
+        ],
+        "environments": [
+          "dev"
+        ]
       },
       "outcome": "allow",
       "approvalConfig": null,
@@ -45,7 +61,10 @@
       "description": "Require approval for high-risk external sends",
       "priority": 20,
       "conditions": {
-        "riskTiers": ["high", "critical"],
+        "riskTiers": [
+          "high",
+          "critical"
+        ],
         "externalFacing": true
       },
       "outcome": "require_approval",
@@ -60,5 +79,5 @@
       }
     }
   ],
-  "signature": "r3UfZjTXV_BDeRvBebYvxuK392fNe2AIIcrBIw01mMvA90cVg-o8OGK1R6Tsw-CH9vYMiJ9QJlTBWHDfh8UEBA"
+  "signature": "1k5A-GtToEIZhLYFwsxR9vyalx1uU7_whUSSXzmLlgNPnsV4l89xnDl5pGgnqCRRjOfz1qkXVR0WVSsZc-tCDg"
 }

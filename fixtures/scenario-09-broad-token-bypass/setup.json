@@ -1,0 +1,58 @@
+{
+  "scenarioId": "09-broad-token-bypass",
+  "description": "Connector bypasses grant vault \u2192 NexusSecurityViolation \u2192 denied_threat",
+  "principal": {
+    "principalId": "6ba7b81f-9dad-11d1-80b4-00c04fd430c8",
+    "displayName": "Bypass Principal",
+    "email": "bypass@nexus-fixture.local",
+    "maxDelegableRiskTier": "high",
+    "allowedSystems": [
+      "stub"
+    ]
+  },
+  "actor": {
+    "actorId": "6ba7b821-9dad-11d1-80b4-00c04fd430c8",
+    "actorClass": "supervised_agent",
+    "displayName": "Bypass Agent",
+    "environment": "dev",
+    "riskCeiling": "medium",
+    "allowedSystems": [
+      "stub"
+    ],
+    "owner": "Nexus Test Suite",
+    "purpose": "POC integration fixture testing",
+    "reviewCadence": "weekly"
+  },
+  "delegation": {
+    "allowedSystems": [
+      "stub"
+    ],
+    "allowedCapabilities": [
+      "read:record:single"
+    ],
+    "forbiddenCapabilities": [],
+    "maxRiskTier": "medium",
+    "allowDownstreamPropagation": false,
+    "environment": "dev",
+    "ttlSeconds": 3600,
+    "maxChainDepth": 1
+  },
+  "action": {
+    "tool": "read_record",
+    "rawVerb": "read",
+    "rawTarget": "stub:record:single",
+    "adapterVersion": "fixture/v0.1.0",
+    "intent": {
+      "objectiveSummary": "Read using broad static credential \u2014 bypasses grant vault",
+      "triggeringSource": "user_request",
+      "toolchainContext": "fixture-runner/v0.1.0",
+      "modelId": null,
+      "modelConfidence": null,
+      "riskNote": "Broad token bypass test"
+    }
+  },
+  "policyFile": "packages/core/src/policy/rules/default.policy.json",
+  "useBroadTokenConnector": true,
+  "sessionTtlSeconds": 3600,
+  "expectedFinalOutcome": "denied_threat"
+}
