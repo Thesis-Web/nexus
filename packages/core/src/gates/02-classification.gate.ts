@@ -49,7 +49,7 @@ export class ClassificationGate implements Gate {
 
     // actor.environment is the authoritative environment — not adapter-supplied
     const target = this.targetNormalizer.normalize(
-      action.rawTarget, action.tool, context.actor.environment
+      action.rawTarget, action.tool, context.actor!.environment // Gate 01 invariant: actor resolved
     );
     if (!target) return deny(DENIAL_CODE.UNRESOLVABLE_TARGET, 'unresolvable target', startMs);
 

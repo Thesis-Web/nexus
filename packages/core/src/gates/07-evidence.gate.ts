@@ -98,15 +98,15 @@ export class EvidenceGate implements Gate {
     const nextSeq    = prevSeq + 1;
 
     const delegationSnapshot = context.delegationSnapshot
-      ?? buildMinimalDelegationSnapshot(context.delegationContext);
+      ?? buildMinimalDelegationSnapshot(context.delegationContext!); // Gate 01 invariant
 
     const actionSummary: EvidenceRecord['actionSummary'] = {
       actionId:            action.actionId,
       receivedAt:          action.receivedAt,
       protocol:            action.protocol,
       actorId:             action.actorId,
-      actorClass:          context.actor.actorClass,
-      actorEnvironment:    context.actor.environment,
+      actorClass:          context.actor!.actorClass,          // Gate 01 invariant
+      actorEnvironment:    context.actor!.environment,        // Gate 01 invariant
       principalId:         action.principalId,
       delegationSequence:  action.delegationSequence,
       tool:                action.tool,

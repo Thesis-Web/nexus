@@ -162,7 +162,7 @@ export class Pipeline {
     rawAction: Omit<AgentAction, 'delegationSequence'>,
     context:   PipelineContext
   ): AgentAction {
-    const seq = nextSequence(this.db, context.delegationContext.delegationId);
+    const seq = nextSequence(this.db, rawAction.delegationId); // HOLE-002: delegationId from action; context.delegationContext populated later by Gate 01
     return { ...rawAction, delegationSequence: seq } as AgentAction;
   }
 }

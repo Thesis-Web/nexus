@@ -39,7 +39,7 @@ export class DelegationGate implements Gate {
     _prior:  GateDecision[]
   ): Promise<GateResult> {
     const startMs = Date.now();
-    const dc      = context.delegationContext;
+    const dc      = context.delegationContext!; // Gate 01 invariant: delegationContext resolved
 
     const { signature, ...body } = dc;
     const isValid = await verify(canonicalize(body), signature, this.controlPlaneKey.publicKey);
@@ -61,7 +61,7 @@ export class DelegationGate implements Gate {
     if (riskTierExceeds(action.resolvedRiskTier!, dc.maxRiskTier)) {
       return deny(DENIAL_CODE.RISK_TIER_EXCEEDS_CEILING, 'risk tier exceeds delegation ceiling', startMs);
     }
-    if (context.actor.actorClass === ACTOR_CLASS.DELEGATED_SUBAGENT &&
+    if (context.actor!.actorClass === ACTOR_CLASS.DELEGATED_SUBAGENT // Gate 01 invariant &&
         dc.chainDepth >= dc.maxChainDepth) {
       return deny(DENIAL_CODE.CHAIN_DEPTH_EXCEEDED, 'chain depth ceiling exceeded', startMs);
     }

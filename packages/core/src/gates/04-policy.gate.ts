@@ -36,14 +36,14 @@ export class PolicyGate implements Gate {
     }
 
     const envelope: PolicyEvalEnvelope = {
-      actorClass:    context.actor.actorClass,
+      actorClass:    context.actor!.actorClass,        // Gate 01 invariant
       capability:    action.resolvedCapability!,
       verb:          action.resolvedVerb!,
       riskTier:      action.resolvedRiskTier!,
       dataClasses:   action.resolvedDataClasses,
       environment:   action.resolvedTarget!.environment,
       externalFacing:action.resolvedTarget!.externalFacing,
-      chainDepth:    context.delegationContext.chainDepth,
+      chainDepth:    context.delegationContext!.chainDepth, // Gate 01 invariant
     };
 
     const matchedRule  = context.policyFile.sortedRules.find(

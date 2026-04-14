@@ -581,11 +581,11 @@ export interface Gate {
 
 export interface PipelineContext {
   sessionId:            Uuid;
-  delegationContext:    DelegationContext;
+  delegationContext?:   DelegationContext;   // populated by Gate 01 (HOLE-002)
   delegationStore:      DelegationStore;
   delegationSnapshot?:  DelegationContextSnapshot;
-  actor:                Actor;
-  principal:            Principal;
+  actor?:               Actor;               // populated by Gate 01 (HOLE-002)
+  principal?:           Principal;           // populated by Gate 01 (HOLE-002)
   policyFile:           LoadedPolicyFile | null;
   approverRegistry:     ApproverRegistry;
   connectorRegistry:    ConnectorRegistry;
