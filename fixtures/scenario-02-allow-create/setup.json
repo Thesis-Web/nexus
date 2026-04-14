@@ -6,9 +6,7 @@
     "displayName": "Bob Principal",
     "email": "bob@nexus-fixture.local",
     "maxDelegableRiskTier": "high",
-    "allowedSystems": [
-      "stub"
-    ]
+    "allowedSystems": ["stub"]
   },
   "actor": {
     "actorId": "6ba7b812-9dad-11d1-80b4-00c04fd430c8",
@@ -16,20 +14,14 @@
     "displayName": "Create Agent",
     "environment": "dev",
     "riskCeiling": "high",
-    "allowedSystems": [
-      "stub"
-    ],
+    "allowedSystems": ["stub"],
     "owner": "Nexus Test Suite",
     "purpose": "POC integration fixture testing",
     "reviewCadence": "weekly"
   },
   "delegation": {
-    "allowedSystems": [
-      "stub"
-    ],
-    "allowedCapabilities": [
-      "create:record:internal"
-    ],
+    "allowedSystems": ["stub"],
+    "allowedCapabilities": ["create:record:internal"],
     "forbiddenCapabilities": [],
     "maxRiskTier": "high",
     "allowDownstreamPropagation": false,
