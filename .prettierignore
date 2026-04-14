@@ -2,3 +2,4 @@ packages/core/src/policy/rules/default.policy.json
 keys/
 docs/
 packages/core/src/policy/rules/default.policy.json
+pnpm-lock.yaml

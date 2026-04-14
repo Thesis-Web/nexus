@@ -14,5 +14,12 @@
   "devDependencies": {
     "@types/node": "^20.17.30",
     "typescript": "^5.8.3"
-  }
+  },
+  "exports": {
+    ".": {
+      "types": "./stub.connector.ts",
+      "default": "./dist/stub.connector.js"
+    }
+  },
+  "types": "./stub.connector.ts"
 }

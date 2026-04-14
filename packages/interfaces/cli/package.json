@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@nexus/core": "workspace:*",
-    "commander": "^13.1.0"
+    "commander": "^13.1.0",
+    "@nexus/connector-stub": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.17.30",
