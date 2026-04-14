@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "nexus/approval-request",
+  "title": "ApprovalRequest",
+  "description": "Spec §10.3.11",
+  "type": "object",
+  "required": [
+    "approvalId",
+    "actionId",
+    "templateId",
+    "issuedAt",
+    "expiresAt",
+    "actionSummary",
+    "contextSummary",
+    "proposedTarget",
+    "estimatedImpact",
+    "principalDisplayName",
+    "actorDisplayName",
+    "riskTier",
+    "dataClasses",
+    "signature"
+  ],
+  "properties": {
+    "approvalId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "actionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "templateId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "issuedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "actionSummary": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "contextSummary": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "diff": {
+      "type": ["string", "null"],
+      "maxLength": 2000
+    },
+    "estimatedImpact": {
+      "type": "string",
+      "minLength": 1
+    },
+    "principalDisplayName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "actorDisplayName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "riskTier": {
+      "type": "string"
+    },
+    "dataClasses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "modelConfidence": {
+      "type": ["number", "null"]
+    },
+    "riskNote": {
+      "type": ["string", "null"]
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": false
+}

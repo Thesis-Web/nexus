@@ -23,7 +23,7 @@
   "include": [
     "packages/core/src/**/*.ts",
     "packages/adapters/*/src/**/*.ts",
-    "packages/connectors/*/src/**/*.ts",
+    "packages/connectors/**/*.ts",
     "packages/interfaces/*/src/**/*.ts",
     "scripts/**/*.ts"
   ],

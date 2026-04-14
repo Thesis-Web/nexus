@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "nexus/delegation-context",
+  "title": "DelegationContext",
+  "description": "Spec §10.3.3",
+  "type": "object",
+  "required": [
+    "delegationId",
+    "principalId",
+    "actorId",
+    "parentDelegationId",
+    "chainDepth",
+    "maxChainDepth",
+    "allowedSystems",
+    "allowedCapabilities",
+    "forbiddenCapabilities",
+    "maxRiskTier",
+    "allowDownstreamPropagation",
+    "environment",
+    "mintedAt",
+    "expiresAt",
+    "mintedBy",
+    "signature"
+  ],
+  "properties": {
+    "delegationId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "principalId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "actorId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "parentDelegationId": {
+      "type": ["string", "null"]
+    },
+    "chainDepth": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "maxChainDepth": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "allowedSystems": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "allowedCapabilities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "forbiddenCapabilities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "maxRiskTier": {
+      "type": "string"
+    },
+    "allowDownstreamPropagation": {
+      "type": "boolean"
+    },
+    "environment": {
+      "type": "string"
+    },
+    "mintedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "mintedBy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": false
+}

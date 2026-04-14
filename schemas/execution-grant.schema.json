@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "nexus/execution-grant",
+  "title": "ExecutionGrant",
+  "description": "Spec §10.3.13 — note: secretValue is NOT on this schema; WeakMap only",
+  "type": "object",
+  "required": [
+    "grantId",
+    "actionId",
+    "templateId",
+    "approvalId",
+    "mintedAt",
+    "expiresAt",
+    "capabilityId",
+    "scopeDescriptor",
+    "credentialSubject",
+    "resourceBounds",
+    "environmentBound",
+    "signature"
+  ],
+  "properties": {
+    "grantId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "actionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "templateId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "approvalId": {
+      "type": ["string", "null"]
+    },
+    "mintedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "capabilityId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scopeDescriptor": {
+      "type": "string",
+      "minLength": 1
+    },
+    "environmentBound": {
+      "type": "string"
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "not": {
+    "required": ["secretValue"]
+  },
+  "additionalProperties": true
+}

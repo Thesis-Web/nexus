@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "nexus/agent-action",
+  "title": "AgentAction",
+  "description": "Spec §10.3.5 — agent action as normalized at adapter ingress",
+  "type": "object",
+  "required": [
+    "actionId",
+    "receivedAt",
+    "protocol",
+    "adapterVersion",
+    "actorId",
+    "principalId",
+    "sessionId",
+    "delegationId",
+    "delegationSequence",
+    "tool",
+    "rawVerb",
+    "rawTarget",
+    "intent",
+    "resolvedVerb",
+    "resolvedCapability",
+    "resolvedTarget",
+    "resolvedDataClasses",
+    "resolvedRiskTier"
+  ],
+  "properties": {
+    "actionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "receivedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "protocol": {
+      "type": "string",
+      "minLength": 1
+    },
+    "adapterVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "actorId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "principalId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "sessionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "delegationId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "delegationSequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "tool": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rawVerb": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rawTarget": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resolvedVerb": {
+      "type": ["string", "null"]
+    },
+    "resolvedCapability": {
+      "type": ["string", "null"]
+    },
+    "resolvedTarget": {
+      "$ref": "#/definitions/ResourceTarget"
+    },
+    "resolvedDataClasses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "resolvedRiskTier": {
+      "type": ["string", "null"]
+    }
+  },
+  "definitions": {
+    "ResourceTarget": {
+      "type": ["object", "null"],
+      "required": ["system", "resourceType", "resourceScope", "environment", "externalFacing"],
+      "properties": {
+        "system": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceScope": {
+          "enum": ["single", "bulk", "collection", "system"]
+        },
+        "environment": {
+          "type": "string"
+        },
+        "externalFacing": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

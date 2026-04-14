@@ -1,0 +1,118 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "nexus/evidence-record",
+  "title": "EvidenceRecord",
+  "description": "Spec §10.3.20 — tamper-evident signed hash-chained evidence record",
+  "type": "object",
+  "required": [
+    "recordId",
+    "actionId",
+    "sessionId",
+    "ledgerSequence",
+    "actionSummary",
+    "intentEvidence",
+    "delegationContextSnapshot",
+    "gateDecisions",
+    "policyRuleId",
+    "policyOutcome",
+    "approvalRequest",
+    "approvalResponse",
+    "grantMetadata",
+    "executionResult",
+    "finalOutcome",
+    "threatEvents",
+    "compilerView",
+    "previousHash",
+    "recordHash",
+    "signature"
+  ],
+  "properties": {
+    "recordId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "actionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "sessionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "ledgerSequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "previousHash": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "recordHash": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 1
+    },
+    "finalOutcome": {
+      "enum": [
+        "executed",
+        "denied_identity",
+        "denied_classification",
+        "denied_delegation",
+        "denied_policy",
+        "denied_approval",
+        "denied_timeout",
+        "denied_threat",
+        "error"
+      ]
+    },
+    "compilerView": {
+      "type": "object",
+      "description": "CompilerComparisonView §14.1 — inside signed body"
+    },
+    "gateDecisions": {
+      "type": "array"
+    },
+    "threatEvents": {
+      "type": "array"
+    },
+    "approvalRequest": {
+      "type": ["object", "null"]
+    },
+    "approvalResponse": {
+      "type": ["object", "null"]
+    },
+    "grantMetadata": {
+      "type": ["object", "null"]
+    },
+    "executionResult": {
+      "type": ["object", "null"]
+    },
+    "actionSummary": {
+      "type": "object",
+      "required": ["actorClass", "actorEnvironment", "delegationSequence"],
+      "properties": {
+        "actorClass": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actorEnvironment": {
+          "type": "string",
+          "minLength": 1
+        },
+        "delegationSequence": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "not": {
+        "required": ["secretValue"]
+      }
+    }
+  },
+  "additionalProperties": true
+}

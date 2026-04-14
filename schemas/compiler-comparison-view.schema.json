@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "nexus/compiler-comparison-view",
+  "title": "CompilerComparisonView",
+  "description": "Spec §14.1 — must live inside signed EvidenceRecord body",
+  "type": "object",
+  "required": [
+    "meta",
+    "identity",
+    "delegation",
+    "classification",
+    "policyAndApproval",
+    "authorityAndExecution",
+    "result"
+  ],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": [
+        "blueprintVersion",
+        "runtimeContractVersion",
+        "capabilityTaxonomyVersion",
+        "comparisonInputVersion",
+        "normalizedActionHash",
+        "policyBundleHash"
+      ],
+      "properties": {
+        "blueprintVersion": {
+          "type": "string"
+        },
+        "runtimeContractVersion": {
+          "type": "string"
+        },
+        "capabilityTaxonomyVersion": {
+          "type": "string"
+        },
+        "comparisonInputVersion": {
+          "type": "string"
+        },
+        "normalizedActionHash": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "policyBundleHash": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "required": ["actorId", "actorClass", "principalId", "environment"]
+    },
+    "delegation": {
+      "type": "object",
+      "required": ["delegationContextId", "chainDepth", "chainHash", "maxRiskTier"]
+    },
+    "classification": {
+      "type": "object",
+      "required": ["capabilityId", "actionVerb", "dataClasses", "riskTier"]
+    },
+    "policyAndApproval": {
+      "type": "object",
+      "required": ["policyRuleId", "outcomeLabel", "approvalRequired", "approvalDecisionLabel"]
+    },
+    "authorityAndExecution": {
+      "type": "object",
+      "required": [
+        "executionGrantId",
+        "credentialSubjectType",
+        "scopeDescriptor",
+        "expiryClass",
+        "grantTemplateFingerprint"
+      ]
+    },
+    "result": {
+      "type": "object",
+      "required": ["finalOutcome", "errorCodeFamily"]
+    }
+  },
+  "additionalProperties": false
+}
