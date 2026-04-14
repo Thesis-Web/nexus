@@ -1,0 +1,55 @@
+{
+  "version": "1.0",
+  "bundleId": "00000000-0000-0000-0000-000000000001",
+  "bundleVersion": "v0.1.0-dev",
+  "issuer": "nexus-dev",
+  "issuedAt": "2026-04-14T00:00:00.000Z",
+  "signature": "UNSIGNED_PLACEHOLDER_RUN_SIGN_POLICY_TS",
+  "defaultOutcome": "deny",
+  "rules": [
+    {
+      "ruleId": "allow-low-risk-read",
+      "description": "Allow supervised agents to read single records in dev",
+      "priority": 10,
+      "conditions": {
+        "actorClasses": ["SUPERVISED_AGENT"],
+        "capabilities": ["read:record:single"],
+        "riskTiers": ["low"],
+        "environments": ["dev"]
+      },
+      "outcome": "allow",
+      "approvalConfig": null,
+      "grantHint": { "expiryClass": "action_scoped", "maxRecords": 1 }
+    },
+    {
+      "ruleId": "allow-medium-risk-create",
+      "description": "Allow supervised agents to create internal records in dev",
+      "priority": 15,
+      "conditions": {
+        "actorClasses": ["SUPERVISED_AGENT"],
+        "capabilities": ["create:record:internal"],
+        "riskTiers": ["medium"],
+        "environments": ["dev"]
+      },
+      "outcome": "allow",
+      "approvalConfig": null,
+      "grantHint": { "expiryClass": "short_lived", "maxRecords": 1 }
+    },
+    {
+      "ruleId": "require-approval-high-risk",
+      "description": "Require approval for high-risk external sends",
+      "priority": 20,
+      "conditions": {
+        "riskTiers": ["high", "critical"],
+        "externalFacing": true
+      },
+      "outcome": "require_approval",
+      "approvalConfig": {
+        "channelId": "cli",
+        "timeoutSeconds": 300,
+        "onTimeout": "deny"
+      },
+      "grantHint": { "expiryClass": "short_lived", "allowExternalFacing": true }
+    }
+  ]
+}
