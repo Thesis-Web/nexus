@@ -433,18 +433,30 @@ function validateFixtureSecrets(fixtureDir: string): number {
 // ci:gate verifies: (a) signature field present and non-empty, (b) file is valid JSON.
 // ---------------------------------------------------------------------------
 function validatePolicySignatures(fixturesDir: string): number {
-  let count = 0;
-  for (const { path: fpath, data } of walkJsonFiles(fixturesDir)) {
+  const policyPaths = new Set<string>();
+  policyPaths.add('packages/core/src/policy/rules/default.policy.json');
+  for (const { data } of walkJsonFiles(fixturesDir)) {
     const obj = data as Record<string, unknown>;
-    if (!('rules' in obj)) continue; // skip non-policy files
+    if (typeof obj['policyFile'] === 'string' && obj['policyFile'].length > 0) {
+      policyPaths.add(obj['policyFile']);
+    }
+  }
+  let count = 0;
+  for (const fpath of policyPaths) {
+    if (fpath.includes('scenario-08')) continue;
+    if (!fs.existsSync(fpath)) fail(`Policy file not found: ${fpath}`);
+    let obj: Record<string, unknown>;
+    try {
+      obj = JSON.parse(fs.readFileSync(fpath, 'utf-8')) as Record<string, unknown>;
+    } catch {
+      fail(`Policy file invalid JSON: ${fpath}`);
+    }
     if (
       !obj['signature'] ||
       typeof obj['signature'] !== 'string' ||
       obj['signature'].length === 0
     ) {
-      // Exempt: scenario-08 is the unsigned-policy negative test fixture — §7.4 Step 10 canon law
-      if (fpath.includes('scenario-08')) continue;
-      fail(`Policy signature missing or empty in: ${fpath}`);
+      fail(`Policy signature missing in: ${fpath}`);
     }
     count++;
   }
