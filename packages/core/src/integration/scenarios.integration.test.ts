@@ -248,7 +248,7 @@ async function generateTestApproverKeypair(): Promise<KeyPair> {
 }
 
 // ─── Core test helper — runScenario ──────────────────────────────────────────
-async function runScenario(
+export async function runScenario(
   scenarioId: ScenarioId,
   options: { approvalDecision?: 'approved' | 'denied' | 'timeout' } = {}
 ): Promise<{ evidenceRecord: EvidenceRecord }> {
