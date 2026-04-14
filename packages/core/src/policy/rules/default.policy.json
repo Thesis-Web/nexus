@@ -4,7 +4,6 @@
   "bundleVersion": "v0.1.0-dev",
   "issuer": "nexus-dev",
   "issuedAt": "2026-04-14T00:00:00.000Z",
-  "signature": "UNSIGNED_PLACEHOLDER_RUN_SIGN_POLICY_TS",
   "defaultOutcome": "deny",
   "rules": [
     {
@@ -12,35 +11,60 @@
       "description": "Allow supervised agents to read single records in dev",
       "priority": 10,
       "conditions": {
-        "actorClasses": ["SUPERVISED_AGENT"],
-        "capabilities": ["read:record:single"],
-        "riskTiers": ["low"],
-        "environments": ["dev"]
+        "actorClasses": [
+          "SUPERVISED_AGENT"
+        ],
+        "capabilities": [
+          "read:record:single"
+        ],
+        "riskTiers": [
+          "low"
+        ],
+        "environments": [
+          "dev"
+        ]
       },
       "outcome": "allow",
       "approvalConfig": null,
-      "grantHint": { "expiryClass": "action_scoped", "maxRecords": 1 }
+      "grantHint": {
+        "expiryClass": "action_scoped",
+        "maxRecords": 1
+      }
     },
     {
       "ruleId": "allow-medium-risk-create",
       "description": "Allow supervised agents to create internal records in dev",
       "priority": 15,
       "conditions": {
-        "actorClasses": ["SUPERVISED_AGENT"],
-        "capabilities": ["create:record:internal"],
-        "riskTiers": ["medium"],
-        "environments": ["dev"]
+        "actorClasses": [
+          "SUPERVISED_AGENT"
+        ],
+        "capabilities": [
+          "create:record:internal"
+        ],
+        "riskTiers": [
+          "medium"
+        ],
+        "environments": [
+          "dev"
+        ]
       },
       "outcome": "allow",
       "approvalConfig": null,
-      "grantHint": { "expiryClass": "short_lived", "maxRecords": 1 }
+      "grantHint": {
+        "expiryClass": "short_lived",
+        "maxRecords": 1
+      }
     },
     {
       "ruleId": "require-approval-high-risk",
       "description": "Require approval for high-risk external sends",
       "priority": 20,
       "conditions": {
-        "riskTiers": ["high", "critical"],
+        "riskTiers": [
+          "high",
+          "critical"
+        ],
         "externalFacing": true
       },
       "outcome": "require_approval",
@@ -49,7 +73,11 @@
         "timeoutSeconds": 300,
         "onTimeout": "deny"
       },
-      "grantHint": { "expiryClass": "short_lived", "allowExternalFacing": true }
+      "grantHint": {
+        "expiryClass": "short_lived",
+        "allowExternalFacing": true
+      }
     }
-  ]
+  ],
+  "signature": "r3UfZjTXV_BDeRvBebYvxuK392fNe2AIIcrBIw01mMvA90cVg-o8OGK1R6Tsw-CH9vYMiJ9QJlTBWHDfh8UEBA"
 }
