@@ -2,6 +2,10 @@
  * Gate 07 — Evidence — spec §13.8
  * ALWAYS runs exactly once per action regardless of upstream outcome.
  * CCV inside signed body — MODULAR-009 law.
+ *
+ * v1.7.25: sentinel encoding for absent fields. New fields: runId,
+ * approvalRequired, approvalDecisionLabel. grantMetadata and
+ * delegationContextSnapshot are non-nullable (sentinel-encoded internally).
  */
 import {
   GATE_ID,
@@ -9,6 +13,7 @@ import {
   OUTCOME_LABEL,
   FINAL_OUTCOME,
   DENIAL_CODE,
+  EVIDENCE_SENTINEL,
   type Gate,
   type GateResult,
   type AgentAction,
@@ -17,6 +22,7 @@ import {
   type EvidenceRecord,
   type FinalOutcome,
   type ExecutionGrantMetadata,
+  type DelegationContextSnapshot,
 } from '../types/index.js';
 import { canonicalize } from '../crypto/canonicalize.js';
 import { sha256, sign } from '../crypto/signer.js';
@@ -28,7 +34,7 @@ import { newUuid } from '../utils/helpers.js';
 
 function buildMinimalDelegationSnapshot(
   dc: import('../types/index.js').DelegationContext
-): import('../types/index.js').DelegationContextSnapshot {
+): DelegationContextSnapshot {
   return {
     delegationId: dc.delegationId,
     principalId: dc.principalId,
@@ -56,7 +62,22 @@ function buildGrantMetadata(
     expiresAt: grant.expiresAt,
     expiryClass: template.expiryClass,
     templateFingerprint: template.templateFingerprint,
-    approvalLinkage: grant.approvalId,
+    approvalLinkage: grant.approvalId ?? EVIDENCE_SENTINEL,
+  };
+}
+
+/** Sentinel-encoded grant metadata when no grant was minted */
+function buildSentinelGrantMetadata(): ExecutionGrantMetadata {
+  return {
+    grantId: EVIDENCE_SENTINEL,
+    scopeDescriptor: EVIDENCE_SENTINEL,
+    credentialSubjectId: EVIDENCE_SENTINEL,
+    credentialSubjectType: EVIDENCE_SENTINEL,
+    issuedAt: EVIDENCE_SENTINEL,
+    expiresAt: EVIDENCE_SENTINEL,
+    expiryClass: EVIDENCE_SENTINEL,
+    templateFingerprint: EVIDENCE_SENTINEL,
+    approvalLinkage: EVIDENCE_SENTINEL,
   };
 }
 
@@ -113,32 +134,34 @@ export class EvidenceGate implements Gate {
     const prevHash = prevRecord?.recordHash ?? GENESIS_HASH;
     const nextSeq = prevSeq + 1;
 
-    const delegationSnapshot =
-      context.delegationSnapshot ??
-      (context.delegationContext
-        ? buildMinimalDelegationSnapshot(context.delegationContext)
-        : null);
+    // delegationContextSnapshot is non-nullable in v1.7.25
+    const delegationSnapshot: DelegationContextSnapshot =
+      context.delegationSnapshot ?? buildMinimalDelegationSnapshot(context.delegationContext);
 
+    // actionSummary: resolved* fields use EVIDENCE_SENTINEL when absent
     const actionSummary: EvidenceRecord['actionSummary'] = {
       actionId: action.actionId,
       receivedAt: action.receivedAt,
       protocol: action.protocol,
       actorId: action.actorId,
-      actorClass: context.actor!.actorClass, // Gate 01 invariant
-      actorEnvironment: context.actor!.environment, // Gate 01 invariant
+      actorClass: context.actor.actorClass,
+      actorEnvironment: context.actor.environment,
       principalId: action.principalId,
       delegationSequence: action.delegationSequence,
       tool: action.tool,
-      resolvedVerb: action.resolvedVerb,
-      resolvedCapability: action.resolvedCapability,
-      resolvedTarget: action.resolvedTarget,
-      resolvedDataClasses: action.resolvedDataClasses,
-      resolvedRiskTier: action.resolvedRiskTier,
+      resolvedVerb: action.resolvedVerb ?? EVIDENCE_SENTINEL,
+      resolvedCapability: action.resolvedCapability ?? EVIDENCE_SENTINEL,
+      resolvedTarget: action.resolvedTarget ?? EVIDENCE_SENTINEL,
+      resolvedDataClasses:
+        action.resolvedDataClasses.length > 0 ? action.resolvedDataClasses : EVIDENCE_SENTINEL,
+      resolvedRiskTier: action.resolvedRiskTier ?? EVIDENCE_SENTINEL,
     };
 
-    const grantMeta = context.executionGrant
-      ? buildGrantMetadata(context.executionGrant, context.grantTemplate!)
-      : null;
+    // grantMetadata: non-nullable, sentinel-encoded when no grant
+    const grantMeta: ExecutionGrantMetadata =
+      context.executionGrant && context.grantTemplate
+        ? buildGrantMetadata(context.executionGrant, context.grantTemplate)
+        : buildSentinelGrantMetadata();
 
     const intentEvidence = {
       objectiveSummary: action.intent.objectiveSummary,
@@ -152,19 +175,32 @@ export class EvidenceGate implements Gate {
     const policyDecision = decisions.find(d => d.gateId === GATE_ID.G04);
     const finalOutcome = computeFinalOutcome(decisions);
 
-    const recordBodyPreCCV = {
+    // approvalRequired and approvalDecisionLabel — new v1.7.25 fields
+    const approvalRequired: boolean | typeof EVIDENCE_SENTINEL =
+      context.approvalRequest !== undefined
+        ? context.approvalRequest !== null
+          ? true
+          : false
+        : EVIDENCE_SENTINEL;
+
+    const approvalDecisionLabel = context.approvalResponse?.decision ?? EVIDENCE_SENTINEL;
+
+    const recordBodyPreCCV: Omit<EvidenceRecord, 'compilerView' | 'recordHash' | 'signature'> = {
       recordId: newUuid(),
       actionId: action.actionId,
       sessionId: action.sessionId,
+      runId: action.runId,
       ledgerSequence: nextSeq,
       actionSummary,
       intentEvidence,
       delegationContextSnapshot: delegationSnapshot,
       gateDecisions: decisions,
-      policyRuleId: policyDecision?.policyRuleId ?? null,
-      policyOutcome: policyDecision ? (policyDecision.outcome as string) : null,
+      policyRuleId: policyDecision?.policyRuleId ?? EVIDENCE_SENTINEL,
+      policyOutcome: policyDecision ? (policyDecision.outcome as string) : EVIDENCE_SENTINEL,
+      approvalRequired,
       approvalRequest: context.approvalRequest ?? null,
       approvalResponse: context.approvalResponse ?? null,
+      approvalDecisionLabel,
       grantMetadata: grantMeta,
       executionResult: context.executionResult
         ? redactExecutionResult(context.executionResult, action.resolvedDataClasses)
@@ -180,7 +216,11 @@ export class EvidenceGate implements Gate {
 
     const recordHash = sha256(canonicalize(recordBodyFull));
     const signature = await sign(recordHash, this.controlPlaneKey);
-    const record: EvidenceRecord = { ...recordBodyFull, recordHash, signature };
+    const record: EvidenceRecord = {
+      ...recordBodyFull,
+      recordHash,
+      signature,
+    };
 
     await this.ledger.append(record);
     context.lastEvidenceRecord = record;

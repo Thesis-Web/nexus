@@ -2,30 +2,45 @@
  * CCV builder — spec §14
  * MODULAR-009: CCV is blueprint law. Stored within the signed EvidenceRecord body only.
  * delegationSequence is NOT a CCV field — forensic-only in actionSummary.
+ *
+ * v1.7.25: sentinel encoding (EVIDENCE_SENTINEL = 'NOT_APPLICABLE') replaces null/empty
+ * for absent classification, policy, and execution fields.
  */
 import {
   GATE_ID,
   BLUEPRINT_VERSION,
-  SPEC_VERSION,
+  RUNTIME_CONTRACT_VERSION,
   CAPABILITY_TAXONOMY_VERSION,
   COMPARISON_INPUT_VERSION,
+  EVIDENCE_SENTINEL,
   type EvidenceRecord,
+  type EvidenceSentinel,
   type PipelineContext,
   type CompilerComparisonView,
+  type ResourceTarget,
 } from '../types/index.js';
 import { canonicalize } from '../crypto/canonicalize.js';
 import { sha256 } from '../crypto/signer.js';
 
-function computeNormalizedActionHash(actionSummary: EvidenceRecord['actionSummary']): string {
+function isResourceTarget(val: ResourceTarget | EvidenceSentinel): val is ResourceTarget {
+  return typeof val === 'object' && val !== null;
+}
+
+export function computeNormalizedActionHash(
+  actionSummary: EvidenceRecord['actionSummary']
+): string {
+  const target = actionSummary.resolvedTarget;
   const normalized = {
     tool: actionSummary.tool,
     resolvedVerb: actionSummary.resolvedVerb,
     resolvedCapability: actionSummary.resolvedCapability,
-    targetSystem: actionSummary.resolvedTarget?.system ?? null,
-    targetResourceType: actionSummary.resolvedTarget?.resourceType ?? null,
-    targetScope: actionSummary.resolvedTarget?.resourceScope ?? null,
-    externalFacing: actionSummary.resolvedTarget?.externalFacing ?? null,
-    dataClasses: [...actionSummary.resolvedDataClasses].sort(),
+    targetSystem: isResourceTarget(target) ? target.system : null,
+    targetResourceType: isResourceTarget(target) ? target.resourceType : null,
+    targetScope: isResourceTarget(target) ? target.resourceScope : null,
+    externalFacing: isResourceTarget(target) ? target.externalFacing : null,
+    dataClasses: Array.isArray(actionSummary.resolvedDataClasses)
+      ? [...actionSummary.resolvedDataClasses].sort()
+      : [],
     riskTier: actionSummary.resolvedRiskTier,
   };
   return sha256(canonicalize(normalized));
@@ -36,10 +51,11 @@ export function buildCCV(
   context: PipelineContext
 ): CompilerComparisonView {
   const policyDecision = record.gateDecisions.find(d => d.gateId === GATE_ID.G04);
+
   return {
     meta: {
       blueprintVersion: BLUEPRINT_VERSION,
-      runtimeContractVersion: SPEC_VERSION,
+      runtimeContractVersion: RUNTIME_CONTRACT_VERSION,
       capabilityTaxonomyVersion: CAPABILITY_TAXONOMY_VERSION,
       comparisonInputVersion: COMPARISON_INPUT_VERSION,
       normalizedActionHash: computeNormalizedActionHash(record.actionSummary),
@@ -52,29 +68,31 @@ export function buildCCV(
       environment: record.actionSummary.actorEnvironment,
     },
     delegation: {
-      delegationContextId: record.delegationContextSnapshot?.delegationId ?? null,
-      chainDepth: record.delegationContextSnapshot?.chainDepth ?? null,
-      chainHash: record.delegationContextSnapshot?.chainHash ?? null,
-      maxRiskTier: record.delegationContextSnapshot?.maxRiskTier ?? null,
+      delegationContextId: record.delegationContextSnapshot.delegationId,
+      chainDepth: record.delegationContextSnapshot.chainDepth,
+      chainHash: record.delegationContextSnapshot.chainHash,
+      maxRiskTier: record.delegationContextSnapshot.maxRiskTier,
     },
     classification: {
-      capabilityId: record.actionSummary.resolvedCapability ?? '',
-      actionVerb: record.actionSummary.resolvedVerb ?? '',
-      dataClasses: [...record.actionSummary.resolvedDataClasses].sort(),
-      riskTier: record.actionSummary.resolvedRiskTier ?? '',
+      capabilityId: record.actionSummary.resolvedCapability,
+      actionVerb: record.actionSummary.resolvedVerb,
+      dataClasses: Array.isArray(record.actionSummary.resolvedDataClasses)
+        ? [...record.actionSummary.resolvedDataClasses].sort()
+        : EVIDENCE_SENTINEL,
+      riskTier: record.actionSummary.resolvedRiskTier,
     },
     policyAndApproval: {
       policyRuleId: record.policyRuleId,
       outcomeLabel: record.policyOutcome,
-      approvalRequired: record.approvalRequest !== null,
-      approvalDecisionLabel: record.approvalResponse?.decision ?? null,
+      approvalRequired: record.approvalRequired,
+      approvalDecisionLabel: record.approvalDecisionLabel,
     },
     authorityAndExecution: {
-      executionGrantId: record.grantMetadata?.grantId ?? null,
-      credentialSubjectType: record.grantMetadata?.credentialSubjectType ?? null,
-      scopeDescriptor: record.grantMetadata?.scopeDescriptor ?? null,
-      expiryClass: record.grantMetadata?.expiryClass ?? null,
-      grantTemplateFingerprint: record.grantMetadata?.templateFingerprint ?? null,
+      executionGrantId: record.grantMetadata.grantId,
+      credentialSubjectType: record.grantMetadata.credentialSubjectType,
+      scopeDescriptor: record.grantMetadata.scopeDescriptor,
+      expiryClass: record.grantMetadata.expiryClass,
+      grantTemplateFingerprint: record.grantMetadata.templateFingerprint,
     },
     result: {
       finalOutcome: record.finalOutcome,
