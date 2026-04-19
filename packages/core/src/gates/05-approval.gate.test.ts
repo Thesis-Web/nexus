@@ -153,7 +153,7 @@ function makeCtx(
     delegationStore: { getById: vi.fn(), save: vi.fn(), listForActor: vi.fn() },
     grantTemplate: template,
     policyFile: null,
-    approverRegistry: { get: vi.fn().mockResolvedValue(null), list: vi.fn(), register: vi.fn() },
+    approverRegistry: { getPublicKey: vi.fn().mockResolvedValue(null), register: vi.fn() },
     connectorRegistry: { get: vi.fn(), register: vi.fn(), list: vi.fn() },
     channelRegistry,
     threatLog: [],
@@ -241,14 +241,7 @@ describe('Gate 05 — Approval', () => {
     const ctx = makeCtx(channel, template);
     // Mock approverRegistry to return our test approver's public key
     (ctx as Record<string, unknown>).approverRegistry = {
-      get: vi.fn().mockResolvedValue({
-        approverId,
-        displayName: 'Test Approver',
-        publicKey: approverPubKey,
-        channels: ['cli'],
-        registeredAt: NOW,
-      }),
-      list: vi.fn(),
+      getPublicKey: vi.fn().mockResolvedValue(approverPubKey),
       register: vi.fn(),
     };
 
