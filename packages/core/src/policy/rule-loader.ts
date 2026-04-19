@@ -30,6 +30,8 @@ export async function loadPolicyFile(
 
   return {
     ...parsed,
+    filepath,
+    loadedAt: new Date().toISOString(),
     sortedRules: [...parsed.rules].sort((a, b) => a.priority - b.priority),
     bundleHash: computePolicyBundleHash(parsed),
   };

@@ -9,7 +9,8 @@ import {
   type Actor,
   type Uuid,
   type ActorClass,
-  type ActorRegistryStore,
+  type ActorRegistry,
+  type OctLevel,
 } from '../types/index.js';
 
 interface ActorRow {
@@ -36,13 +37,14 @@ function rowToActor(row: ActorRow): Actor {
     riskCeiling: row.risk_ceiling,
     allowedSystems: JSON.parse(row.allowed_systems) as string[],
     registeredAt: row.registered_at,
+    octLevel: ((row as any).oct_level as string) ?? 'OCT_LEVEL_3',
     ...(row.owner !== null ? { owner: row.owner } : {}),
     ...(row.purpose !== null ? { purpose: row.purpose } : {}),
     ...(row.review_cadence !== null ? { reviewCadence: row.review_cadence } : {}),
   };
 }
 
-export class ActorRegistry implements ActorRegistryStore {
+export class SqliteActorRegistry implements ActorRegistry {
   constructor(private readonly db: Database.Database) {}
 
   async get(actorId: Uuid): Promise<Actor | null> {
@@ -59,7 +61,7 @@ export class ActorRegistry implements ActorRegistryStore {
     return rows.map(rowToActor);
   }
 
-  async register(actor: Actor): Promise<Actor> {
+  async register(actor: Actor): Promise<void> {
     const isNonHuman =
       actor.actorClass !== ACTOR_CLASS.HUMAN && actor.actorClass !== ACTOR_CLASS.HUMAN_WITH_COPILOT;
 
@@ -91,11 +93,15 @@ export class ActorRegistry implements ActorRegistryStore {
         actor.purpose ?? null,
         actor.reviewCadence ?? null
       );
-    return actor;
+    return;
   }
 
   async list(): Promise<Actor[]> {
     const rows = this.db.prepare('SELECT * FROM actors').all() as ActorRow[];
     return rows.map(rowToActor);
+  }
+
+  async updateOct(actorId: Uuid, octLevel: OctLevel): Promise<void> {
+    this.db.prepare('UPDATE actors SET oct_level = ? WHERE actor_id = ?').run(octLevel, actorId);
   }
 }

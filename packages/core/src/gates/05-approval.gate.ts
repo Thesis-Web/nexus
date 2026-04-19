@@ -124,20 +124,20 @@ export class ApprovalGate implements Gate {
       );
     }
 
-    // Verify approver signature — timeout responses never reach this path
+    // Verify approverPubKey signature — timeout responses never reach this path
     if (response.decidedBy !== 'system:timeout') {
-      const approver = await context.approverRegistry.get(response.decidedBy);
-      if (approver) {
+      const approverPubKey = await context.approverRegistry.getPublicKey(response.decidedBy);
+      if (approverPubKey) {
         const { signature, ...body } = response;
         const valid = await verify(
           JSON.stringify(body).replace(/"signature":"[^"]*"/, ''),
           signature,
-          approver.publicKey
+          approverPubKey
         );
         // Simpler: re-canonicalize body without signature
         const { signature: _s, ...respBody } = response;
         const bodyStr = JSON.stringify(Object.fromEntries(Object.entries(respBody).sort()));
-        const sigValid = await verify(bodyStr, signature, approver.publicKey);
+        const sigValid = await verify(bodyStr, signature, approverPubKey);
         if (!sigValid) {
           return deny(
             DENIAL_CODE.APPROVAL_SIG_INVALID,

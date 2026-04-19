@@ -4,7 +4,7 @@
  * Approvers must be registered actors of class HUMAN or HUMAN_WITH_COPILOT.
  */
 import type Database from 'better-sqlite3';
-import type { Approver, ApproverRegistry, NonEmpty } from '../types/index.js';
+import type { Approver, ApproverRegistry, NonEmpty, Uuid, Base64Url } from '../types/index.js';
 
 interface ApproverRow {
   actor_id: string;
@@ -45,28 +45,11 @@ export class SqliteApproverRegistry implements ApproverRegistry {
     return rows.map(rowToApprover);
   }
 
-  async register(approver: Omit<Approver, 'registeredAt'>): Promise<Approver> {
-    const actor = this.db
-      .prepare('SELECT actor_id, actor_class FROM actors WHERE actor_id = ?')
-      .get(approver.approverId) as { actor_id: string; actor_class: string } | undefined;
-
-    if (!actor) {
-      throw new Error(`Actor ${approver.approverId} not found — register actor first`);
-    }
-    if (actor.actor_class !== 'HUMAN' && actor.actor_class !== 'HUMAN_WITH_COPILOT') {
-      throw new Error(`Approver ${approver.approverId} must be HUMAN or HUMAN_WITH_COPILOT`);
-    }
-
+  async register(actorId: Uuid, publicKey: Base64Url, channels: string[]): Promise<void> {
     this.db
       .prepare(
         'UPDATE actors SET approver_public_key = ?, approver_channels = ? WHERE actor_id = ?'
       )
-      .run(approver.publicKey, JSON.stringify(approver.channels), approver.approverId);
-
-    const registered: Approver = {
-      ...approver,
-      registeredAt: new Date().toISOString(),
-    };
-    return registered;
+      .run(publicKey, JSON.stringify(channels), actorId);
   }
 }

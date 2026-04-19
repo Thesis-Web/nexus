@@ -190,8 +190,8 @@ export class Pipeline {
 // Registry implementations
 export class SimpleConnectorRegistry implements ConnectorRegistry {
   private readonly map = new Map<string, Connector>();
-  get(systemType: string) {
-    return this.map.get(systemType) ?? null;
+  get(systemType: string): Connector | undefined {
+    return this.map.get(systemType);
   }
   register(c: Connector) {
     this.map.set(c.systemType, c);
@@ -203,8 +203,8 @@ export class SimpleConnectorRegistry implements ConnectorRegistry {
 
 export class SimpleChannelRegistry implements ChannelRegistry {
   private readonly map = new Map<string, ApprovalChannel>();
-  get(channelId: string) {
-    return this.map.get(channelId) ?? null;
+  get(channelId: string): ApprovalChannel | undefined {
+    return this.map.get(channelId);
   }
   register(c: ApprovalChannel) {
     this.map.set(c.channelId, c);

@@ -2,7 +2,7 @@
  * Principal registry — spec §20
  */
 import type Database from 'better-sqlite3';
-import type { Principal, Uuid, PrincipalRegistryStore } from '../types/index.js';
+import type { Principal, Uuid, PrincipalRegistry } from '../types/index.js';
 
 interface PrincipalRow {
   principal_id: string;
@@ -24,7 +24,7 @@ function rowToPrincipal(row: PrincipalRow): Principal {
   };
 }
 
-export class PrincipalRegistry implements PrincipalRegistryStore {
+export class SqlitePrincipalRegistry implements PrincipalRegistry {
   constructor(private readonly db: Database.Database) {}
 
   async get(principalId: Uuid): Promise<Principal | null> {
@@ -34,7 +34,7 @@ export class PrincipalRegistry implements PrincipalRegistryStore {
     return row ? rowToPrincipal(row) : null;
   }
 
-  async register(principal: Principal): Promise<Principal> {
+  async register(principal: Principal): Promise<void> {
     this.db
       .prepare(
         `
@@ -51,7 +51,7 @@ export class PrincipalRegistry implements PrincipalRegistryStore {
         principal.maxDelegableRiskTier,
         JSON.stringify(principal.allowedSystems)
       );
-    return principal;
+    return;
   }
 
   async list(): Promise<Principal[]> {

@@ -178,7 +178,17 @@ export interface PolicyRule {
   approvalConfig?: ApprovalConfig;
 }
 
-export interface LoadedPolicyFile {
+export interface PolicyFile {
+  version: '1.0';
+  bundleId: Uuid;
+  bundleVersion: NonEmpty;
+  issuer: NonEmpty;
+  issuedAt: IsoTimestamp;
+  signature: Base64Url;
+  defaultOutcome: 'deny';
+  rules: PolicyRule[];
+}
+export interface LoadedPolicyFile extends PolicyFile {
   filepath: NonEmpty;
   bundleHash: Sha256Hex;
   sortedRules: PolicyRule[];
@@ -527,6 +537,13 @@ export interface PrincipalRegistry {
   register(principal: Principal): Promise<void>;
 }
 
+export interface Approver {
+  approverId: NonEmpty;
+  displayName: NonEmpty;
+  publicKey: Base64Url;
+  channels: NonEmpty[];
+  registeredAt: IsoTimestamp;
+}
 export interface ApproverRegistry {
   getPublicKey(approverId: NonEmpty): Promise<Base64Url | null>;
   register(actorId: Uuid, publicKey: Base64Url, channels: string[]): Promise<void>;
@@ -635,13 +652,20 @@ export class ApprovalDecisionError extends Error {
   }
 }
 
-export class DelegationError extends Error {
+// ─── §15 Error Classes ───
+export class NexusError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NexusError';
+  }
+}
+export class DelegationError extends NexusError {
   constructor(message: string) {
     super(message);
   }
 }
 
-export class DelegationChainIntegrityError extends Error {
+export class DelegationChainIntegrityError extends NexusError {
   constructor(missingId: Uuid) {
     super(`Delegation chain broken: parent ${missingId} not found in store`);
   }
@@ -741,11 +765,26 @@ export interface RunLedgerWriter {
   getLatestRunId(): Promise<Uuid | null>;
 }
 
-// ─── NexusSecurityViolation (§12.3.25 — connector contract) ───
-export class NexusSecurityViolation extends Error {
+export class NexusSecurityViolation extends NexusError {
   public readonly denialCode: DenialCode;
   constructor(denialCode: DenialCode, message: string) {
     super(message);
+    this.denialCode = denialCode;
+  }
+}
+
+export class PolicySignatureError extends NexusError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PolicySignatureError';
+  }
+}
+
+export class ChainErrorClass extends NexusError {
+  public readonly denialCode: DenialCode;
+  constructor(message: string, denialCode: DenialCode) {
+    super(message);
+    this.name = 'ChainError';
     this.denialCode = denialCode;
   }
 }

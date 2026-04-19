@@ -14,8 +14,8 @@
  * This gate populates all three. Downstream gates use non-null assertions (!) with
  * the invariant that Gate 01 passed if they are executing.
  *
- * Spec: nexus-engineering-spec-v0-4-6.md §11.1, §13.2
- * Blueprint: nexus-blueprint-v0-3-6.md §5.1, §5.4, §8.1
+ * Spec: nexus-engineering-spec-v1-7-25.md §11.1, §13.2
+ * Blueprint: nexus-blueprint-v1-4-12.md §5.1, §5.4, §8.1
  */
 import {
   GATE_ID,
@@ -28,9 +28,9 @@ import {
   type GateDecision,
   type DelegationStore,
 } from '../types/index.js';
-import type { ActorRegistryStore } from '../types/index.js';
-import type { SqliteSessionStore } from '../identity/session-store.js';
-import type { PrincipalRegistryStore } from '../types/index.js';
+import type { ActorRegistry } from '../types/index.js';
+import type { SessionStoreInterface } from '../types/index.js';
+import type { PrincipalRegistry } from '../types/index.js';
 
 function gateDeny(code: string, reason: string, startMs: number): GateResult {
   return {
@@ -55,9 +55,9 @@ export class IdentityGate implements Gate {
   readonly plane = 'control' as const;
 
   constructor(
-    private readonly actorRegistry: ActorRegistryStore,
-    private readonly sessionStore: SqliteSessionStore,
-    private readonly principalRegistry: PrincipalRegistryStore,
+    private readonly actorRegistry: ActorRegistry,
+    private readonly sessionStore: SessionStoreInterface,
+    private readonly principalRegistry: PrincipalRegistry,
     private readonly delegationStore: DelegationStore // HOLE-002
   ) {}
 

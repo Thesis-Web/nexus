@@ -6,7 +6,7 @@
  * Filtering by expiry in get() makes SESSION_EXPIRED unreachable in Gate 01.
  */
 import type Database from 'better-sqlite3';
-import type { Session, Uuid, SessionStore } from '../types/index.js';
+import type { Session, Uuid, SessionStoreInterface } from '../types/index.js';
 
 interface SessionRow {
   session_id: string;
@@ -28,7 +28,7 @@ function rowToSession(row: SessionRow): Session {
   };
 }
 
-export class SqliteSessionStore implements SessionStore {
+export class SqliteSessionStore implements SessionStoreInterface {
   constructor(private readonly db: Database.Database) {}
 
   async get(sessionId: Uuid): Promise<Session | null> {
@@ -39,7 +39,7 @@ export class SqliteSessionStore implements SessionStore {
     return row ? rowToSession(row) : null;
   }
 
-  async create(session: Session): Promise<Session> {
+  async create(session: Session): Promise<void> {
     this.db
       .prepare(
         `
@@ -55,7 +55,7 @@ export class SqliteSessionStore implements SessionStore {
         session.createdAt,
         session.expiresAt
       );
-    return session;
+    return;
   }
 
   async list(): Promise<Session[]> {
@@ -64,7 +64,7 @@ export class SqliteSessionStore implements SessionStore {
   }
 
   /** Invalidate sets expires_at = now. Does not delete — forensic audit integrity. */
-  invalidate(sessionId: Uuid): void {
+  async invalidate(sessionId: Uuid): Promise<void> {
     this.db
       .prepare('UPDATE sessions SET expires_at = ? WHERE session_id = ?')
       .run(new Date().toISOString(), sessionId);
