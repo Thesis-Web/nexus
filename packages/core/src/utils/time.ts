@@ -1,12 +1,13 @@
-import { randomUUID } from 'crypto';
-export function uuid(): string {
-  return randomUUID();
-}
 /**
- * Time utilities — spec §10 canonical time functions.
+ * Time and ID utilities — spec §12 canonical functions.
  * All timestamps are ISO 8601 UTC strings.
  */
-import type { IsoTimestamp } from '../types/index.js';
+import { randomUUID } from 'crypto';
+import type { Uuid, IsoTimestamp } from '@nexus/contracts';
+
+export function uuid(): Uuid {
+  return randomUUID();
+}
 
 export function nowIso(): IsoTimestamp {
   return new Date().toISOString();

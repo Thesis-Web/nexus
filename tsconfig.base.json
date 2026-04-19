@@ -17,11 +17,17 @@
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@nexus/core": ["packages/core/src/index.ts"]
+      "@nexus/contracts": ["packages/contracts/src/index.ts"],
+      "@nexus/core": ["packages/core/src/index.ts"],
+      "@nexus/vanguard": ["packages/vanguard/src/index.ts"],
+      "@nexus/identity-ref": ["packages/identity-ref/src/index.ts"]
     }
   },
   "include": [
+    "packages/contracts/src/**/*.ts",
     "packages/core/src/**/*.ts",
+    "packages/vanguard/src/**/*.ts",
+    "packages/identity-ref/src/**/*.ts",
     "packages/adapters/*/src/**/*.ts",
     "packages/connectors/**/*.ts",
     "packages/interfaces/*/src/**/*.ts",

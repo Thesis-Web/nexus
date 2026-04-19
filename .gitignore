@@ -14,12 +14,13 @@ dist/
 # Ledger run outputs
 runs/
 
-# Keys — gitignore law per spec §7.1 and blueprint §10
-# dev.keypair.json: gitignored in production; committed for dev/CI
-# admin.token: always gitignored — generated at nexus init
-# approver keys: always gitignored — per-approver keypairs
+# Turbo cache
+.turbo/
+
+# Keys — gitignore law per spec §7.1 and blueprint
 keys/admin.token
 keys/approvers/
+keys/admins/
 
 # Environment files
 .env
@@ -41,3 +42,6 @@ coverage/
 
 # Logs
 *.log
+
+# Archived docs (v0 superseded files)
+docs/archive-v0/

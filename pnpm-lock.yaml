@@ -115,8 +115,13 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/contracts: {}
+
   packages/core:
     dependencies:
+      '@nexus/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       better-sqlite3:
         specifier: ^11.9.1
         version: 11.10.0
@@ -136,6 +141,12 @@ importers:
       vitest:
         specifier: ^3.1.1
         version: 3.2.4(@types/node@20.19.39)(tsx@4.21.0)
+
+  packages/identity-ref:
+    dependencies:
+      '@nexus/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/interfaces/api:
     dependencies:
@@ -174,6 +185,12 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
+
+  packages/vanguard:
+    dependencies:
+      '@nexus/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
 packages:
 

@@ -1,8 +1,8 @@
 {
-  "name": "nexus",
-  "version": "0.1.0",
+  "name": "nexus-stack",
+  "version": "1.0.0",
   "private": true,
-  "description": "Agent Action Router and Authority Governance Layer",
+  "description": "Nexus Stack — Two-checkpoint governed runtime for AI agent action authority",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
     "node": ">=20.0.0"

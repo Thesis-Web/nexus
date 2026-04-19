@@ -1,8 +1,8 @@
 /**
- * General utility helpers — spec §10 primitives.
+ * General utility helpers — spec §12 primitives.
  */
 import { randomUUID } from 'crypto';
-import type { Uuid } from '../types/index.js';
+import type { Uuid } from '@nexus/contracts';
 
 export function newUuid(): Uuid {
   return randomUUID();
@@ -29,7 +29,8 @@ export function assertNonEmpty(value: unknown, fieldName: string): string {
 
 /**
  * Strip undefined-valued keys from an object.
- * Required before any canonicalize() call — undefined is illegal in canonical payloads. (SOLVE-004)
+ * Required before any canonicalize() call — undefined is illegal
+ * in canonical payloads. (SOLVE-004)
  */
 export function stripUndefined<T extends object>(obj: T): T {
   const result = {} as T;

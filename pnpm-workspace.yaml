@@ -1,7 +1,10 @@
 packages:
+  - 'packages/contracts'
   - 'packages/core'
+  - 'packages/vanguard'
   - 'packages/adapters/mcp'
   - 'packages/connectors/vault'
   - 'packages/connectors/stub'
+  - 'packages/identity-ref'
   - 'packages/interfaces/cli'
   - 'packages/interfaces/api'
