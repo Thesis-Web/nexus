@@ -8,16 +8,10 @@
  */
 
 // §24.2 — Data classification
-export {
-  resolveHighestDataClass,
-  classifyOutboundData,
-} from './classifier/data-classifier.js';
+export { resolveHighestDataClass, classifyOutboundData } from './classifier/data-classifier.js';
 
 // §24.3 — OCT ceiling enforcement
-export {
-  isFrontierTier,
-  enforceOctModelCeiling,
-} from './classifier/ceiling-enforcer.js';
+export { isFrontierTier, enforceOctModelCeiling } from './classifier/ceiling-enforcer.js';
 
 // §24.4, §25 — Routing policy
 export {
@@ -30,16 +24,10 @@ export {
 export { callEndpoint, invokeModel } from './router/model-invoker.js';
 
 // §24.6, §24.7 — Inbound response logging + denial
-export {
-  logInboundResponse,
-  handleNvgDenial,
-} from './inbound/response-logger.js';
+export { logInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
 
 // §27 — Routing Provenance Trail
-export {
-  JsonlRoutingTrailWriter,
-  JsonlRoutingTrailReader,
-} from './trail/trail-writer.js';
+export { JsonlRoutingTrailWriter, JsonlRoutingTrailReader } from './trail/trail-writer.js';
 
 // §24.5 — Model health
 export { ModelHealthMonitor } from './health/model-health.js';
