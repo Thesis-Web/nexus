@@ -805,3 +805,128 @@ export interface TargetNormalizer {
 export interface DataClassifier {
   classify(intent: IntentContext, target: ResourceTarget, verb: ActionVerb): DataClass[];
 }
+
+// ─── §24-§27 NVG Shared Interfaces ───
+
+export interface DataLabel {
+  source: NonEmpty;
+  label: DataClass;
+  confidence: number;
+}
+
+export interface NvgOutboundRequest {
+  requestId: Uuid;
+  runId: Uuid;
+  actorId: Uuid;
+  octLevel: OctLevel;
+  environmentContext: EnvironmentId;
+  taskIntent: NonEmpty;
+  payload: unknown;
+  dataLabels: DataLabel[];
+  costPreference: 'low' | 'standard' | 'high';
+  latencyPreference: 'low' | 'standard' | 'high';
+}
+
+export interface NvgClassificationResult {
+  effectiveDataClass: DataClass;
+  isSensitive: boolean;
+  labels: DataLabel[];
+  classifiedAt: IsoTimestamp;
+}
+
+export interface NvgCeilingResult {
+  allowed: boolean;
+  denialCode?: DenialCode;
+  reason?: string;
+}
+
+export interface NvgRoutingDecision {
+  matched: boolean;
+  ruleId: NonEmpty | null;
+  routeTo: ModelTier | null;
+  fallbackTier: ModelTier | null;
+}
+
+export interface NvgRoutingPolicy {
+  version: NonEmpty;
+  policyId: Uuid;
+  issuer: NonEmpty;
+  issuedAt: IsoTimestamp;
+  signature: Base64Url;
+  defaultAction: 'deny';
+  rules: NvgRoutingRule[];
+}
+
+export interface NvgRoutingRule {
+  ruleId: NonEmpty;
+  priority: number;
+  conditions: {
+    dataClasses?: DataClass[];
+    octLevels?: OctLevel[];
+    taskTypes?: string[];
+    costCeiling?: number;
+  };
+  routeTo: ModelTier;
+  fallbackTier?: ModelTier;
+}
+
+export interface ModelEndpoint {
+  endpointId: NonEmpty;
+  tier: ModelTier;
+  url: NonEmpty;
+  healthy: boolean;
+  lastCheckAt: IsoTimestamp;
+}
+
+export interface ModelEndpointResponse {
+  success: boolean;
+  denialCode?: DenialCode;
+  reason?: string;
+  responseSize?: number;
+  latencyMs?: number;
+}
+
+export interface NvgInvocationResult {
+  success: boolean;
+  fallbackApplied: boolean;
+  fallbackFromTier: ModelTier | null;
+  endpointUsed: ModelEndpoint | null;
+  denialCode?: DenialCode;
+  reason?: string;
+  responseSize?: number;
+  latencyMs?: number;
+}
+
+export interface RoutingProvenanceTrailEntry {
+  entryId: Uuid;
+  runId: Uuid;
+  correlationId: Uuid;
+  direction: 'outbound' | 'inbound';
+  actorId: Uuid;
+  octLevel: OctLevel;
+  dataClassification: DataClass;
+  routingPolicyVersion: NonEmpty;
+  modelTierSelected: ModelTier | null;
+  modelTierInvoked: ModelTier | null;
+  denialCode: DenialCode | null;
+  denialReason: string | null;
+  fallbackApplied: boolean;
+  fallbackFromTier: ModelTier | null;
+  costMetrics: {
+    requestCost: number | null;
+    responseCost: number | null;
+  };
+  latencyMs: number;
+  responseSize: number | null;
+  timestamp: IsoTimestamp;
+}
+
+export interface RoutingTrailWriter {
+  append(entry: RoutingProvenanceTrailEntry): Promise<void>;
+}
+
+export interface RoutingTrailReader {
+  getByRunId(runId: Uuid): Promise<RoutingProvenanceTrailEntry[]>;
+  getByCorrelationId(correlationId: Uuid): Promise<RoutingProvenanceTrailEntry[]>;
+  tail(n: number): Promise<RoutingProvenanceTrailEntry[]>;
+}
