@@ -16,6 +16,8 @@ import { cmdReplay } from './commands/replay.js';
 import { cmdServe } from './commands/serve.js';
 import { cmdModeShow, cmdModeSet } from './commands/mode.js';
 import { cmdRunLedgerTail, cmdRunLedgerGet } from './commands/run-ledger.js';
+import { cmdNvgClassify, cmdNvgRoute, cmdNvgTrail, cmdNvgPolicyValidate } from './commands/nvg.js';
+import { createNvgService, createTrailReader } from './nvg-bootstrap.js';
 import { SCENARIO_MANIFEST } from '@nexus/core';
 import type { ScenarioId } from '@nexus/core';
 
@@ -170,6 +172,27 @@ runLedgerCmd
   .option('--n <n>', 'Number of entries', v => parseInt(v, 10))
   .action(opts => cmdRunLedgerTail({ n: opts.n }).catch(fatal));
 runLedgerCmd.command('get <run-id>').action(runId => cmdRunLedgerGet(runId).catch(fatal));
+
+// §22.1 — NVG commands (DEF-003, HOLE-S7-001 solve)
+// Commands receive NvgService + RoutingTrailReader via bootstrap injection.
+const nvg = program.command('nvg').description('NVG wall enforcement');
+nvg
+  .command('classify <request-json>')
+  .description('Classify data and check OCT ceiling')
+  .action(json => cmdNvgClassify(json, createNvgService()).catch(fatal));
+nvg
+  .command('route <request-json>')
+  .description('Route to model tier per policy')
+  .action(json => cmdNvgRoute(json, createNvgService()).catch(fatal));
+nvg
+  .command('trail')
+  .description('Show Routing Provenance Trail')
+  .option('--run-id <id>', 'Filter by run ID')
+  .action(opts => cmdNvgTrail({ runId: opts.runId }, createTrailReader()).catch(fatal));
+nvg
+  .command('policy-validate <filepath>')
+  .description('Validate NVG routing policy')
+  .action(filepath => cmdNvgPolicyValidate(filepath, createNvgService()).catch(fatal));
 
 function fatal(err: unknown): void {
   console.error(`✗ Fatal: ${err instanceof Error ? err.message : String(err)}`);

@@ -23,6 +23,7 @@ import {
   saveModeConfig,
 } from '@nexus/core';
 import { createApiServer, type ApiDependencies } from '@nexus/api';
+import { NvgServiceImpl, JsonlRoutingTrailReader } from '@nexus/vanguard';
 import { openDb } from '../db.js';
 
 export async function cmdServe(opts: { port?: number }): Promise<void> {
@@ -61,6 +62,8 @@ export async function cmdServe(opts: { port?: number }): Promise<void> {
     runLedgerWriter: new JsonlRunLedgerWriter(runLedgerPath),
     loadModeConfig: () => loadModeConfig(modeConfigPath),
     saveModeConfig: config => saveModeConfig(config, modeConfigPath),
+    nvgService: new NvgServiceImpl(),
+    trailReader: new JsonlRoutingTrailReader(path.join(process.cwd(), 'runs')),
   };
 
   const { start } = createApiServer(deps);

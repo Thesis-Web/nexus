@@ -181,6 +181,9 @@ importers:
       '@nexus/core':
         specifier: workspace:*
         version: link:../../core
+      '@nexus/vanguard':
+        specifier: workspace:*
+        version: link:../../vanguard
       commander:
         specifier: ^13.1.0
         version: 13.1.0

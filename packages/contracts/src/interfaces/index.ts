@@ -967,6 +967,24 @@ export interface RoutingTrailReader {
   tail(n: number): Promise<RoutingProvenanceTrailEntry[]>;
 }
 
+// ─── §22.1/§23.2 NvgService — DI contract for CLI/API NVG dispatch ───
+// HOLE-S7-001 solve: Layer 2 interface for NVG surfaces.
+// Implemented in vanguard (Layer 3). Injected by bootstrap into CLI/API.
+export interface NvgService {
+  classify(labels: DataLabel[]): NvgClassificationResult;
+  enforceOctCeiling(
+    octLevel: OctLevel,
+    requestedTier: ModelTier,
+    classification: NvgClassificationResult
+  ): NvgCeilingResult;
+  route(
+    policy: NvgRoutingPolicy,
+    request: NvgOutboundRequest,
+    classification: NvgClassificationResult
+  ): NvgRoutingDecision;
+  validatePolicy(policy: NvgRoutingPolicy): void;
+}
+
 // ─── §19 Adapter Interface ───
 export interface Adapter {
   readonly adapterProtocol: NonEmpty;

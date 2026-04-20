@@ -31,3 +31,6 @@ export { JsonlRoutingTrailWriter, JsonlRoutingTrailReader } from './trail/trail-
 
 // §24.5 — Model health
 export { ModelHealthMonitor } from './health/model-health.js';
+
+// §22.1/§23.2 — NvgService DI contract implementation (HOLE-S7-001)
+export { NvgServiceImpl } from './nvg-service.js';

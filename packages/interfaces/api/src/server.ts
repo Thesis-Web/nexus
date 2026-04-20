@@ -31,6 +31,8 @@ import type {
   DelegationContext,
   RunLedgerWriter,
   ModeConfiguration,
+  NvgService,
+  RoutingTrailReader,
 } from '@nexus/contracts';
 import { ApprovalDecisionError, nowIso, newUuid, addSeconds } from '@nexus/contracts';
 
@@ -88,6 +90,10 @@ export interface ApiDependencies {
   // §9 Operating Modes — read-only (DEF-008)
   loadModeConfig?: () => Promise<ModeConfiguration>;
   saveModeConfig?: (config: ModeConfiguration) => Promise<void>;
+
+  // §22.1/§23.2 NVG services — DI (HOLE-S7-001)
+  nvgService?: NvgService;
+  trailReader?: RoutingTrailReader;
 }
 
 // ── §23.1 createApiServer — DI factory ───────────────────────────────────────
@@ -111,6 +117,8 @@ export function createApiServer(deps: ApiDependencies): {
     runLedgerWriter,
     loadModeConfig: loadMode,
     saveModeConfig: _saveMode,
+    nvgService,
+    trailReader,
   } = deps;
 
   let currentPolicy: LoadedPolicyFile | null = null;
@@ -527,6 +535,66 @@ export function createApiServer(deps: ApiDependencies): {
     res
       .status(501)
       .json({ ok: false, error: 'POST /mode requires admin keypair — use CLI nexus mode set' });
+  });
+
+  // ── NVG (§23.2 — DEF-008, HOLE-S7-001) ───────────────────────────────────
+  app.get('/nvg/trail', async (req, res) => {
+    try {
+      if (!trailReader) {
+        res.status(501).json({ ok: false, error: 'NVG trail not configured' });
+        return;
+      }
+      const runId = req.query['runId'] as string | undefined;
+      const entries = runId
+        ? await trailReader.getByRunId(runId as any)
+        : await trailReader.tail(50);
+      res.json({ ok: true, data: entries });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+  app.get('/nvg/policy', async (_req, res) => {
+    // Return current NVG routing policy metadata (loaded at startup or via CLI)
+    res.json({ ok: true, data: { message: 'NVG policy — use CLI nexus nvg policy-validate' } });
+  });
+  app.post('/nvg/classify', async (req, res) => {
+    try {
+      if (!nvgService) {
+        res.status(501).json({ ok: false, error: 'NVG service not configured' });
+        return;
+      }
+      const { dataLabels = [], octLevel, requestedTier = 'frontier_general' } = req.body ?? {};
+      const classification = nvgService.classify(dataLabels);
+      const result: Record<string, unknown> = { classification };
+      if (octLevel) {
+        result['ceilingCheck'] = nvgService.enforceOctCeiling(
+          octLevel,
+          requestedTier,
+          classification
+        );
+      }
+      res.json({ ok: true, data: result });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+  app.post('/nvg/route', async (req, res) => {
+    try {
+      if (!nvgService) {
+        res.status(501).json({ ok: false, error: 'NVG service not configured' });
+        return;
+      }
+      const { policy, request, dataLabels = [] } = req.body ?? {};
+      if (!policy || !request) {
+        res.status(400).json({ ok: false, error: 'policy and request required' });
+        return;
+      }
+      const classification = nvgService.classify(dataLabels);
+      const decision = nvgService.route(policy, request, classification);
+      res.json({ ok: true, data: decision });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
   });
 
   function startServer(port: number = 7701): void {
