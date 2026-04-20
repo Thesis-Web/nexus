@@ -12,8 +12,8 @@ import {
   initializeSchema,
   loadAdminToken,
   loadControlPlaneKey,
-  ActorRegistry,
-  PrincipalRegistry,
+  SqliteActorRegistry,
+  SqlitePrincipalRegistry,
   SqliteSessionStore,
   SqliteDelegationStore,
   SqliteApproverRegistry,
@@ -28,7 +28,13 @@ import {
   newUuid,
   addSeconds,
 } from '@nexus/core';
-import type { Session, TokenPostureReport, PostureViolation } from '@nexus/core';
+import type {
+  Session,
+  TokenPostureReport,
+  PostureViolation,
+  ActorPosture,
+  Actor,
+} from '@nexus/core';
 
 const DB_PATH = process.env['NEXUS_DB_PATH'] ?? path.join(process.cwd(), 'nexus.db');
 const LEDGER_PATH =
@@ -47,8 +53,8 @@ async function start(): Promise<void> {
   const db = new Database(DB_PATH);
   initializeSchema(db);
 
-  const actorRegistry = new ActorRegistry(db);
-  const principalReg = new PrincipalRegistry(db);
+  const actorRegistry = new SqliteActorRegistry(db);
+  const principalReg = new SqlitePrincipalRegistry(db);
   const sessionStore = new SqliteSessionStore(db);
   const delegStore = new SqliteDelegationStore(db);
   const approvalStore = new SqlitePendingApprovalStore(db);
@@ -362,19 +368,27 @@ async function start(): Promise<void> {
     try {
       const actors = await actorRegistry.list();
       const violations: PostureViolation[] = actors
-        .filter(a => a.actorClass !== 'human' && !a.owner)
-        .map(a => ({
+        .filter((a: Actor) => a.actorClass !== 'human' && !a.owner)
+        .map((a: Actor) => ({
+          type: 'unowned_non_human_actor' as const,
+          detail: `Non-human actor ${a.actorId} has no owner`,
           actorId: a.actorId,
-          actorClass: a.actorClass,
-          reason: `Non-human actor ${a.actorId} has no owner` as any,
-          detectedAt: nowIso(),
         }));
+      const actorPostures: ActorPosture[] = actors.map((a: Actor) => ({
+        actorId: a.actorId,
+        actorClass: a.actorClass,
+        owner: a.owner ?? null,
+        environment: a.environment,
+        grantCount: 0,
+        maxRiskSeen: a.riskCeiling,
+        hasOwner: !!a.owner,
+      }));
       const report: TokenPostureReport = {
         generatedAt: nowIso(),
-        totalActors: actors.length,
+        runId: newUuid(),
+        actors: actorPostures,
+        grantPatterns: [],
         violations,
-        postureScore:
-          actors.length === 0 ? 1.0 : Math.max(0, 1.0 - violations.length / (actors.length * 2)),
       };
       res.json({ ok: true, data: report });
     } catch (err) {

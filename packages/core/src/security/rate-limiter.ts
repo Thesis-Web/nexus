@@ -34,8 +34,8 @@ export class RateLimiter {
     entry.count += 1;
     if (entry.count > this.maxPerWindow) {
       throw new NexusSecurityViolation(
-        `rate limit exceeded for key ${key}: ${entry.count} requests in window`,
-        DENIAL_CODE.RATE_LIMIT_EXCEEDED
+        DENIAL_CODE.RATE_LIMIT_EXCEEDED,
+        `rate limit exceeded for key ${key}: ${entry.count} requests in window`
       );
     }
   }

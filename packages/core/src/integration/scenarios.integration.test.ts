@@ -37,9 +37,9 @@ import { RiskClassifier } from '../classification/risk-classifier.js';
 import { CapabilityRegistry } from '../classification/capability-registry.js';
 
 // Identity
-import { ActorRegistry } from '../identity/actor-registry.js';
+import { SqliteActorRegistry } from '../identity/actor-registry.js';
 import { SqliteSessionStore } from '../identity/session-store.js';
-import { PrincipalRegistry } from '../identity/principal-registry.js';
+import { SqlitePrincipalRegistry } from '../identity/principal-registry.js';
 import { SqliteDelegationStore } from '../identity/delegation-store.js';
 import { SqliteApproverRegistry } from '../identity/approver-registry.js';
 import { mintRootDelegation } from '../identity/delegation-engine.js';
@@ -262,9 +262,9 @@ export async function runScenario(
   initializeSchema(db);
 
   // 3. Registries
-  const actorReg = new ActorRegistry(db);
+  const actorReg = new SqliteActorRegistry(db);
   const sessionStore = new SqliteSessionStore(db);
-  const principalReg = new PrincipalRegistry(db);
+  const principalReg = new SqlitePrincipalRegistry(db);
   const delegStore = new SqliteDelegationStore(db);
   const approverReg = new SqliteApproverRegistry(db);
 
@@ -311,13 +311,7 @@ export async function runScenario(
       registeredAt: nowIso(),
     };
     await actorReg.register(approverActor);
-    await approverReg.register({
-      approverId: setup.approver.actorId,
-      displayName: setup.approver.displayName,
-      publicKey: approverPair.publicKey,
-      channels: ['cli'],
-      registeredAt: nowIso(),
-    });
+    await approverReg.register(setup.approver.actorId, approverPair.publicKey, ['cli']);
   }
 
   // 7. Mint root delegation
@@ -417,6 +411,7 @@ export async function runScenario(
   // 14. Build action (no delegationSequence — pipeline assigns it)
   const rawAction: Omit<AgentAction, 'delegationSequence'> = {
     actionId: randomUUID(),
+    runId: randomUUID(),
     receivedAt: nowIso(),
     protocol: 'fixture/v0.1.0',
     adapterVersion: setup.action.adapterVersion,
@@ -532,9 +527,9 @@ describe('Integration: POC Scenarios (spec §27.3)', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
 
-    const actorReg = new ActorRegistry(db);
+    const actorReg = new SqliteActorRegistry(db);
     const sessionStore = new SqliteSessionStore(db);
-    const principalReg = new PrincipalRegistry(db);
+    const principalReg = new SqlitePrincipalRegistry(db);
     const delegStore = new SqliteDelegationStore(db);
 
     const principal: Principal = {
@@ -630,6 +625,7 @@ describe('Integration: POC Scenarios (spec §27.3)', () => {
     const fixedActionId = setup.replayActionId ?? 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
     const baseAction = (): Omit<AgentAction, 'delegationSequence'> => ({
       actionId: fixedActionId,
+      runId: randomUUID(),
       receivedAt: nowIso(),
       protocol: 'fixture/v0.1.0',
       adapterVersion: setup.action.adapterVersion,

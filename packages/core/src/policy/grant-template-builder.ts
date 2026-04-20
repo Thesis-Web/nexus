@@ -38,14 +38,14 @@ export function assertTemplateIntegrity(template: ExecutionGrantTemplate): void 
   const expected = sha256(canonicalize(templateFingerprintPayload(body)));
   if (expected !== template.templateFingerprint) {
     throw new NexusSecurityViolation(
-      'template_fingerprint_mismatch',
-      DENIAL_CODE.TEMPLATE_INTEGRITY_FAILED
+      DENIAL_CODE.TEMPLATE_INTEGRITY_FAILED,
+      'template_fingerprint_mismatch'
     );
   }
   if (template.approvalRequired && !template.approvalLinkage) {
     throw new NexusSecurityViolation(
-      'approval_required_but_linkage_absent',
-      DENIAL_CODE.TEMPLATE_INTEGRITY_FAILED
+      DENIAL_CODE.TEMPLATE_INTEGRITY_FAILED,
+      'approval_required_but_linkage_absent'
     );
   }
 }
@@ -87,8 +87,8 @@ export function buildGrantTemplate(
   const dc = context.delegationContext!; // Gate 01 invariant
   if (!dc.allowedSystems.includes(action.resolvedTarget!.system)) {
     throw new NexusSecurityViolation(
-      'grant_template_exceeds_delegation_scope',
-      DENIAL_CODE.BROAD_TOKEN_BYPASS
+      DENIAL_CODE.BROAD_TOKEN_BYPASS,
+      'grant_template_exceeds_delegation_scope'
     );
   }
 

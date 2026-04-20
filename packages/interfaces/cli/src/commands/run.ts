@@ -6,8 +6,8 @@ import {
   SCENARIO_MANIFEST,
   initializeSchema,
   loadControlPlaneKey,
-  ActorRegistry,
-  PrincipalRegistry,
+  SqliteActorRegistry,
+  SqlitePrincipalRegistry,
   SqliteSessionStore,
   SqliteDelegationStore,
   SqliteApproverRegistry,
@@ -43,6 +43,8 @@ import type {
   AgentAction,
   TokenPostureReport,
   PostureViolation,
+  ActorPosture,
+  PipelineContext,
 } from '@nexus/core';
 import { StubConnector } from '@nexus/connector-stub';
 
@@ -140,7 +142,7 @@ export async function cmdRun(opts: RunOptions): Promise<void> {
     ) as FixtureSetup;
     console.log(`  Running: ${scenarioId} — ${setup.description}`);
     try {
-      const result = await runScenario(setup, runDb, runLedger, controlPlaneKey);
+      const result = await runScenario(setup, runDb, runLedger, controlPlaneKey, runId);
       results.push({
         scenarioId,
         evidenceRecord: result.record,
@@ -181,21 +183,29 @@ export async function cmdRun(opts: RunOptions): Promise<void> {
       });
     }
   }
-  const actors = await new ActorRegistry(runDb).list();
+  const actors = await new SqliteActorRegistry(runDb).list();
   const violations: PostureViolation[] = actors
-    .filter(a => a.actorClass !== 'human' && !a.owner)
-    .map(a => ({
+    .filter((a: Actor) => a.actorClass !== 'human' && !a.owner)
+    .map((a: Actor) => ({
+      type: 'unowned_non_human_actor' as const,
+      detail: `Non-human actor ${a.actorId} has no owner`,
       actorId: a.actorId,
-      actorClass: a.actorClass,
-      reason: `Non-human actor ${a.actorId} has no owner` as any,
-      detectedAt: nowIso(),
     }));
+  const actorPostures: ActorPosture[] = actors.map((a: Actor) => ({
+    actorId: a.actorId,
+    actorClass: a.actorClass,
+    owner: a.owner ?? null,
+    environment: a.environment,
+    grantCount: 0,
+    maxRiskSeen: a.riskCeiling,
+    hasOwner: !!a.owner,
+  }));
   const postureReport: TokenPostureReport = {
     generatedAt: nowIso(),
-    totalActors: actors.length,
+    runId,
+    actors: actorPostures,
+    grantPatterns: [],
     violations,
-    postureScore:
-      actors.length === 0 ? 1.0 : Math.max(0, 1.0 - violations.length / (actors.length * 2)),
   };
   await wj(path.join(outDir, '01-ingest-log.json'), ingestLog);
   await wj(path.join(outDir, '02-session-manifest.json'), allSessions);
@@ -226,10 +236,11 @@ async function runScenario(
   setup: FixtureSetup,
   db: Database.Database,
   ledger: JsonlLedgerBackend,
-  controlPlaneKey: any
+  controlPlaneKey: any,
+  runId: string
 ): Promise<{ record: EvidenceRecord; sessionId: string; delegationId: string }> {
-  const actorReg = new ActorRegistry(db);
-  const principalReg = new PrincipalRegistry(db);
+  const actorReg = new SqliteActorRegistry(db);
+  const principalReg = new SqlitePrincipalRegistry(db);
   const sessionStore = new SqliteSessionStore(db);
   const delegStore = new SqliteDelegationStore(db);
   const approverReg = new SqliteApproverRegistry(db);
@@ -313,6 +324,7 @@ async function runScenario(
   );
   const rawAction: Omit<AgentAction, 'delegationSequence'> = {
     actionId: setup.replayActionId ?? newUuid(),
+    runId,
     receivedAt: nowIso(),
     protocol: 'fixture/v0.1.0',
     adapterVersion: setup.action.adapterVersion,
@@ -341,6 +353,9 @@ async function runScenario(
   };
   const record = await pipeline.process(rawAction, {
     sessionId,
+    delegationContext: undefined as any,
+    actor: undefined as any,
+    principal: undefined as any,
     policyFile,
     approverRegistry: approverReg,
     connectorRegistry: connectorReg,

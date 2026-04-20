@@ -1,6 +1,6 @@
 import {
-  ActorRegistry,
-  PrincipalRegistry,
+  SqliteActorRegistry,
+  SqlitePrincipalRegistry,
   SqliteDelegationStore,
   mintRootDelegation,
 } from '@nexus/core';
@@ -18,8 +18,8 @@ export async function cmdDelegate(opts: {
   allowPropagation?: boolean;
 }): Promise<void> {
   const db = openDb();
-  const actorRegistry = new ActorRegistry(db);
-  const principalRegistry = new PrincipalRegistry(db);
+  const actorRegistry = new SqliteActorRegistry(db);
+  const principalRegistry = new SqlitePrincipalRegistry(db);
   const delegationStore = new SqliteDelegationStore(db);
   const actor = await actorRegistry.get(opts.actor);
   if (!actor) {

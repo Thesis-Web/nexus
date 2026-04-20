@@ -123,6 +123,7 @@ describe('Threat: Approval Bypass — Unsigned Response (spec §13.6)', () => {
         registeredAt: nowIso(),
         approverPublicKey: controlPlanePair.publicKey,
       }),
+      getPublicKey: async () => controlPlanePair.publicKey,
       list: async () => [],
       register: async () => {},
     };

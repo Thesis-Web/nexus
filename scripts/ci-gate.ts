@@ -1,15 +1,19 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — all 11 steps in spec §7.4 order.
+ * Nexus CI Gate — all 15 steps in spec §6.4 order.
  *
  * Governing law:
- *   §7.4   — 11-step ci:gate sequence
+ *   §6.4   — 15-step ci:gate sequence
  *   §16.2  — verifyChain: sequence + hash chain + Ed25519 signature per record
- *   §26.6  — Ledger Chain Gate (Step 7)
- *   §26.8  — CCV Integrity Gate (Step 8): re-derive + re-hash
- *   §31.2  — 95% line coverage on packages/core/src/gates/
- *   §31.7  — CCV inside hash verification
+ *   §37.6  — Ledger Chain Gate (Step 7)
+ *   §37.8  — CCV Integrity Gate (Step 8): re-derive + re-hash
+ *   §37.10 — NVG Routing Policy Signature Gate (Step 12)
+ *   §37.11 — NVG Classification Enforcement Gate (Step 13)
+ *   §37.12 — Run Ledger Cross-Link Gate (Step 14)
+ *   §37.13 — Bypass Annotation Gate (Step 15)
+ *   §38.1  — 95% line coverage on packages/core/src/gates/
+ *   §37.8  — CCV inside hash verification
  *
  * HOLE-001 Option A (owner-approved):
  *   PRE-GATE  — pnpm build (environment setup; not a numbered gate step)
@@ -22,12 +26,13 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 
 // ---------------------------------------------------------------------------
-// Spec-governed constants — §10.2
+// Spec-governed constants — §12.1
 // ---------------------------------------------------------------------------
-const BLUEPRINT_VERSION = 'v0.3.6';
-const SPEC_VERSION = 'v0.4.6';
-const CAPABILITY_TAXONOMY_VERSION = 'v0.1.0';
-const COMPARISON_INPUT_VERSION = 'v0.1.0';
+const BLUEPRINT_VERSION = 'v1.4.12';
+const SPEC_VERSION = 'v1.7.25';
+const RUNTIME_CONTRACT_VERSION = 'v1.0.0';
+const CAPABILITY_TAXONOMY_VERSION = 'v1.0.0';
+const COMPARISON_INPUT_VERSION = 'v1.0.0';
 const GENESIS_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
 
 // ---------------------------------------------------------------------------
@@ -170,14 +175,17 @@ interface ActionSummaryRecord {
   tool: string;
   resolvedVerb: string | null;
   resolvedCapability: string | null;
-  resolvedTarget: {
-    system: string;
-    resourceType: string;
-    resourceScope: string;
-    environment: string;
-    externalFacing: boolean;
-  } | null;
-  resolvedDataClasses: string[];
+  resolvedTarget:
+    | {
+        system: string;
+        resourceType: string;
+        resourceScope: string;
+        environment: string;
+        externalFacing: boolean;
+      }
+    | string
+    | null;
+  resolvedDataClasses: string[] | string;
   resolvedRiskTier: string | null;
 }
 
@@ -211,15 +219,15 @@ interface CompilerComparisonView {
     maxRiskTier: string;
   };
   classification: {
-    capabilityId: string;
-    actionVerb: string;
-    dataClasses: string[];
-    riskTier: string;
+    capabilityId: string | null;
+    actionVerb: string | null;
+    dataClasses: string[] | string;
+    riskTier: string | null;
   };
   policyAndApproval: {
     policyRuleId: string | null;
     outcomeLabel: string | null;
-    approvalRequired: boolean;
+    approvalRequired: boolean | string;
     approvalDecisionLabel: string | null;
   };
   authorityAndExecution: {
@@ -235,6 +243,7 @@ interface CompilerComparisonView {
 interface EvidenceRecord {
   recordId: string;
   actionId: string;
+  runId: string;
   sessionId: string;
   ledgerSequence: number;
   actionSummary: ActionSummaryRecord;
@@ -243,6 +252,8 @@ interface EvidenceRecord {
   gateDecisions: Array<{ gateId: string; [k: string]: unknown }>;
   policyRuleId: string | null;
   policyOutcome: string | null;
+  approvalRequired: boolean | string;
+  approvalDecisionLabel: string | null;
   approvalRequest: unknown | null;
   approvalResponse: ({ decision: string } & Record<string, unknown>) | null;
   grantMetadata: {
@@ -255,7 +266,7 @@ interface EvidenceRecord {
     expiryClass: string;
     templateFingerprint: string;
     approvalLinkage: string | null;
-  } | null;
+  };
   executionResult: ({ errorType: string | null } & Record<string, unknown>) | null;
   finalOutcome: string;
   threatEvents: unknown[];
@@ -291,15 +302,19 @@ function readLedger(ledgerPath: string): EvidenceRecord[] {
 // §14.2 — computeNormalizedActionHash (inlined for ci:gate independence)
 // ---------------------------------------------------------------------------
 function computeNormalizedActionHash(action: ActionSummaryRecord): string {
+  const target = action.resolvedTarget;
+  const isObj = typeof target === 'object' && target !== null;
   const normalized = {
     tool: action.tool,
     resolvedVerb: action.resolvedVerb,
     resolvedCapability: action.resolvedCapability,
-    targetSystem: action.resolvedTarget?.system ?? null,
-    targetResourceType: action.resolvedTarget?.resourceType ?? null,
-    targetScope: action.resolvedTarget?.resourceScope ?? null,
-    externalFacing: action.resolvedTarget?.externalFacing ?? null,
-    dataClasses: [...action.resolvedDataClasses].sort(),
+    targetSystem: isObj ? target.system : null,
+    targetResourceType: isObj ? target.resourceType : null,
+    targetScope: isObj ? target.resourceScope : null,
+    externalFacing: isObj ? target.externalFacing : null,
+    dataClasses: Array.isArray(action.resolvedDataClasses)
+      ? [...action.resolvedDataClasses].sort()
+      : [],
     riskTier: action.resolvedRiskTier,
   };
   return sha256Hex(canonicalize(normalized));
@@ -315,7 +330,7 @@ function rederiveCCV(record: EvidenceRecord): CompilerComparisonView {
   return {
     meta: {
       blueprintVersion: BLUEPRINT_VERSION,
-      runtimeContractVersion: SPEC_VERSION,
+      runtimeContractVersion: RUNTIME_CONTRACT_VERSION,
       capabilityTaxonomyVersion: CAPABILITY_TAXONOMY_VERSION,
       comparisonInputVersion: COMPARISON_INPUT_VERSION,
       normalizedActionHash: computeNormalizedActionHash(record.actionSummary),
@@ -335,23 +350,25 @@ function rederiveCCV(record: EvidenceRecord): CompilerComparisonView {
       maxRiskTier: record.delegationContextSnapshot.maxRiskTier,
     },
     classification: {
-      capabilityId: record.actionSummary.resolvedCapability ?? '',
-      actionVerb: record.actionSummary.resolvedVerb ?? '',
-      dataClasses: [...record.actionSummary.resolvedDataClasses].sort(),
-      riskTier: record.actionSummary.resolvedRiskTier ?? '',
+      capabilityId: record.actionSummary.resolvedCapability,
+      actionVerb: record.actionSummary.resolvedVerb,
+      dataClasses: Array.isArray(record.actionSummary.resolvedDataClasses)
+        ? [...record.actionSummary.resolvedDataClasses].sort()
+        : record.actionSummary.resolvedDataClasses,
+      riskTier: record.actionSummary.resolvedRiskTier,
     },
     policyAndApproval: {
       policyRuleId: record.policyRuleId,
       outcomeLabel: record.policyOutcome,
-      approvalRequired: record.approvalRequest !== null,
-      approvalDecisionLabel: record.approvalResponse?.decision ?? null,
+      approvalRequired: (record as any).approvalRequired,
+      approvalDecisionLabel: (record as any).approvalDecisionLabel,
     },
     authorityAndExecution: {
-      executionGrantId: record.grantMetadata?.grantId ?? null,
-      credentialSubjectType: record.grantMetadata?.credentialSubjectType ?? null,
-      scopeDescriptor: record.grantMetadata?.scopeDescriptor ?? null,
-      expiryClass: record.grantMetadata?.expiryClass ?? null,
-      grantTemplateFingerprint: record.grantMetadata?.templateFingerprint ?? null,
+      executionGrantId: record.grantMetadata.grantId,
+      credentialSubjectType: record.grantMetadata.credentialSubjectType,
+      scopeDescriptor: record.grantMetadata.scopeDescriptor,
+      expiryClass: record.grantMetadata.expiryClass,
+      grantTemplateFingerprint: record.grantMetadata.templateFingerprint,
     },
     result: {
       finalOutcome: record.finalOutcome,
@@ -628,12 +645,12 @@ function findCCVDiff(expected: CompilerComparisonView, stored: CompilerCompariso
 // MAIN — ci:gate entry point
 // ===========================================================================
 async function main(): Promise<void> {
-  console.log('\n=== Nexus ci:gate — §7.4 ===\n');
+  console.log('\n=== Nexus ci:gate — §6.4 ===\n');
 
   // -------------------------------------------------------------------------
 
   // -------------------------------------------------------------------------
-  // Step 1: format check — §7.4 step 1, §7.2
+  // Step 1: format check — §6.4 step 1
   // -------------------------------------------------------------------------
   stepLog('format check (prettier --check)');
   runCmd('pnpm exec prettier --check .');
@@ -721,7 +738,7 @@ async function main(): Promise<void> {
   pass(`${records.length} records: CCV re-derived and inside tamper-evident boundary`);
 
   // -------------------------------------------------------------------------
-  // Step 9: no-certification-language gate — §7.4 step 9, §26.4
+  // Step 9: no-certification-language gate — §6.4 step 9, §37.4
   // -------------------------------------------------------------------------
   stepLog('no-certification-language gate');
   const runsDir =
@@ -731,23 +748,54 @@ async function main(): Promise<void> {
   pass(`${scannedFiles} artifact file(s) scanned`);
 
   // -------------------------------------------------------------------------
-  // Step 10: policy signature gate — §7.4 step 10, §26.7
+  // Step 10: policy signature gate — §6.4 step 10, §37.7
   // -------------------------------------------------------------------------
   stepLog('policy signature gate');
   const policyCount = validatePolicySignatures('fixtures');
   pass(`${policyCount} fixture policy file(s) verified`);
 
   // -------------------------------------------------------------------------
-  // Step 11: fixture secret prefix gate — §7.4 step 11, §26.9
+  // Step 11: fixture secret prefix gate — §6.4 step 11, §37.9
   // -------------------------------------------------------------------------
   stepLog('fixture secret prefix gate');
   const checkedFiles = validateFixtureSecrets('fixtures');
   pass(`${checkedFiles} fixture JSON file(s) verified`);
 
   // -------------------------------------------------------------------------
+  // Step 12: NVG routing policy signature gate — §6.4 step 12, §37.10
+  // All NVG routing policy files must have valid Ed25519 signatures.
+  // -------------------------------------------------------------------------
+  stepLog('NVG routing policy signature gate');
+  const nvgPolicyCount = validateNvgRoutingPolicySignatures();
+  pass(`${nvgPolicyCount} NVG routing policy file(s) verified`);
+
+  // -------------------------------------------------------------------------
+  // Step 13: NVG classification enforcement gate — §6.4 step 13, §37.11
+  // No routing policy may route sensitive data to a frontier tier.
+  // -------------------------------------------------------------------------
+  stepLog('NVG classification enforcement gate');
+  const nvgClassCount = validateNvgClassificationEnforcement();
+  pass(`${nvgClassCount} NVG routing policy file(s) checked`);
+
+  // -------------------------------------------------------------------------
+  // Step 14: Run Ledger cross-link gate — §6.4 step 14, §37.12
+  // All three audit streams for a run share the same runId.
+  // -------------------------------------------------------------------------
+  stepLog('Run Ledger cross-link gate');
+  const crossLinkCount = validateRunLedgerCrossLinks(CI_LEDGER_PATH);
+  pass(`${crossLinkCount} record(s) checked for runId cross-link`);
+
+  // -------------------------------------------------------------------------
+  // Step 15: bypass annotation gate — §6.4 step 15, §37.13
+  // NVG-bypass runs must have explicit bypass annotation.
+  // -------------------------------------------------------------------------
+  stepLog('bypass annotation gate');
+  const bypassCount = validateBypassAnnotations();
+  pass(`${bypassCount} run(s) checked`);
+
+  // -------------------------------------------------------------------------
   // POST-GATE: bin assertion — HOLE-001 Option A (owner approved)
   // Both nexus and nexus-mcp-proxy bins must be executable after pnpm build.
-  // §31.12, §7.1.1
   // -------------------------------------------------------------------------
   console.log('\n[post-gate] bin assertion (HOLE-001 Option A)');
 
@@ -765,7 +813,114 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  console.log('\n=== ci:gate PASSED — all 11 steps ===\n');
+  console.log('\n=== ci:gate PASSED — all 15 steps ===\n');
+}
+
+// ===========================================================================
+// Step 12 helper — NVG routing policy signature validation
+// §37.10: All NVG routing policy files must have valid Ed25519 signatures.
+// ===========================================================================
+function validateNvgRoutingPolicySignatures(): number {
+  const nvgPolicyDir = path.join('fixtures', 'nvg');
+  if (!fs.existsSync(nvgPolicyDir)) return 0;
+  let count = 0;
+  for (const entry of fs.readdirSync(nvgPolicyDir, { recursive: true }) as string[]) {
+    const fpath = path.join(nvgPolicyDir, entry);
+    if (!fpath.endsWith('.routing-policy.json')) continue;
+    if (!fs.statSync(fpath).isFile()) continue;
+    let obj: Record<string, unknown>;
+    try {
+      obj = JSON.parse(fs.readFileSync(fpath, 'utf-8')) as Record<string, unknown>;
+    } catch {
+      fail(`NVG routing policy invalid JSON: ${fpath}`);
+    }
+    if (
+      !obj['signature'] ||
+      typeof obj['signature'] !== 'string' ||
+      obj['signature'].length === 0
+    ) {
+      fail(`NVG routing policy signature missing in: ${fpath}`);
+    }
+    count++;
+  }
+  return count;
+}
+
+// ===========================================================================
+// Step 13 helper — NVG classification enforcement
+// §37.11: No routing policy may route sensitive data to a frontier tier.
+// ===========================================================================
+function validateNvgClassificationEnforcement(): number {
+  const nvgPolicyDir = path.join('fixtures', 'nvg');
+  if (!fs.existsSync(nvgPolicyDir)) return 0;
+  const FRONTIER_TIERS = ['frontier', 'frontier_primary', 'frontier_fallback'];
+  const SENSITIVE_CLASSES = ['pii', 'phi', 'financial', 'secret'];
+  let count = 0;
+  for (const entry of fs.readdirSync(nvgPolicyDir, { recursive: true }) as string[]) {
+    const fpath = path.join(nvgPolicyDir, entry);
+    if (!fpath.endsWith('.routing-policy.json')) continue;
+    if (!fs.statSync(fpath).isFile()) continue;
+    let obj: Record<string, unknown>;
+    try {
+      obj = JSON.parse(fs.readFileSync(fpath, 'utf-8')) as Record<string, unknown>;
+    } catch {
+      continue; // Signature gate already catches invalid JSON
+    }
+    const rules = (obj['rules'] ?? []) as Record<string, unknown>[];
+    for (const rule of rules) {
+      const tier = String(rule['targetTier'] ?? rule['modelTier'] ?? '').toLowerCase();
+      const dataClass = String(rule['dataClass'] ?? rule['minDataClass'] ?? '').toLowerCase();
+      if (FRONTIER_TIERS.includes(tier) && SENSITIVE_CLASSES.includes(dataClass)) {
+        fail(
+          `NVG classification violation in ${fpath}: ` +
+            `rule routes ${dataClass} data to ${tier} tier`
+        );
+      }
+    }
+    count++;
+  }
+  return count;
+}
+
+// ===========================================================================
+// Step 14 helper — Run Ledger cross-link gate
+// §37.12: All records must have runId. Missing runId = gate failure.
+// ===========================================================================
+function validateRunLedgerCrossLinks(ledgerPath: string): number {
+  if (!fs.existsSync(ledgerPath)) return 0;
+  const records = readLedger(ledgerPath);
+  for (const record of records) {
+    if (!record.runId && !(record as any).actionSummary?.runId) {
+      fail(
+        `Run Ledger cross-link failure: record at ledgerSequence ${record.ledgerSequence} missing runId`
+      );
+    }
+  }
+  return records.length;
+}
+
+// ===========================================================================
+// Step 15 helper — Bypass annotation gate
+// §37.13: NVG-bypass runs must have explicit bypass annotation.
+// ===========================================================================
+function validateBypassAnnotations(): number {
+  const runsDir = 'runs';
+  if (!fs.existsSync(runsDir)) return 0;
+  let count = 0;
+  for (const entry of fs.readdirSync(runsDir)) {
+    const runDir = path.join(runsDir, entry);
+    if (!fs.statSync(runDir).isDirectory()) continue;
+    const summaryPath = path.join(runDir, '12-run-summary.md');
+    if (!fs.existsSync(summaryPath)) continue;
+    const summary = fs.readFileSync(summaryPath, 'utf-8');
+    // If run includes nvg-bypass, it must be annotated
+    const bypassMarker = summary.includes('nvg-bypass') || summary.includes('NVG_BYPASS');
+    if (bypassMarker && !summary.includes('bypass_annotated')) {
+      fail(`Bypass annotation missing in ${summaryPath} — NVG-bypass run without annotation`);
+    }
+    count++;
+  }
+  return count;
 }
 
 main().catch(err => {

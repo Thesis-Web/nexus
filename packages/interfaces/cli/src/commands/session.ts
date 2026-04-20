@@ -1,5 +1,5 @@
 import {
-  ActorRegistry,
+  SqliteActorRegistry,
   SqliteSessionStore,
   SqliteDelegationStore,
   addSeconds,
@@ -14,7 +14,7 @@ export async function cmdSessionStart(opts: {
   ttl?: number;
 }): Promise<void> {
   const db = openDb();
-  const actorRegistry = new ActorRegistry(db);
+  const actorRegistry = new SqliteActorRegistry(db);
   const sessionStore = new SqliteSessionStore(db);
   const delegationStore = new SqliteDelegationStore(db);
   const actor = await actorRegistry.get(opts.actor);

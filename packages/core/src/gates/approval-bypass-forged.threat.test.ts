@@ -138,6 +138,7 @@ describe('Threat: Approval Bypass — Forged Response (spec §13.6)', () => {
         registeredAt: nowIso(),
         approverPublicKey: controlPlanePair.publicKey, // valid key — forged sig will still fail
       }),
+      getPublicKey: async () => controlPlanePair.publicKey,
       list: async () => [],
       register: async () => {},
     };

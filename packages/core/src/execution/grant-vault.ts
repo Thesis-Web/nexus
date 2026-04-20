@@ -44,8 +44,8 @@ export function assertGrantPresent(grant: ExecutionGrant): void {
   const secret = ref ? grantSecrets.get(ref) : undefined;
   if (!secret) {
     throw new NexusSecurityViolation(
-      'grant secret absent — execution without valid grant is a bypass attempt',
-      DENIAL_CODE.BROAD_TOKEN_BYPASS
+      DENIAL_CODE.BROAD_TOKEN_BYPASS,
+      'grant secret absent — execution without valid grant is a bypass attempt'
     );
   }
 }
@@ -53,8 +53,8 @@ export function assertGrantPresent(grant: ExecutionGrant): void {
 export function assertGrantNotExpired(grant: ExecutionGrant): void {
   if (new Date(grant.expiresAt) <= new Date()) {
     throw new NexusSecurityViolation(
-      `grant ${grant.grantId} expired at ${grant.expiresAt}`,
-      DENIAL_CODE.GRANT_EXPIRED
+      DENIAL_CODE.GRANT_EXPIRED,
+      `grant ${grant.grantId} expired at ${grant.expiresAt}`
     );
   }
 }

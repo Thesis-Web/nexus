@@ -17,8 +17,8 @@ export class ReplayDetector {
       .get(actionId);
     if (row) {
       throw new NexusSecurityViolation(
-        `replay detected: actionId ${actionId} already processed`,
-        DENIAL_CODE.REPLAY_DETECTED
+        DENIAL_CODE.REPLAY_DETECTED,
+        `replay detected: actionId ${actionId} already processed`
       );
     }
     this.db

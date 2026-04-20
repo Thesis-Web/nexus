@@ -1,32 +1,39 @@
-import { ActorRegistry, nowIso } from '@nexus/core';
-import type { TokenPostureReport, PostureViolation } from '@nexus/core';
+import { SqliteActorRegistry, nowIso, newUuid } from '@nexus/core';
+import type { TokenPostureReport, PostureViolation, ActorPosture } from '@nexus/core';
 import { openDb } from '../db.js';
 export async function cmdPosture(): Promise<void> {
   const db = openDb();
-  const actors = await new ActorRegistry(db).list();
+  const actors = await new SqliteActorRegistry(db).list();
   const violations: PostureViolation[] = [];
   for (const a of actors) {
     if (a.actorClass !== 'human' && !a.owner)
       violations.push({
+        type: 'unowned_non_human_actor',
+        detail: `Non-human actor ${a.actorId} has no owner`,
         actorId: a.actorId,
-        actorClass: a.actorClass,
-        reason: `Non-human actor ${a.actorId} has no owner` as any,
-        detectedAt: nowIso(),
       });
     if (a.actorClass !== 'human' && !a.reviewCadence)
       violations.push({
+        type: 'missing_review_cadence',
+        detail: `Non-human actor ${a.actorId} has no reviewCadence`,
         actorId: a.actorId,
-        actorClass: a.actorClass,
-        reason: `Non-human actor ${a.actorId} has no reviewCadence` as any,
-        detectedAt: nowIso(),
       });
   }
+  const actorPostures: ActorPosture[] = actors.map(a => ({
+    actorId: a.actorId,
+    actorClass: a.actorClass,
+    owner: a.owner ?? null,
+    environment: a.environment,
+    grantCount: 0,
+    maxRiskSeen: a.riskCeiling,
+    hasOwner: !!a.owner,
+  }));
   const report: TokenPostureReport = {
     generatedAt: nowIso(),
-    totalActors: actors.length,
+    runId: newUuid(),
+    actors: actorPostures,
+    grantPatterns: [],
     violations,
-    postureScore:
-      actors.length === 0 ? 1.0 : Math.max(0, 1.0 - violations.length / (actors.length * 2)),
   };
   console.log(JSON.stringify(report, null, 2));
 }
