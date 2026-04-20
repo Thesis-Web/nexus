@@ -42,6 +42,10 @@ const GENESIS_HASH = '0000000000000000000000000000000000000000000000000000000000
 const CI_LEDGER_PATH =
   process.env.CI_LEDGER_PATH ?? path.join('runs', 'test-integration.ledger.jsonl');
 
+// Run Ledger path — written by integration test suite (DEF-002 — §30).
+const CI_RUN_LEDGER_PATH =
+  process.env.CI_RUN_LEDGER_PATH ?? path.join('runs', 'test-integration.run-ledger.jsonl');
+
 // Control-plane public key path — same as dev.keypair.json
 const DEV_KEY_PATH = process.env.NEXUS_KEY_PATH ?? path.join('keys', 'dev.keypair.json');
 
@@ -780,10 +784,13 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Step 14: Run Ledger cross-link gate — §6.4 step 14, §37.12
   // All three audit streams for a run share the same runId.
+  // DEF-002: Validates evidence ledger + run ledger streams. RPT validated if present.
   // -------------------------------------------------------------------------
   stepLog('Run Ledger cross-link gate');
-  const crossLinkCount = validateRunLedgerCrossLinks(CI_LEDGER_PATH);
-  pass(`${crossLinkCount} record(s) checked for runId cross-link`);
+  const crossLinkResult = validateRunLedgerCrossLinks(CI_LEDGER_PATH, CI_RUN_LEDGER_PATH);
+  pass(
+    `${crossLinkResult.evidenceCount} evidence + ${crossLinkResult.runLedgerCount} run-ledger entries cross-linked`
+  );
 
   // -------------------------------------------------------------------------
   // Step 15: bypass annotation gate — §6.4 step 15, §37.13
@@ -897,19 +904,72 @@ function validateNvgClassificationEnforcement(): number {
 
 // ===========================================================================
 // Step 14 helper — Run Ledger cross-link gate
-// §37.12: All records must have runId. Missing runId = gate failure.
+// §37.12: All three audit streams must have runId. Missing runId = gate failure.
+// §33: Cross-link validation across evidence ledger + run ledger + RPT.
+// DEF-002: Now validates both evidence and run ledger streams.
 // ===========================================================================
-function validateRunLedgerCrossLinks(ledgerPath: string): number {
-  if (!fs.existsSync(ledgerPath)) return 0;
-  const records = readLedger(ledgerPath);
-  for (const record of records) {
-    if (!record.runId && !(record as any).actionSummary?.runId) {
-      fail(
-        `Run Ledger cross-link failure: record at ledgerSequence ${record.ledgerSequence} missing runId`
-      );
+interface RunLedgerEntryRaw {
+  entryId: string;
+  runId: string;
+  eventType: string;
+  timestamp: string;
+  actorId: string | null;
+  detail: Record<string, unknown>;
+}
+
+function validateRunLedgerCrossLinks(
+  evidenceLedgerPath: string,
+  runLedgerPath: string
+): { evidenceCount: number; runLedgerCount: number } {
+  // Stream 1: Evidence Ledger
+  let evidenceCount = 0;
+  if (fs.existsSync(evidenceLedgerPath)) {
+    const records = readLedger(evidenceLedgerPath);
+    for (const record of records) {
+      if (!record.runId && !(record as any).actionSummary?.runId) {
+        fail(`Cross-link failure: evidence record at seq ${record.ledgerSequence} missing runId`);
+      }
+      evidenceCount++;
     }
   }
-  return records.length;
+
+  // Stream 2: Run Ledger (§30)
+  let runLedgerCount = 0;
+  if (fs.existsSync(runLedgerPath)) {
+    const raw = fs.readFileSync(runLedgerPath, 'utf-8');
+    const entries: RunLedgerEntryRaw[] = [];
+    for (const line of raw.split('\n').filter(Boolean)) {
+      try {
+        entries.push(JSON.parse(line) as RunLedgerEntryRaw);
+      } catch {
+        fail(`Run Ledger parse error: ${line.slice(0, 80)}`);
+      }
+    }
+    for (const entry of entries) {
+      if (!entry.runId) {
+        fail(`Cross-link failure: run ledger entry ${entry.entryId} missing runId`);
+      }
+      if (!entry.entryId) {
+        fail(`Cross-link failure: run ledger entry missing entryId`);
+      }
+      runLedgerCount++;
+    }
+  }
+
+  // Gate requires at least one stream to be non-empty
+  if (evidenceCount === 0 && runLedgerCount === 0) {
+    fail('Cross-link failure: both evidence ledger and run ledger are empty or missing');
+  }
+
+  // Require run ledger to have entries (non-vacuous validation — DEF-002)
+  if (runLedgerCount === 0) {
+    fail(
+      `Cross-link failure: run ledger at ${runLedgerPath} is empty or missing — ` +
+        'Step 14 requires non-vacuous run ledger data'
+    );
+  }
+
+  return { evidenceCount, runLedgerCount };
 }
 
 // ===========================================================================

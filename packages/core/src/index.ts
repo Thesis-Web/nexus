@@ -79,6 +79,9 @@ export { buildCCV } from './compiler-view/ccv-builder.js';
 export { verifyChain } from './ledger/chain-verifier.js';
 export { JsonlLedgerBackend } from './ledger/backends/jsonl.backend.js';
 
+// §30 — Run Ledger (DEF-002)
+export { JsonlRunLedgerWriter } from './ledger/run-ledger.js';
+
 // §13.1 — Pipeline
 export { Pipeline, SimpleConnectorRegistry, SimpleChannelRegistry } from './engine/pipeline.js';
 export type { PipelineGates } from './engine/pipeline.js';

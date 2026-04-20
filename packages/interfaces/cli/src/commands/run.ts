@@ -24,6 +24,7 @@ import {
   ExecutionGate,
   EvidenceGate,
   JsonlLedgerBackend,
+  JsonlRunLedgerWriter,
   Pipeline,
   SimpleConnectorRegistry,
   SimpleChannelRegistry,
@@ -45,6 +46,7 @@ import type {
   PostureViolation,
   ActorPosture,
   PipelineContext,
+  Uuid,
 } from '@nexus/core';
 import { StubConnector } from '@nexus/connector-stub';
 
@@ -121,10 +123,22 @@ export async function cmdRun(opts: RunOptions): Promise<void> {
   const runDb = new Database(path.join(outDir, 'run.db'));
   initializeSchema(runDb);
   const runLedger = new JsonlLedgerBackend(path.join(outDir, '08-evidence-ledger.jsonl'));
+  // §30 Run Ledger — DEF-002
+  const runEventLedger = new JsonlRunLedgerWriter(path.join(outDir, '14-run-ledger.jsonl'));
   const controlPlaneKey = await loadControlPlaneKey();
   const scenarioIds: ScenarioId[] = opts.fixturesAll
     ? (Object.keys(SCENARIO_MANIFEST) as ScenarioId[])
     : [opts.scenario!];
+
+  // §30.1: run_opened event at workspace entry
+  await runEventLedger.writeEvent({
+    runId: runId as Uuid,
+    eventType: 'run_opened',
+    timestamp: nowIso(),
+    actorId: null,
+    detail: { scenarioIds, outDir },
+  });
+
   const results: RunResult[] = [];
   const ingestLog: unknown[] = [];
   const gateDecisionLog: unknown[] = [];
@@ -174,6 +188,18 @@ export async function cmdRun(opts: RunOptions): Promise<void> {
       allActors.push(setup.actor);
       allSessions.push({ scenarioId, sessionId: result.sessionId });
       allDelegations.push({ scenarioId, delegationId: result.delegationId });
+      // §30.1: nxs_action event per scenario
+      await runEventLedger.writeEvent({
+        runId: runId as Uuid,
+        eventType: 'nxs_action',
+        timestamp: nowIso(),
+        actorId: (setup.actor.actorId ?? null) as Uuid | null,
+        detail: {
+          scenarioId,
+          actionId: result.record.actionId,
+          finalOutcome: result.record.finalOutcome,
+        },
+      });
     } catch (err) {
       console.error(`  ✗ ${scenarioId}: ${err instanceof Error ? err.message : String(err)}`);
       await wj(path.join(outDir, '00-failure-log.json'), {
@@ -183,6 +209,23 @@ export async function cmdRun(opts: RunOptions): Promise<void> {
       });
     }
   }
+  // §30.3: NVG bypass annotation — POC scenarios are NVG-bypass
+  await runEventLedger.writeEvent({
+    runId: runId as Uuid,
+    eventType: 'bypass_annotation',
+    timestamp: nowIso(),
+    actorId: null,
+    detail: { bypass_path: true, nvg_entries: false },
+  });
+  // §30.1: run_closed event
+  await runEventLedger.writeEvent({
+    runId: runId as Uuid,
+    eventType: 'run_closed',
+    timestamp: nowIso(),
+    actorId: null,
+    detail: { scenarioCount: results.length },
+  });
+
   const actors = await new SqliteActorRegistry(runDb).list();
   const violations: PostureViolation[] = actors
     .filter((a: Actor) => a.actorClass !== 'human' && !a.owner)
@@ -229,6 +272,10 @@ export async function cmdRun(opts: RunOptions): Promise<void> {
     ].join('\n'),
     'utf-8'
   );
+  // §35 artifact 13: Routing Provenance Trail (empty — no NVG calls in POC CLI run)
+  await fs.writeFile(path.join(outDir, '13-routing-provenance-trail.jsonl'), '', 'utf-8');
+  // §35 artifact 14: Run Ledger (already written by runEventLedger — verify exists)
+  // 14-run-ledger.jsonl is produced by JsonlRunLedgerWriter above
   console.log(`\n✓ Run ${runId} complete — ${results.length} scenario(s)`);
 }
 

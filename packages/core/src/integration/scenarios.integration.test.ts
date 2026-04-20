@@ -50,6 +50,7 @@ import { RateLimiter } from '../security/rate-limiter.js';
 
 // Ledger + DB
 import { JsonlLedgerBackend } from '../ledger/backends/jsonl.backend.js';
+import { JsonlRunLedgerWriter } from '../ledger/run-ledger.js';
 import { initializeSchema } from '../db/schema.js';
 
 // Crypto
@@ -84,6 +85,7 @@ import {
   type ExecutionResult,
   type Connector,
   type ScenarioId,
+  type Uuid,
 } from '../types/index.js';
 import { nowIso, addSeconds } from '../utils/time.js';
 
@@ -95,12 +97,24 @@ let controlPlanePair: KeyPair;
 const INTEGRATION_LEDGER_PATH = path.join(process.cwd(), 'runs', 'test-integration.ledger.jsonl');
 let integrationLedger: JsonlLedgerBackend | null = null;
 
+// ─── Shared run ledger (DEF-002 — ci:gate step 14) ─────────────────────────
+// Run Ledger entries for cross-link validation. All scenarios write events here.
+const INTEGRATION_RUN_LEDGER_PATH = path.join(
+  process.cwd(),
+  'runs',
+  'test-integration.run-ledger.jsonl'
+);
+let integrationRunLedger: JsonlRunLedgerWriter | null = null;
+
 beforeAll(async () => {
   controlPlanePair = await loadControlPlaneKey();
   // Initialize shared ledger — delete any prior run's file for a clean chain
   await fs.mkdir(path.dirname(INTEGRATION_LEDGER_PATH), { recursive: true });
   await fs.unlink(INTEGRATION_LEDGER_PATH).catch(() => {});
   integrationLedger = new JsonlLedgerBackend(INTEGRATION_LEDGER_PATH);
+  // Initialize shared run ledger — delete any prior run's file
+  await fs.unlink(INTEGRATION_RUN_LEDGER_PATH).catch(() => {});
+  integrationRunLedger = new JsonlRunLedgerWriter(INTEGRATION_RUN_LEDGER_PATH);
 });
 
 // ─── FixtureSetup type (HOLE-404 schema) ─────────────────────────────────────
@@ -452,6 +466,39 @@ export async function runScenario(
 
   // 16. Run pipeline
   const evidenceRecord = await pipeline.process(rawAction, context);
+
+  // 17. Write run ledger events (DEF-002 — §30, ci:gate step 14 cross-link)
+  if (integrationRunLedger) {
+    const actionRunId = rawAction.runId as Uuid;
+    await integrationRunLedger.writeEvent({
+      runId: actionRunId,
+      eventType: 'run_opened',
+      timestamp: nowIso(),
+      actorId: actor.actorId as Uuid,
+      detail: { scenarioId },
+    });
+    await integrationRunLedger.writeEvent({
+      runId: actionRunId,
+      eventType: 'nxs_action',
+      timestamp: nowIso(),
+      actorId: actor.actorId as Uuid,
+      detail: { actionId: rawAction.actionId, finalOutcome: evidenceRecord.finalOutcome },
+    });
+    await integrationRunLedger.writeEvent({
+      runId: actionRunId,
+      eventType: 'bypass_annotation',
+      timestamp: nowIso(),
+      actorId: null,
+      detail: { bypass_path: true, nvg_entries: false },
+    });
+    await integrationRunLedger.writeEvent({
+      runId: actionRunId,
+      eventType: 'run_closed',
+      timestamp: nowIso(),
+      actorId: null,
+      detail: { scenarioId, finalOutcome: evidenceRecord.finalOutcome },
+    });
+  }
 
   // No ledger cleanup — shared integrationLedger persists for ci:gate; temp fallback has no ref here
   return { evidenceRecord };
