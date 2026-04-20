@@ -7,6 +7,8 @@
  * DEF-007: Refactored to DI pattern per §23.1.
  * This file imports @nexus/contracts ONLY — never core implementations.
  * Service instances are injected by the bootstrap entry point (`nexus serve`).
+ *
+ * DEF-008: Added /run-ledger and /mode routes.
  */
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { timingSafeEqual } from 'node:crypto';
@@ -27,6 +29,8 @@ import type {
   Actor,
   Principal,
   DelegationContext,
+  RunLedgerWriter,
+  ModeConfiguration,
 } from '@nexus/contracts';
 import { ApprovalDecisionError, nowIso, newUuid, addSeconds } from '@nexus/contracts';
 
@@ -77,6 +81,13 @@ export interface ApiDependencies {
 
   // Config
   adminToken: string;
+
+  // §30 Run Ledger (DEF-008)
+  runLedgerWriter?: RunLedgerWriter;
+
+  // §9 Operating Modes — read-only (DEF-008)
+  loadModeConfig?: () => Promise<ModeConfiguration>;
+  saveModeConfig?: (config: ModeConfiguration) => Promise<void>;
 }
 
 // ── §23.1 createApiServer — DI factory ───────────────────────────────────────
@@ -97,6 +108,9 @@ export function createApiServer(deps: ApiDependencies): {
     verifyChain,
     decideApproval,
     adminToken,
+    runLedgerWriter,
+    loadModeConfig: loadMode,
+    saveModeConfig: _saveMode,
   } = deps;
 
   let currentPolicy: LoadedPolicyFile | null = null;
@@ -437,6 +451,82 @@ export function createApiServer(deps: ApiDependencies): {
     } catch (err) {
       res.status(500).json({ ok: false, error: san(err) });
     }
+  });
+
+  // ── Run Ledger (§23.2 — DEF-008) ──────────────────────────────────────────
+  app.get('/run-ledger', async (req, res) => {
+    try {
+      if (!runLedgerWriter) {
+        res.status(501).json({ ok: false, error: 'run ledger not configured' });
+        return;
+      }
+      const runId = req.query['runId'] as string | undefined;
+      if (runId) {
+        const entries = await runLedgerWriter.getByRunId(runId as any);
+        res.json({ ok: true, data: entries });
+      } else {
+        const entries = await runLedgerWriter.tail(50);
+        res.json({ ok: true, data: entries });
+      }
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+  app.get('/run-ledger/latest', async (_req, res) => {
+    try {
+      if (!runLedgerWriter) {
+        res.status(501).json({ ok: false, error: 'run ledger not configured' });
+        return;
+      }
+      const latestRunId = await runLedgerWriter.getLatestRunId();
+      if (!latestRunId) {
+        res.status(404).json({ ok: false, error: 'no run ledger entries' });
+        return;
+      }
+      const entries = await runLedgerWriter.getByRunId(latestRunId);
+      res.json({ ok: true, data: { runId: latestRunId, entries } });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ── Operating Modes (§23.2 — DEF-008) ─────────────────────────────────────
+  app.get('/mode', async (_req, res) => {
+    try {
+      if (!loadMode) {
+        res.status(501).json({ ok: false, error: 'mode management not configured' });
+        return;
+      }
+      const config = await loadMode();
+      res.json({
+        ok: true,
+        data: {
+          nxsMode: config.nxsMode,
+          nvgMode: config.nvgMode,
+          enforcingLocked: config.enforcingLocked,
+          updatedAt: config.updatedAt,
+          updatedBy: config.updatedBy.adminId,
+        },
+      });
+    } catch {
+      res.json({
+        ok: true,
+        data: {
+          nxsMode: 'observe',
+          nvgMode: 'observe',
+          enforcingLocked: false,
+          updatedAt: null,
+        },
+      });
+    }
+  });
+  app.post('/mode', async (_req, res) => {
+    // §9.3: Mode changes require signed admin command with Ed25519 keypair.
+    // Admin keypair cannot be safely transmitted over HTTP in the POC.
+    // Use CLI: nexus mode set --engine <nxs|nvg> --mode <mode>
+    res
+      .status(501)
+      .json({ ok: false, error: 'POST /mode requires admin keypair — use CLI nexus mode set' });
   });
 
   function startServer(port: number = 7701): void {

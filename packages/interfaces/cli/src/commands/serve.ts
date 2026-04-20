@@ -14,10 +14,13 @@ import {
   SqliteDelegationStore,
   SqlitePendingApprovalStore,
   JsonlLedgerBackend,
+  JsonlRunLedgerWriter,
   mintRootDelegation,
   loadPolicyFile,
   verifyChain,
   decideApproval,
+  loadModeConfig,
+  saveModeConfig,
 } from '@nexus/core';
 import { createApiServer, type ApiDependencies } from '@nexus/api';
 import { openDb } from '../db.js';
@@ -37,6 +40,12 @@ export async function cmdServe(opts: { port?: number }): Promise<void> {
   const ledgerPath =
     process.env['NEXUS_LEDGER_PATH'] ?? path.join(process.cwd(), 'nexus.ledger.jsonl');
 
+  const runLedgerPath =
+    process.env['NEXUS_RUN_LEDGER_PATH'] ??
+    path.join(process.cwd(), 'runs', 'infra.run-ledger.jsonl');
+
+  const modeConfigPath = path.join(process.cwd(), 'keys', 'mode-config.json');
+
   const deps: ApiDependencies = {
     actorRegistry: new SqliteActorRegistry(db),
     principalRegistry: new SqlitePrincipalRegistry(db),
@@ -49,6 +58,9 @@ export async function cmdServe(opts: { port?: number }): Promise<void> {
     verifyChain: (backend, from, to) => verifyChain(backend, from, to, controlPlaneKey.publicKey),
     decideApproval,
     adminToken,
+    runLedgerWriter: new JsonlRunLedgerWriter(runLedgerPath),
+    loadModeConfig: () => loadModeConfig(modeConfigPath),
+    saveModeConfig: config => saveModeConfig(config, modeConfigPath),
   };
 
   const { start } = createApiServer(deps);

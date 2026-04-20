@@ -82,6 +82,18 @@ export { JsonlLedgerBackend } from './ledger/backends/jsonl.backend.js';
 // §30 — Run Ledger (DEF-002)
 export { JsonlRunLedgerWriter } from './ledger/run-ledger.js';
 
+// §9 — Operating Modes (DEF-006)
+export {
+  loadModeConfig,
+  saveModeConfig,
+  changeMode,
+  disableEnforcingLock,
+  getInfraRunId,
+  emitInfrastructureAuditEvent,
+  loadAdminPublicKey,
+  createDefaultModeConfig,
+} from './modes/mode-manager.js';
+
 // §13.1 — Pipeline
 export { Pipeline, SimpleConnectorRegistry, SimpleChannelRegistry } from './engine/pipeline.js';
 export type { PipelineGates } from './engine/pipeline.js';

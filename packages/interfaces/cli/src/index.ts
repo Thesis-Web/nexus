@@ -14,6 +14,8 @@ import { cmdApproverKeygen } from './commands/approver.js';
 import { cmdPosture } from './commands/posture.js';
 import { cmdReplay } from './commands/replay.js';
 import { cmdServe } from './commands/serve.js';
+import { cmdModeShow, cmdModeSet } from './commands/mode.js';
+import { cmdRunLedgerTail, cmdRunLedgerGet } from './commands/run-ledger.js';
 import { SCENARIO_MANIFEST } from '@nexus/core';
 import type { ScenarioId } from '@nexus/core';
 
@@ -147,6 +149,27 @@ program
   .description('Start Management API server with DI (§23.1)')
   .option('--port <port>', 'API port', v => parseInt(v, 10))
   .action(opts => cmdServe({ port: opts.port }).catch(fatal));
+
+// §22.1 — mode commands (DEF-006 / DEF-003)
+const mode = program.command('mode').description('Operating mode management');
+mode
+  .command('show')
+  .description('Show current operating modes')
+  .action(() => cmdModeShow().catch(fatal));
+mode
+  .command('set')
+  .description('Set operating mode')
+  .requiredOption('--engine <nxs|nvg>', 'Engine (nxs or nvg)')
+  .requiredOption('--mode <observe|advisory|enforcing>', 'Mode')
+  .action(opts => cmdModeSet({ engine: opts.engine, mode: opts.mode }).catch(fatal));
+
+// §22.1 — run-ledger commands (DEF-003)
+const runLedgerCmd = program.command('run-ledger').description('Run Ledger inspection');
+runLedgerCmd
+  .command('tail')
+  .option('--n <n>', 'Number of entries', v => parseInt(v, 10))
+  .action(opts => cmdRunLedgerTail({ n: opts.n }).catch(fatal));
+runLedgerCmd.command('get <run-id>').action(runId => cmdRunLedgerGet(runId).catch(fatal));
 
 function fatal(err: unknown): void {
   console.error(`✗ Fatal: ${err instanceof Error ? err.message : String(err)}`);
