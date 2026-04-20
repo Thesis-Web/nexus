@@ -847,14 +847,16 @@ function validateNvgRoutingPolicySignatures(): number {
 }
 
 // ===========================================================================
+// ===========================================================================
 // Step 13 helper — NVG classification enforcement
 // §37.11: No routing policy may route sensitive data to a frontier tier.
+// Fixed: uses NvgRoutingRule field names (routeTo, conditions.dataClasses) per §25.1
 // ===========================================================================
 function validateNvgClassificationEnforcement(): number {
   const nvgPolicyDir = path.join('fixtures', 'nvg');
   if (!fs.existsSync(nvgPolicyDir)) return 0;
-  const FRONTIER_TIERS = ['frontier', 'frontier_primary', 'frontier_fallback'];
-  const SENSITIVE_CLASSES = ['pii', 'phi', 'financial', 'secret'];
+  const FRONTIER_TIERS = ['frontier_general', 'frontier_reasoning', 'frontier_live'];
+  const SENSITIVE_CLASSES = ['pii', 'phi', 'financial', 'confidential'];
   let count = 0;
   for (const entry of fs.readdirSync(nvgPolicyDir, { recursive: true }) as string[]) {
     const fpath = path.join(nvgPolicyDir, entry);
@@ -868,12 +870,23 @@ function validateNvgClassificationEnforcement(): number {
     }
     const rules = (obj['rules'] ?? []) as Record<string, unknown>[];
     for (const rule of rules) {
-      const tier = String(rule['targetTier'] ?? rule['modelTier'] ?? '').toLowerCase();
-      const dataClass = String(rule['dataClass'] ?? rule['minDataClass'] ?? '').toLowerCase();
-      if (FRONTIER_TIERS.includes(tier) && SENSITIVE_CLASSES.includes(dataClass)) {
+      const routeTo = String(rule['routeTo'] ?? '').toLowerCase();
+      const fallbackTier = String(rule['fallbackTier'] ?? '').toLowerCase();
+      const conditions = (rule['conditions'] ?? {}) as Record<string, unknown>;
+      const dataClasses = ((conditions['dataClasses'] ?? []) as string[]).map(dc =>
+        dc.toLowerCase()
+      );
+      const hasSensitive = dataClasses.some(dc => SENSITIVE_CLASSES.includes(dc));
+      if (hasSensitive && FRONTIER_TIERS.includes(routeTo)) {
         fail(
           `NVG classification violation in ${fpath}: ` +
-            `rule routes ${dataClass} data to ${tier} tier`
+            `rule ${rule['ruleId']} routes sensitive data [${dataClasses.join(',')}] to ${routeTo} tier`
+        );
+      }
+      if (hasSensitive && fallbackTier && FRONTIER_TIERS.includes(fallbackTier)) {
+        fail(
+          `NVG classification violation in ${fpath}: ` +
+            `rule ${rule['ruleId']} fallback routes sensitive data [${dataClasses.join(',')}] to ${fallbackTier} tier`
         );
       }
     }
