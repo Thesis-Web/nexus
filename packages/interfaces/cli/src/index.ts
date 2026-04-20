@@ -70,7 +70,7 @@ program
   .command('run')
   .description('Execute run orchestrator')
   .option('--scenario <id>')
-  .option('--fixtures')
+  .option('--fixtures <mode>')
   .option('--out-dir <path>')
   .action(opts => {
     if (!opts.scenario && !opts.fixtures) {
