@@ -18,7 +18,7 @@ import {
 } from '../types/index.js';
 import { assertTemplateIntegrity } from '../policy/grant-template-builder.js';
 import { mintGrant } from '../execution/grant-minter.js';
-import { clearGrantSecret } from '../execution/grant-vault.js';
+import { clearGrantSecret, grantVault } from '../execution/grant-vault.js';
 import type { KeyPair } from '../crypto/key-manager.js';
 
 function sanitizeError(err: unknown): string {
@@ -89,11 +89,11 @@ export class ExecutionGate implements Gate {
       };
     }
 
-    await connector.redeemGrant(grant);
+    await connector.redeemGrant(grant, grantVault);
 
     let executionResult: ExecutionResult;
     try {
-      executionResult = await connector.execute(action, grant);
+      executionResult = await connector.execute(action, grant, grantVault);
     } catch (err) {
       // NexusSecurityViolation: governed security breach — SEPARATE catch path (SOLVE-013)
       if (err instanceof NexusSecurityViolation) {

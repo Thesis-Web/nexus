@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.2",
-    "@nexus/core": "workspace:*",
+    "@nexus/contracts": "workspace:*",
     "zod": "^3.24.2"
   },
   "devDependencies": {

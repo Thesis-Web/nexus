@@ -487,15 +487,30 @@ export interface LedgerBackend {
   listRange(from: number, to: number): Promise<EvidenceRecord[]>;
 }
 
+// ─── §12.3.24b GrantVault Interface (SOLVE-S6-001) ───
+// Owner-approved: GrantVault as pure interface in Layer 2.
+// Implementation (WeakMap singleton) stays in Layer 1 core.
+// Passed to connectors via method injection from Gate 06.
+export interface GrantVault {
+  setSecret(grant: ExecutionGrant, secret: string): void;
+  getSecret(grant: ExecutionGrant): string | undefined;
+  clearSecret(grant: ExecutionGrant): void;
+  assertPresent(grant: ExecutionGrant): void;
+  assertNotExpired(grant: ExecutionGrant): void;
+}
+
 // ─── §12.3.25 Connector Interface ───
+// DIFF-S6-001: Added vault parameter to execute() and redeemGrant().
+// Spec §12.3.25 defines (action, grant) signatures, but spec §6.3 forbids
+// connector imports from core. Owner approved GrantVault DI to resolve.
 export interface Connector {
   readonly systemType: NonEmpty;
   readonly connectorVersion: NonEmpty;
   supportedCapabilities(): string[];
   canProduceDiff(): boolean;
   produceDiff?(action: AgentAction, template: ExecutionGrantTemplate): Promise<string | null>;
-  execute(action: AgentAction, grant: ExecutionGrant): Promise<ExecutionResult>;
-  redeemGrant(grant: ExecutionGrant): Promise<void>;
+  execute(action: AgentAction, grant: ExecutionGrant, vault: GrantVault): Promise<ExecutionResult>;
+  redeemGrant(grant: ExecutionGrant, vault: GrantVault): Promise<void>;
 }
 
 // ─── §12.3.26 ApprovalChannel Interface ───
@@ -515,6 +530,27 @@ export interface PendingApprovalRecord {
   channelId: NonEmpty;
   dispatchedAt: IsoTimestamp;
   expiresAt: IsoTimestamp;
+}
+
+// ─── §12.3.28b PendingApprovalStore Interface (DEF-007) ───
+// Moved from core to contracts so API can import via DI pattern (§23.1).
+export interface PendingApprovalStore {
+  create(approval: {
+    approvalId: Uuid;
+    actionId: Uuid;
+    templateId: Uuid;
+    requestJson: string;
+    channelId: string;
+    dispatchedAt: IsoTimestamp;
+    expiresAt: IsoTimestamp;
+  }): Promise<void>;
+  getStatus(approvalId: Uuid): Promise<{ status: string; responseJson: string | null } | null>;
+  getRequest(approvalId: Uuid): Promise<string | null>;
+  resolve(approvalId: Uuid, status: 'approved' | 'denied', responseJson: string): Promise<void>;
+  markTimedOut(approvalId: Uuid): Promise<void>;
+  listPending(): Promise<
+    Array<{ approvalId: string; channelId: string; expiresAt: string; requestJson: string }>
+  >;
 }
 
 // ─── §12.3.29 DelegationStore Interface ───
@@ -942,4 +978,15 @@ export interface NormalizationResult {
   ok: boolean;
   action?: AgentAction;
   error?: NonEmpty;
+}
+
+// ─── §12.3.38 PipelineInterface (DEF-001) ───
+// Pure interface for the pipeline entry point. Adapters import this from
+// contracts instead of the Pipeline class from core. Core Pipeline class
+// implements this interface.
+export interface PipelineInterface {
+  process(
+    rawAction: Omit<AgentAction, 'delegationSequence'>,
+    context: PipelineContext
+  ): Promise<EvidenceRecord>;
 }

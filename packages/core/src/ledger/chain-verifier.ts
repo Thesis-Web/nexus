@@ -3,23 +3,17 @@
  * Enforces hash linkage AND sequence continuity.
  * SEQUENCE_ANOMALY emitted here ONLY (SOLVE-010, CONTRA-509).
  */
-import { GENESIS_HASH, DENIAL_CODE, type LedgerBackend, type Base64Url } from '../types/index.js';
+import {
+  GENESIS_HASH,
+  DENIAL_CODE,
+  type LedgerBackend,
+  type Base64Url,
+  type ChainVerificationResult,
+  type ChainError,
+} from '../types/index.js';
 import { canonicalize } from '../crypto/canonicalize.js';
 import { sha256 } from '../crypto/signer.js';
 import { verify } from '../crypto/verifier.js';
-
-export interface ChainError {
-  seq: number;
-  type: 'hash_chain_break' | 'signature_invalid' | 'sequence_anomaly';
-  denialCode: string;
-  detail: string;
-}
-
-export interface ChainVerificationResult {
-  ok: boolean;
-  errors: ChainError[];
-  checked: number;
-}
 
 export async function verifyChain(
   backend: LedgerBackend,
@@ -85,5 +79,11 @@ export async function verifyChain(
     expectedSeq++;
   }
 
-  return { ok: errors.length === 0, errors, checked: records.length };
+  return {
+    ok: errors.length === 0,
+    checkedFrom: fromSeq,
+    checkedTo: toSeq,
+    recordCount: records.length,
+    errors,
+  };
 }

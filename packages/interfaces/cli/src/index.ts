@@ -13,6 +13,7 @@ import { cmdPrincipalRegister } from './commands/principal.js';
 import { cmdApproverKeygen } from './commands/approver.js';
 import { cmdPosture } from './commands/posture.js';
 import { cmdReplay } from './commands/replay.js';
+import { cmdServe } from './commands/serve.js';
 import { SCENARIO_MANIFEST } from '@nexus/core';
 import type { ScenarioId } from '@nexus/core';
 
@@ -141,9 +142,18 @@ program
   .description('Verify CCV replay hashes')
   .action(runDir => cmdReplay(runDir).catch(fatal));
 
+program
+  .command('serve')
+  .description('Start Management API server with DI (§23.1)')
+  .option('--port <port>', 'API port', v => parseInt(v, 10))
+  .action(opts => cmdServe({ port: opts.port }).catch(fatal));
+
 function fatal(err: unknown): void {
   console.error(`✗ Fatal: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 }
 
-program.parse(process.argv);
+// Filter out bare '--' that pnpm may inject between script path and subcommands.
+// Without this, Commander sees '--' as end-of-options before the subcommand name.
+const argv = process.argv.filter((arg, idx) => !(arg === '--' && idx === 2));
+program.parse(argv);

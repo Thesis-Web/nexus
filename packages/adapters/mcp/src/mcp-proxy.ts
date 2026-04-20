@@ -26,8 +26,9 @@
  * supply. X-Nexus-Environment is intentionally absent. The ACTOR_ENVIRONMENT sentinel
  * set by the normalizer is replaced by Gate 02 using context.actor.environment.
  *
- * MODULAR-001: This file imports Pipeline from @nexus/core — it does NOT import any
- * gate implementation directly. All gate logic is encapsulated in the Pipeline.
+ * MODULAR-001 FIXED: This file imports PipelineInterface from @nexus/contracts —
+ * it does NOT import any core implementation directly. All gate logic is encapsulated
+ * in the Pipeline class, accessed only through the PipelineInterface contract.
  *
  * Spec: nexus-engineering-spec-v0-4-6.md §19.1, §19.2
  * Blueprint: nexus-blueprint-v0-3-6.md §5.1, §5.4, §8.1
@@ -36,7 +37,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   FINAL_OUTCOME,
-  type Pipeline,
+  type PipelineInterface,
   type PipelineContext,
   type DelegationStore,
   type LoadedPolicyFile,
@@ -44,14 +45,14 @@ import {
   type ConnectorRegistry,
   type ChannelRegistry,
   type EvidenceRecord,
-} from '@nexus/core';
-import { nowIso } from '@nexus/core';
+  nowIso,
+} from '@nexus/contracts';
 import type { McpAdapter } from './mcp-normalizer.js';
 
 // ── NexusMcpProxy ────────────────────────────────────────────────────────────
 
 export interface ProxyDependencies {
-  pipeline: Pipeline;
+  pipeline: PipelineInterface;
   adapter: McpAdapter;
   delegationStore: DelegationStore; // injected; Gate 01 reads it to resolve delegationContext
   policyFile: LoadedPolicyFile | null;
@@ -61,7 +62,7 @@ export interface ProxyDependencies {
 }
 
 export class NexusMcpProxy {
-  private readonly pipeline: Pipeline;
+  private readonly pipeline: PipelineInterface;
   private readonly adapter: McpAdapter;
   private readonly delegationStore: DelegationStore;
   private readonly policyFile: LoadedPolicyFile | null;

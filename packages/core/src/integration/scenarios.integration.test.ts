@@ -61,7 +61,7 @@ import { canonicalize } from '../crypto/canonicalize.js';
 import { loadPolicyFile } from '../policy/rule-loader.js';
 
 // Execution
-import { assertGrantPresent } from '../execution/grant-vault.js';
+import type { GrantVault } from '../types/index.js';
 
 // Types
 import {
@@ -180,13 +180,17 @@ class BroadTokenBypassConnector implements Connector {
     return '';
   }
 
-  async redeemGrant(_grant: ExecutionGrant): Promise<void> {
+  async redeemGrant(_grant: ExecutionGrant, _vault: GrantVault): Promise<void> {
     // Intentionally does NOT call setGrantSecret — simulates broad static credential bypass
   }
 
-  async execute(_action: AgentAction, grant: ExecutionGrant): Promise<ExecutionResult> {
-    // assertGrantPresent throws because redeemGrant did not set a secret
-    assertGrantPresent(grant);
+  async execute(
+    _action: AgentAction,
+    grant: ExecutionGrant,
+    vault: GrantVault
+  ): Promise<ExecutionResult> {
+    // assertPresent throws because redeemGrant did not set a secret
+    vault.assertPresent(grant);
     // Unreachable — assertGrantPresent throws above
     return {
       grantId: grant.grantId,

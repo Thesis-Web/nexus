@@ -3,63 +3,103 @@
  * Express on port 7701, binds 127.0.0.1 only (SOLVE-008).
  * timingSafeEqual on all token comparisons.
  * principalId never in POST /sessions body (SOLVE-017).
+ *
+ * DEF-007: Refactored to DI pattern per §23.1.
+ * This file imports @nexus/contracts ONLY — never core implementations.
+ * Service instances are injected by the bootstrap entry point (`nexus serve`).
  */
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { timingSafeEqual } from 'node:crypto';
-import Database from 'better-sqlite3';
-import path from 'node:path';
-import {
-  initializeSchema,
-  loadAdminToken,
-  loadControlPlaneKey,
-  SqliteActorRegistry,
-  SqlitePrincipalRegistry,
-  SqliteSessionStore,
-  SqliteDelegationStore,
-  SqliteApproverRegistry,
-  SqlitePendingApprovalStore,
-  JsonlLedgerBackend,
-  mintRootDelegation,
-  decideApproval,
-  ApprovalDecisionError,
-  loadPolicyFile,
-  verifyChain,
-  nowIso,
-  newUuid,
-  addSeconds,
-} from '@nexus/core';
 import type {
+  ActorRegistry,
+  PrincipalRegistry,
+  SessionStoreInterface,
+  DelegationStore,
+  PendingApprovalStore,
+  LedgerBackend,
+  LoadedPolicyFile,
+  ChainVerificationResult,
+  ApprovalResponse,
   Session,
   TokenPostureReport,
   PostureViolation,
   ActorPosture,
   Actor,
-} from '@nexus/core';
+  Principal,
+  DelegationContext,
+} from '@nexus/contracts';
+import { ApprovalDecisionError, nowIso, newUuid, addSeconds } from '@nexus/contracts';
 
-const DB_PATH = process.env['NEXUS_DB_PATH'] ?? path.join(process.cwd(), 'nexus.db');
-const LEDGER_PATH =
-  process.env['NEXUS_LEDGER_PATH'] ?? path.join(process.cwd(), 'nexus.ledger.jsonl');
+// ── §23.1 ApiDependencies — constructor injection contract ───────────────────
 
-async function start(): Promise<void> {
-  let adminToken: string;
-  try {
-    adminToken = await loadAdminToken();
-  } catch {
-    console.error('✗ keys/admin.token not found. Run `nexus init` first.');
-    process.exit(1);
-  }
+export interface ApiDependencies {
+  // Registries and stores (Layer 2 interfaces)
+  actorRegistry: ActorRegistry;
+  principalRegistry: PrincipalRegistry;
+  sessionStore: SessionStoreInterface;
+  delegationStore: DelegationStore;
+  approvalStore: PendingApprovalStore;
+  ledgerBackend: LedgerBackend;
 
-  const controlPlaneKey = await loadControlPlaneKey();
-  const db = new Database(DB_PATH);
-  initializeSchema(db);
+  // Service functions (injected by bootstrap — keys pre-bound by caller)
+  mintRootDelegation: (
+    principal: Principal,
+    actor: Actor,
+    params: {
+      principalId: string;
+      actorId: string;
+      allowedSystems: string[];
+      allowedCapabilities: string[];
+      forbiddenCapabilities: string[];
+      maxRiskTier: string;
+      allowDownstreamPropagation: boolean;
+      environment: string;
+      expiresAt: string;
+      maxChainDepth: number;
+    }
+  ) => Promise<DelegationContext>;
 
-  const actorRegistry = new SqliteActorRegistry(db);
-  const principalReg = new SqlitePrincipalRegistry(db);
-  const sessionStore = new SqliteSessionStore(db);
-  const delegStore = new SqliteDelegationStore(db);
-  const approvalStore = new SqlitePendingApprovalStore(db);
-  const ledger = new JsonlLedgerBackend(LEDGER_PATH);
-  let currentPolicy: Awaited<ReturnType<typeof loadPolicyFile>> | null = null;
+  loadPolicyFile: (filepath: string) => Promise<LoadedPolicyFile>;
+
+  verifyChain: (
+    backend: LedgerBackend,
+    from: number,
+    to: number
+  ) => Promise<ChainVerificationResult>;
+
+  decideApproval: (
+    approvalId: string,
+    decidedBy: string,
+    decision: 'approved' | 'denied',
+    note: string | undefined,
+    store: PendingApprovalStore
+  ) => Promise<ApprovalResponse>;
+
+  // Config
+  adminToken: string;
+}
+
+// ── §23.1 createApiServer — DI factory ───────────────────────────────────────
+
+export function createApiServer(deps: ApiDependencies): {
+  app: ReturnType<typeof express>;
+  start: (port?: number) => void;
+} {
+  const {
+    actorRegistry,
+    principalRegistry: principalReg,
+    sessionStore,
+    delegationStore: delegStore,
+    approvalStore,
+    ledgerBackend: ledger,
+    mintRootDelegation,
+    loadPolicyFile,
+    verifyChain,
+    decideApproval,
+    adminToken,
+  } = deps;
+
+  let currentPolicy: LoadedPolicyFile | null = null;
 
   const app = express();
   app.use(express.json());
@@ -180,7 +220,10 @@ async function start(): Promise<void> {
         expiresAt: addSeconds(nowIso(), ttlSeconds),
       };
       await sessionStore.create(session);
-      res.json({ ok: true, data: { sessionId: session.sessionId, expiresAt: session.expiresAt } });
+      res.json({
+        ok: true,
+        data: { sessionId: session.sessionId, expiresAt: session.expiresAt },
+      });
     } catch (err) {
       res.status(500).json({ ok: false, error: san(err) });
     }
@@ -212,7 +255,6 @@ async function start(): Promise<void> {
         res.status(400).json({ ok: false, error: 'principal not found' });
         return;
       }
-      // mintRootDelegation takes 3 args — loads controlPlaneKey internally
       const dc = await mintRootDelegation(principal, actor, {
         principalId: principal.principalId,
         actorId: actor.actorId,
@@ -226,7 +268,10 @@ async function start(): Promise<void> {
         maxChainDepth: body.maxChainDepth ?? 1,
       });
       await delegStore.save(dc);
-      res.json({ ok: true, data: { delegationId: dc.delegationId, expiresAt: dc.expiresAt } });
+      res.json({
+        ok: true,
+        data: { delegationId: dc.delegationId, expiresAt: dc.expiresAt },
+      });
     } catch (err) {
       res.status(500).json({ ok: false, error: san(err) });
     }
@@ -252,14 +297,13 @@ async function start(): Promise<void> {
         res.status(400).json({ ok: false, error: 'filepath required' });
         return;
       }
-      currentPolicy = await loadPolicyFile(filepath, controlPlaneKey);
-      // LoadedPolicyFile has bundleId, bundleVersion — not policyId
+      currentPolicy = await loadPolicyFile(filepath);
       res.json({
         ok: true,
         data: {
           bundleId: currentPolicy.bundleId,
           bundleVersion: currentPolicy.bundleVersion,
-          ruleCount: currentPolicy.rules.length,
+          ruleCount: currentPolicy.sortedRules.length,
         },
       });
     } catch (err) {
@@ -276,7 +320,7 @@ async function start(): Promise<void> {
       data: {
         bundleId: currentPolicy.bundleId,
         bundleVersion: currentPolicy.bundleVersion,
-        ruleCount: currentPolicy.rules.length,
+        ruleCount: currentPolicy.sortedRules.length,
       },
     });
   });
@@ -355,8 +399,7 @@ async function start(): Promise<void> {
   app.post('/ledger/verify', async (req, res) => {
     try {
       const { from = 1, to = 9999 } = req.body ?? {};
-      // verifyChain(backend, fromSeq, toSeq, publicKey)
-      const result = await verifyChain(ledger, from, to, controlPlaneKey.publicKey);
+      const result = await verifyChain(ledger, from, to);
       res.json({ ok: true, data: result });
     } catch (err) {
       res.status(500).json({ ok: false, error: san(err) });
@@ -396,10 +439,13 @@ async function start(): Promise<void> {
     }
   });
 
-  app.listen(7701, '127.0.0.1', () => {
-    console.log('Nexus management API listening on 127.0.0.1:7701');
-    console.log(`DB: ${DB_PATH}`);
-  });
+  function startServer(port: number = 7701): void {
+    app.listen(port, '127.0.0.1', () => {
+      console.log(`Nexus management API listening on 127.0.0.1:${port}`);
+    });
+  }
+
+  return { app, start: startServer };
 }
 
 function san(err: unknown): string {
@@ -408,8 +454,3 @@ function san(err: unknown): string {
     .replace(/(secret|password|key|token|credential)[=:\s][^\s,;]*/gi, '[REDACTED]')
     .slice(0, 300);
 }
-
-start().catch(err => {
-  console.error('Fatal:', err);
-  process.exit(1);
-});

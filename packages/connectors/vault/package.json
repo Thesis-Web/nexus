@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@nexus/core": "workspace:*"
+    "@nexus/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.17.30",

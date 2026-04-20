@@ -16,6 +16,7 @@ import {
   type ChannelRegistry,
   type Connector,
   type ApprovalChannel,
+  type PipelineInterface,
 } from '../types/index.js';
 import type { IdentityGate } from '../gates/01-identity.gate.js';
 import type { ClassificationGate } from '../gates/02-classification.gate.js';
@@ -40,7 +41,7 @@ export interface PipelineGates {
   evidence: EvidenceGate;
 }
 
-export class Pipeline {
+export class Pipeline implements PipelineInterface {
   constructor(
     private readonly gates: PipelineGates,
     private readonly replay: ReplayDetector,

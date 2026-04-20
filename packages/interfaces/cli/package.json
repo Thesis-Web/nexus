@@ -9,6 +9,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@nexus/api": "workspace:*",
+    "@nexus/contracts": "workspace:*",
     "@nexus/core": "workspace:*",
     "commander": "^13.1.0",
     "@nexus/connector-stub": "workspace:*"

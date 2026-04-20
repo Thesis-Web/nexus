@@ -30,9 +30,9 @@ import {
   type AgentAction,
   type ActionVerb,
   type Uuid,
-} from '@nexus/core';
-import { nowIso } from '@nexus/core';
-import { newUuid } from '@nexus/core';
+  nowIso,
+  newUuid,
+} from '@nexus/contracts';
 import { extractIntentContext, type McpRequestHeaders } from './mcp-intent-extractor.js';
 
 // ── Adapter identity ─────────────────────────────────────────────────────────

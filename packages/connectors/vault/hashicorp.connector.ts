@@ -33,13 +33,9 @@ import {
   type ExecutionGrantTemplate,
   type ExecutionResult,
   type Uuid,
-} from '../../core/src/types/index.js';
-import {
-  assertGrantPresent,
-  assertGrantNotExpired,
-  setGrantSecret,
-} from '../../core/src/execution/grant-vault.js';
-import { nowIso } from '../../core/src/utils/time.js';
+  type GrantVault,
+  nowIso,
+} from '@nexus/contracts';
 
 // ============================================================
 // Non-secret connector configuration — env vars only
@@ -170,7 +166,7 @@ export class HashiCorpVaultConnector implements Connector {
    * Vault policy must restrict this path to read-only for the nexus role.
    * The secret is cleared by Gate 06 in its finally block — not here.
    */
-  async redeemGrant(grant: ExecutionGrant): Promise<void> {
+  async redeemGrant(grant: ExecutionGrant, vault: GrantVault): Promise<void> {
     const vaultToken = await loadVaultToken();
     const kvPath = grantKVPath(grant.grantId, grant.capabilityId);
 
@@ -196,8 +192,8 @@ export class HashiCorpVaultConnector implements Connector {
       );
     }
 
-    // Store in grant vault WeakMap — never logged, never emitted into artifacts
-    setGrantSecret(grant, credential);
+    // Store in grant vault — never logged, never emitted into artifacts
+    vault.setSecret(grant, credential);
   }
 
   /**
@@ -212,10 +208,14 @@ export class HashiCorpVaultConnector implements Connector {
    * the Vault-scoped token) is an operator integration concern beyond the
    * connector boundary.
    */
-  async execute(action: AgentAction, grant: ExecutionGrant): Promise<ExecutionResult> {
-    // Spec §11.3: MUST call assertGrantPresent and assertGrantNotExpired
-    assertGrantPresent(grant);
-    assertGrantNotExpired(grant);
+  async execute(
+    action: AgentAction,
+    grant: ExecutionGrant,
+    vault: GrantVault
+  ): Promise<ExecutionResult> {
+    // Spec §11.3: MUST call assertPresent and assertNotExpired via injected vault
+    vault.assertPresent(grant);
+    vault.assertNotExpired(grant);
 
     const startMs = Date.now();
     const verb = action.resolvedVerb ?? action.rawVerb;

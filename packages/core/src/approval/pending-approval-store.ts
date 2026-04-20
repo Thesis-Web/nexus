@@ -1,28 +1,13 @@
 /**
  * Pending approval store — spec §20.6
  * getRequest() is required by the shared decideApproval service (BS-102).
+ * DEF-007: PendingApprovalStore interface moved to contracts for API DI.
  */
 import type Database from 'better-sqlite3';
-import type { Uuid, IsoTimestamp } from '../types/index.js';
+import type { Uuid, IsoTimestamp, PendingApprovalStore } from '../types/index.js';
 
-export interface PendingApprovalStore {
-  create(approval: {
-    approvalId: Uuid;
-    actionId: Uuid;
-    templateId: Uuid;
-    requestJson: string;
-    channelId: string;
-    dispatchedAt: IsoTimestamp;
-    expiresAt: IsoTimestamp;
-  }): Promise<void>;
-  getStatus(approvalId: Uuid): Promise<{ status: string; responseJson: string | null } | null>;
-  getRequest(approvalId: Uuid): Promise<string | null>;
-  resolve(approvalId: Uuid, status: 'approved' | 'denied', responseJson: string): Promise<void>;
-  markTimedOut(approvalId: Uuid): Promise<void>;
-  listPending(): Promise<
-    Array<{ approvalId: string; channelId: string; expiresAt: string; requestJson: string }>
-  >;
-}
+// Re-export for existing consumers
+export type { PendingApprovalStore };
 
 export class SqlitePendingApprovalStore implements PendingApprovalStore {
   constructor(private readonly db: Database.Database) {}

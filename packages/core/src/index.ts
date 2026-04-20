@@ -3,12 +3,8 @@
  * Spec: nexus-engineering-spec-v1-7-25.md §12-§20
  */
 
-// §12 — All contracts
+// §12 — All contracts (includes utilities moved to contracts per DEF-001)
 export * from './types/index.js';
-
-// §15 — Utilities
-export * from './utils/time.js';
-export * from './utils/helpers.js';
 
 // §15 — Crypto
 export * from './crypto/canonicalize.js';
@@ -69,6 +65,8 @@ export {
   clearGrantSecret,
   assertGrantPresent,
   assertGrantNotExpired,
+  GrantVaultImpl,
+  grantVault,
 } from './execution/grant-vault.js';
 
 // §18 — Redaction
@@ -79,7 +77,6 @@ export { buildCCV } from './compiler-view/ccv-builder.js';
 
 // §16 — Ledger
 export { verifyChain } from './ledger/chain-verifier.js';
-export type { ChainVerificationResult } from './ledger/chain-verifier.js';
 export { JsonlLedgerBackend } from './ledger/backends/jsonl.backend.js';
 
 // §13.1 — Pipeline

@@ -11,7 +11,7 @@
  * Spec: nexus-engineering-spec-v0-4-6.md §10.3.6, §19.2
  */
 
-import type { IntentContext, IsoTimestamp } from '@nexus/core';
+import type { IntentContext, IsoTimestamp } from '@nexus/contracts';
 
 /** Sanitize a string to a maximum length, trimming whitespace. */
 function sanitize(value: string | undefined | null, maxLen: number): string | null {

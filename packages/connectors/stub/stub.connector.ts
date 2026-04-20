@@ -2,6 +2,9 @@
  * StubConnector — spec §11.3
  * Test double for all 10 integration fixture scenarios.
  * All secrets prefixed FIXTURE_SYNTHETIC_SECRET: (spec §4.2 carve-out).
+ *
+ * DEF-001 / SOLVE-S6-001: Imports @nexus/contracts only.
+ * GrantVault received via method injection from Gate 06.
  */
 import {
   CAPABILITY_IDS,
@@ -10,12 +13,8 @@ import {
   type ExecutionGrant,
   type ExecutionResult,
   type ExecutionGrantTemplate,
-} from '../../core/src/types/index.js';
-import {
-  assertGrantPresent,
-  assertGrantNotExpired,
-  setGrantSecret,
-} from '../../core/src/execution/grant-vault.js';
+  type GrantVault,
+} from '@nexus/contracts';
 
 function buildActionSummaryText(action: AgentAction): string {
   const verb = action.resolvedVerb ?? action.rawVerb;
@@ -43,13 +42,17 @@ export class StubConnector implements Connector {
     return `[STUB DIFF] ${buildActionSummaryText(action)} — preview not available in stub`;
   }
 
-  async redeemGrant(grant: ExecutionGrant): Promise<void> {
-    setGrantSecret(grant, `FIXTURE_SYNTHETIC_SECRET:stub-credential-${grant.grantId}`);
+  async redeemGrant(grant: ExecutionGrant, vault: GrantVault): Promise<void> {
+    vault.setSecret(grant, `FIXTURE_SYNTHETIC_SECRET:stub-credential-${grant.grantId}`);
   }
 
-  async execute(action: AgentAction, grant: ExecutionGrant): Promise<ExecutionResult> {
-    assertGrantPresent(grant);
-    assertGrantNotExpired(grant);
+  async execute(
+    action: AgentAction,
+    grant: ExecutionGrant,
+    vault: GrantVault
+  ): Promise<ExecutionResult> {
+    vault.assertPresent(grant);
+    vault.assertNotExpired(grant);
     this.calls.push({ action, grantId: grant.grantId });
     return {
       grantId: grant.grantId,
