@@ -110,8 +110,11 @@ export class NexusMcpProxy {
     // 4. Build PipelineContext shell — transport dependencies only.
     //    actor, principal, delegationContext are intentionally absent (HOLE-002).
     //    Gate 01 resolves the identity tuple using delegationStore and other registries.
-    const context: PipelineContext = {
+    const context = {
       sessionId: action.sessionId,
+      delegationContext: undefined as any,
+      actor: undefined as any,
+      principal: undefined as any,
       delegationStore: this.delegationStore,
       policyFile: this.policyFile,
       approverRegistry: this.approverRegistry,
@@ -119,7 +122,6 @@ export class NexusMcpProxy {
       channelRegistry: this.channelRegistry,
       threatLog: [],
       startedAt: nowIso(),
-      // actor, principal, delegationContext — populated by Gate 01 (HOLE-002)
     };
 
     // 5. Run the pipeline

@@ -930,3 +930,16 @@ export interface RoutingTrailReader {
   getByCorrelationId(correlationId: Uuid): Promise<RoutingProvenanceTrailEntry[]>;
   tail(n: number): Promise<RoutingProvenanceTrailEntry[]>;
 }
+
+// ─── §19 Adapter Interface ───
+export interface Adapter {
+  readonly adapterProtocol: NonEmpty;
+  readonly adapterVersion: NonEmpty;
+  normalize(rawRequest: unknown): Promise<NormalizationResult>;
+}
+
+export interface NormalizationResult {
+  ok: boolean;
+  action?: AgentAction;
+  error?: NonEmpty;
+}

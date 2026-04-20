@@ -37,17 +37,18 @@ import {
   // Policy
   loadPolicyFile,
   // Identity
-  ActorRegistry,
-  PrincipalRegistry,
+  SqliteActorRegistry,
+  SqlitePrincipalRegistry,
   SqliteApproverRegistry,
   SqliteSessionStore,
-  SqliteDelegationStore,
-  // Classification
   VerbNormalizer,
   TargetNormalizer,
   CapabilityRegistry,
   DataClassifier,
   RiskClassifier,
+  SqliteDelegationStore,
+  // Classification
+
   // Gates
   IdentityGate,
   ClassificationGate,
@@ -108,15 +109,15 @@ async function main(): Promise<void> {
   let policyFile = null;
   try {
     policyFile = await loadPolicyFile(POLICY_PATH, controlPlaneKey);
-    console.log(`[nexus:mcp] policy: ${policyFile.rules.length} rule(s) loaded and verified`);
+    console.log(`[nexus:mcp] policy: ${policyFile.sortedRules.length} rule(s) loaded and verified`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[nexus:mcp] policy load failed (default deny will apply): ${msg}`);
   }
 
   // 5. Registries and stores
-  const actorRegistry = new ActorRegistry(db);
-  const principalRegistry = new PrincipalRegistry(db);
+  const actorRegistry = new SqliteActorRegistry(db);
+  const principalRegistry = new SqlitePrincipalRegistry(db);
   const approverRegistry = new SqliteApproverRegistry(db);
   const sessionStore = new SqliteSessionStore(db);
   const delegationStore = new SqliteDelegationStore(db);
