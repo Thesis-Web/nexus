@@ -1,23 +1,24 @@
 # Nexus Stack — Engineering Spec
-# Version: v1.7.25
-# Status: CANONICAL — audit-passed, build-cleared
+# Version: v1.8.26
+# Status: CANONICAL — governing law / build not yet build-cleared
 # Owner: James Huson / Lake Area LLC
-# Date: 2026-04-19
-# Governing blueprint: nexus-blueprint-v1-4-12.md
+# Date: 2026-04-21
+# Governing blueprint: nexus-blueprint-v1-5-13.md
 # Governing ratification: nexus-owner-ratification-v1-4-12.md
 # Canonical outline: nexus-complete-end-to-end-flow-v4.8.md (LOCKED)
-# Supersedes: nexus-engineering-spec-v0-4-6.md
+# Supersedes: nexus-engineering-spec-v1-7-25.md
 # This document is the canonical engineering spec for the Nexus Stack build.
+# Incorporates: Amendment J-S1 — WordNet Build-Time Lexical Integration (merged, superseded)
 
 ---
 
 ## Changelog from v0-4-6
 
-Major version jump. This spec implements blueprint v1.4.12 which expanded scope from
-single authority engine (Nexus) to full two-checkpoint governed stack (Nexus Stack:
-NVG + NXS). All NXS law is present in this spec. New sections added for NVG, OCT,
-workspace, orchestration, identity provider interface, compile/return path, three audit
-streams, operating modes, and Run Ledger.
+Major version jump. This spec implements blueprint v1.5.13 (which carries all v1.4.12 law)
+and expanded scope from single authority engine (Nexus) to full two-checkpoint governed
+stack (Nexus Stack: NVG + NXS). All NXS law is present in this spec. New sections added
+for NVG, OCT, workspace, orchestration, identity provider interface, compile/return path,
+three audit streams, operating modes, and Run Ledger.
 
 Owner ratification: nexus-owner-ratification-v1-4-12.md (RAT-001 through RAT-007).
 
@@ -43,14 +44,18 @@ Key changes:
 18. All approval law from prior spec versions is present in this spec
 19. All crypto law from prior spec versions is present in this spec
 20. All ledger law from prior spec versions is present in this spec
+21. WordNet build-time lexical integration (Amendment J-S1) — governed lexical types,
+    build-time lexical fixture generation law, Gate 02 lexical resolver order, hard
+    separation rule, lexical-normalizer.ts as subordinate helper to Post-Inference Action
+    Normalizer, validation gates 37.14–37.18, lexical unit and consistency tests
 
 ---
 
 ## 1. Purpose
 
-This engineering spec translates the approved Nexus Stack blueprint (v1.4.12) into
-deterministic build law. The intent is to let a builder implement the system line by line
-without inventing architecture during the build.
+This engineering spec translates the approved Nexus Stack blueprint (v1.5.13, incorporating
+all v1.4.12 law) into deterministic build law. The intent is to let a builder implement
+the system line by line without inventing architecture during the build.
 
 This spec is exhaustive for:
 - Layer 2 (Shared Contracts — nexus-contracts)
@@ -70,8 +75,8 @@ here. No builder invention is permitted except through the best-solve protocol.
 
 1. nexus-complete-end-to-end-flow-v4.8.md (canonical outline — LOCKED)
 2. nexus-owner-ratification-v1-4-12.md (owner decisions — LOCKED)
-3. nexus-blueprint-v1-4-12.md (current blueprint — derived from #1 and #2)
-4. this engineering spec (nexus-engineering-spec-v1-7-25.md — derived from #3)
+3. nexus-blueprint-v1-5-13.md (current blueprint — derived from #1 and #2)
+4. this engineering spec (nexus-engineering-spec-v1-8-26.md — derived from #3)
 5. owner-approved audit resolutions and reference files
 6. builder implementation details
 
@@ -149,8 +154,8 @@ No code, stub, or partial implementation for any out-of-scope item.
 const PRODUCT_NAME = 'nexus-stack' as const;
 const NXS_ENGINE_NAME = 'nexus' as const;
 const NVG_ENGINE_NAME = 'nexus-vanguard' as const;
-const BLUEPRINT_VERSION = 'v1.4.12' as const;
-const SPEC_VERSION = 'v1.7.25' as const;
+const BLUEPRINT_VERSION = 'v1.5.13' as const;
+const SPEC_VERSION = 'v1.8.26' as const;
 const RUNTIME_CONTRACT_VERSION = 'v1.0.0' as const;
 const CAPABILITY_TAXONOMY_VERSION = 'v1.0.0' as const;
 const COMPARISON_INPUT_VERSION = 'v1.0.0' as const;
@@ -174,13 +179,16 @@ nexus/
         interfaces/   all interface contracts
         constants/    all governed constant sets
         schemas/      AgentAction schema, RunLedger schema
+        lexicon/      governed lexical types (Amendment J-S1)
     core/             Layer 1 — NXS authority engine
       src/
         engine/       pipeline orchestrator
         gates/        01-identity through 07-evidence
         identity/     actor resolution, principal resolution
         classification/ verb normalizer, target normalizer, capability registry,
-                       data classifier, risk classifier
+                       data classifier, risk classifier, lexical-verb-resolver (Amendment J-S1)
+        normalization/ lexical-normalizer (subordinate helper to Post-Inference Action
+                       Normalizer — Amendment J-S1; see §28)
         policy/       evaluator, rule-loader, grant-template-builder
           rules/      default.policy.json (signed)
         approval/     packager, channel interface, pending-approval-store,
@@ -232,14 +240,18 @@ nexus/
           server.ts
           routes/
   docs/
-    nexus-blueprint-v1-4-12.md
-    nexus-engineering-spec-v1-7-25.md
+    nexus-blueprint-v1-5-13.md
+    nexus-engineering-spec-v1-8-26.md
     nexus-owner-ratification-v1-4-12.md
     nexus-complete-end-to-end-flow-v4.8.md
   keys/
     dev.keypair.json
     admin.token
     approvers/
+  config/
+    lexicon/                         (Amendment J-S1)
+      governed-verb-overrides.v1.yaml
+      governed-verb-hard-separations.v1.yaml
   fixtures/
     scenario-01-allow-read/
     scenario-02-allow-create/
@@ -251,6 +263,9 @@ nexus/
     scenario-08-policy-unsigned/
     scenario-09-broad-token-bypass/
     scenario-10-delegation-exceeded/
+    lexicon/                         (Amendment J-S1)
+      wordnet-candidate-aliases.v1.json
+      governed-verb-lexicon.v1.json
   runs/
     RUN-<id>/
   schemas/
@@ -259,6 +274,8 @@ nexus/
     ci-gate.ts
     gen-keys.ts
     sign-policy.ts
+    build-wordnet-lexicon.ts         (Amendment J-S1)
+    validate-governed-lexicon.ts     (Amendment J-S1)
   package.json
   pnpm-workspace.yaml
   turbo.json
@@ -290,7 +307,9 @@ nexus/
   "build": "pnpm exec turbo build",
   "ci:gate": "pnpm exec tsx scripts/ci-gate.ts",
   "nexus": "pnpm exec tsx packages/interfaces/cli/src/index.ts",
-  "nexus:mcp": "pnpm exec tsx packages/adapters/mcp/src/mcp-server.ts"
+  "nexus:mcp": "pnpm exec tsx packages/adapters/mcp/src/mcp-server.ts",
+  "lexicon:build": "pnpm exec tsx scripts/build-wordnet-lexicon.ts",
+  "lexicon:validate": "pnpm exec tsx scripts/validate-governed-lexicon.ts"
 }
 ```
 
@@ -345,9 +364,10 @@ Step 12: NVG routing policy signature gate
 Step 13: NVG classification enforcement gate (sensitive → frontier = reject)
 Step 14: Run Ledger cross-link gate (runId present in all three streams)
 Step 15: bypass annotation gate (NVG-bypass runs annotated)
+Step 16: lexical runtime bundle exclusion gate (wordnet-candidate-aliases.v1.json absent from production output)
 ```
 
-All 15 steps must pass. No step may be skipped. No gate waived without owner approval.
+All 16 steps must pass. No step may be skipped. No gate waived without owner approval.
 
 ### 6.5 CI/CD Push Checkpoints
 
@@ -367,7 +387,8 @@ PUSH-08: After policy signing + certification gate          → Steps 1-11
 PUSH-09: After NVG engine + routing + classification        → Steps 1-13
 PUSH-10: After Run Ledger + cross-linking                   → Steps 1-15 (FULL GATE)
 PUSH-11: After CLI + Management API                         → Steps 1-15 (FULL GATE)
-PUSH-12: After clean-clone assertion verified               → Steps 1-15 (FULL GATE)
+PUSH-12: After lexical fixture committed + validated         → Steps 1-16 (FULL GATE)
+PUSH-13: After clean-clone assertion verified               → Steps 1-16 (FULL GATE)
 ```
 
 A push that fails any passable gate is rejected. No downstream work on a failed push.
@@ -1335,8 +1356,8 @@ export type EvidenceSentinel = typeof EVIDENCE_SENTINEL;
 
 // ─── Version constants ───
 export const GENESIS_HASH                        = '0000000000000000000000000000000000000000000000000000000000000000';
-export const BLUEPRINT_VERSION: SemVer           = 'v1.4.12';
-export const SPEC_VERSION: SemVer                = 'v1.7.25';
+export const BLUEPRINT_VERSION: SemVer           = 'v1.5.13';
+export const SPEC_VERSION: SemVer                = 'v1.8.26';
 export const RUNTIME_CONTRACT_VERSION: SemVer    = 'v1.0.0';
 export const CAPABILITY_TAXONOMY_VERSION: SemVer = 'v1.0.0';
 export const COMPARISON_INPUT_VERSION: SemVer    = 'v1.0.0';
@@ -1379,6 +1400,10 @@ export const CAPABILITY_IDS = {
   SYNTHESIZE_CONTENT:       'synthesize:content',
   TRANSMIT_DATA:            'transmit:data',
 } as const;
+
+// ─── Lexical constants — Amendment J-S1 ───
+export const LEXICAL_VERSION = 'v1' as const;
+export type LexiconVersion = string;
 
 // ─── Scenario manifest ───
 export const SCENARIO_MANIFEST = {
@@ -2149,6 +2174,54 @@ See resolveCapability in §13.9.1 for resolution logic.
 
 ---
 
+## 12.5 Governed Lexical Types — Amendment J-S1
+
+All types in this section are defined in `packages/contracts/src/lexicon/governed-verb-lexicon.ts`.
+These types are build-time and fixture contracts only. Runtime code loads only the generated
+governed lexical fixture — never WordNet source files.
+
+```typescript
+// ─── Lexical alias candidate — build-time only ───
+// Produced by scripts/build-wordnet-lexicon.ts from WordNet source data.
+// Never used at runtime. Stored only in fixtures/lexicon/wordnet-candidate-aliases.v1.json.
+export interface LexicalAliasCandidate {
+  rawTerm:                 string;
+  candidateCanonicalVerb:  string;
+  source:                  'wordnet';
+  relation:                'synonym' | 'troponym' | 'hypernym' | 'derivational' | 'related';
+  confidenceClass:         'direct' | 'near' | 'ambiguous';
+  sourceVersion:           string;
+}
+
+// ─── Governed verb alias rule — runtime law ───
+// Produced by applying governance override files to LexicalAliasCandidates.
+// Stored in fixtures/lexicon/governed-verb-lexicon.v1.json.
+// This is the runtime authority artifact for lexical resolution.
+export interface GovernedVerbAliasRule {
+  rawTerm:        string;
+  canonicalVerb:  string | null;
+  decision:       'approve' | 'forbid' | 'hard_separate' | 'review_required';
+  rationale:      string;
+  source:         'governance_override';
+}
+
+// ─── Governed verb lexicon — the runtime fixture ───
+// The complete versioned output of the build-time lexicon generation pipeline.
+// Runtime resolver loads this file only. WordNet is never consulted at runtime.
+export interface GovernedVerbLexicon {
+  lexiconVersion:              string;
+  canonicalVerbTaxonomyVersion: string;
+  wordnetSourceVersion:        string;
+  generatedAt:                 string;
+  approved:    Record<string, string>;    // rawTerm → canonicalVerb
+  forbidden:   Record<string, string[]>;  // canonicalVerb → forbidden raw terms
+  hardSeparated: Record<string, string[]>; // canonicalVerb → hard-separated raw terms
+  reviewRequired: string[];               // raw terms requiring operator review
+}
+```
+
+---
+
 ## 13. NXS Gate Implementations
 
 All gate implementations live in
@@ -2291,6 +2364,46 @@ interface DataClassifier {
 
 Risk tier computation: see §13.9.2 `computeRiskTier`.
 Capability resolution: see §13.9.1 `resolveCapability`.
+
+#### 13.3.1 Gate 02 Lexical Resolver Law — Amendment J-S1
+
+`verbNormalizer.normalize()` shall resolve raw verb input in this exact order:
+
+1. **Exact governed verb match** — raw verb is already a member of the canonical ACTION_VERB set.
+2. **Exact approved alias match** — raw verb matches an approved entry in the governed lexical
+   fixture (`fixtures/lexicon/governed-verb-lexicon.v1.json`).
+3. **Tool or endpoint deterministic override** — specific tool name or endpoint maps to a
+   canonical verb by explicit override rule.
+4. **Hard-separated or forbidden alias check** — raw verb is in the hard-separated or forbidden
+   set; emit `UNRESOLVABLE_VERB` denial. Do not collapse.
+5. **Unresolved result** — no match found; emit `UNRESOLVABLE_VERB` denial. Do not guess.
+
+Gate 02 shall never call WordNet source files directly at runtime.
+Gate 02 shall never infer a canonical verb from semantic similarity alone.
+Ambiguous lexical cases must emit a denial — never a guess.
+
+The following distinctions are governance-significant and must never be collapsed by the
+lexical resolver under any circumstances:
+
+- `search` vs `read`
+- `query` vs `execute`
+- `send` vs `publish`
+- `publish` vs `transmit`
+
+Additional hard separations may be added to `config/lexicon/governed-verb-hard-separations.v1.yaml`
+without engine rewrite.
+
+The `LexicalVerbResolver` is implemented in
+`packages/core/src/classification/lexical-verb-resolver.ts`. It loads only the governed
+lexical fixture at startup. It does not accept WordNet source file paths.
+
+```typescript
+interface LexicalVerbResolver {
+  // Returns canonicalVerb if deterministically resolved, null if unresolvable.
+  // Never throws on ambiguity — returns null.
+  resolve(rawVerb: string): ActionVerb | null;
+}
+```
 
 ### 13.4 Gate 03 — Delegation
 
@@ -4888,6 +5001,28 @@ interface NormalizerContext {
 
 Any governance decision made inside the normalizer is a build violation.
 
+### 28.2 Lexical Helper Relationship — Amendment J-S1
+
+`packages/core/src/normalization/lexical-normalizer.ts` is a **subordinate lexical helper
+module** used by the Post-Inference Action Normalizer. It is not the Post-Inference Action
+Normalizer and does not replace it.
+
+The `lexical-normalizer.ts` module performs lexical cleanup of raw verb strings from model
+output before the normalizer produces the AgentAction. It does this by consulting only the
+governed lexical fixture (`fixtures/lexicon/governed-verb-lexicon.v1.json`).
+
+The `lexical-normalizer.ts` module shall not:
+- assign policy outcome
+- assign risk tier
+- assign OCT ceiling
+- resolve identity-provider claims
+- collapse ambiguous verbs by guess
+- consult WordNet source files directly at runtime
+
+If the lexical helper cannot deterministically resolve a raw verb, it returns the raw verb
+unchanged. The Post-Inference Action Normalizer continues — Gate 02 is the authority on
+verb resolution and will emit `UNRESOLVABLE_VERB` if needed.
+
 ---
 
 ## 29. Workspace / Orchestration Contract
@@ -5380,6 +5515,33 @@ All three audit streams for a run share the same runId. Missing runId = gate fai
 NVG-bypass runs must have explicit bypass annotation in the Run Ledger.
 Unannotated bypass = gate failure.
 
+### 37.14 Governed Lexical Fixture Existence Gate — Amendment J-S1
+
+`fixtures/lexicon/governed-verb-lexicon.v1.json` must exist and parse as a valid
+`GovernedVerbLexicon` shape. Missing file or schema violation = gate failure.
+
+### 37.15 Approved Alias Uniqueness Gate — Amendment J-S1
+
+No approved alias in the governed lexical fixture may map to more than one canonical verb.
+Duplicate alias mapping = gate failure.
+
+### 37.16 Hard-Separation Integrity Gate — Amendment J-S1
+
+No term that appears in the `hardSeparated` set of the governed lexical fixture may also
+appear in the `approved` set. Overlap = gate failure.
+
+### 37.17 Canonical Verb Membership Gate — Amendment J-S1
+
+Every canonical verb referenced in the governed lexical fixture must exist in the
+governed ACTION_VERB constant set. Unknown verb reference = gate failure.
+
+### 37.18 Runtime Bundle Exclusion Gate — Amendment J-S1
+
+`fixtures/lexicon/wordnet-candidate-aliases.v1.json` must not be present in the
+production runtime bundle or output. Only the governed lexical fixture
+(`governed-verb-lexicon.v1.json`) may be present at runtime. Presence of the
+candidate alias file in production output = gate failure.
+
 ---
 
 ## 38. Testing Requirements
@@ -5403,6 +5565,8 @@ packages/core/src/ledger/chain-verifier.test.ts
 packages/adapters/mcp/src/mcp-normalizer.test.ts
 packages/vanguard/src/classifier/data-classifier.test.ts
 packages/vanguard/src/router/model-router.test.ts
+packages/core/src/classification/lexical-verb-resolver.test.ts
+packages/core/src/normalization/lexical-normalizer.test.ts
 ```
 
 ### 38.2 NXS Threat Tests (10)
@@ -5462,6 +5626,30 @@ extract CCV from both runs, assert deep equality on all `areComparable` fields (
 Verify all three audit streams carry same runId for governed runs. Run a full scenario,
 collect entries from all three streams, assert every entry has the correct runId.
 
+### 38.8 Lexical Normalization Tests — Amendment J-S1
+
+```
+packages/core/src/classification/lexical-verb-resolver.test.ts
+  — approved alias maps deterministically to canonical verb
+  — hard separation: 'query' does not collapse to 'execute'
+  — hard separation: 'send' does not collapse to 'publish'
+  — hard separation: 'search' does not collapse to 'read'
+  — hard separation: 'publish' does not collapse to 'transmit'
+  — ambiguous alias emits null (unresolved) — never a guess
+  — unknown raw term emits null (unresolved)
+
+packages/core/src/normalization/lexical-normalizer.test.ts
+  — lexical cleanup assists normalization without making governance decisions
+  — unresolvable raw verb returned unchanged (Gate 02 handles denial)
+  — normalizer never loads wordnet-candidate-aliases.v1.json at runtime
+
+tests/lexicon/governed-verb-lexicon.consistency.test.ts
+  — approved, forbidden, hard-separated, and review-required sets are internally consistent
+  — no approved alias maps to more than one canonical verb
+  — no hard-separated term appears in approved set
+  — all canonical verbs in fixture exist in ACTION_VERB constant set
+```
+
 ---
 
 ## 39. Failure Handling
@@ -5502,7 +5690,10 @@ PHASE 2 — Layer 1 (NXS core engine)
       replay detector, delegation sequences
   8.  Delegation engine: mintRootDelegation with environment invariant
   9.  Classification layer: verb normalizer, target normalizer, capability registry,
-      data classifier, risk classifier
+      data classifier, risk classifier, lexical-verb-resolver (Amendment J-S1)
+  9a. Lexical layer (Amendment J-S1): run lexicon:build to generate governed lexical
+      fixture; commit fixtures/lexicon/governed-verb-lexicon.v1.json; run
+      lexicon:validate; wire lexical-verb-resolver into verbNormalizer pipeline
   10. Gates 01-04 with unit tests
   11. Gates 05-07 with approval, evidence, and unit tests
   12. Pipeline orchestrator (explicit branch, not loop)
@@ -5546,7 +5737,7 @@ PHASE 8 — Tests and fixtures
   38. Cross-link tests
   39. Approval expiry invariant test
   40. Sequence continuity test
-  41. ci:gate script (all 15 steps)
+  41. ci:gate script (all 16 steps)
   42. Run artifact validation
   43. Clean-clone assertion
 ```
@@ -5627,7 +5818,7 @@ via secret → configure operating mode → enable enforcing-lock.
 
 ALL of the following must be true:
 
-- ci:gate passes all 15 steps from a clean clone
+- ci:gate passes all 16 steps from a clean clone
 - all 10 NXS POC scenario integration tests pass (using StubConnector)
 - all NXS threat tests pass (10)
 - all NVG threat tests pass (3)
@@ -5664,9 +5855,9 @@ ALL of the following must be true:
 ## 44. Final Spec Statement
 
 This document is the **canonical engineering spec** for the Nexus Stack build.
-Status: CANONICAL — audit-passed, build-cleared.
+Status: CANONICAL — governing law / build not yet build-cleared.
 
-Nexus Stack v1.4.12 is a two-checkpoint, seven-layer, TypeScript-strict governed runtime.
+Nexus Stack v1.5.13 is a two-checkpoint, seven-layer, TypeScript-strict governed runtime.
 Two enforcement checkpoints: NVG (wall enforcement) and NXS (action authority). Three
 audit streams cross-linked by run ID. Seven gates in fixed order, default-deny. Gate 07
 always runs. Timeout produces denial, never auto-approval. The machine governs, routes,
@@ -5680,10 +5871,11 @@ Build instructions govern builder-session behavior only.
 
 ---
 
-*Spec version: v1.7.25 — CANONICAL*
+*Spec version: v1.8.26 — CANONICAL*
 *Owner: James Huson / Lake Area LLC*
-*Date: 2026-04-19*
-*Governing blueprint: nexus-blueprint-v1-4-12.md*
+*Date: 2026-04-21*
+*Governing blueprint: nexus-blueprint-v1-5-13.md*
 *Governing ratification: nexus-owner-ratification-v1-4-12.md*
 *Canonical outline: nexus-complete-end-to-end-flow-v4.8.md (LOCKED)*
-*Supersedes: nexus-engineering-spec-v0-4-6.md*
+*Supersedes: nexus-engineering-spec-v1-7-25.md*
+*Incorporates: Amendment J-S1 — WordNet Build-Time Lexical Integration (merged, superseded)*

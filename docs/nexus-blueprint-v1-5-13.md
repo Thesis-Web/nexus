@@ -1,11 +1,12 @@
 # Nexus Stack — System Blueprint
-# Version: v1.4.12
+# Version: v1.5.13
 # Owner: James Huson / Lake Area LLC
-# Date: 2026-04-19
-# Supersedes: nexus-blueprint-v0-3-6.md
+# Date: 2026-04-21
+# Supersedes: nexus-blueprint-v1-4-12.md
 # Canonical outline: nexus-complete-end-to-end-flow-v4.8.md (Owner-Approved, LOCKED)
-# Engineering spec derived from this blueprint: nexus-engineering-spec-v1-4-12.md
+# Engineering spec derived from this blueprint: nexus-engineering-spec-v1-8-26.md
 # Canonical law: this document
+# Incorporates: Amendment J — WordNet-Backed Lexical Bootstrap Fixture (merged, superseded)
 
 ---
 
@@ -91,6 +92,12 @@ numbering. Stale five-layer references from v0.3.6 are superseded.
 17. All v0.3.6 NXS gate law is unchanged. All v0.3.6 approval law is unchanged.
     All v0.3.6 evidence ledger law is unchanged. All v0.3.6 credential governance
     law is unchanged. All v0.3.6 modularity law is carried forward and extended.
+
+18. WordNet-backed lexical bootstrap fixture added (Amendment J). Build-time WordNet
+    integration provides governed lexical normalization for Gate 02 verb alias resolution
+    and Post-Inference Action Normalizer support. WordNet is build-time input only —
+    runtime uses only the governed lexical fixture. Governance override layer is runtime
+    law. Ambiguous lexical cases never guess. See §34.
 
 ---
 
@@ -221,6 +228,9 @@ This blueprint defines:
 - operational constraints — no-on-prem constraint table
 - security model — standalone trust-boundary reference
 - deferred items — explicit list of what is not built in this version
+- WordNet-backed lexical bootstrap fixture — four-layer lexical model, build-time
+  integration law, governance override authority, hard separation rules, determinism
+  rule, runtime boundary (Amendment J — see §34)
 
 ### 4.2 Excluded from Blueprint Scope
 
@@ -281,7 +291,11 @@ headers. Gate 01 owns session expiry semantics.
 **ActionVerb**: The operation class of an action. ActionVerb is an open governed type. The
 v1.4.12 governed production set is: read, write, create, update, delete, execute, query,
 search, publish, export, send, synthesize, transmit. A Capability is resolved from ActionVerb
-plus target context — not from ActionVerb alone.
+plus target context — not from ActionVerb alone. Raw verb input from agents and model output
+is normalized to a canonical ActionVerb by the Gate 02 lexical resolver, which uses the
+governed lexical fixture as its alias source (Amendment J — see §34). Governance-significant
+distinctions between verbs are preserved by explicit hard separation rules and are never
+collapsed by lexical similarity alone.
 
 **Capability**: A normalized description of what an action does, more specific than a verb
 alone. A Capability is resolved from ActionVerb, target resource type, and action context at
@@ -578,7 +592,9 @@ Recommended onboarding path: Observe (week 1) → Advisory (week 2) → Enforcin
 
 Mode changes require:
 - A signed admin command (Ed25519 admin keypair — separate from agent credentials)
-- A mandatory audit event in all three audit streams
+- A mandatory audit event in the Run Ledger, using the governed infrastructure run ID
+  (infrastructure configuration events are not governed run events; they do not produce
+  Evidence Ledger or Routing Provenance Trail entries)
 - No mode change is possible through agent interfaces, adapters, or approval channels
 
 Mode changes are not reversible without the admin keypair.
@@ -589,7 +605,9 @@ An enforcing-lock flag in signed infrastructure configuration prevents any downg
 Enforcing mode without multi-party admin approval. A compromised agent or adapter cannot
 soften the enforcement posture. The enforcing-lock is the intended production configuration.
 Disabling the enforcing-lock requires multi-party admin signatures and produces a mandatory
-audit event in all three streams.
+audit event in the Run Ledger only, using the governed infrastructure run ID. Evidence
+Ledger and Routing Provenance Trail are reserved for governed run events — not
+infrastructure configuration changes.
 
 ---
 
@@ -2075,7 +2093,105 @@ a policy exception. The hard wall is the product.
 
 ---
 
-## 34. Security Model
+## 34. WordNet-Backed Lexical Bootstrap Fixture — Amendment J
+
+### 34.1 Architectural Rule
+
+WordNet is a **build-time lexical source**, not a runtime authority source.
+
+At runtime, the stack uses only:
+- governed canonical verb taxonomy
+- governed generated lexical fixture
+- governance override rules
+- deterministic resolver logic
+
+Runtime never calls WordNet directly.
+
+### 34.2 Four-Layer Lexical Model
+
+| Layer | Role | Authority |
+|---|---|---|
+| WordNet source | candidate lexical relations, synsets, near-synonyms | build-time input only |
+| Derived lexical fixture | versioned candidate alias graph committed to repo | generated artifact |
+| Governance override layer | approved, forbidden, and hard-separated lexical decisions | canonical runtime law |
+| Runtime resolver | deterministic lookup against governed data only | runtime execution law |
+
+### 34.3 Governance Rule
+
+The canonical verb taxonomy remains governed stack law.
+
+WordNet may suggest lexical relatedness. It may not decide:
+- verb collapse
+- capability mapping
+- policy outcome
+- risk tier
+- approval routing
+- execution authority
+
+Any lexical relation that would collapse a governance-significant distinction must be
+explicitly blocked by the governance override layer.
+
+The following distinctions are governance-significant and must remain explicitly
+representable in the override layer whenever lexical overlap exists:
+- `search` vs `read`
+- `query` vs `execute`
+- `send` vs `publish`
+- `publish` vs `transmit`
+
+The override layer may define additional hard separations over time without engine rewrite.
+
+### 34.4 Determinism Rule
+
+If a raw term is:
+- explicitly approved in the governed lexical fixture → normalize deterministically
+- explicitly forbidden or hard-separated → do not collapse
+- unknown or ambiguous → return unresolved classification or review-needed result
+
+The stack must never guess in ambiguous lexical cases.
+
+### 34.5 Scope of Use
+
+The WordNet-backed lexical bootstrap fixture may be used for:
+- Gate 02 governed verb normalization support
+- Post-Inference Action Normalizer lexical cleanup support (subordinate helper only)
+- offline adversarial test generation
+- operator tooling for lexical review and governance updates
+
+It may not be used as a runtime substitute for:
+- action classification policy
+- capability registry
+- identity-provider claims
+- OCT ceilings
+- compile-mode selection
+- workspace/orchestrator authority decisions
+
+### 34.6 Post-Inference Normalization Boundary
+
+The Post-Inference Action Normalizer remains a pure normalization boundary.
+
+`lexical-normalizer.ts` is a subordinate lexical helper module used by the normalizer.
+It is not the Post-Inference Action Normalizer. It performs lexical cleanup only and
+makes no governance decisions. If it cannot deterministically resolve a raw verb, it
+returns the raw verb unchanged. Gate 02 is the authority on verb resolution.
+
+### 34.7 Owner Decision — Approved and Not Approved
+
+**Approved if adopted:**
+- WordNet as build-time lexical source
+- governed override layer as runtime law
+- runtime never consults WordNet directly
+- ambiguous lexical cases must not guess
+
+**Not approved if adopted:**
+- live runtime WordNet lookup
+- WordNet as policy law
+- WordNet as capability law
+- WordNet as identity or OCT law
+- semantic collapse without governance override
+
+---
+
+## 35. Security Model
 
 This section is a standalone architecture-law surface preserving the full security model
 as a single anti-drift reference.
@@ -2150,7 +2266,7 @@ Trust boundaries enforced at every layer:
 
 ---
 
-## 35. Deferred Items
+## 36. Deferred Items
 
 ### 35.1 Deferred from This Build — Production Targets (Interface Contracts Locked)
 
@@ -2187,9 +2303,9 @@ started in this version. No code or interface for any of these items belongs in 
 
 ---
 
-## 36. Final Blueprint Statement
+## 37. Final Blueprint Statement
 
-Nexus Stack v1.4.12 is a two-checkpoint, seven-layer, TypeScript-strict governed runtime for
+Nexus Stack v1.5.13 is a two-checkpoint, seven-layer, TypeScript-strict governed runtime for
 the full human → agent → model → action → compile → user loop. Two enforcement checkpoints.
 Three audit streams. Every actor governed. Every wall crossing logged. Every action evidence-
 recorded. The best umpire is felt, not seen.
@@ -2232,9 +2348,10 @@ Build instructions govern builder-session behavior only. They are not product la
 
 ---
 
-*Blueprint version: v1.4.12*
+*Blueprint version: v1.5.13*
 *Owner: James Huson / Lake Area LLC*
-*Date: 2026-04-19*
+*Date: 2026-04-21*
 *Canonical outline: nexus-complete-end-to-end-flow-v4.8.md (LOCKED)*
-*Governing spec: nexus-engineering-spec-v1-4-12.md (to be produced after owner approval)*
-*Supersedes: nexus-blueprint-v0-3-6.md*
+*Governing spec: nexus-engineering-spec-v1-8-26.md*
+*Supersedes: nexus-blueprint-v1-4-12.md*
+*Incorporates: Amendment J — WordNet-Backed Lexical Bootstrap Fixture (merged, superseded)*
