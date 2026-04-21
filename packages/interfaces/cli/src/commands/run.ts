@@ -70,6 +70,7 @@ interface FixtureSetup {
     owner?: string;
     purpose?: string;
     reviewCadence?: string;
+    octLevel?: string;
   };
   delegation: {
     allowedSystems: string[];
@@ -307,6 +308,7 @@ async function runScenario(
     displayName: setup.actor.displayName,
     environment: setup.actor.environment as any,
     riskCeiling: setup.actor.riskCeiling as any,
+    octLevel: (setup.actor.octLevel ?? 'OCT-OPEN') as any,
     allowedSystems: setup.actor.allowedSystems,
     registeredAt: nowIso(),
     ...(setup.actor.owner !== undefined ? { owner: setup.actor.owner } : {}),

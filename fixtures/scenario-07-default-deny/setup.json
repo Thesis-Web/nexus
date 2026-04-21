@@ -1,6 +1,6 @@
 {
   "scenarioId": "07-default-deny",
-  "description": "No policy loaded \u2192 DEFAULT DENY",
+  "description": "No policy loaded → DEFAULT DENY",
   "principal": {
     "principalId": "6ba7b81b-9dad-11d1-80b4-00c04fd430c8",
     "displayName": "Deny Principal",
@@ -17,7 +17,8 @@
     "allowedSystems": ["stub"],
     "owner": "Nexus Test Suite",
     "purpose": "POC integration fixture testing",
-    "reviewCadence": "weekly"
+    "reviewCadence": "weekly",
+    "octLevel": "OCT-OPEN"
   },
   "delegation": {
     "allowedSystems": ["stub"],
@@ -35,7 +36,7 @@
     "rawTarget": "stub:record:single",
     "adapterVersion": "fixture/v0.1.0",
     "intent": {
-      "objectiveSummary": "Read a record \u2014 no policy loaded, should be default-denied",
+      "objectiveSummary": "Read a record — no policy loaded, should be default-denied",
       "triggeringSource": "user_request",
       "toolchainContext": "fixture-runner/v0.1.0",
       "modelId": null,

@@ -31,6 +31,7 @@ const ACTOR: Actor = {
   displayName: 'Test User',
   environment: 'dev',
   riskCeiling: 'high',
+  octLevel: 'OCT-CONFIDENTIAL' as any,
   allowedSystems: ['stub'],
   registeredAt: NOW,
   owner: null,

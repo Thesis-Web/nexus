@@ -72,6 +72,7 @@ function makeActor(actorId: string, principalId: string): Actor {
     displayName: 'test-actor',
     environment: 'dev',
     riskCeiling: RISK_TIER.HIGH,
+    octLevel: 'OCT-CONFIDENTIAL' as any,
     allowedSystems: ['vault'],
     registeredAt: nowIso(),
   };

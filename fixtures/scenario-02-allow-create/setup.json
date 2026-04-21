@@ -1,6 +1,6 @@
 {
   "scenarioId": "02-allow-create",
-  "description": "Medium-risk create \u2192 ALLOWED \u2192 executed",
+  "description": "Medium-risk create → ALLOWED → executed",
   "principal": {
     "principalId": "6ba7b811-9dad-11d1-80b4-00c04fd430c8",
     "displayName": "Bob Principal",
@@ -17,7 +17,8 @@
     "allowedSystems": ["stub"],
     "owner": "Nexus Test Suite",
     "purpose": "POC integration fixture testing",
-    "reviewCadence": "weekly"
+    "reviewCadence": "weekly",
+    "octLevel": "OCT-CONFIDENTIAL"
   },
   "delegation": {
     "allowedSystems": ["stub"],

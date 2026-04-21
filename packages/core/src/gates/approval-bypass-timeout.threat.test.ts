@@ -120,6 +120,7 @@ describe('Threat: Approval Bypass — Timeout (spec §13.6)', () => {
         displayName: 'test',
         environment: 'dev',
         riskCeiling: RISK_TIER.HIGH,
+        octLevel: 'OCT-CONFIDENTIAL' as any,
         allowedSystems: ['vault'],
         registeredAt: nowIso(),
       },

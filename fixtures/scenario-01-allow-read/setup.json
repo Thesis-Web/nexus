@@ -1,6 +1,6 @@
 {
   "scenarioId": "01-allow-read",
-  "description": "Low-risk read \u2192 ALLOWED \u2192 executed",
+  "description": "Low-risk read → ALLOWED → executed",
   "principal": {
     "principalId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
     "displayName": "Alice Principal",
@@ -17,7 +17,8 @@
     "allowedSystems": ["stub"],
     "owner": "Nexus Test Suite",
     "purpose": "POC integration fixture testing",
-    "reviewCadence": "weekly"
+    "reviewCadence": "weekly",
+    "octLevel": "OCT-OPEN"
   },
   "delegation": {
     "allowedSystems": ["stub"],

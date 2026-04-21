@@ -134,6 +134,7 @@ describe('Threat: Approval Bypass — Forged Response (spec §13.6)', () => {
         displayName: 'Test Approver',
         environment: 'dev',
         riskCeiling: RISK_TIER.CRITICAL,
+        octLevel: 'OCT-SECURE' as any,
         allowedSystems: ['vault'],
         registeredAt: nowIso(),
         approverPublicKey: controlPlanePair.publicKey, // valid key — forged sig will still fail
@@ -161,6 +162,7 @@ describe('Threat: Approval Bypass — Forged Response (spec §13.6)', () => {
         displayName: 'test',
         environment: 'dev',
         riskCeiling: RISK_TIER.HIGH,
+        octLevel: 'OCT-CONFIDENTIAL' as any,
         allowedSystems: ['vault'],
         registeredAt: nowIso(),
       },

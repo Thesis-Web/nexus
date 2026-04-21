@@ -70,6 +70,7 @@ function makeSubagentActor(actorId: string, principalId: string): Actor {
     displayName: 'subagent',
     environment: 'dev',
     riskCeiling: RISK_TIER.MEDIUM,
+    octLevel: 'OCT-OPEN' as any,
     allowedSystems: ['vault'],
     registeredAt: nowIso(),
   };
@@ -177,6 +178,7 @@ describe('Threat: Delegation Expansion (spec §13.4, §7.3)', () => {
         displayName: 'supervised',
         environment: 'dev',
         riskCeiling: RISK_TIER.MEDIUM,
+        octLevel: 'OCT-OPEN' as any,
         allowedSystems: ['vault'],
         registeredAt: nowIso(),
       },

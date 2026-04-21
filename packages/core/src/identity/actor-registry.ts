@@ -1,11 +1,13 @@
 /**
- * Actor registry — spec §20.2
+ * Actor registry — spec §20.2, §11.1
  * Backed by SQLite actors table (§20.1).
  * Validation: non-human actors must have owner/purpose/reviewCadence.
+ * §11.1: octLevel persisted and retrieved.
  */
 import type Database from 'better-sqlite3';
 import {
   ACTOR_CLASS,
+  OCT_LEVEL,
   type Actor,
   type Uuid,
   type ActorClass,
@@ -25,6 +27,7 @@ interface ActorRow {
   owner: string | null;
   purpose: string | null;
   review_cadence: string | null;
+  oct_level: string | null;
 }
 
 function rowToActor(row: ActorRow): Actor {
@@ -37,7 +40,7 @@ function rowToActor(row: ActorRow): Actor {
     riskCeiling: row.risk_ceiling,
     allowedSystems: JSON.parse(row.allowed_systems) as string[],
     registeredAt: row.registered_at,
-    octLevel: ((row as any).oct_level as string) ?? 'OCT_LEVEL_3',
+    octLevel: row.oct_level ?? OCT_LEVEL.OPEN,
     ...(row.owner !== null ? { owner: row.owner } : {}),
     ...(row.purpose !== null ? { purpose: row.purpose } : {}),
     ...(row.review_cadence !== null ? { reviewCadence: row.review_cadence } : {}),
@@ -73,12 +76,10 @@ export class SqliteActorRegistry implements ActorRegistry {
 
     this.db
       .prepare(
-        `
-        INSERT INTO actors
+        `INSERT INTO actors
           (actor_id, actor_class, principal_id, display_name, environment, risk_ceiling,
-           allowed_systems, registered_at, owner, purpose, review_cadence)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `
+           allowed_systems, registered_at, owner, purpose, review_cadence, oct_level)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         actor.actorId,
@@ -91,9 +92,9 @@ export class SqliteActorRegistry implements ActorRegistry {
         actor.registeredAt,
         actor.owner ?? null,
         actor.purpose ?? null,
-        actor.reviewCadence ?? null
+        actor.reviewCadence ?? null,
+        actor.octLevel ?? OCT_LEVEL.OPEN
       );
-    return;
   }
 
   async list(): Promise<Actor[]> {

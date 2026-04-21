@@ -138,6 +138,7 @@ interface FixtureSetup {
     owner?: string;
     purpose?: string;
     reviewCadence?: string;
+    octLevel?: string;
   };
   delegation: {
     allowedSystems: string[];
@@ -305,6 +306,7 @@ export async function runScenario(
     displayName: setup.actor.displayName,
     environment: setup.actor.environment as any,
     riskCeiling: setup.actor.riskCeiling as any,
+    octLevel: (setup.actor.octLevel ?? 'OCT-OPEN') as any,
     allowedSystems: setup.actor.allowedSystems,
     registeredAt: nowIso(),
     owner: setup.actor.owner,
@@ -325,6 +327,7 @@ export async function runScenario(
       displayName: setup.approver.displayName,
       environment: 'dev' as any,
       riskCeiling: 'critical' as any,
+      octLevel: 'OCT-SECURE' as any,
       allowedSystems: ['stub'],
       registeredAt: nowIso(),
     };
@@ -600,6 +603,7 @@ describe('Integration: POC Scenarios (spec §27.3)', () => {
       displayName: setup.actor.displayName,
       environment: setup.actor.environment as any,
       riskCeiling: setup.actor.riskCeiling as any,
+      octLevel: (setup.actor.octLevel ?? 'OCT-OPEN') as any,
       allowedSystems: setup.actor.allowedSystems,
       registeredAt: nowIso(),
       owner: setup.actor.owner,

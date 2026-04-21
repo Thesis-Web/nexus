@@ -94,6 +94,16 @@ export {
   createDefaultModeConfig,
 } from './modes/mode-manager.js';
 
+// §10.4 — Ceiling Resolver
+export {
+  resolveEffectiveCeiling,
+  riskTierMin,
+  intersect,
+} from './classification/ceiling-resolver.js';
+
+// §11.3 — OCT Manager
+export { assignOct } from './identity/oct-manager.js';
+
 // §13.1 — Pipeline
 export { Pipeline, SimpleConnectorRegistry, SimpleChannelRegistry } from './engine/pipeline.js';
 export type { PipelineGates } from './engine/pipeline.js';

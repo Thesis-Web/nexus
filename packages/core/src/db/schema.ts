@@ -29,6 +29,7 @@ export function initializeSchema(db: Database.Database): void {
       owner               TEXT,
       purpose             TEXT,
       review_cadence      TEXT,
+      oct_level           TEXT NOT NULL DEFAULT 'OCT-OPEN',
       approver_public_key TEXT,
       approver_channels   TEXT
     );
@@ -95,10 +96,20 @@ export function initializeSchema(db: Database.Database): void {
   `);
 }
 
+// Migration: add oct_level column for existing databases
+function migrateSchema(db: Database.Database): void {
+  const cols = db.prepare('PRAGMA table_info(actors)').all() as Array<{ name: string }>;
+  const hasOctLevel = cols.some(c => c.name === 'oct_level');
+  if (!hasOctLevel) {
+    db.exec("ALTER TABLE actors ADD COLUMN oct_level TEXT NOT NULL DEFAULT 'OCT-OPEN'");
+  }
+}
+
 export function openDatabase(dbPath: string): Database.Database {
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   initializeSchema(db);
+  migrateSchema(db);
   return db;
 }

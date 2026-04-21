@@ -1,6 +1,6 @@
 {
   "scenarioId": "10-delegation-exceeded",
-  "description": "DELEGATED_SUBAGENT requests capability outside delegation \u2192 denied_delegation",
+  "description": "DELEGATED_SUBAGENT requests capability outside delegation → denied_delegation",
   "principal": {
     "principalId": "6ba7b822-9dad-11d1-80b4-00c04fd430c8",
     "displayName": "Sub Principal",
@@ -17,7 +17,8 @@
     "allowedSystems": ["stub"],
     "owner": "Nexus Test Suite",
     "purpose": "POC integration fixture testing",
-    "reviewCadence": "weekly"
+    "reviewCadence": "weekly",
+    "octLevel": "OCT-OPEN"
   },
   "delegation": {
     "allowedSystems": ["stub"],
@@ -35,7 +36,7 @@
     "rawTarget": "stub:record:single",
     "adapterVersion": "fixture/v0.1.0",
     "intent": {
-      "objectiveSummary": "Create a record \u2014 outside delegation bounds (read only allowed)",
+      "objectiveSummary": "Create a record — outside delegation bounds (read only allowed)",
       "triggeringSource": "user_request",
       "toolchainContext": "fixture-runner/v0.1.0",
       "modelId": null,
