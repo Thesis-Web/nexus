@@ -3,6 +3,9 @@
  * Start Management API server with DI.
  * Constructs core service implementations and injects into API server.
  * CLI has RAT-003 exception to import core engine entry points.
+ *
+ * §9.2: Mode configuration signature validated at startup.
+ * Invalid or missing mode config → refuse to start.
  */
 import path from 'node:path';
 import {
@@ -46,6 +49,16 @@ export async function cmdServe(opts: { port?: number }): Promise<void> {
     path.join(process.cwd(), 'runs', 'infra.run-ledger.jsonl');
 
   const modeConfigPath = path.join(process.cwd(), 'keys', 'mode-config.json');
+
+  // §9.2: Validate mode configuration signature at startup.
+  // Invalid or missing signature prevents engine start.
+  try {
+    await loadModeConfig(modeConfigPath);
+  } catch (err) {
+    console.error(`✗ Mode configuration invalid or missing: ${(err as Error).message}`);
+    console.error('  Run `nexus init` to create a valid mode configuration.');
+    process.exit(1);
+  }
 
   const deps: ApiDependencies = {
     actorRegistry: new SqliteActorRegistry(db),
