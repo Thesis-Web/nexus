@@ -1,0 +1,29 @@
+# config/lexicon/governed-verb-hard-separations.v1.yaml
+#
+# Spec: nexus-engineering-spec-v1-8-26.md §13.3.1
+# Blueprint: nexus-blueprint-v1-5-13.md §34.3
+#
+# Hard separation rules — governance-significant distinctions.
+# No term in a hard-separated pair may be collapsed into the other
+# by the lexical resolver, regardless of WordNet lexical overlap.
+#
+# These distinctions are governance-significant because they map to
+# different capabilities, risk tiers, or policy outcomes:
+#   search vs read  — different access patterns, different audit profiles
+#   query vs execute — query is read-intent, execute is side-effect-intent
+#   send vs publish  — send targets specific recipients, publish broadcasts
+#   publish vs transmit — publish makes content available, transmit moves data
+#
+# Additional hard separations may be added without engine rewrite.
+
+version: v1
+
+# ─── Hard-separated pairs ───
+# Format: each entry names two canonical verbs that must remain distinct.
+# Any raw term that WordNet suggests is related to BOTH verbs in a pair
+# is moved to review_required — never approved for either.
+separations:
+  - [search, read]
+  - [query, execute]
+  - [send, publish]
+  - [publish, transmit]

@@ -1,0 +1,119 @@
+# config/lexicon/governed-verb-overrides.v1.yaml
+#
+# Spec: nexus-engineering-spec-v1-8-26.md §13.3.1
+# Blueprint: nexus-blueprint-v1-5-13.md §34.3
+#
+# Governance override layer — runtime law.
+# These decisions override any WordNet-derived candidate alias.
+# The build script (scripts/build-wordnet-lexicon.ts) reads this file
+# and applies these decisions when producing the governed lexical fixture.
+#
+# Format:
+#   approved:  rawTerm → canonicalVerb (deterministic mapping)
+#   forbidden: rawTerm → reason (term must never resolve to a canonical verb)
+
+version: v1
+
+# ─── Approved aliases ───
+# These raw terms deterministically map to the given canonical verb.
+# Gate 02 lexical resolver step 2 (§13.3.1) uses these.
+approved:
+  # read aliases
+  fetch: read
+  retrieve: read
+  get: read
+  list: read
+  find: read
+  lookup: read
+  inspect: read
+  view: read
+  show: read
+  display: read
+  load: read
+  # create aliases
+  add: create
+  insert: create
+  new: create
+  make: create
+  generate: create
+  build: create
+  compose: create
+  # update aliases
+  edit: update
+  modify: update
+  patch: update
+  change: update
+  set: update
+  replace: update
+  revise: update
+  amend: update
+  # delete aliases
+  remove: delete
+  destroy: delete
+  purge: delete
+  erase: delete
+  drop: delete
+  # execute aliases
+  run: execute
+  invoke: execute
+  trigger: execute
+  call: execute
+  launch: execute
+  start: execute
+  # write aliases
+  write: write
+  record: write
+  log: write
+  store: write
+  save: write
+  persist: write
+  # query aliases
+  query: query
+  ask: query
+  request: query
+  inquire: query
+  # search aliases
+  search: search
+  scan: search
+  browse: search
+  explore: search
+  # publish aliases
+  publish: publish
+  broadcast: publish
+  release: publish
+  announce: publish
+  # export aliases
+  export: export
+  download: export
+  dump: export
+  extract: export
+  # send aliases
+  send: send
+  email: send
+  notify: send
+  alert: send
+  message: send
+  dispatch: send
+  deliver: send
+  # synthesize aliases
+  synthesize: synthesize
+  summarize: synthesize
+  combine: synthesize
+  merge: synthesize
+  aggregate: synthesize
+  # transmit aliases
+  transmit: transmit
+  transfer: transmit
+  relay: transmit
+  forward: transmit
+  route: transmit
+
+# ─── Forbidden aliases ───
+# These raw terms must never resolve to any canonical verb.
+# If encountered, Gate 02 emits UNRESOLVABLE_VERB denial.
+forbidden:
+  hack: 'security-sensitive term — no governance mapping'
+  exploit: 'security-sensitive term — no governance mapping'
+  bypass: 'security-sensitive term — no governance mapping'
+  impersonate: 'security-sensitive term — no governance mapping'
+  spoof: 'security-sensitive term — no governance mapping'

@@ -1,10 +1,10 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — all 15 steps in spec §6.4 order.
+ * Nexus CI Gate — all 16 steps in spec §6.4 order.
  *
  * Governing law:
- *   §6.4   — 15-step ci:gate sequence
+ *   §6.4   — 16-step ci:gate sequence
  *   §16.2  — verifyChain: sequence + hash chain + Ed25519 signature per record
  *   §37.6  — Ledger Chain Gate (Step 7)
  *   §37.8  — CCV Integrity Gate (Step 8): re-derive + re-hash
@@ -28,7 +28,7 @@ import * as crypto from 'crypto';
 // ---------------------------------------------------------------------------
 // Spec-governed constants — §12.1
 // ---------------------------------------------------------------------------
-const BLUEPRINT_VERSION = 'v1.4.12';
+const BLUEPRINT_VERSION = 'v1.5.13';
 const SPEC_VERSION = 'v1.7.25';
 const RUNTIME_CONTRACT_VERSION = 'v1.0.0';
 const CAPABILITY_TAXONOMY_VERSION = 'v1.0.0';
@@ -801,6 +801,22 @@ async function main(): Promise<void> {
   pass(`${bypassCount} run(s) checked`);
 
   // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Step 16: lexical runtime bundle exclusion gate — §6.4 step 16, §37.18
+  // wordnet-candidate-aliases.v1.json must NOT be in production output.
+  // -------------------------------------------------------------------------
+  stepLog('lexical runtime bundle exclusion gate');
+  const prodDirs = ['dist', 'packages/core/dist', 'packages/contracts/dist'];
+  let candidateFound = false;
+  for (const dir of prodDirs) {
+    const candidatePath = path.join(dir, 'wordnet-candidate-aliases.v1.json');
+    if (fs.existsSync(candidatePath)) {
+      fail(`wordnet-candidate-aliases.v1.json found in production output: ${candidatePath}`);
+      candidateFound = true;
+    }
+  }
+  if (!candidateFound) pass('candidate aliases absent from production output');
+
   // POST-GATE: bin assertion — HOLE-001 Option A (owner approved)
   // Both nexus and nexus-mcp-proxy bins must be executable after pnpm build.
   // -------------------------------------------------------------------------
@@ -820,7 +836,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  console.log('\n=== ci:gate PASSED — all 15 steps ===\n');
+  console.log('\n=== ci:gate PASSED — all 16 steps ===\n');
 }
 
 // ===========================================================================

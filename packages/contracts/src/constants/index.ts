@@ -242,8 +242,8 @@ export type EvidenceSentinel = typeof EVIDENCE_SENTINEL;
 // ─── Version constants ───
 export const GENESIS_HASH: Sha256Hex =
   '0000000000000000000000000000000000000000000000000000000000000000';
-export const BLUEPRINT_VERSION: SemVer = 'v1.4.12';
-export const SPEC_VERSION: SemVer = 'v1.7.25';
+export const BLUEPRINT_VERSION: SemVer = 'v1.5.13';
+export const SPEC_VERSION: SemVer = 'v1.8.26';
 export const RUNTIME_CONTRACT_VERSION: SemVer = 'v1.0.0';
 export const CAPABILITY_TAXONOMY_VERSION: SemVer = 'v1.0.0';
 export const COMPARISON_INPUT_VERSION: SemVer = 'v1.0.0';
@@ -252,6 +252,10 @@ export const DELEGATION_ENGINE_ID: NonEmpty = 'nexus-delegation-engine-v1';
 
 // ─── Replay dedup TTL ───
 export const REPLAY_DEDUP_TTL_SECONDS = 3600;
+
+// ─── Lexical constants — Amendment J-S1 ───
+export const LEXICAL_VERSION = 'v1' as const;
+export type LexiconVersion = string;
 // Min: 300s. Max: 86400s. Outside bounds: engine refuses to start.
 
 // ─── Infrastructure run ID namespace (§9.3.1) ───

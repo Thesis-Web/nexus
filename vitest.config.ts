@@ -8,6 +8,7 @@ export default defineConfig({
       'packages/vanguard/src/**/*.test.ts',
       'packages/identity-ref/src/**/*.test.ts',
       'packages/adapters/*/src/**/*.test.ts',
+      'tests/**/*.test.ts',
     ],
     exclude: ['**/*.integration.test.ts', '**/*.threat.test.ts'],
     globals: false,

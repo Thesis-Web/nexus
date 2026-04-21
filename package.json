@@ -21,7 +21,9 @@
     "build": "turbo build",
     "ci:gate": "tsx scripts/ci-gate.ts",
     "nexus": "tsx packages/interfaces/cli/src/index.ts",
-    "nexus:mcp": "tsx packages/adapters/mcp/src/mcp-server.ts"
+    "nexus:mcp": "tsx packages/adapters/mcp/src/mcp-server.ts",
+    "lexicon:build": "tsx scripts/build-wordnet-lexicon.ts",
+    "lexicon:validate": "tsx scripts/validate-governed-lexicon.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.24.0",

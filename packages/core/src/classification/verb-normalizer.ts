@@ -1,10 +1,25 @@
 /**
- * Verb normalizer — spec §19.2 VERB_PREFIX_MAP + §13.9.1
+ * Verb normalizer — spec §13.3.1 (Amendment J-S1)
+ *
+ * Resolution order (§13.3.1):
+ *   1. Exact governed verb match — raw verb IS a canonical ACTION_VERB
+ *   2. Exact approved alias match — raw verb in governed lexical fixture
+ *   3. Tool/endpoint deterministic override — prefix map
+ *   4. Hard-separated or forbidden — return null (unresolvable)
+ *   5. Unresolved — return null (never guess)
+ *
+ * The lexical resolver is optional. If the governed fixture is not available,
+ * the normalizer falls back to prefix/exact map behavior (steps 1 + 3 only).
  */
 import { ACTION_VERB, type ActionVerb } from '../types/index.js';
+import { LexicalVerbResolver } from './lexical-verb-resolver.js';
 
+// ─── Canonical verb set for step 1 fallback ───
+const CANONICAL_VERB_SET = new Set<string>(Object.values(ACTION_VERB));
+
+// ─── Step 3: Tool/endpoint prefix map ───
 const VERB_PREFIX_MAP: [string[], ActionVerb][] = [
-  [['get_', 'fetch_', 'read_', 'list_', 'search_', 'find_', 'retrieve_'], ACTION_VERB.READ],
+  [['get_', 'fetch_', 'read_', 'list_', 'retrieve_'], ACTION_VERB.READ],
   [['create_', 'add_', 'insert_', 'new_', 'post_'], ACTION_VERB.CREATE],
   [['update_', 'edit_', 'modify_', 'patch_', 'set_', 'put_'], ACTION_VERB.UPDATE],
   [['delete_', 'remove_', 'destroy_', 'purge_'], ACTION_VERB.DELETE],
@@ -12,53 +27,56 @@ const VERB_PREFIX_MAP: [string[], ActionVerb][] = [
   [['publish_', 'broadcast_', 'release_'], ACTION_VERB.PUBLISH],
   [['export_', 'download_', 'dump_'], ACTION_VERB.EXPORT],
   [['execute_', 'run_', 'invoke_', 'trigger_', 'call_'], ACTION_VERB.EXECUTE],
+  [['search_', 'find_', 'scan_', 'browse_'], ACTION_VERB.SEARCH],
+  [['query_', 'ask_', 'request_'], ACTION_VERB.QUERY],
+  [['write_', 'record_', 'log_', 'store_', 'save_'], ACTION_VERB.WRITE],
+  [['synthesize_', 'summarize_', 'combine_', 'merge_'], ACTION_VERB.SYNTHESIZE],
+  [['transmit_', 'transfer_', 'relay_', 'forward_'], ACTION_VERB.TRANSMIT],
 ];
 
-const EXACT_MAP: Record<string, ActionVerb> = {
-  read: ACTION_VERB.READ,
-  get: ACTION_VERB.READ,
-  fetch: ACTION_VERB.READ,
-  list: ACTION_VERB.READ,
-  find: ACTION_VERB.READ,
-  create: ACTION_VERB.CREATE,
-  add: ACTION_VERB.CREATE,
-  insert: ACTION_VERB.CREATE,
-  update: ACTION_VERB.UPDATE,
-  edit: ACTION_VERB.UPDATE,
-  patch: ACTION_VERB.UPDATE,
-  delete: ACTION_VERB.DELETE,
-  remove: ACTION_VERB.DELETE,
-  destroy: ACTION_VERB.DELETE,
-  send: ACTION_VERB.SEND,
-  email: ACTION_VERB.SEND,
-  notify: ACTION_VERB.SEND,
-  publish: ACTION_VERB.PUBLISH,
-  broadcast: ACTION_VERB.PUBLISH,
-  export: ACTION_VERB.EXPORT,
-  download: ACTION_VERB.EXPORT,
-  execute: ACTION_VERB.EXECUTE,
-  run: ACTION_VERB.EXECUTE,
-  invoke: ACTION_VERB.EXECUTE,
-};
-
 export class VerbNormalizer {
+  private readonly resolver: LexicalVerbResolver | null;
+
+  constructor(resolver?: LexicalVerbResolver | null) {
+    this.resolver = resolver ?? null;
+  }
+
   normalize(rawVerb: string): ActionVerb | null {
     const lower = rawVerb.toLowerCase().trim();
 
-    // Exact match first
-    const exact = EXACT_MAP[lower];
-    if (exact) return exact;
+    if (this.resolver) {
+      // §13.3.1 full five-step order with lexical resolver
 
-    // Prefix match
+      // Step 1 + 2: Exact canonical match + approved alias
+      const resolved = this.resolver.resolveApprovedOnly(lower);
+      if (resolved !== null) return resolved;
+
+      // Step 3: Tool/endpoint prefix map
+      const prefixMatch = this.matchPrefix(lower);
+      if (prefixMatch !== null) return prefixMatch;
+
+      // Step 4: Hard-separated or forbidden — governance blocks resolution
+      if (this.resolver.isBlocked(lower)) return null;
+
+      // Step 5: Unresolved — no match, no guess
+      return null;
+    }
+
+    // ─── Fallback: no lexical fixture available ───
+    // Step 1: Exact canonical verb match
+    if (CANONICAL_VERB_SET.has(lower)) return lower as ActionVerb;
+
+    // Step 3: Prefix map
+    const prefixMatch = this.matchPrefix(lower);
+    if (prefixMatch !== null) return prefixMatch;
+
+    return null;
+  }
+
+  private matchPrefix(lower: string): ActionVerb | null {
     for (const [prefixes, verb] of VERB_PREFIX_MAP) {
       if (prefixes.some(p => lower.startsWith(p))) return verb;
     }
-
-    // Single-word verbs that are action verbs themselves
-    for (const verb of Object.values(ACTION_VERB)) {
-      if (lower === verb) return verb;
-    }
-
     return null;
   }
 }
