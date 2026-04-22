@@ -12,9 +12,7 @@
     "@nexus/api": "workspace:*",
     "@nexus/contracts": "workspace:*",
     "@nexus/core": "workspace:*",
-    "@nexus/vanguard": "workspace:*",
-    "commander": "^13.1.0",
-    "@nexus/connector-stub": "workspace:*"
+    "commander": "^13.1.0"
   },
   "devDependencies": {
     "@types/node": "^20.17.30",

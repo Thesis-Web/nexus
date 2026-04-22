@@ -31,6 +31,7 @@ import { EvidenceGate } from '../gates/07-evidence.gate.js';
 
 // Classification
 import { VerbNormalizer } from '../classification/verb-normalizer.js';
+import { LexicalVerbResolver } from '../classification/lexical-verb-resolver.js';
 import { TargetNormalizer } from '../classification/target-normalizer.js';
 import { DataClassifier } from '../classification/data-classifier.js';
 import { RiskClassifier } from '../classification/risk-classifier.js';
@@ -374,7 +375,7 @@ export async function runScenario(
   // 11. Wire gates
   const identityGate = new IdentityGate(actorReg, sessionStore, principalReg, delegStore);
   const classificationGate = new ClassificationGate(
-    new VerbNormalizer(),
+    new VerbNormalizer(LexicalVerbResolver.loadFromFixture(process.cwd())),
     new TargetNormalizer(),
     new DataClassifier(),
     riskClassifier
@@ -638,7 +639,7 @@ describe('Integration: POC Scenarios (spec §27.3)', () => {
       {
         identity: new IdentityGate(actorReg, sessionStore, principalReg, delegStore),
         classification: new ClassificationGate(
-          new VerbNormalizer(),
+          new VerbNormalizer(LexicalVerbResolver.loadFromFixture(process.cwd())),
           new TargetNormalizer(),
           new DataClassifier(),
           new RiskClassifier(capReg)

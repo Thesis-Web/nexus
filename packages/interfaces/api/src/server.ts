@@ -34,7 +34,7 @@ import type {
   NvgService,
   RoutingTrailReader,
 } from '@nexus/contracts';
-import { ApprovalDecisionError, nowIso, newUuid, addSeconds } from '@nexus/contracts';
+import { ApprovalDecisionError, nowIso, newUuid, addSeconds, ACTOR_CLASS } from '@nexus/contracts';
 
 // ── §23.1 ApiDependencies — constructor injection contract ───────────────────
 
@@ -433,7 +433,7 @@ export function createApiServer(deps: ApiDependencies): {
     try {
       const actors = await actorRegistry.list();
       const violations: PostureViolation[] = actors
-        .filter((a: Actor) => a.actorClass !== 'human' && !a.owner)
+        .filter((a: Actor) => a.actorClass !== ACTOR_CLASS.HUMAN && !a.owner)
         .map((a: Actor) => ({
           type: 'unowned_non_human_actor' as const,
           detail: `Non-human actor ${a.actorId} has no owner`,

@@ -1,4 +1,4 @@
-import { SqliteActorRegistry, nowIso, newUuid } from '@nexus/core';
+import { SqliteActorRegistry, nowIso, newUuid, ACTOR_CLASS } from '@nexus/core';
 import type { TokenPostureReport, PostureViolation, ActorPosture } from '@nexus/core';
 import { openDb } from '../db.js';
 export async function cmdPosture(): Promise<void> {
@@ -6,13 +6,13 @@ export async function cmdPosture(): Promise<void> {
   const actors = await new SqliteActorRegistry(db).list();
   const violations: PostureViolation[] = [];
   for (const a of actors) {
-    if (a.actorClass !== 'human' && !a.owner)
+    if (a.actorClass !== ACTOR_CLASS.HUMAN && !a.owner)
       violations.push({
         type: 'unowned_non_human_actor',
         detail: `Non-human actor ${a.actorId} has no owner`,
         actorId: a.actorId,
       });
-    if (a.actorClass !== 'human' && !a.reviewCadence)
+    if (a.actorClass !== ACTOR_CLASS.HUMAN && !a.reviewCadence)
       violations.push({
         type: 'missing_review_cadence',
         detail: `Non-human actor ${a.actorId} has no reviewCadence`,

@@ -1,31 +1,30 @@
+#!/usr/bin/env tsx
 /**
- * MCP server entry point — spec §19.1
- * Script: `pnpm nexus:mcp` → `tsx packages/adapters/mcp/src/mcp-server.ts`
+ * MCP server composition root — UNLAYERED
  *
- * Wires the full Nexus dependency graph and starts the HTTP proxy server.
- * This file is pure wiring. No business logic lives here.
+ * This file lives OUTSIDE the seven-layer package architecture (scripts/).
+ * It is the sole point where cross-layer construction occurs for the MCP proxy.
+ * Cross-layer imports are permitted here because this is a composition root,
+ * not part of any governed layer.
  *
- * MODULAR-001: MCP adapter calls pipeline.process() only. No gate imports.
- * HOLE-002: Gate 01 is wired with DelegationStore so it can resolve the
- *           identity tuple (actor/principal/delegationContext).
- * SOLVE-007: No session auto-create. Session must already exist.
- * SOLVE-008: Management API localhost-only — not managed here; this is the MCP proxy.
+ * MODULAR-S29-001 fix: moved from packages/adapters/mcp/src/mcp-server.ts.
+ * Adapter package now contains only Layer 2 imports (normalizer + proxy).
  *
  * Environment variables (all optional — sensible defaults for POC):
  *   NEXUS_DB_PATH       Path to SQLite database (default: ./nexus.db)
  *   NEXUS_LEDGER_PATH   Path to JSONL ledger file (default: ./nexus.ledger.jsonl)
- *   NEXUS_POLICY_PATH   Path to signed policy JSON (default: packages/core/src/policy/rules/default.policy.json)
+ *   NEXUS_POLICY_PATH   Path to signed policy JSON
  *   NEXUS_MCP_PORT      HTTP port for this proxy (default: 4000)
  *   NEXUS_MCP_HOST      Bind host (default: 127.0.0.1)
  *
- * Spec: nexus-engineering-spec-v0-4-6.md §19.1, §19.2
- * Blueprint: nexus-blueprint-v0-3-6.md §5.1, §5.4, §8.1
+ * Spec: nexus-engineering-spec-v1-8-26.md §19.1, §19.2
+ * Blueprint: nexus-blueprint-v1-5-13.md §24.5
  */
 
 import * as http from 'node:http';
 import * as path from 'node:path';
-import * as url from 'node:url';
 
+// ── Cross-layer imports (composition root — permitted) ────────────────────
 import {
   // DB
   openDatabase,
@@ -42,13 +41,12 @@ import {
   SqliteApproverRegistry,
   SqliteSessionStore,
   VerbNormalizer,
+  LexicalVerbResolver,
   TargetNormalizer,
   CapabilityRegistry,
   DataClassifier,
   RiskClassifier,
   SqliteDelegationStore,
-  // Classification
-
   // Gates
   IdentityGate,
   ClassificationGate,
@@ -69,14 +67,12 @@ import {
   RateLimiter,
 } from '@nexus/core';
 
-import { StubConnector } from '../../../connectors/stub/stub.connector.js';
-import { McpAdapter } from './mcp-normalizer.js';
-import { NexusMcpProxy } from './mcp-proxy.js';
+import { StubConnector } from '@nexus/connector-stub';
+import { McpAdapter, NexusMcpProxy } from '@nexus/adapter-mcp';
 
 // ── Resolve config from environment ─────────────────────────────────────────
 
-const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, '../../../../..');
+const repoRoot = process.cwd();
 
 const DB_PATH = process.env['NEXUS_DB_PATH'] ?? path.join(repoRoot, 'nexus.db');
 const LEDGER_PATH = process.env['NEXUS_LEDGER_PATH'] ?? path.join(repoRoot, 'nexus.ledger.jsonl');
@@ -125,7 +121,8 @@ async function main(): Promise<void> {
 
   // 6. Classification
   const capabilityRegistry = new CapabilityRegistry();
-  const verbNormalizer = new VerbNormalizer();
+  const lexicalResolver = LexicalVerbResolver.loadFromFixture(repoRoot);
+  const verbNormalizer = new VerbNormalizer(lexicalResolver);
   const targetNormalizer = new TargetNormalizer();
   const dataClassifier = new DataClassifier();
   const riskClassifier = new RiskClassifier(capabilityRegistry);
@@ -146,7 +143,6 @@ async function main(): Promise<void> {
   const rateLimiter = new RateLimiter();
 
   // 11. Gates — fixed order (spec §13.2–§13.8)
-  //     Gate 01 receives DelegationStore (HOLE-002: resolves identity tuple)
   const gates = {
     identity: new IdentityGate(actorRegistry, sessionStore, principalRegistry, delegationStore),
     classification: new ClassificationGate(
@@ -177,22 +173,17 @@ async function main(): Promise<void> {
     channelRegistry,
   });
 
-  // 14. HTTP server — binds HOST:PORT (default 127.0.0.1:4000)
-  //     SOLVE-008: Management API binds 127.0.0.1 — this proxy also respects host binding.
+  // 14. HTTP server
   const server = http.createServer(async (req, res) => {
-    // Health check
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, service: 'nexus-mcp-proxy', version: 'v0.1.0' }));
       return;
     }
-
-    // All other paths: route to proxy handler
     if (req.method === 'POST') {
       await proxy.handleRequest(req, res);
       return;
     }
-
     res.writeHead(405, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: false, error: 'Method not allowed' }));
   });
@@ -202,7 +193,6 @@ async function main(): Promise<void> {
     console.log('[nexus:mcp] ready — awaiting MCP tool calls');
   });
 
-  // Graceful shutdown
   for (const sig of ['SIGINT', 'SIGTERM']) {
     process.on(sig, () => {
       console.log(`\n[nexus:mcp] ${sig} received — shutting down`);

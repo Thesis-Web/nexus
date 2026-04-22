@@ -14,9 +14,6 @@
 import { ACTION_VERB, type ActionVerb } from '../types/index.js';
 import { LexicalVerbResolver } from './lexical-verb-resolver.js';
 
-// ─── Canonical verb set for step 1 fallback ───
-const CANONICAL_VERB_SET = new Set<string>(Object.values(ACTION_VERB));
-
 // ─── Step 3: Tool/endpoint prefix map ───
 const VERB_PREFIX_MAP: [string[], ActionVerb][] = [
   [['get_', 'fetch_', 'read_', 'list_', 'retrieve_'], ACTION_VERB.READ],
@@ -44,32 +41,29 @@ export class VerbNormalizer {
   normalize(rawVerb: string): ActionVerb | null {
     const lower = rawVerb.toLowerCase().trim();
 
-    if (this.resolver) {
-      // §13.3.1 full five-step order with lexical resolver
-
-      // Step 1 + 2: Exact canonical match + approved alias
-      const resolved = this.resolver.resolveApprovedOnly(lower);
-      if (resolved !== null) return resolved;
-
-      // Step 3: Tool/endpoint prefix map
-      const prefixMatch = this.matchPrefix(lower);
-      if (prefixMatch !== null) return prefixMatch;
-
-      // Step 4: Hard-separated or forbidden — governance blocks resolution
-      if (this.resolver.isBlocked(lower)) return null;
-
-      // Step 5: Unresolved — no match, no guess
-      return null;
+    // DEF-S29-003: Governed lexical fixture is mandatory for runtime paths.
+    // No fallback behavior — all five steps of §13.3.1 must execute.
+    if (!this.resolver) {
+      throw new Error(
+        'LexicalVerbResolver not configured. ' +
+          'Governed lexical fixture is mandatory for runtime paths (DEF-S29-003). ' +
+          'Run pnpm lexicon:build and pass LexicalVerbResolver.loadFromFixture() to VerbNormalizer.'
+      );
     }
 
-    // ─── Fallback: no lexical fixture available ───
-    // Step 1: Exact canonical verb match
-    if (CANONICAL_VERB_SET.has(lower)) return lower as ActionVerb;
+    // §13.3.1 five-step resolution order:
+    // Step 1 + 2: Exact canonical match + approved alias
+    const resolved = this.resolver.resolveApprovedOnly(lower);
+    if (resolved !== null) return resolved;
 
-    // Step 3: Prefix map
+    // Step 3: Tool/endpoint prefix map
     const prefixMatch = this.matchPrefix(lower);
     if (prefixMatch !== null) return prefixMatch;
 
+    // Step 4: Hard-separated or forbidden — governance blocks resolution
+    if (this.resolver.isBlocked(lower)) return null;
+
+    // Step 5: Unresolved — no match, no guess
     return null;
   }
 

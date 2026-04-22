@@ -8,8 +8,8 @@
     "node": ">=20.0.0"
   },
   "bin": {
-    "nexus": "packages/interfaces/cli/dist/index.js",
-    "nexus-mcp-proxy": "packages/adapters/mcp/dist/mcp-server.js"
+    "nexus": "scripts/nexus-main.ts",
+    "nexus-mcp-proxy": "scripts/mcp-server.ts"
   },
   "scripts": {
     "format:check": "prettier --check .",
@@ -20,8 +20,8 @@
     "test:threat": "vitest run --config vitest.threat.config.ts",
     "build": "turbo build",
     "ci:gate": "tsx scripts/ci-gate.ts",
-    "nexus": "tsx packages/interfaces/cli/src/index.ts",
-    "nexus:mcp": "tsx packages/adapters/mcp/src/mcp-server.ts",
+    "nexus": "tsx scripts/nexus-main.ts",
+    "nexus:mcp": "tsx scripts/mcp-server.ts",
     "lexicon:build": "tsx scripts/build-wordnet-lexicon.ts",
     "lexicon:validate": "tsx scripts/validate-governed-lexicon.ts"
   },
@@ -38,7 +38,8 @@
     "tsx": "^4.19.3",
     "turbo": "^2.4.4",
     "typescript": "^5.8.3",
-    "vitest": "^3.1.1"
+    "vitest": "^3.1.1",
+    "@types/js-yaml": "^4.0.9"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.2",

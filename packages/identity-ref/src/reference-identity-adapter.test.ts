@@ -32,7 +32,7 @@ describe('Reference Identity Adapter — spec §32', () => {
     await principalStore.register(principal);
     await actorStore.register({
       actorId: 'a-001' as Uuid,
-      actorClass: 'supervised_agent',
+      actorClass: 'SUPERVISED_AGENT',
       principalId: 'p-001' as Uuid,
       environment: 'dev',
       riskCeiling: 'high',
@@ -67,7 +67,7 @@ describe('Reference Identity Adapter — spec §32', () => {
     // 4. Environment context
     expect(claims!.environmentContext).toBe('dev');
     // 5. Actor class
-    expect(claims!.actorClass).toBe('supervised_agent');
+    expect(claims!.actorClass).toBe('SUPERVISED_AGENT');
   });
 
   it('resolveIdentity returns null for unknown actor', async () => {
@@ -78,7 +78,7 @@ describe('Reference Identity Adapter — spec §32', () => {
   it('resolveIdentity returns null when principal missing', async () => {
     await actorStore.register({
       actorId: 'orphan' as Uuid,
-      actorClass: 'supervised_agent',
+      actorClass: 'SUPERVISED_AGENT',
       principalId: 'missing-principal' as Uuid,
       environment: 'dev',
       riskCeiling: 'low',
@@ -119,7 +119,7 @@ describe('Reference Identity Adapter — spec §32', () => {
   it('resolveIdentity handles missing optional fields', async () => {
     await actorStore.register({
       actorId: 'minimal' as Uuid,
-      actorClass: 'service_automation',
+      actorClass: 'SERVICE_AUTOMATION',
       principalId: 'p-001' as Uuid,
       environment: 'production',
       riskCeiling: 'low',

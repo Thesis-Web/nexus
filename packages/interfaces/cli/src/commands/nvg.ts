@@ -78,12 +78,13 @@ export async function cmdNvgTrail(
   console.log(`\n${entries.length} entries`);
 }
 
-export async function cmdNvgPolicyValidate(filepath: string, nvg: NvgService): Promise<void> {
-  const raw = await fs.readFile(filepath, 'utf-8');
-  const policy = JSON.parse(raw) as NvgRoutingPolicy;
+export async function cmdNvgPolicyValidate(
+  filepath: string,
+  loadPolicy: (fp: string) => Promise<NvgRoutingPolicy>
+): Promise<void> {
   try {
-    nvg.validatePolicy(policy);
-    console.log(`✓ Policy ${policy.policyId} valid`);
+    const policy = await loadPolicy(filepath);
+    console.log(`✓ Policy ${policy.policyId} valid (signature verified, hard-wall checked)`);
     console.log(`  Version:  ${policy.version}`);
     console.log(`  Rules:    ${policy.rules.length}`);
     console.log(`  Issuer:   ${policy.issuer}`);

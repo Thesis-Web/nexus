@@ -41,7 +41,7 @@ function makeRecord(seq: number, prevHash: string | null, recordHash: string): E
       receivedAt: nowIso(),
       protocol: 'test',
       actorId: randomUUID(),
-      actorClass: 'supervised_agent',
+      actorClass: 'SUPERVISED_AGENT',
       actorEnvironment: 'dev',
       principalId: randomUUID(),
       delegationSequence: seq,

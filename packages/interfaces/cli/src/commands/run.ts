@@ -26,7 +26,6 @@ import {
   JsonlLedgerBackend,
   JsonlRunLedgerWriter,
   Pipeline,
-  SimpleConnectorRegistry,
   SimpleChannelRegistry,
   ReplayDetector,
   RateLimiter,
@@ -35,8 +34,11 @@ import {
   nowIso,
   newUuid,
   addSeconds,
+  ACTOR_CLASS,
+  LexicalVerbResolver,
 } from '@nexus/core';
 import type {
+  ConnectorRegistry,
   ScenarioId,
   EvidenceRecord,
   Actor,
@@ -48,7 +50,6 @@ import type {
   PipelineContext,
   Uuid,
 } from '@nexus/core';
-import { StubConnector } from '@nexus/connector-stub';
 
 interface FixtureSetup {
   scenarioId: string;
@@ -110,6 +111,7 @@ export interface RunOptions {
   scenario?: ScenarioId;
   fixturesAll?: boolean;
   outDir?: string;
+  createConnectorRegistry: () => ConnectorRegistry;
 }
 
 export async function cmdRun(opts: RunOptions): Promise<void> {
@@ -157,7 +159,14 @@ export async function cmdRun(opts: RunOptions): Promise<void> {
     ) as FixtureSetup;
     console.log(`  Running: ${scenarioId} — ${setup.description}`);
     try {
-      const result = await runScenario(setup, runDb, runLedger, controlPlaneKey, runId);
+      const result = await runScenario(
+        setup,
+        runDb,
+        runLedger,
+        controlPlaneKey,
+        runId,
+        opts.createConnectorRegistry
+      );
       results.push({
         scenarioId,
         evidenceRecord: result.record,
@@ -229,7 +238,7 @@ export async function cmdRun(opts: RunOptions): Promise<void> {
 
   const actors = await new SqliteActorRegistry(runDb).list();
   const violations: PostureViolation[] = actors
-    .filter((a: Actor) => a.actorClass !== 'human' && !a.owner)
+    .filter((a: Actor) => a.actorClass !== ACTOR_CLASS.HUMAN && !a.owner)
     .map((a: Actor) => ({
       type: 'unowned_non_human_actor' as const,
       detail: `Non-human actor ${a.actorId} has no owner`,
@@ -285,7 +294,8 @@ async function runScenario(
   db: Database.Database,
   ledger: JsonlLedgerBackend,
   controlPlaneKey: any,
-  runId: string
+  runId: string,
+  createConnectorRegistry: () => ConnectorRegistry
 ): Promise<{ record: EvidenceRecord; sessionId: string; delegationId: string }> {
   const actorReg = new SqliteActorRegistry(db);
   const principalReg = new SqlitePrincipalRegistry(db);
@@ -348,15 +358,14 @@ async function runScenario(
       policyFile = null;
     }
   }
-  const connectorReg = new SimpleConnectorRegistry();
-  connectorReg.register(new StubConnector());
+  const connectorReg = createConnectorRegistry();
   const capReg = new CapabilityRegistry();
   const riskClassifier = new RiskClassifier(capReg);
   const pipeline = new Pipeline(
     {
       identity: new IdentityGate(actorReg, sessionStore, principalReg, delegStore),
       classification: new ClassificationGate(
-        new VerbNormalizer(),
+        new VerbNormalizer(LexicalVerbResolver.loadFromFixture(process.cwd())),
         new TargetNormalizer(),
         new DataClassifier(),
         riskClassifier

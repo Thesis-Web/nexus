@@ -1,0 +1,32 @@
+version: v0.1.0
+policyId: d4e5f6a7-b8c9-0d1e-2f3a-4b5c6d7e8f90
+issuer: nexus-admin
+issuedAt: '2026-04-20T00:00:00.000Z'
+defaultAction: deny
+rules:
+  - ruleId: nvg-rule-01-public-frontier
+    priority: 100
+    conditions:
+      dataClasses:
+        - public
+      octLevels:
+        - OCT-OPEN
+        - OCT-CONFIDENTIAL
+    routeTo: frontier_general
+    fallbackTier: on_prem_general
+  - ruleId: nvg-rule-02-internal-onprem
+    priority: 200
+    conditions:
+      dataClasses:
+        - internal
+    routeTo: on_prem_general
+  - ruleId: nvg-rule-03-sensitive-onprem
+    priority: 300
+    conditions:
+      dataClasses:
+        - pii
+        - phi
+        - financial
+        - confidential
+    routeTo: on_prem_sensitive
+signature: 61mk1yy_5y19H4ylaJi6sSUVFisEfGoKk5rEjjsMiwdgMpQ7A-P_yC09vj6Hznv6aCJXci8LyjKJjXYbKx6kAA

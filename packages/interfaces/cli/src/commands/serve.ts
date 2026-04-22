@@ -2,12 +2,16 @@
  * nexus serve — spec §22.1, §23.1
  * Start Management API server with DI.
  * Constructs core service implementations and injects into API server.
- * CLI has RAT-003 exception to import core engine entry points.
+ * CLI has RAT-003 exception to import core engine entry points (Layer 1).
+ *
+ * MODULAR-S29-002 fix: NVG service construction removed from this file.
+ * NVG factories are injected from the composition root via ServeOptions.
  *
  * §9.2: Mode configuration signature validated at startup.
  * Invalid or missing mode config → refuse to start.
  */
 import path from 'node:path';
+import type { NvgService, RoutingTrailReader } from '@nexus/contracts';
 import {
   loadAdminToken,
   loadControlPlaneKey,
@@ -26,10 +30,17 @@ import {
   saveModeConfig,
 } from '@nexus/core';
 import { createApiServer, type ApiDependencies } from '@nexus/api';
-import { NvgServiceImpl, JsonlRoutingTrailReader } from '@nexus/vanguard';
 import { openDb } from '../db.js';
 
-export async function cmdServe(opts: { port?: number }): Promise<void> {
+export interface ServeOptions {
+  port?: number;
+  /** NVG service factory — injected from composition root (scripts/nexus-main.ts) */
+  createNvgService: () => NvgService;
+  /** Trail reader factory — injected from composition root */
+  createTrailReader: (dir?: string) => RoutingTrailReader;
+}
+
+export async function cmdServe(opts: ServeOptions): Promise<void> {
   let adminToken: string;
   try {
     adminToken = await loadAdminToken();
@@ -51,7 +62,6 @@ export async function cmdServe(opts: { port?: number }): Promise<void> {
   const modeConfigPath = path.join(process.cwd(), 'keys', 'mode-config.json');
 
   // §9.2: Validate mode configuration signature at startup.
-  // Invalid or missing signature prevents engine start.
   try {
     await loadModeConfig(modeConfigPath);
   } catch (err) {
@@ -75,8 +85,8 @@ export async function cmdServe(opts: { port?: number }): Promise<void> {
     runLedgerWriter: new JsonlRunLedgerWriter(runLedgerPath),
     loadModeConfig: () => loadModeConfig(modeConfigPath),
     saveModeConfig: config => saveModeConfig(config, modeConfigPath),
-    nvgService: new NvgServiceImpl(),
-    trailReader: new JsonlRoutingTrailReader(path.join(process.cwd(), 'runs')),
+    nvgService: opts.createNvgService(),
+    trailReader: opts.createTrailReader(path.join(process.cwd(), 'runs')),
   };
 
   const { start } = createApiServer(deps);

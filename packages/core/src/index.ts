@@ -32,6 +32,7 @@ export type { RootDelegationParams, SubDelegationParams } from './identity/deleg
 
 // §13.3 — Classification
 export { VerbNormalizer } from './classification/verb-normalizer.js';
+export { LexicalVerbResolver } from './classification/lexical-verb-resolver.js';
 export { TargetNormalizer } from './classification/target-normalizer.js';
 export { CapabilityRegistry, resolveCapability } from './classification/capability-registry.js';
 export type { CapabilityEntry } from './classification/capability-registry.js';

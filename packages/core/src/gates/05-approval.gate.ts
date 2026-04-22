@@ -18,6 +18,7 @@ import {
 } from '../types/index.js';
 import { buildSignedApprovalRequest } from '../approval/packager.js';
 import { verify } from '../crypto/verifier.js';
+import { canonicalize } from '../crypto/canonicalize.js';
 import type { KeyPair } from '../crypto/key-manager.js';
 
 function deny(
@@ -124,21 +125,16 @@ export class ApprovalGate implements Gate {
       );
     }
 
-    // Verify approverPubKey signature — timeout responses never reach this path
+    // DEF-S29-002 fix: single verify using canonicalize() — mirrors signing path
+    // decision-service.ts signs: sign(canonicalize(responseBody), approverKey)
+    // Gate 05 verifies: verify(canonicalize(responseBody), signature, approverPubKey)
+    // Timeout responses (decidedBy: 'system:timeout') skip verification per §19.7.
     if (response.decidedBy !== 'system:timeout') {
       const approverPubKey = await context.approverRegistry.getPublicKey(response.decidedBy);
       if (approverPubKey) {
-        const { signature, ...body } = response;
-        const valid = await verify(
-          JSON.stringify(body).replace(/"signature":"[^"]*"/, ''),
-          signature,
-          approverPubKey
-        );
-        // Simpler: re-canonicalize body without signature
-        const { signature: _s, ...respBody } = response;
-        const bodyStr = JSON.stringify(Object.fromEntries(Object.entries(respBody).sort()));
-        const sigValid = await verify(bodyStr, signature, approverPubKey);
-        if (!sigValid) {
+        const { signature, ...responseBody } = response;
+        const valid = await verify(canonicalize(responseBody), signature, approverPubKey);
+        if (!valid) {
           return deny(
             DENIAL_CODE.APPROVAL_SIG_INVALID,
             'approval response signature invalid',

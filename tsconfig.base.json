@@ -20,7 +20,11 @@
       "@nexus/contracts": ["packages/contracts/src/index.ts"],
       "@nexus/core": ["packages/core/src/index.ts"],
       "@nexus/vanguard": ["packages/vanguard/src/index.ts"],
-      "@nexus/identity-ref": ["packages/identity-ref/src/index.ts"]
+      "@nexus/identity-ref": ["packages/identity-ref/src/index.ts"],
+      "@nexus/cli": ["packages/interfaces/cli/src/index.ts"],
+      "@nexus/api": ["packages/interfaces/api/src/server.ts"],
+      "@nexus/adapter-mcp": ["packages/adapters/mcp/src/index.ts"],
+      "@nexus/connector-stub": ["packages/connectors/stub/stub.connector.ts"]
     }
   },
   "include": [

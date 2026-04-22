@@ -8,10 +8,9 @@
   "rules": [
     {
       "ruleId": "allow-low-risk-read",
-      "description": "Allow supervised agents to read single records in dev",
       "priority": 10,
       "conditions": {
-        "actorClasses": ["supervised_agent"],
+        "actorClasses": ["SUPERVISED_AGENT"],
         "capabilities": ["read:record:single"],
         "riskTiers": ["low"],
         "environments": ["dev"]
@@ -25,10 +24,9 @@
     },
     {
       "ruleId": "allow-medium-risk-create",
-      "description": "Allow supervised agents to create internal records in dev",
       "priority": 15,
       "conditions": {
-        "actorClasses": ["supervised_agent"],
+        "actorClasses": ["SUPERVISED_AGENT"],
         "capabilities": ["create:record:internal"],
         "riskTiers": ["medium"],
         "environments": ["dev"]
@@ -42,7 +40,6 @@
     },
     {
       "ruleId": "require-approval-high-risk",
-      "description": "Require approval for high-risk external sends",
       "priority": 20,
       "conditions": {
         "riskTiers": ["high", "critical"],
@@ -51,8 +48,7 @@
       "outcome": "require_approval",
       "approvalConfig": {
         "channelId": "cli",
-        "timeoutSeconds": 300,
-        "onTimeout": "deny"
+        "timeoutSeconds": 300
       },
       "grantHint": {
         "expiryClass": "short_lived",
@@ -60,5 +56,5 @@
       }
     }
   ],
-  "signature": "ZoH3bS8wImeagbE9i1SalPvGh-A1sEsVNBzkwwjy24yIfvw_d-VJvGwNMAoEaP-ECLS_VCFk8iZk7wqnvjveDQ"
+  "signature": "wLzTVv4dtBaQER01YM8qXXwgkfTT2CH_LitAIPpcU3_YleBnFp80_-ADqUTteGkvjCwaAkZ0L0JWDxwz1wvUAQ"
 }

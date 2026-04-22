@@ -24,6 +24,7 @@ import { execSync, spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import yaml from 'js-yaml';
 
 // ---------------------------------------------------------------------------
 // Spec-governed constants — §12.1
@@ -849,13 +850,18 @@ function validateNvgRoutingPolicySignatures(): number {
   let count = 0;
   for (const entry of fs.readdirSync(nvgPolicyDir, { recursive: true }) as string[]) {
     const fpath = path.join(nvgPolicyDir, entry);
-    if (!fpath.endsWith('.routing-policy.json')) continue;
+    if (!fpath.endsWith('.routing-policy.yaml') && !fpath.endsWith('.routing-policy.json'))
+      continue;
     if (!fs.statSync(fpath).isFile()) continue;
     let obj: Record<string, unknown>;
+    const rawNvg12 = fs.readFileSync(fpath, 'utf-8');
     try {
-      obj = JSON.parse(fs.readFileSync(fpath, 'utf-8')) as Record<string, unknown>;
+      obj = (fpath.endsWith('.yaml') ? yaml.load(rawNvg12) : JSON.parse(rawNvg12)) as Record<
+        string,
+        unknown
+      >;
     } catch {
-      fail(`NVG routing policy invalid JSON: ${fpath}`);
+      fail(`NVG routing policy invalid format: ${fpath}`);
     }
     if (
       !obj['signature'] ||
@@ -883,13 +889,18 @@ function validateNvgClassificationEnforcement(): number {
   let count = 0;
   for (const entry of fs.readdirSync(nvgPolicyDir, { recursive: true }) as string[]) {
     const fpath = path.join(nvgPolicyDir, entry);
-    if (!fpath.endsWith('.routing-policy.json')) continue;
+    if (!fpath.endsWith('.routing-policy.yaml') && !fpath.endsWith('.routing-policy.json'))
+      continue;
     if (!fs.statSync(fpath).isFile()) continue;
     let obj: Record<string, unknown>;
+    const rawNvg13 = fs.readFileSync(fpath, 'utf-8');
     try {
-      obj = JSON.parse(fs.readFileSync(fpath, 'utf-8')) as Record<string, unknown>;
+      obj = (fpath.endsWith('.yaml') ? yaml.load(rawNvg13) : JSON.parse(rawNvg13)) as Record<
+        string,
+        unknown
+      >;
     } catch {
-      continue; // Signature gate already catches invalid JSON
+      continue; // Signature gate already catches invalid format
     }
     const rules = (obj['rules'] ?? []) as Record<string, unknown>[];
     for (const rule of rules) {
