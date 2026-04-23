@@ -13,6 +13,7 @@ import { classifyOutboundData, resolveHighestDataClass } from './classifier/data
 import { enforceOctModelCeiling, isFrontierTier } from './classifier/ceiling-enforcer.js';
 import { evaluateRoutingPolicy, validateRoutingPolicy } from './router/policy-engine.js';
 import { invokeModel } from './router/model-router.js';
+import { TierRegistry } from './router/tier-registry.js';
 import { logInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
 import {
   JsonlRoutingTrailWriter,
@@ -101,31 +102,31 @@ function makePolicy(overrides: Partial<NvgRoutingPolicy> = {}): NvgRoutingPolicy
   };
 }
 
-function makeEndpoints(): ModelEndpoint[] {
+function makeRegistry(): TierRegistry {
   const now = new Date().toISOString() as IsoTimestamp;
-  return [
-    {
-      endpointId: 'ep-frontier-general' as NonEmpty,
-      tier: MODEL_TIER.FRONTIER_GENERAL,
-      url: 'http://localhost:9001' as NonEmpty,
-      healthy: true,
-      lastCheckAt: now,
-    },
-    {
-      endpointId: 'ep-onprem-general' as NonEmpty,
-      tier: MODEL_TIER.ON_PREM_GENERAL,
-      url: 'http://localhost:9002' as NonEmpty,
-      healthy: true,
-      lastCheckAt: now,
-    },
-    {
-      endpointId: 'ep-onprem-sensitive' as NonEmpty,
-      tier: MODEL_TIER.ON_PREM_SENSITIVE,
-      url: 'http://localhost:9003' as NonEmpty,
-      healthy: true,
-      lastCheckAt: now,
-    },
-  ];
+  const registry = new TierRegistry();
+  registry.registerEndpoint({
+    endpointId: 'ep-frontier-general' as NonEmpty,
+    tier: MODEL_TIER.FRONTIER_GENERAL,
+    url: 'http://localhost:9001' as NonEmpty,
+    healthy: true,
+    lastCheckAt: now,
+  });
+  registry.registerEndpoint({
+    endpointId: 'ep-onprem-general' as NonEmpty,
+    tier: MODEL_TIER.ON_PREM_GENERAL,
+    url: 'http://localhost:9002' as NonEmpty,
+    healthy: true,
+    lastCheckAt: now,
+  });
+  registry.registerEndpoint({
+    endpointId: 'ep-onprem-sensitive' as NonEmpty,
+    tier: MODEL_TIER.ON_PREM_SENSITIVE,
+    url: 'http://localhost:9003' as NonEmpty,
+    healthy: true,
+    lastCheckAt: now,
+  });
+  return registry;
 }
 
 describe('NVG Integration: Full Pipeline (§38.5)', () => {
@@ -133,7 +134,7 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
     const runId = randomUUID() as Uuid;
     const request = makeRequest({ runId, octLevel: OCT_LEVEL.OPEN });
     const policy = makePolicy();
-    const endpoints = makeEndpoints();
+    const registry = makeRegistry();
 
     // Step 2: Classify
     const classification = classifyOutboundData(request.dataLabels);
@@ -160,7 +161,7 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
       routingDecision.fallbackTier,
       request,
       classification,
-      endpoints
+      registry
     );
     expect(invocation.success).toBe(true);
     expect(invocation.fallbackApplied).toBe(false);
@@ -186,7 +187,7 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
       dataLabels: [{ source: 'dlp' as NonEmpty, label: DATA_CLASS.PII, confidence: 0.99 }],
     });
     const policy = makePolicy();
-    const endpoints = makeEndpoints();
+    const registry = makeRegistry();
 
     // Classify
     const classification = classifyOutboundData(request.dataLabels);
@@ -219,7 +220,7 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
       routingDecision.fallbackTier ?? null,
       request,
       classification,
-      endpoints
+      registry
     );
     expect(invocation.success).toBe(true);
 
@@ -274,15 +275,15 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
     expect(routingDecision.fallbackTier).toBe(MODEL_TIER.ON_PREM_GENERAL);
 
     // Make primary unhealthy
-    const endpoints = makeEndpoints();
-    endpoints.find(e => e.tier === MODEL_TIER.FRONTIER_GENERAL)!.healthy = false;
+    const registry = makeRegistry();
+    registry.getEndpoints(MODEL_TIER.FRONTIER_GENERAL)[0]!.healthy = false;
 
     const invocation = await invokeModel(
       routingDecision.routeTo!,
       routingDecision.fallbackTier,
       request,
       classification,
-      endpoints
+      registry
     );
     expect(invocation.success).toBe(true);
     expect(invocation.fallbackApplied).toBe(true);
@@ -316,15 +317,15 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
     expect(routingDecision.routeTo).toBe(MODEL_TIER.ON_PREM_SENSITIVE);
 
     // Make primary unhealthy to force fallback attempt
-    const endpoints = makeEndpoints();
-    endpoints.find(e => e.tier === MODEL_TIER.ON_PREM_SENSITIVE)!.healthy = false;
+    const registry = makeRegistry();
+    registry.getEndpoints(MODEL_TIER.ON_PREM_SENSITIVE)[0]!.healthy = false;
 
     const invocation = await invokeModel(
       routingDecision.routeTo!,
       routingDecision.fallbackTier,
       request,
       classification,
-      endpoints
+      registry
     );
     expect(invocation.success).toBe(false);
     expect(invocation.denialCode).toBe(DENIAL_CODE.NVG_FALLBACK_DENIED);
@@ -335,7 +336,7 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
     const runId = randomUUID() as Uuid;
     const request = makeRequest({ runId });
     const policy = makePolicy();
-    const endpoints = makeEndpoints();
+    const registry = makeRegistry();
     const classification = classifyOutboundData(request.dataLabels);
 
     const routingDecision = evaluateRoutingPolicy(policy, request, classification);
@@ -344,7 +345,7 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
       routingDecision.fallbackTier,
       request,
       classification,
-      endpoints
+      registry
     );
 
     // Log both outbound denial for another request and inbound for this one

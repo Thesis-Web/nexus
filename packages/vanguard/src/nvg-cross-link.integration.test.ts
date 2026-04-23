@@ -15,6 +15,7 @@ import * as path from 'path';
 import { classifyOutboundData } from './classifier/data-classifier.js';
 import { evaluateRoutingPolicy } from './router/policy-engine.js';
 import { invokeModel } from './router/model-router.js';
+import { TierRegistry } from './router/tier-registry.js';
 import { logInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
 import {
   JsonlRoutingTrailWriter,
@@ -88,24 +89,24 @@ function makePolicy(): NvgRoutingPolicy {
   };
 }
 
-function makeEndpoints(): ModelEndpoint[] {
+function makeRegistry(): TierRegistry {
   const now = new Date().toISOString() as IsoTimestamp;
-  return [
-    {
-      endpointId: 'ep-fg' as NonEmpty,
-      tier: MODEL_TIER.FRONTIER_GENERAL,
-      url: 'http://localhost:9001' as NonEmpty,
-      healthy: true,
-      lastCheckAt: now,
-    },
-  ];
+  const registry = new TierRegistry();
+  registry.registerEndpoint({
+    endpointId: 'ep-fg' as NonEmpty,
+    tier: MODEL_TIER.FRONTIER_GENERAL,
+    url: 'http://localhost:9001' as NonEmpty,
+    healthy: true,
+    lastCheckAt: now,
+  });
+  return registry;
 }
 
 describe('NVG Cross-Link: runId consistency (§38.7)', () => {
   it('all trail entries from a single run share the same runId', async () => {
     const runId = randomUUID() as Uuid;
     const policy = makePolicy();
-    const endpoints = makeEndpoints();
+    const registry = makeRegistry();
 
     // Multiple NVG calls within the same run
     for (let i = 0; i < 3; i++) {
@@ -119,7 +120,7 @@ describe('NVG Cross-Link: runId consistency (§38.7)', () => {
           decision.fallbackTier,
           req,
           classification,
-          endpoints
+          registry
         );
         const correlationId = randomUUID() as Uuid;
         await logInboundResponse(correlationId, req, invocation, trailWriter, policy.version);
@@ -150,20 +151,20 @@ describe('NVG Cross-Link: runId consistency (§38.7)', () => {
     const runId1 = randomUUID() as Uuid;
     const runId2 = randomUUID() as Uuid;
     const policy = makePolicy();
-    const endpoints = makeEndpoints();
+    const registry = makeRegistry();
 
     // Run 1
     const req1 = makeRequest(runId1);
     const c1 = classifyOutboundData(req1.dataLabels);
     const d1 = evaluateRoutingPolicy(policy, req1, c1);
-    const inv1 = await invokeModel(d1.routeTo!, d1.fallbackTier, req1, c1, endpoints);
+    const inv1 = await invokeModel(d1.routeTo!, d1.fallbackTier, req1, c1, registry);
     await logInboundResponse(randomUUID() as Uuid, req1, inv1, trailWriter, policy.version);
 
     // Run 2
     const req2 = makeRequest(runId2);
     const c2 = classifyOutboundData(req2.dataLabels);
     const d2 = evaluateRoutingPolicy(policy, req2, c2);
-    const inv2 = await invokeModel(d2.routeTo!, d2.fallbackTier, req2, c2, endpoints);
+    const inv2 = await invokeModel(d2.routeTo!, d2.fallbackTier, req2, c2, registry);
     await logInboundResponse(randomUUID() as Uuid, req2, inv2, trailWriter, policy.version);
 
     const run1Entries = await trailReader.getByRunId(runId1);
@@ -179,7 +180,7 @@ describe('NVG Cross-Link: runId consistency (§38.7)', () => {
     const runId = randomUUID() as Uuid;
     const correlationId = randomUUID() as Uuid;
     const policy = makePolicy();
-    const endpoints = makeEndpoints();
+    const registry = makeRegistry();
 
     const req = makeRequest(runId);
     const classification = classifyOutboundData(req.dataLabels);
@@ -189,7 +190,7 @@ describe('NVG Cross-Link: runId consistency (§38.7)', () => {
       decision.fallbackTier,
       req,
       classification,
-      endpoints
+      registry
     );
 
     // Log inbound with specific correlationId
