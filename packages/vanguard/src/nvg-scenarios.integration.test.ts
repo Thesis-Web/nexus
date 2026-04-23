@@ -11,11 +11,14 @@ import * as path from 'path';
 
 import { classifyOutboundData, resolveHighestDataClass } from './classifier/data-classifier.js';
 import { enforceOctModelCeiling, isFrontierTier } from './classifier/ceiling-enforcer.js';
-import { evaluateRoutingPolicy, validateRoutingPolicy } from './router/routing-policy.js';
-import { invokeModel } from './router/model-invoker.js';
+import { evaluateRoutingPolicy, validateRoutingPolicy } from './router/tier-registry.js';
+import { invokeModel } from './router/model-router.js';
 import { logInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
-import { JsonlRoutingTrailWriter, JsonlRoutingTrailReader } from './trail/trail-writer.js';
-import { ModelHealthMonitor } from './health/model-health.js';
+import {
+  JsonlRoutingTrailWriter,
+  JsonlRoutingTrailReader,
+} from './trail/routing-provenance-trail-writer.js';
+import { ModelHealthMonitor } from './health/model-health-monitor.js';
 
 import {
   MODEL_TIER,

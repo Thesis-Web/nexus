@@ -15,7 +15,7 @@ import type {
 } from '@nexus/contracts';
 import type { ReferenceActorStore } from './actor-store.js';
 import type { ReferencePrincipalStore } from './principal-store.js';
-import type { ReferenceAuthProvider } from './auth/api-key-auth.js';
+import type { ReferenceAuthProvider } from './auth/api-key.js';
 
 export class ReferenceIdentityAdapter implements IdentityProviderInterface {
   readonly providerType = 'reference_adapter' as const;

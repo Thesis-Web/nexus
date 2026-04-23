@@ -3,10 +3,10 @@
  * Covers: resolveIdentity (5 claims), authenticate, error paths
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ReferenceIdentityAdapter } from './reference-identity-adapter.js';
+import { ReferenceIdentityAdapter } from './identity-provider.js';
 import { InMemoryActorStore } from './actor-store.js';
 import { InMemoryPrincipalStore } from './principal-store.js';
-import { ApiKeyAuthProvider } from './auth/api-key-auth.js';
+import { ApiKeyAuthProvider } from './auth/api-key.js';
 import type { Principal, NonEmpty, Uuid } from '@nexus/contracts';
 
 describe('Reference Identity Adapter — spec §32', () => {

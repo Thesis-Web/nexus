@@ -16,8 +16,8 @@ import type {
 } from '@nexus/contracts';
 import { classifyOutboundData } from './classifier/data-classifier.js';
 import { enforceOctModelCeiling } from './classifier/ceiling-enforcer.js';
-import { evaluateRoutingPolicy } from './router/routing-policy.js';
-import { validateRoutingPolicy } from './router/routing-policy.js';
+import { evaluateRoutingPolicy } from './router/tier-registry.js';
+import { validateRoutingPolicy } from './router/tier-registry.js';
 
 export class NvgServiceImpl implements NvgService {
   classify(labels: DataLabel[]): NvgClassificationResult {

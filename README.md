@@ -4,12 +4,10 @@ Nexus is a private-runtime, policy-aware action router and authority governance 
 
 ## Canonical product law
 
-1. `docs/nexus-blueprint-v0-3-6.md`
-2. `docs/nexus-engineering-spec-v0-4-6.md`
-
-Temporary canon override until the spec text is absorbed:
-
-- `docs/NEXUS-CANONIZED-SPEC-DEVIATION-MEMO-2026-04-14.md`
+1. `docs/nexus-engineering-spec-v1-8-26.md` — engineering spec (CANONICAL)
+2. `docs/nexus-blueprint-v1-5-13.md` — blueprint (CANONICAL)
+3. `docs/nexus-owner-ratification-v1-4-12.md` — owner ratification (LOCKED)
+4. `docs/nexus-complete-end-to-end-flow-v4_8.md` — canonical outline (LOCKED)
 
 ## Build posture
 

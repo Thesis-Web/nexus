@@ -32,6 +32,7 @@ import type {
   RunLedgerWriter,
   ModeConfiguration,
   NvgService,
+  NvgRoutingPolicy,
   RoutingTrailReader,
 } from '@nexus/contracts';
 import { ApprovalDecisionError, nowIso, newUuid, addSeconds, ACTOR_CLASS } from '@nexus/contracts';
@@ -94,6 +95,7 @@ export interface ApiDependencies {
   // §22.1/§23.2 NVG services — DI (HOLE-S7-001)
   nvgService?: NvgService;
   trailReader?: RoutingTrailReader;
+  loadNvgRoutingPolicy?: () => Promise<NvgRoutingPolicy>;
 }
 
 // ── §23.1 createApiServer — DI factory ───────────────────────────────────────
@@ -119,6 +121,7 @@ export function createApiServer(deps: ApiDependencies): {
     saveModeConfig: _saveMode,
     nvgService,
     trailReader,
+    loadNvgRoutingPolicy,
   } = deps;
 
   let currentPolicy: LoadedPolicyFile | null = null;
@@ -554,8 +557,27 @@ export function createApiServer(deps: ApiDependencies): {
     }
   });
   app.get('/nvg/policy', async (_req, res) => {
-    // Return current NVG routing policy metadata (loaded at startup or via CLI)
-    res.json({ ok: true, data: { message: 'NVG policy — use CLI nexus nvg policy-validate' } });
+    // DEF-S29-006: Return loaded policy metadata (signature omitted).
+    try {
+      if (!loadNvgRoutingPolicy) {
+        res.status(501).json({ ok: false, error: 'NVG policy loader not configured' });
+        return;
+      }
+      const policy = await loadNvgRoutingPolicy();
+      res.json({
+        ok: true,
+        data: {
+          version: policy.version,
+          policyId: policy.policyId,
+          issuer: policy.issuer,
+          issuedAt: policy.issuedAt,
+          defaultAction: policy.defaultAction,
+          ruleCount: policy.rules.length,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
   });
   app.post('/nvg/classify', async (req, res) => {
     try {

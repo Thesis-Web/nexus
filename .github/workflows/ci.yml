@@ -8,7 +8,7 @@ on:
 
 jobs:
   ci-gate:
-    name: CI Gate (all 11 steps)
+    name: CI Gate (all 16 steps)
     runs-on: ubuntu-latest
 
     steps:
@@ -40,7 +40,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run ci:gate (all 11 steps)
+      - name: Run ci:gate (all 16 steps)
         run: pnpm ci:gate
         env:
           NODE_ENV: test

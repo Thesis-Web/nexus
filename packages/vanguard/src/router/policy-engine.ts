@@ -6,7 +6,7 @@
 import yaml from 'js-yaml';
 import { readFileSync } from 'fs';
 import type { NvgRoutingPolicy, Base64Url } from '@nexus/contracts';
-import { validateRoutingPolicy } from './routing-policy.js';
+import { validateRoutingPolicy } from './tier-registry.js';
 
 export interface PolicyLoaderCrypto {
   verify: (data: string, signature: string, publicKey: string) => Promise<boolean>;

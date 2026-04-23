@@ -196,6 +196,7 @@ export function createCli(deps: CliDeps): Command {
         port: opts.port,
         createNvgService: deps.createNvgService,
         createTrailReader: deps.createTrailReader,
+        loadNvgRoutingPolicy: deps.loadNvgRoutingPolicy,
       }).catch(fatal)
     );
 

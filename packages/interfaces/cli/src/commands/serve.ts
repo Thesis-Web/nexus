@@ -11,7 +11,7 @@
  * Invalid or missing mode config → refuse to start.
  */
 import path from 'node:path';
-import type { NvgService, RoutingTrailReader } from '@nexus/contracts';
+import type { NvgService, NvgRoutingPolicy, RoutingTrailReader } from '@nexus/contracts';
 import {
   loadAdminToken,
   loadControlPlaneKey,
@@ -38,6 +38,8 @@ export interface ServeOptions {
   createNvgService: () => NvgService;
   /** Trail reader factory — injected from composition root */
   createTrailReader: (dir?: string) => RoutingTrailReader;
+  /** NVG routing policy loader — injected from composition root */
+  loadNvgRoutingPolicy: (filepath: string) => Promise<NvgRoutingPolicy>;
 }
 
 export async function cmdServe(opts: ServeOptions): Promise<void> {
@@ -87,6 +89,10 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
     saveModeConfig: config => saveModeConfig(config, modeConfigPath),
     nvgService: opts.createNvgService(),
     trailReader: opts.createTrailReader(path.join(process.cwd(), 'runs')),
+    loadNvgRoutingPolicy: () =>
+      opts.loadNvgRoutingPolicy(
+        path.join(process.cwd(), 'fixtures', 'nvg', 'default.routing-policy.yaml')
+      ),
   };
 
   const { start } = createApiServer(deps);

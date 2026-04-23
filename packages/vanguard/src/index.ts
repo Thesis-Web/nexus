@@ -18,22 +18,25 @@ export {
   evaluateRoutingPolicy,
   matchesRoutingCondition,
   validateRoutingPolicy,
-} from './router/routing-policy.js';
+} from './router/tier-registry.js';
 
 // §24.5 — Model invocation
-export { callEndpoint, invokeModel } from './router/model-invoker.js';
+export { callEndpoint, invokeModel } from './router/model-router.js';
 
 // §24.6, §24.7 — Inbound response logging + denial
 export { logInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
 
 // §27 — Routing Provenance Trail
-export { JsonlRoutingTrailWriter, JsonlRoutingTrailReader } from './trail/trail-writer.js';
+export {
+  JsonlRoutingTrailWriter,
+  JsonlRoutingTrailReader,
+} from './trail/routing-provenance-trail-writer.js';
 
 // §24.5 — Model health
-export { ModelHealthMonitor } from './health/model-health.js';
+export { ModelHealthMonitor } from './health/model-health-monitor.js';
 
 // §22.1/§23.2 — NvgService DI contract implementation (HOLE-S7-001)
 export { NvgServiceImpl } from './nvg-service.js';
 
-export { loadNvgRoutingPolicy } from './router/policy-loader.js';
-export type { PolicyLoaderCrypto } from './router/policy-loader.js';
+export { loadNvgRoutingPolicy } from './router/policy-engine.js';
+export type { PolicyLoaderCrypto } from './router/policy-engine.js';

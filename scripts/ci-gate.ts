@@ -30,7 +30,7 @@ import yaml from 'js-yaml';
 // Spec-governed constants — §12.1
 // ---------------------------------------------------------------------------
 const BLUEPRINT_VERSION = 'v1.5.13';
-const SPEC_VERSION = 'v1.7.25';
+const SPEC_VERSION = 'v1.8.26';
 const RUNTIME_CONTRACT_VERSION = 'v1.0.0';
 const CAPABILITY_TAXONOMY_VERSION = 'v1.0.0';
 const COMPARISON_INPUT_VERSION = 'v1.0.0';

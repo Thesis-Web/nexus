@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { randomUUID } from 'crypto';
-import { validateRoutingPolicy } from './router/routing-policy.js';
+import { validateRoutingPolicy } from './router/tier-registry.js';
 import { canonicalize } from '../../core/src/crypto/canonicalize.js';
 import { sign } from '../../core/src/crypto/signer.js';
 import { verify } from '../../core/src/crypto/verifier.js';
