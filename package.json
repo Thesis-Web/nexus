@@ -8,8 +8,7 @@
     "node": ">=20.0.0"
   },
   "bin": {
-    "nexus": "scripts/nexus-main.ts",
-    "nexus-mcp-proxy": "scripts/mcp-server.ts"
+    "nexus": "scripts/nexus-main.ts"
   },
   "scripts": {
     "format:check": "prettier --check .",
@@ -21,7 +20,7 @@
     "build": "turbo build",
     "ci:gate": "tsx scripts/ci-gate.ts",
     "nexus": "tsx scripts/nexus-main.ts",
-    "nexus:mcp": "tsx scripts/mcp-server.ts",
+    "nexus:mcp": "tsx scripts/nexus-main.ts -- serve-mcp",
     "lexicon:build": "tsx scripts/build-wordnet-lexicon.ts",
     "lexicon:validate": "tsx scripts/validate-governed-lexicon.ts"
   },

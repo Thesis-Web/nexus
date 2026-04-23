@@ -1,53 +1,38 @@
-#!/usr/bin/env tsx
 /**
- * MCP server composition root — UNLAYERED
+ * nexus serve-mcp — DEF-025 (DIFF-S6-002 Option A)
+ * Start MCP proxy HTTP server with full DI.
  *
- * This file lives OUTSIDE the seven-layer package architecture (scripts/).
- * It is the sole point where cross-layer construction occurs for the MCP proxy.
- * Cross-layer imports are permitted here because this is a composition root,
- * not part of any governed layer.
+ * Moves composition-root logic from scripts/mcp-server.ts into Layer 7 CLI.
+ * Layer 7 may import @nexus/core entry points (RAT-003 exception).
+ * @nexus/adapter-mcp depends on @nexus/contracts only — safe to import here.
  *
- * MODULAR-S29-001 fix: moved from packages/adapters/mcp/src/mcp-server.ts.
- * Adapter package now contains only Layer 2 imports (normalizer + proxy).
+ * DEVIATION LOG:
+ *   spec §6.1 pins mcp-server.ts at packages/adapters/mcp/src/
+ *   spec §6.2 pins "nexus:mcp" script to that path
+ *   Both remain stale until canon is amended.
+ *   Approved repair: this CLI command replaces the scripts/ composition root.
  *
- * Environment variables (all optional — sensible defaults for POC):
- *   NEXUS_DB_PATH       Path to SQLite database (default: ./nexus.db)
- *   NEXUS_LEDGER_PATH   Path to JSONL ledger file (default: ./nexus.ledger.jsonl)
- *   NEXUS_POLICY_PATH   Path to signed policy JSON
- *   NEXUS_MCP_PORT      HTTP port for this proxy (default: 4000)
- *   NEXUS_MCP_HOST      Bind host (default: 127.0.0.1)
- *
- * Spec: nexus-engineering-spec-v1-8-26.md §19.1, §19.2
- * Blueprint: nexus-blueprint-v1-5-13.md §24.5
+ * Spec: §19.1, §19.2
+ * Blueprint: §24.5, §24.8
  */
-
 import * as http from 'node:http';
 import * as path from 'node:path';
 
-// ── Cross-layer imports (composition root — permitted) ────────────────────
 import {
-  // DB
-  openDatabase,
-  initializeSchema,
-  // Crypto
   loadControlPlaneKey,
-  // Ledger
-  JsonlLedgerBackend,
-  // Policy
-  loadPolicyFile,
-  // Identity
   SqliteActorRegistry,
   SqlitePrincipalRegistry,
   SqliteApproverRegistry,
   SqliteSessionStore,
+  SqliteDelegationStore,
+  SqlitePendingApprovalStore,
+  JsonlLedgerBackend,
   VerbNormalizer,
   LexicalVerbResolver,
   TargetNormalizer,
   CapabilityRegistry,
   DataClassifier,
   RiskClassifier,
-  SqliteDelegationStore,
-  // Gates
   IdentityGate,
   ClassificationGate,
   DelegationGate,
@@ -55,53 +40,48 @@ import {
   ApprovalGate,
   ExecutionGate,
   EvidenceGate,
-  // Approval
-  SqlitePendingApprovalStore,
-  CliApprovalChannel,
-  // Engine
   Pipeline,
   SimpleConnectorRegistry,
   SimpleChannelRegistry,
-  // Security
+  CliApprovalChannel,
   ReplayDetector,
   RateLimiter,
+  loadPolicyFile,
 } from '@nexus/core';
 
-import { StubConnector } from '@nexus/connector-stub';
+import type { ConnectorRegistry } from '@nexus/contracts';
 import { McpAdapter, NexusMcpProxy } from '@nexus/adapter-mcp';
+import { openDb } from '../db.js';
 
-// ── Resolve config from environment ─────────────────────────────────────────
+export interface ServeMcpOptions {
+  port?: number;
+  host?: string;
+  /** Connector registry factory — injected from composition root */
+  createConnectorRegistry: () => ConnectorRegistry;
+}
 
-const repoRoot = process.cwd();
+export async function cmdServeMcp(opts: ServeMcpOptions): Promise<void> {
+  const repoRoot = process.cwd();
+  const PORT = opts.port ?? parseInt(process.env['NEXUS_MCP_PORT'] ?? '4000', 10);
+  const HOST = opts.host ?? process.env['NEXUS_MCP_HOST'] ?? '127.0.0.1';
+  const LEDGER_PATH = process.env['NEXUS_LEDGER_PATH'] ?? path.join(repoRoot, 'nexus.ledger.jsonl');
+  const POLICY_PATH =
+    process.env['NEXUS_POLICY_PATH'] ??
+    path.join(repoRoot, 'packages/core/src/policy/rules/default.policy.json');
 
-const DB_PATH = process.env['NEXUS_DB_PATH'] ?? path.join(repoRoot, 'nexus.db');
-const LEDGER_PATH = process.env['NEXUS_LEDGER_PATH'] ?? path.join(repoRoot, 'nexus.ledger.jsonl');
-const POLICY_PATH =
-  process.env['NEXUS_POLICY_PATH'] ??
-  path.join(repoRoot, 'packages/core/src/policy/rules/default.policy.json');
-const PORT = parseInt(process.env['NEXUS_MCP_PORT'] ?? '4000', 10);
-const HOST = process.env['NEXUS_MCP_HOST'] ?? '127.0.0.1';
-
-// ── Bootstrap ────────────────────────────────────────────────────────────────
-
-async function main(): Promise<void> {
   console.log('[nexus:mcp] starting...');
-  console.log(`[nexus:mcp] db:      ${DB_PATH}`);
-  console.log(`[nexus:mcp] ledger:  ${LEDGER_PATH}`);
-  console.log(`[nexus:mcp] policy:  ${POLICY_PATH}`);
   console.log(`[nexus:mcp] listen:  http://${HOST}:${PORT}`);
 
   // 1. Database
-  const db = openDatabase(DB_PATH);
-  initializeSchema(db);
+  const db = openDb();
 
-  // 2. Crypto — control-plane keypair (from keys/dev.keypair.json via key-manager)
+  // 2. Crypto — control-plane keypair
   const controlPlaneKey = await loadControlPlaneKey();
 
-  // 3. Ledger backend (JSONL — Backend v1, MODULAR-003)
+  // 3. Ledger backend (JSONL — Backend v1)
   const ledger = new JsonlLedgerBackend(LEDGER_PATH);
 
-  // 4. Policy file (signed — rejects on invalid signature per spec §15)
+  // 4. Policy file (signed — rejects on invalid signature per §15)
   let policyFile = null;
   try {
     policyFile = await loadPolicyFile(POLICY_PATH, controlPlaneKey);
@@ -130,9 +110,8 @@ async function main(): Promise<void> {
   // 7. Approval channel — CLI is Channel v1 (MODULAR-004)
   const cliChannel = new CliApprovalChannel(pendingStore);
 
-  // 8. Connector registry — StubConnector for POC (MODULAR-005)
-  const connectorRegistry = new SimpleConnectorRegistry();
-  connectorRegistry.register(new StubConnector());
+  // 8. Connector registry — injected from composition root
+  const connectorRegistry = opts.createConnectorRegistry();
 
   // 9. Channel registry
   const channelRegistry = new SimpleChannelRegistry();
@@ -173,7 +152,7 @@ async function main(): Promise<void> {
     channelRegistry,
   });
 
-  // 14. HTTP server
+  // 14. HTTP server — §42 INV-001: bind to 127.0.0.1 only
   const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -193,7 +172,7 @@ async function main(): Promise<void> {
     console.log('[nexus:mcp] ready — awaiting MCP tool calls');
   });
 
-  for (const sig of ['SIGINT', 'SIGTERM']) {
+  for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     process.on(sig, () => {
       console.log(`\n[nexus:mcp] ${sig} received — shutting down`);
       server.close(() => {
@@ -203,8 +182,3 @@ async function main(): Promise<void> {
     });
   }
 }
-
-main().catch(err => {
-  console.error('[nexus:mcp] fatal startup error:', err);
-  process.exit(1);
-});

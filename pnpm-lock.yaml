@@ -172,6 +172,9 @@ importers:
 
   packages/interfaces/cli:
     dependencies:
+      '@nexus/adapter-mcp':
+        specifier: workspace:*
+        version: link:../../adapters/mcp
       '@nexus/api':
         specifier: workspace:*
         version: link:../api

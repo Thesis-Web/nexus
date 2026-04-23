@@ -2,7 +2,7 @@
  * MCP Adapter — Layer 4 barrel export
  * Exports adapter + proxy components only. Layer 2 imports only.
  *
- * MODULAR-S29-001: Composition root (mcp-server.ts) moved to scripts/.
+ * MODULAR-S29-001 / DEF-025: Composition root moved to CLI `nexus serve-mcp` command.
  * This package contains normalization and proxy code — no cross-layer wiring.
  */
 export { McpAdapter } from './mcp-normalizer.js';

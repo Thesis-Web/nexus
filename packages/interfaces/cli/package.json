@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@nexus/adapter-mcp": "workspace:*",
     "@nexus/api": "workspace:*",
     "@nexus/contracts": "workspace:*",
     "@nexus/core": "workspace:*",

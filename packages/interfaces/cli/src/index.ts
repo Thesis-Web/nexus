@@ -35,6 +35,7 @@ import { cmdApproverKeygen } from './commands/approver.js';
 import { cmdPosture } from './commands/posture.js';
 import { cmdReplay } from './commands/replay.js';
 import { cmdServe } from './commands/serve.js';
+import { cmdServeMcp } from './commands/serve-mcp.js';
 import { cmdModeShow, cmdModeSet } from './commands/mode.js';
 import { cmdRunLedgerTail, cmdRunLedgerGet } from './commands/run-ledger.js';
 import { cmdNvgClassify, cmdNvgRoute, cmdNvgTrail, cmdNvgPolicyValidate } from './commands/nvg.js';
@@ -197,6 +198,20 @@ export function createCli(deps: CliDeps): Command {
         createNvgService: deps.createNvgService,
         createTrailReader: deps.createTrailReader,
         loadNvgRoutingPolicy: deps.loadNvgRoutingPolicy,
+      }).catch(fatal)
+    );
+
+  // ── serve-mcp: DEF-025 — MCP proxy HTTP server ─────────────────────────
+  program
+    .command('serve-mcp')
+    .description('Start MCP proxy HTTP server (§19.1)')
+    .option('--port <port>', 'MCP proxy port', v => parseInt(v, 10))
+    .option('--host <host>', 'Bind host (default: 127.0.0.1)')
+    .action(opts =>
+      cmdServeMcp({
+        port: opts.port,
+        host: opts.host,
+        createConnectorRegistry: deps.createConnectorRegistry,
       }).catch(fatal)
     );
 
