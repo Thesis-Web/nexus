@@ -137,3 +137,49 @@ describe('Gate 02 — Classification', () => {
     expect(gate.gateOrder).toBe(2);
   });
 });
+
+// ── OCT denial code path tests — spec §13.3, §11.1, §11.2 ────────────────
+
+it('denies RISK_CEILING_EXCEEDED when actor is OCT-COMPILE (spec §11.2 — no system actions)', async () => {
+  const tgt = {
+    system: 'stub',
+    resourceType: 'record',
+    resourceScope: 'single',
+    environment: 'dev',
+    externalFacing: false,
+  };
+  const { gate } = makeGate(ACTION_VERB.READ, tgt, 'read:record:single', 'low');
+  const ctx = makeCtx();
+  ctx.actor!.octLevel = 'OCT-COMPILE';
+  const result = await gate.evaluate(makeAction('read', '{}'), ctx, []);
+  expect(result.decision.outcome).toBe('deny');
+  expect(result.decision.denialCode).toBe(DENIAL_CODE.RISK_CEILING_EXCEEDED);
+  expect(result.decision.reason).toContain('OCT-COMPILE');
+});
+
+it('denies RISK_CEILING_EXCEEDED when risk tier exceeds OCT ceiling (spec §10.4)', async () => {
+  const tgt = {
+    system: 'stub',
+    resourceType: 'record',
+    resourceScope: 'single',
+    environment: 'dev',
+    externalFacing: false,
+  };
+  // OCT-OPEN ceiling maxRiskTier = medium; inject riskClassifier returning critical
+  const { gate } = makeGate(ACTION_VERB.READ, tgt, 'read:record:single', 'critical');
+  const ctx = makeCtx();
+  ctx.actor!.octLevel = 'OCT-OPEN';
+  ctx.actor!.riskCeiling = 'critical'; // identity ceiling doesn't block
+  const result = await gate.evaluate(makeAction('read', '{}'), ctx, []);
+  expect(result.decision.outcome).toBe('deny');
+  expect(result.decision.denialCode).toBe(DENIAL_CODE.RISK_CEILING_EXCEEDED);
+});
+
+it('denies OCT_UNASSIGNED when actor has unknown OCT level (BEST-SOLVE-D2-006)', async () => {
+  const { gate } = makeGate(ACTION_VERB.READ, {}, 'read:record:single', 'low');
+  const ctx = makeCtx();
+  ctx.actor!.octLevel = 'OCT-NONEXISTENT';
+  const result = await gate.evaluate(makeAction('read', '{}'), ctx, []);
+  expect(result.decision.outcome).toBe('deny');
+  expect(result.decision.denialCode).toBe(DENIAL_CODE.OCT_UNASSIGNED);
+});

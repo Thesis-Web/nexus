@@ -77,7 +77,7 @@ export class ClassificationGate implements Gate {
     // ── §11.2: OCT-COMPILE actors cannot execute system actions ──────────
     if (octCeiling.actionRiskCeiling === EVIDENCE_SENTINEL) {
       return deny(
-        DENIAL_CODE.OCT_COMPILE_DENIED,
+        DENIAL_CODE.RISK_CEILING_EXCEEDED,
         'OCT-COMPILE actors cannot execute system actions',
         startMs
       );
@@ -117,7 +117,7 @@ export class ClassificationGate implements Gate {
     const effective = resolveEffectiveCeiling(identityCeiling, octCeiling);
     if (riskTierExceeds(riskTier, effective.maxRiskTier)) {
       return deny(
-        DENIAL_CODE.OCT_CEILING_EXCEEDED,
+        DENIAL_CODE.RISK_CEILING_EXCEEDED,
         `risk tier ${riskTier} exceeds effective ceiling ${effective.maxRiskTier} ` +
           `(OCT: ${actor.octLevel}, identity: ${actor.riskCeiling})`,
         startMs
