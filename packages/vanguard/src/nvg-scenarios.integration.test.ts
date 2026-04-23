@@ -15,10 +15,8 @@ import { evaluateRoutingPolicy, validateRoutingPolicy } from './router/policy-en
 import { invokeModel } from './router/model-router.js';
 import { TierRegistry } from './router/tier-registry.js';
 import { logInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
-import {
-  JsonlRoutingTrailWriter,
-  JsonlRoutingTrailReader,
-} from './trail/routing-provenance-trail-writer.js';
+import { normalizeInboundResponse } from './inbound/response-normalizer.js';
+import { JsonlRoutingTrailBackend } from './trail/jsonl-routing-trail.backend.js';
 import { ModelHealthMonitor } from './health/model-health-monitor.js';
 
 import {
@@ -28,7 +26,6 @@ import {
   DENIAL_CODE,
   type NvgOutboundRequest,
   type NvgRoutingPolicy,
-  type ModelEndpoint,
   type Uuid,
   type NonEmpty,
   type IsoTimestamp,
@@ -39,14 +36,12 @@ import {
 } from '@nexus/contracts';
 
 let tmpDir: string;
-let trailWriter: JsonlRoutingTrailWriter;
-let trailReader: JsonlRoutingTrailReader;
+let trailBackend: JsonlRoutingTrailBackend;
 
 beforeEach(async () => {
   tmpDir = path.join(os.tmpdir(), 'nexus-nvg-int-' + randomUUID());
   await fs.mkdir(tmpDir, { recursive: true });
-  trailWriter = new JsonlRoutingTrailWriter(tmpDir);
-  trailReader = new JsonlRoutingTrailReader(tmpDir);
+  trailBackend = new JsonlRoutingTrailBackend(tmpDir);
 });
 
 afterEach(async () => {
@@ -168,10 +163,16 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
 
     // Step 6: Log inbound response
     const correlationId = randomUUID() as Uuid;
-    await logInboundResponse(correlationId, request, invocation, trailWriter, policy.version);
+    await logInboundResponse(correlationId, request, invocation, trailBackend, policy.version);
+
+    // Step 7: Normalize inbound response (§24.6 — inbound step 2)
+    const normalized = normalizeInboundResponse(invocation);
+    expect(normalized.success).toBe(true);
+    expect(normalized.sourceTier).toBe(MODEL_TIER.FRONTIER_GENERAL);
+    expect(normalized.fallbackApplied).toBe(false);
 
     // Verify trail entries
-    const entries = await trailReader.getByRunId(runId);
+    const entries = await trailBackend.getByRunId(runId);
     expect(entries.length).toBe(1);
     expect(entries[0]!.runId).toBe(runId);
     expect(entries[0]!.direction).toBe('inbound');
@@ -226,9 +227,9 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
 
     // Log
     const correlationId = randomUUID() as Uuid;
-    await logInboundResponse(correlationId, request, invocation, trailWriter, policy.version);
+    await logInboundResponse(correlationId, request, invocation, trailBackend, policy.version);
 
-    const entries = await trailReader.getByRunId(runId);
+    const entries = await trailBackend.getByRunId(runId);
     expect(entries.length).toBe(1);
     expect(entries[0]!.modelTierInvoked).toBe(MODEL_TIER.ON_PREM_SENSITIVE);
   });
@@ -253,11 +254,11 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
       request,
       DENIAL_CODE.NVG_ROUTING_POLICY_DENIED,
       'no matching routing rule',
-      trailWriter,
+      trailBackend,
       emptyPolicy.version
     );
 
-    const entries = await trailReader.getByRunId(runId);
+    const entries = await trailBackend.getByRunId(runId);
     expect(entries.length).toBe(1);
     expect(entries[0]!.denialCode).toBe(DENIAL_CODE.NVG_ROUTING_POLICY_DENIED);
     expect(entries[0]!.modelTierSelected).toBeNull();
@@ -366,15 +367,15 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
       request2,
       DENIAL_CODE.NVG_ROUTING_POLICY_DENIED,
       'no match',
-      trailWriter,
+      trailBackend,
       policy.version
     );
 
     const correlationId = randomUUID() as Uuid;
-    await logInboundResponse(correlationId, request, invocation, trailWriter, policy.version);
+    await logInboundResponse(correlationId, request, invocation, trailBackend, policy.version);
 
     // All entries for this runId
-    const entries = await trailReader.getByRunId(runId);
+    const entries = await trailBackend.getByRunId(runId);
     expect(entries.length).toBe(2);
     for (const entry of entries) {
       expect(entry.runId).toBe(runId);

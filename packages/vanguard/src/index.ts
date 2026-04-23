@@ -4,7 +4,7 @@
  * Imports from @nexus/contracts (Layer 2) ONLY.
  * Never imports from @nexus/core (Layer 1).
  *
- * Spec: nexus-engineering-spec-v1-7-25.md §24-§27
+ * Spec: nexus-engineering-spec-v1-8-26.md §24-§27
  */
 
 // §24.1–24.2 — Label reading (intake)

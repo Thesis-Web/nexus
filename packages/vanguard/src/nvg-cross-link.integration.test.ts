@@ -17,10 +17,7 @@ import { evaluateRoutingPolicy } from './router/policy-engine.js';
 import { invokeModel } from './router/model-router.js';
 import { TierRegistry } from './router/tier-registry.js';
 import { logInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
-import {
-  JsonlRoutingTrailWriter,
-  JsonlRoutingTrailReader,
-} from './trail/routing-provenance-trail-writer.js';
+import { JsonlRoutingTrailBackend } from './trail/jsonl-routing-trail.backend.js';
 
 import {
   MODEL_TIER,
@@ -29,7 +26,6 @@ import {
   DENIAL_CODE,
   type NvgOutboundRequest,
   type NvgRoutingPolicy,
-  type ModelEndpoint,
   type Uuid,
   type NonEmpty,
   type IsoTimestamp,
@@ -40,14 +36,12 @@ import {
 } from '@nexus/contracts';
 
 let tmpDir: string;
-let trailWriter: JsonlRoutingTrailWriter;
-let trailReader: JsonlRoutingTrailReader;
+let trailBackend: JsonlRoutingTrailBackend;
 
 beforeEach(async () => {
   tmpDir = path.join(os.tmpdir(), 'nexus-nvg-xlink-' + randomUUID());
   await fs.mkdir(tmpDir, { recursive: true });
-  trailWriter = new JsonlRoutingTrailWriter(tmpDir);
-  trailReader = new JsonlRoutingTrailReader(tmpDir);
+  trailBackend = new JsonlRoutingTrailBackend(tmpDir);
 });
 
 afterEach(async () => {
@@ -123,7 +117,7 @@ describe('NVG Cross-Link: runId consistency (§38.7)', () => {
           registry
         );
         const correlationId = randomUUID() as Uuid;
-        await logInboundResponse(correlationId, req, invocation, trailWriter, policy.version);
+        await logInboundResponse(correlationId, req, invocation, trailBackend, policy.version);
       }
     }
 
@@ -136,11 +130,11 @@ describe('NVG Cross-Link: runId consistency (§38.7)', () => {
       deniedReq,
       DENIAL_CODE.NVG_ROUTING_POLICY_DENIED,
       'no match',
-      trailWriter,
+      trailBackend,
       policy.version
     );
 
-    const entries = await trailReader.getByRunId(runId);
+    const entries = await trailBackend.getByRunId(runId);
     expect(entries.length).toBe(4); // 3 inbound + 1 outbound denial
     for (const entry of entries) {
       expect(entry.runId).toBe(runId);
@@ -158,17 +152,17 @@ describe('NVG Cross-Link: runId consistency (§38.7)', () => {
     const c1 = classifyOutboundData(req1.dataLabels);
     const d1 = evaluateRoutingPolicy(policy, req1, c1);
     const inv1 = await invokeModel(d1.routeTo!, d1.fallbackTier, req1, c1, registry);
-    await logInboundResponse(randomUUID() as Uuid, req1, inv1, trailWriter, policy.version);
+    await logInboundResponse(randomUUID() as Uuid, req1, inv1, trailBackend, policy.version);
 
     // Run 2
     const req2 = makeRequest(runId2);
     const c2 = classifyOutboundData(req2.dataLabels);
     const d2 = evaluateRoutingPolicy(policy, req2, c2);
     const inv2 = await invokeModel(d2.routeTo!, d2.fallbackTier, req2, c2, registry);
-    await logInboundResponse(randomUUID() as Uuid, req2, inv2, trailWriter, policy.version);
+    await logInboundResponse(randomUUID() as Uuid, req2, inv2, trailBackend, policy.version);
 
-    const run1Entries = await trailReader.getByRunId(runId1);
-    const run2Entries = await trailReader.getByRunId(runId2);
+    const run1Entries = await trailBackend.getByRunId(runId1);
+    const run2Entries = await trailBackend.getByRunId(runId2);
 
     expect(run1Entries.length).toBe(1);
     expect(run2Entries.length).toBe(1);
@@ -194,9 +188,9 @@ describe('NVG Cross-Link: runId consistency (§38.7)', () => {
     );
 
     // Log inbound with specific correlationId
-    await logInboundResponse(correlationId, req, invocation, trailWriter, policy.version);
+    await logInboundResponse(correlationId, req, invocation, trailBackend, policy.version);
 
-    const byCorrelation = await trailReader.getByCorrelationId(correlationId);
+    const byCorrelation = await trailBackend.getByCorrelationId(correlationId);
     expect(byCorrelation.length).toBe(1);
     expect(byCorrelation[0]!.correlationId).toBe(correlationId);
     expect(byCorrelation[0]!.runId).toBe(runId);
