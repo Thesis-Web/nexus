@@ -16,7 +16,7 @@ import { classifyOutboundData } from './classifier/data-classifier.js';
 import { evaluateRoutingPolicy } from './router/policy-engine.js';
 import { invokeModel } from './router/model-router.js';
 import { TierRegistry } from './router/tier-registry.js';
-import { logInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
+import { handleInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
 import { JsonlRoutingTrailBackend } from './trail/jsonl-routing-trail.backend.js';
 
 import {
@@ -117,7 +117,7 @@ describe('NVG Cross-Link: runId consistency (§38.7)', () => {
           registry
         );
         const correlationId = randomUUID() as Uuid;
-        await logInboundResponse(correlationId, req, invocation, trailBackend, policy.version);
+        await handleInboundResponse(correlationId, req, invocation, trailBackend, policy.version);
       }
     }
 
@@ -152,14 +152,14 @@ describe('NVG Cross-Link: runId consistency (§38.7)', () => {
     const c1 = classifyOutboundData(req1.dataLabels);
     const d1 = evaluateRoutingPolicy(policy, req1, c1);
     const inv1 = await invokeModel(d1.routeTo!, d1.fallbackTier, req1, c1, registry);
-    await logInboundResponse(randomUUID() as Uuid, req1, inv1, trailBackend, policy.version);
+    await handleInboundResponse(randomUUID() as Uuid, req1, inv1, trailBackend, policy.version);
 
     // Run 2
     const req2 = makeRequest(runId2);
     const c2 = classifyOutboundData(req2.dataLabels);
     const d2 = evaluateRoutingPolicy(policy, req2, c2);
     const inv2 = await invokeModel(d2.routeTo!, d2.fallbackTier, req2, c2, registry);
-    await logInboundResponse(randomUUID() as Uuid, req2, inv2, trailBackend, policy.version);
+    await handleInboundResponse(randomUUID() as Uuid, req2, inv2, trailBackend, policy.version);
 
     const run1Entries = await trailBackend.getByRunId(runId1);
     const run2Entries = await trailBackend.getByRunId(runId2);
@@ -188,7 +188,7 @@ describe('NVG Cross-Link: runId consistency (§38.7)', () => {
     );
 
     // Log inbound with specific correlationId
-    await logInboundResponse(correlationId, req, invocation, trailBackend, policy.version);
+    await handleInboundResponse(correlationId, req, invocation, trailBackend, policy.version);
 
     const byCorrelation = await trailBackend.getByCorrelationId(correlationId);
     expect(byCorrelation.length).toBe(1);

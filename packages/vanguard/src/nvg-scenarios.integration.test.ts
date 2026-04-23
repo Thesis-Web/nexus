@@ -14,7 +14,7 @@ import { enforceOctModelCeiling, isFrontierTier } from './classifier/ceiling-enf
 import { evaluateRoutingPolicy, validateRoutingPolicy } from './router/policy-engine.js';
 import { invokeModel } from './router/model-router.js';
 import { TierRegistry } from './router/tier-registry.js';
-import { logInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
+import { handleInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
 import { normalizeInboundResponse } from './inbound/response-normalizer.js';
 import { JsonlRoutingTrailBackend } from './trail/jsonl-routing-trail.backend.js';
 import { ModelHealthMonitor } from './health/model-health-monitor.js';
@@ -163,7 +163,7 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
 
     // Step 6: Log inbound response
     const correlationId = randomUUID() as Uuid;
-    await logInboundResponse(correlationId, request, invocation, trailBackend, policy.version);
+    await handleInboundResponse(correlationId, request, invocation, trailBackend, policy.version);
 
     // Step 7: Normalize inbound response (§24.6 — inbound step 2)
     const normalized = normalizeInboundResponse(invocation);
@@ -227,7 +227,7 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
 
     // Log
     const correlationId = randomUUID() as Uuid;
-    await logInboundResponse(correlationId, request, invocation, trailBackend, policy.version);
+    await handleInboundResponse(correlationId, request, invocation, trailBackend, policy.version);
 
     const entries = await trailBackend.getByRunId(runId);
     expect(entries.length).toBe(1);
@@ -372,7 +372,7 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
     );
 
     const correlationId = randomUUID() as Uuid;
-    await logInboundResponse(correlationId, request, invocation, trailBackend, policy.version);
+    await handleInboundResponse(correlationId, request, invocation, trailBackend, policy.version);
 
     // All entries for this runId
     const entries = await trailBackend.getByRunId(runId);

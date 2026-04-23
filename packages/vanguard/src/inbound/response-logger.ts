@@ -12,6 +12,8 @@ import {
   type RoutingTrailWriter,
 } from '@nexus/contracts';
 import { resolveHighestDataClass } from '../classifier/data-classifier.js';
+import { normalizeInboundResponse } from './response-normalizer.js';
+import type { NvgNormalizedResponse } from '../types/index.js';
 
 export async function logInboundResponse(
   correlationId: Uuid,
@@ -43,6 +45,22 @@ export async function logInboundResponse(
     responseSize: invocation.responseSize ?? null,
     timestamp: new Date().toISOString(),
   });
+}
+
+/**
+ * §24.6 — Complete inbound handler: log trail entry + normalize response.
+ * This is the runtime inbound path that callers should use.
+ * Returns the normalized response for the orchestrator.
+ */
+export async function handleInboundResponse(
+  correlationId: Uuid,
+  request: NvgOutboundRequest,
+  invocation: NvgInvocationResult,
+  trailWriter: RoutingTrailWriter,
+  routingPolicyVersion: NonEmpty
+): Promise<NvgNormalizedResponse> {
+  await logInboundResponse(correlationId, request, invocation, trailWriter, routingPolicyVersion);
+  return normalizeInboundResponse(invocation);
 }
 
 /** §24.7 — deny/quarantine handler */

@@ -32,7 +32,11 @@ export { TierRegistry, type FallbackConstraintResult } from './router/tier-regis
 export { callEndpoint, invokeModel } from './router/model-router.js';
 
 // §24.6, §24.7 — Inbound response logging + denial
-export { logInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
+export {
+  logInboundResponse,
+  handleInboundResponse,
+  handleNvgDenial,
+} from './inbound/response-logger.js';
 
 // §24.6 — Inbound response normalization
 export { normalizeInboundResponse, isSuccessfulResponse } from './inbound/response-normalizer.js';
