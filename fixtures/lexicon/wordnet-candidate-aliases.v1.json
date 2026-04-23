@@ -1,0 +1,5234 @@
+[
+  {
+    "rawTerm": "say",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "interpret",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "construe",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "see",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "anagram",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "anagrammatize",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "anagrammatise",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "reread",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "dip into",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "decipher",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "trace",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "skim",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "skim over",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "lipread",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "lip-read",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "speech-read",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "say",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "have",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "feature",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "talk",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "speak",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "utter",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "mouth",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "verbalize",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "verbalise",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "numerate",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "dictate",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "call",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "scan",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "misread",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "take",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "predict",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "foretell",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "prognosticate",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "call",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "forebode",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "anticipate",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "promise",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "scry",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "take",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "misinterpret",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "learn",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "study",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "audit",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "train",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "prepare",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "drill",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "exercise",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "practice",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "practise",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "register",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "show",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "record",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "indicate",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "say",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "show",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "strike",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "audition",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "try out",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "understand",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "understand",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "interpret",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "translate",
+    "candidateCanonicalVerb": "read",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "compose",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "pen",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "indite",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "create verbally",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "draw",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "lyric",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "write on",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "write of",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "write about",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "profile",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "paragraph",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "write off",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "dash off",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "scratch off",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "knock off",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "toss off",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "fling off",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "rewrite",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "write copy",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "dramatize",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "dramatise",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "adopt",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "draft",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "outline",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "verse",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "versify",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "poetize",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "poetise",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "author",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "annotate",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "footnote",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "reference",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "cite",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "write out",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "write up",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "script",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "drop a line",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "communicate",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "intercommunicate",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "write in",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "style",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "apostrophize",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "apostrophise",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "sign",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "subscribe",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "type",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "typewrite",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "handwrite",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "jot down",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "jot",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "scribble",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "scrabble",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "write down",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "set down",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "get down",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "put down",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "issue",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "make out",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "cut",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "publish",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "compose",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "pen",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "indite",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "drop a line",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "correspond",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "make",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "counterpoint",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "set to music",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "arrange",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "set",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "score",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "melodize",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "melodise",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "harmonize",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "harmonise",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "instrument",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "instrumentate",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "trace",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "draw",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "line",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "describe",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "delineate",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "dot",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "stenograph",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "calligraph",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "cross",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "superscribe",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "capitalize",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "capitalise",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "letter",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "print",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "scrawl",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "copy",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "impress",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "save",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "record",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "tape",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "overwrite",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "spell",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "spell out",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "hyphenate",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "hyphen",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "create by mental act",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "create mentally",
+    "candidateCanonicalVerb": "write",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "make",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "beget",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "get",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "engender",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "father",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "mother",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "sire",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "generate",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "bring forth",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "reproduce",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "procreate",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "multiply",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "regenerate",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "clear",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "distill",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "extract",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "distil",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "derive",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "educe",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "froth",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "spume",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "suds",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "lay down",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "establish",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "make",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "puncture",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "twine",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "cleave",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "track",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "institute",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "bring",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "short-circuit",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "short",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "re-create",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "grind",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "originate",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "initiate",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "start",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "give",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "yield",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "work",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "play",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "wreak",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "make for",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "raise",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "conjure",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "conjure up",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "invoke",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "evoke",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "stir",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "call down",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "arouse",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "bring up",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "put forward",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "call forth",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "create by mental act",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "create mentally",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "realize",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "realise",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "actualize",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "actualise",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "substantiate",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "cause",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "do",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "put on",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "turn in",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "bear",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "turn out",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "create from raw material",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "create from raw stuff",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "construct",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "build",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "assemble",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "piece",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "put together",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "set up",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "tack",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "tack together",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "style",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "strike",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "copy",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "create verbally",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "compose",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "choreograph",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "direct",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "film",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "film-make",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "recreate",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "offset",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "scrape",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "produce",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "bring about",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "give rise",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "press",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "prepare",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "cut",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "beat",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "chop",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "manufacture",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "blast",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "shell",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "elicit",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "enkindle",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "kindle",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "fire",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "provoke",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "incorporate",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "form",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "organize",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "organise",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "reinvent",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "develop",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "carve out",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "act",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "move",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "draw",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "paint",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "appoint",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "charge",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "make",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "produce",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "make",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "design",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "produce",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "breed",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "remake",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "refashion",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "redo",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "make over",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "prefabricate",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "underproduce",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "output",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "pulse",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "pulsate",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "clap up",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "clap together",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "slap together",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "custom-make",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "customize",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "customise",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "tailor-make",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "dummy",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "dummy up",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "machine",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "churn out",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "overproduce",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "elaborate",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "put out",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "laminate",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "bootleg",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "render",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "return",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "extrude",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "squeeze out",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "smelt",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "preassemble",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "fudge together",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "throw together",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "print",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "confect",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "proof",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "burn",
+    "candidateCanonicalVerb": "create",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "modify",
+    "candidateCanonicalVerb": "update",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "inform",
+    "candidateCanonicalVerb": "update",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "cancel",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "remove",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "take",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "take away",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "withdraw",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "erase",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "rub out",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "score out",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "efface",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "wipe off",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "strike",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "scratch",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "expunge",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "excise",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "erase",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "take out",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "demagnetize",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "demagnetise",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "edit",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "blue-pencil",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "censor",
+    "candidateCanonicalVerb": "delete",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "put to death",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "kill",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "punish",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "penalize",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "penalise",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "crucify",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "burn",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "hang",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "string up",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "put to death",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "murder",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "slay",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "hit",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "dispatch",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "bump off",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "off",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "polish off",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "remove",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "carry through",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "accomplish",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "carry out",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "action",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "fulfill",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "fulfil",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "follow through",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "follow up",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "follow out",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "carry out",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "implement",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "put through",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "go through",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "complete",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "finish",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "effect",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "effectuate",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "set up",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "get over",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "run",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "consummate",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "do",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "perform",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "dispatch",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "discharge",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "complete",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "enforce",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "implement",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "apply",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "give",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "run",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "play",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "run",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "step",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "perform",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "do",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "click off",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "carry",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "pipe up",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "declaim",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "recite",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "serenade",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "cut corners",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "stunt",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "cut",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "blaze away",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "scamp",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "churn out",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "premier",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "premiere",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "star",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "appear",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "rehearse",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "practise",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "practice",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "improvise",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "improvize",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "ad-lib",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "extemporize",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "extemporise",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "interpret",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "render",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "conduct",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "lead",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "direct",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "make",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "sign",
+    "candidateCanonicalVerb": "execute",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "question",
+    "candidateCanonicalVerb": "query",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "ask",
+    "candidateCanonicalVerb": "query",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "wonder",
+    "candidateCanonicalVerb": "query",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "inquire",
+    "candidateCanonicalVerb": "query",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "enquire",
+    "candidateCanonicalVerb": "query",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "interpellate",
+    "candidateCanonicalVerb": "query",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "examine",
+    "candidateCanonicalVerb": "query",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "pump",
+    "candidateCanonicalVerb": "query",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "check out",
+    "candidateCanonicalVerb": "query",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "sound out",
+    "candidateCanonicalVerb": "query",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "feel out",
+    "candidateCanonicalVerb": "query",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "debrief",
+    "candidateCanonicalVerb": "query",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "seek",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "look for",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "dredge",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "drag",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "finger",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "grope",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "fumble",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "divine",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "browse",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "surf",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "leave no stone unturned",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "hunt",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "gather",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "want",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "scour",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "seek out",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "quest for",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "go after",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "quest after",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "pursue",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "fish",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "angle",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "grub",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "feel",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "shop",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "look",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "examine",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "see",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "cruise",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "prospect",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "intrude",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "horn in",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "pry",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "nose",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "poke",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "research",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "explore",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "investigate",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "look into",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "google",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "mapquest",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "re-explore",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "cast about",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "beat about",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "cast around",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "raid",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "frisk",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "strip-search",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "scan",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "rifle",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "go",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "rummage",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "comb",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "ransack",
+    "candidateCanonicalVerb": "search",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "print",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "produce",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "make",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "republish",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "gazette",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "bring out",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "put out",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "issue",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "release",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "publicize",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "publicise",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "air",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "bare",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "edit",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "write",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "create verbally",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "compose",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "pen",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "indite",
+    "candidateCanonicalVerb": "publish",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "trade",
+    "candidateCanonicalVerb": "export",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "merchandise",
+    "candidateCanonicalVerb": "export",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "smuggle",
+    "candidateCanonicalVerb": "export",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "transfer",
+    "candidateCanonicalVerb": "export",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "spread",
+    "candidateCanonicalVerb": "export",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "distribute",
+    "candidateCanonicalVerb": "export",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "direct",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "move",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "displace",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "project",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "cast",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "contrive",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "throw",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "turn",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "divert",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "route",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "refer",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "redirect",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "airt",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "blow",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "send out",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "transfer",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "transport",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "channel",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "channelize",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "channelise",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "send in",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "mail out",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "mail",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "get off",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "mail",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "post",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "express",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "airmail",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "register",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "express-mail",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "transport",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "ship",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "barge",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "railroad",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "dispatch",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "despatch",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "send off",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "forward",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "send on",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "station",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "place",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "garrison",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "fort",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "locate",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "place",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "site",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "get off",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "send off",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "commit",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "institutionalize",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "institutionalise",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "charge",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "hospitalize",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "hospitalise",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "air",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "broadcast",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "beam",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "transmit",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "publicize",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "publicise",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "air",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "bare",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "satellite",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "sportscast",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "telecast",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "televise",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "interrogate",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "rerun",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "rebroadcast",
+    "candidateCanonicalVerb": "send",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "synthesise",
+    "candidateCanonicalVerb": "synthesize",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "compound",
+    "candidateCanonicalVerb": "synthesize",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "combine",
+    "candidateCanonicalVerb": "synthesize",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "change",
+    "candidateCanonicalVerb": "synthesize",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "convey",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "communicate",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "transfer",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "communicate",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "pass on",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "pass",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "pass along",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "put across",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "impart",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "conduct",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "carry",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "channel",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "carry",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "bring",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "convey",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "take",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "convey",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "express",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "related",
+    "confidenceClass": "ambiguous",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "wash up",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "pipe in",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "bring in",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "retransmit",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "air",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "send",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "broadcast",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "beam",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "publicize",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "publicise",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "air",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "bare",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "satellite",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "sportscast",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "telecast",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "televise",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "interrogate",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "rerun",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "rebroadcast",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "transfer",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "transport",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "channelize",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "channelise",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "synonym",
+    "confidenceClass": "direct",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "move",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "displace",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "hypernym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "bring",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "get",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "convey",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "fetch",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "project",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "propagate",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "translate",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "turn",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "release",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  },
+  {
+    "rawTerm": "send out",
+    "candidateCanonicalVerb": "transmit",
+    "source": "wordnet",
+    "relation": "troponym",
+    "confidenceClass": "near",
+    "sourceVersion": "3.0"
+  }
+]

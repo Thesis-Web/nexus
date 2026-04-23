@@ -63,7 +63,7 @@ const PROHIBITED_STRINGS = [
 ];
 
 // Secret-field pattern — §26.9
-const SECRET_FIELD_PATTERN = /(secret|password|key|token|credential|api_key|apikey|auth)/i;
+const SECRET_FIELD_PATTERN = /(secret|password|key|token|credential|api_key|apikey|\bauth\b)/i;
 const FIXTURE_SECRET_PREFIX = 'FIXTURE_SYNTHETIC_SECRET:';
 
 // ---------------------------------------------------------------------------
