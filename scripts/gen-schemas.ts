@@ -1,7 +1,7 @@
 /**
  * scripts/gen-schemas.ts
  * Generates schemas/*.schema.json from governed Nexus types.
- * Spec: nexus-engineering-spec-v0-4-6.md §3.3, §8.2
+ * Spec: nexus-engineering-spec-v1-8-26.md §3.3, §8.2
  *
  * CONTRA-AUDIT-005 fix (2026-04-14):
  *   "JSON schema export from Zod schemas" — §3.3 runtime validation law.

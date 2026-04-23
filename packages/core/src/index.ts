@@ -1,6 +1,6 @@
 /**
  * @nexus/core — public barrel
- * Spec: nexus-engineering-spec-v1-7-25.md §12-§20
+ * Spec: nexus-engineering-spec-v1-8-26.md §12-§20
  */
 
 // §12 — All contracts (includes utilities moved to contracts per DEF-001)

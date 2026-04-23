@@ -3,7 +3,7 @@
  * MODULAR-009: CCV is blueprint law. Stored within the signed EvidenceRecord body only.
  * delegationSequence is NOT a CCV field — forensic-only in actionSummary.
  *
- * v1.7.25: sentinel encoding (EVIDENCE_SENTINEL = 'NOT_APPLICABLE') replaces null/empty
+ * v1.8.26: sentinel encoding (EVIDENCE_SENTINEL = 'NOT_APPLICABLE') replaces null/empty
  * for absent classification, policy, and execution fields.
  */
 import {

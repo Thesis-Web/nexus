@@ -3,7 +3,7 @@
  * ALWAYS runs exactly once per action regardless of upstream outcome.
  * CCV inside signed body — MODULAR-009 law.
  *
- * v1.7.25: sentinel encoding for absent fields. New fields: runId,
+ * v1.8.26: sentinel encoding for absent fields. New fields: runId,
  * approvalRequired, approvalDecisionLabel. grantMetadata and
  * delegationContextSnapshot are non-nullable (sentinel-encoded internally).
  */
@@ -134,7 +134,7 @@ export class EvidenceGate implements Gate {
     const prevHash = prevRecord?.recordHash ?? GENESIS_HASH;
     const nextSeq = prevSeq + 1;
 
-    // delegationContextSnapshot is non-nullable in v1.7.25
+    // delegationContextSnapshot is non-nullable in v1.8.26
     const delegationSnapshot: DelegationContextSnapshot =
       context.delegationSnapshot ?? buildMinimalDelegationSnapshot(context.delegationContext);
 
@@ -175,7 +175,7 @@ export class EvidenceGate implements Gate {
     const policyDecision = decisions.find(d => d.gateId === GATE_ID.G04);
     const finalOutcome = computeFinalOutcome(decisions);
 
-    // approvalRequired and approvalDecisionLabel — new v1.7.25 fields
+    // approvalRequired and approvalDecisionLabel — new v1.8.26 fields
     const approvalRequired: boolean | typeof EVIDENCE_SENTINEL =
       context.approvalRequest !== undefined
         ? context.approvalRequest !== null

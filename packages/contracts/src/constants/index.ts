@@ -1,6 +1,6 @@
 // packages/contracts/src/constants/index.ts
-// Spec: nexus-engineering-spec-v1-7-25.md §12.2 — Governed Constants
-// Spec: nexus-engineering-spec-v1-7-25.md §12.4 — Capability Taxonomy v1.0.0
+// Spec: nexus-engineering-spec-v1-8-26.md §12.2 — Governed Constants
+// Spec: nexus-engineering-spec-v1-8-26.md §12.4 — Capability Taxonomy v1.0.0
 // Layer 2 — governed constant sets. Imports from types only.
 //
 // ALL governed types are open `string` aliases. Constants define the known set.

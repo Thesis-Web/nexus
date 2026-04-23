@@ -30,8 +30,8 @@
  * it does NOT import any core implementation directly. All gate logic is encapsulated
  * in the Pipeline class, accessed only through the PipelineInterface contract.
  *
- * Spec: nexus-engineering-spec-v0-4-6.md §19.1, §19.2
- * Blueprint: nexus-blueprint-v0-3-6.md §5.1, §5.4, §8.1
+ * Spec: nexus-engineering-spec-v1-8-26.md §19.1, §19.2
+ * Blueprint: nexus-blueprint-v1-5-13.md §5.1, §5.4, §8.1
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';

@@ -7,8 +7,8 @@
  *   objectiveSummary  max 500 chars
  *   riskNote          max 200 chars
  *
- * Blueprint: nexus-blueprint-v0-3-6.md §5.4 (adapter environment non-override law)
- * Spec: nexus-engineering-spec-v0-4-6.md §10.3.6, §19.2
+ * Blueprint: nexus-blueprint-v1-5-13.md §5.4 (adapter environment non-override law)
+ * Spec: nexus-engineering-spec-v1-8-26.md §10.3.6, §19.2
  */
 
 import type { IntentContext, IsoTimestamp } from '@nexus/contracts';

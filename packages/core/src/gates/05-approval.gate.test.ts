@@ -1,6 +1,6 @@
 /**
  * Gate 05 — Approval — unit tests
- * Spec: nexus-engineering-spec-v0-4-6.md §13.6
+ * Spec: nexus-engineering-spec-v1-8-26.md §13.6
  * SOLVE-016: channelId is a string on ApprovalConfig — used directly.
  *
  * Key strategy:

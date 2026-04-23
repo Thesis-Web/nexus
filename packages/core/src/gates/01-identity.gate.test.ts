@@ -1,6 +1,6 @@
 /**
  * Gate 01 — Identity — unit tests
- * Spec: nexus-engineering-spec-v0-4-6.md §13.2
+ * Spec: nexus-engineering-spec-v1-8-26.md §13.2
  * SOLVE-011: session store returns regardless of expiry; Gate 01 owns expiry semantics.
  * HOLE-002: Gate 01 resolves delegationContext as the fourth item of the identity tuple.
  */

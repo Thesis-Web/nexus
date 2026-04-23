@@ -37,8 +37,8 @@ describe('Threat: Policy Manipulation — Unsigned Policy (spec §12.3)', () => 
     const unsignedPolicy = {
       policyId: randomUUID(),
       version: 'v0.1.0',
-      blueprintVersion: 'v0.3.6',
-      runtimeContractVersion: 'v0.4.6',
+      blueprintVersion: 'v1.5.13',
+      runtimeContractVersion: 'v1.8.26',
       capabilityTaxonomyVersion: 'v0.1.0',
       rules: [
         {
@@ -64,8 +64,8 @@ describe('Threat: Policy Manipulation — Unsigned Policy (spec §12.3)', () => 
     const tamperedPolicy = {
       policyId: randomUUID(),
       version: 'v0.1.0',
-      blueprintVersion: 'v0.3.6',
-      runtimeContractVersion: 'v0.4.6',
+      blueprintVersion: 'v1.5.13',
+      runtimeContractVersion: 'v1.8.26',
       capabilityTaxonomyVersion: 'v0.1.0',
       rules: [],
       signature:
@@ -83,8 +83,8 @@ describe('Threat: Policy Manipulation — Unsigned Policy (spec §12.3)', () => 
     const wrongKeyPolicy = {
       policyId: randomUUID(),
       version: 'v0.1.0',
-      blueprintVersion: 'v0.3.6',
-      runtimeContractVersion: 'v0.4.6',
+      blueprintVersion: 'v1.5.13',
+      runtimeContractVersion: 'v1.8.26',
       capabilityTaxonomyVersion: 'v0.1.0',
       rules: [],
       signature: 'ZmFrZXNpZ25hdHVyZWZha2VzaWduYXR1cmVmYWtlc2lnbmF0dXJlZmFrZXNpZ25hdHVyZQ',

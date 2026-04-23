@@ -1,5 +1,5 @@
 // packages/contracts/src/interfaces/index.ts
-// Spec: nexus-engineering-spec-v1-7-25.md §12.3, §10.2, §14.1
+// Spec: nexus-engineering-spec-v1-8-26.md §12.3, §10.2, §14.1
 // Layer 2 — all interface contracts. Imports from types and constants only.
 
 import type { Uuid, IsoTimestamp, Sha256Hex, Base64Url, NonEmpty, SemVer } from '../types/index.js';

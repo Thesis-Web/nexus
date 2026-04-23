@@ -1,6 +1,6 @@
 /**
  * Gate 07 — Evidence — unit tests
- * Spec: nexus-engineering-spec-v0-4-6.md §13.8
+ * Spec: nexus-engineering-spec-v1-8-26.md §13.8
  * Gate 07 always runs regardless of prior gate outcomes.
  * CCV is inside the signed body (MODULAR-009).
  * computeFinalOutcome uses denialCode, not reason string.

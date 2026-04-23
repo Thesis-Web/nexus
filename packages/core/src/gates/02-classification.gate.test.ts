@@ -1,6 +1,6 @@
 /**
  * Gate 02 — Classification — unit tests
- * Spec: nexus-engineering-spec-v0-4-6.md §13.3
+ * Spec: nexus-engineering-spec-v1-8-26.md §13.3
  */
 
 import { describe, it, expect, vi } from 'vitest';

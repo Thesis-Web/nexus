@@ -1,7 +1,7 @@
 /**
  * @nexus/core — type re-exports from @nexus/contracts (Layer 2)
  *
- * Spec: nexus-engineering-spec-v1-7-25.md §12
+ * Spec: nexus-engineering-spec-v1-8-26.md §12
  * Law: All governed types, constants, and interfaces originate in @nexus/contracts.
  * This file re-exports them so existing core imports continue to resolve.
  *

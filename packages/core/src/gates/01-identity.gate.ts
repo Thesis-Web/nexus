@@ -14,7 +14,7 @@
  * This gate populates all three. Downstream gates use non-null assertions (!) with
  * the invariant that Gate 01 passed if they are executing.
  *
- * Spec: nexus-engineering-spec-v1-7-25.md §11.1, §13.2
+ * Spec: nexus-engineering-spec-v1-8-26.md §11.1, §13.2
  * Blueprint: nexus-blueprint-v1-4-12.md §5.1, §5.4, §8.1
  */
 import {

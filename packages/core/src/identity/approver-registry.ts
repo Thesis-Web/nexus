@@ -2,7 +2,7 @@
  * Approver registry — spec §11.6, §20.3
  * Reads actors table filtering on approver_public_key IS NOT NULL.
  *
- * v1.7.25 ApproverRegistry interface requires:
+ * v1.8.26 ApproverRegistry interface requires:
  *   getPublicKey(approverId): Promise<Base64Url | null>
  *   register(actorId, publicKey, channels): Promise<void>
  *

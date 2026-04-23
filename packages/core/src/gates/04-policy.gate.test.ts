@@ -1,6 +1,6 @@
 /**
  * Gate 04 — Policy — unit tests
- * Spec: nexus-engineering-spec-v0-4-6.md §13.5
+ * Spec: nexus-engineering-spec-v1-8-26.md §13.5
  *
  * DEFAULT_DENY: only when context.policyFile is null.
  * POLICY_DENY:  when a policy is loaded but no rule matches (or matched rule outcome = deny).

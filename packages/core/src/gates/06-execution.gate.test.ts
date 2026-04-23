@@ -1,6 +1,6 @@
 /**
  * Gate 06 — Execution — unit tests
- * Spec: nexus-engineering-spec-v0-4-6.md §13.7
+ * Spec: nexus-engineering-spec-v1-8-26.md §13.7
  * MODULAR-005: Gate 06 calls connector interface only.
  *
  * Spec law (from implementation): connector lookup failures produce outcome='error'
