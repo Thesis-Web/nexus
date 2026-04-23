@@ -7,6 +7,9 @@
  * Spec: nexus-engineering-spec-v1-7-25.md §24-§27
  */
 
+// §24.1–24.2 — Label reading (intake)
+export { readLabels, type LabelReadResult } from './classifier/label-reader.js';
+
 // §24.2 — Data classification
 export { resolveHighestDataClass, classifyOutboundData } from './classifier/data-classifier.js';
 
