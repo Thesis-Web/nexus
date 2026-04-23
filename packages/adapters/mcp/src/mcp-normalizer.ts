@@ -18,8 +18,13 @@
  *   The normalizer does NOT create sessions. If a session does not exist,
  *   Gate 01 returns SESSION_NOT_FOUND. There is no auto-create path here.
  *
- * Blueprint: nexus-blueprint-v0-3-6.md §5.4
- * Spec: nexus-engineering-spec-v0-4-6.md §11.2, §13.9.1, §19.2
+ * DEF-D2-001: Added 5 v1.4.12 verb prefix groups (WRITE, QUERY, SEARCH,
+ *   SYNTHESIZE, TRANSMIT). EXECUTE fallback is now annotated in intent
+ *   objectiveSummary so downstream consumers can distinguish positive prefix
+ *   matches from default fallback inference.
+ *
+ * Blueprint: nexus-blueprint-v1-5-13.md §24.4
+ * Spec: nexus-engineering-spec-v1-8-26.md §11.2, §13.9.1, §19.2
  * MODULAR-001: adapter never imports pipeline internals — calls pipeline.process() only.
  */
 
@@ -30,6 +35,7 @@ import {
   type AgentAction,
   type ActionVerb,
   type Uuid,
+  type NonEmpty,
   nowIso,
   newUuid,
 } from '@nexus/contracts';
@@ -56,10 +62,20 @@ export interface McpRequest {
   id?: string | number | null;
 }
 
-// ── §19.2 VERB_PREFIX_MAP (spec-exact) ───────────────────────────────────────
+// ── §19.2 VERB_PREFIX_MAP (spec-exact, updated for v1.4.12) ──────────────────
+//
+// v1.4.12 additions come first so their prefixes take precedence.
+// search_ and find_ moved from READ to SEARCH per v1.4.12 verb taxonomy.
 
 const VERB_PREFIX_MAP: [string[], ActionVerb][] = [
-  [['get_', 'fetch_', 'read_', 'list_', 'search_', 'find_', 'retrieve_'], ACTION_VERB.READ],
+  // v1.4.12 additions — spec §19.2
+  [['write_', 'overwrite_'], ACTION_VERB.WRITE],
+  [['query_', 'lookup_'], ACTION_VERB.QUERY],
+  [['search_', 'find_', 'browse_'], ACTION_VERB.SEARCH],
+  [['synthesize_', 'compose_', 'generate_', 'summarize_'], ACTION_VERB.SYNTHESIZE],
+  [['transmit_', 'stream_', 'relay_'], ACTION_VERB.TRANSMIT],
+  // Original groups
+  [['get_', 'fetch_', 'read_', 'list_', 'retrieve_'], ACTION_VERB.READ],
   [['create_', 'add_', 'insert_', 'new_', 'post_'], ACTION_VERB.CREATE],
   [['update_', 'edit_', 'modify_', 'patch_', 'set_', 'put_'], ACTION_VERB.UPDATE],
   [['delete_', 'remove_', 'destroy_', 'purge_'], ACTION_VERB.DELETE],
@@ -80,13 +96,22 @@ function extractHeader(mcp: McpRequest, name: string): string | null {
   return val;
 }
 
-/** §19.2 inferVerbFromMcp — spec-exact. */
-function inferVerbFromMcp(mcp: McpRequest): string {
+/** Verb inference result — verb plus whether it was a positive prefix match. */
+interface VerbInference {
+  verb: ActionVerb;
+  matched: boolean;
+}
+
+/**
+ * §19.2 inferVerbFromMcp — spec-exact.
+ * DEF-D2-001: now returns matched flag so caller can annotate fallback.
+ */
+function inferVerbFromMcp(mcp: McpRequest): VerbInference {
   const tool = (mcp.method ?? mcp.tool ?? '').toLowerCase();
   for (const [prefixes, verb] of VERB_PREFIX_MAP) {
-    if (prefixes.some(p => tool.startsWith(p))) return verb;
+    if (prefixes.some(p => tool.startsWith(p))) return { verb, matched: true };
   }
-  return ACTION_VERB.EXECUTE;
+  return { verb: ACTION_VERB.EXECUTE, matched: false };
 }
 
 /** §19.2 extractToolNameSuffix — spec-exact. */
@@ -194,6 +219,19 @@ export class McpAdapter implements Adapter {
     // Intent extraction
     const intent = extractIntentContext(mcp.headers, toolName, ADAPTER_LABEL, nowIso);
 
+    // Verb inference with match tracking (DEF-D2-001)
+    const verbResult = inferVerbFromMcp(mcp);
+
+    // DEF-D2-001: Annotate intent objectiveSummary with verb inference method
+    // so downstream consumers can distinguish prefix matches from fallback default.
+    if (!verbResult.matched) {
+      const annotated = `${intent.objectiveSummary} [verb-inference: fallback-default]`;
+      (intent as { objectiveSummary: string }).objectiveSummary = annotated.slice(
+        0,
+        500
+      ) as NonEmpty;
+    }
+
     // Build the AgentAction with all classification fields null (Gate 02 resolves)
     // delegationSequence is assigned by the pipeline at ingress — never by the adapter
     const action: Omit<
@@ -221,7 +259,7 @@ export class McpAdapter implements Adapter {
       delegationId: hdrs.delegationId as Uuid,
       delegationSequence: 0, // pipeline.process() assigns real sequence at ingress
       tool: toolName,
-      rawVerb: inferVerbFromMcp(mcp),
+      rawVerb: verbResult.verb,
       rawTarget: inferTargetFromMcp(mcp),
       rawPayload: mcp.params ?? {},
       intent,
