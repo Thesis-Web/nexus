@@ -14,3 +14,4 @@ export {
 } from './actor-store.js';
 export { InMemoryPrincipalStore, type ReferencePrincipalStore } from './principal-store.js';
 export { ApiKeyAuthProvider, type ReferenceAuthProvider } from './auth/api-key.js';
+export { JwtAuthProvider } from './auth/jwt.js';
