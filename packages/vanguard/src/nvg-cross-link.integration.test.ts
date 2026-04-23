@@ -13,7 +13,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { classifyOutboundData } from './classifier/data-classifier.js';
-import { evaluateRoutingPolicy } from './router/tier-registry.js';
+import { evaluateRoutingPolicy } from './router/policy-engine.js';
 import { invokeModel } from './router/model-router.js';
 import { logInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
 import {

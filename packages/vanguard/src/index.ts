@@ -16,12 +16,17 @@ export { resolveHighestDataClass, classifyOutboundData } from './classifier/data
 // §24.3 — OCT ceiling enforcement
 export { isFrontierTier, enforceOctModelCeiling } from './classifier/ceiling-enforcer.js';
 
-// §24.4, §25 — Routing policy
+// §24.4, §25 — Routing policy engine (load + validate + evaluate)
 export {
+  loadNvgRoutingPolicy,
   evaluateRoutingPolicy,
   matchesRoutingCondition,
   validateRoutingPolicy,
-} from './router/tier-registry.js';
+} from './router/policy-engine.js';
+export type { PolicyLoaderCrypto } from './router/policy-engine.js';
+
+// §26 — Model tier registry
+export { TierRegistry, type FallbackConstraintResult } from './router/tier-registry.js';
 
 // §24.5 — Model invocation
 export { callEndpoint, invokeModel } from './router/model-router.js';
@@ -40,6 +45,3 @@ export { ModelHealthMonitor } from './health/model-health-monitor.js';
 
 // §22.1/§23.2 — NvgService DI contract implementation (HOLE-S7-001)
 export { NvgServiceImpl } from './nvg-service.js';
-
-export { loadNvgRoutingPolicy } from './router/policy-engine.js';
-export type { PolicyLoaderCrypto } from './router/policy-engine.js';

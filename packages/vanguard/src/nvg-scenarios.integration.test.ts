@@ -11,7 +11,7 @@ import * as path from 'path';
 
 import { classifyOutboundData, resolveHighestDataClass } from './classifier/data-classifier.js';
 import { enforceOctModelCeiling, isFrontierTier } from './classifier/ceiling-enforcer.js';
-import { evaluateRoutingPolicy, validateRoutingPolicy } from './router/tier-registry.js';
+import { evaluateRoutingPolicy, validateRoutingPolicy } from './router/policy-engine.js';
 import { invokeModel } from './router/model-router.js';
 import { logInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
 import {
