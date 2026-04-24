@@ -8,5 +8,14 @@ export default defineConfig({
     ],
     globals: false,
     testTimeout: 60000,
+    fileParallelism: false,
+    poolOptions: {
+      threads: {
+        singleThread: true,
+      },
+      forks: {
+        singleFork: true,
+      },
+    },
   },
 });
