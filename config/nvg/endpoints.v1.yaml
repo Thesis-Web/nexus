@@ -1,0 +1,37 @@
+manifestVersion: '1.0'
+issuer: nexus-dev
+issuedAt: '2026-04-26T06:46:56.877Z'
+signature: X8D-D1M2UOdUflcRXDRfo4ui1BihJLfYxjvLVQKufbcWGLz2HECZPBPKdDIxi4c-gtDYYaU6mmW88d2mIEleAg
+body:
+  endpoints:
+    - endpointId: local-ollama
+      tier: on_prem_general
+      url: http://localhost:11434/api/chat
+      adapterId: ollama-chat-v1
+      modelName: llama3.2
+      auth:
+        kind: none
+      enabled: true
+    - endpointId: anthropic-claude
+      tier: frontier_general
+      url: https://api.anthropic.com/v1/messages
+      adapterId: anthropic-messages-v1
+      modelName: claude-sonnet-4-20250514
+      auth:
+        kind: api_key
+        secretRef: FIXTURE_SYNTHETIC_SECRET:ANTHROPIC_API_KEY
+        headerName: x-api-key
+      adapterConfig:
+        max_tokens: 4096
+      enabled: false
+    - endpointId: openai-gpt
+      tier: frontier_general
+      url: https://api.openai.com/v1/chat/completions
+      adapterId: openai-chat-v1
+      modelName: gpt-4o
+      auth:
+        kind: bearer
+        secretRef: FIXTURE_SYNTHETIC_SECRET:OPENAI_API_KEY
+        headerName: Authorization
+        prefix: 'Bearer '
+      enabled: false

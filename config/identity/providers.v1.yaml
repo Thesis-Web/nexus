@@ -1,0 +1,10 @@
+manifestVersion: '1.0'
+issuer: nexus-dev
+issuedAt: '2026-04-26T06:46:55.135Z'
+signature: 6MY5gW7OcnIR6-2RnpGoclze8ZIADUkSnRG2r8xduO58lj13_aiB4enhe6XFdgLTA9zCpXzP3zw_vEX5Xp8pAw
+body:
+  providers:
+    - providerId: ria
+      providerType: reference_adapter
+      configuration: {}
+      enabled: true

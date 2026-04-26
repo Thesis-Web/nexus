@@ -1,0 +1,18 @@
+manifestVersion: '1.0'
+issuer: nexus-dev
+issuedAt: '2026-04-26T06:46:58.644Z'
+signature: gr150hDv3CwwWBCmb5rdn8kg_qUp-AmaiU3QvXbElzr4FHxva2LaVvl019SY6zxPecV5EhxyUAZ49I8IKSr9Dw
+body:
+  connectors:
+    - connectorId: stub
+      connectorType: stub
+      allowedSystems:
+        - '*'
+      configuration: {}
+      enabled: true
+    - connectorId: vault
+      connectorType: vault
+      allowedSystems:
+        - '*'
+      configuration: {}
+      enabled: false
