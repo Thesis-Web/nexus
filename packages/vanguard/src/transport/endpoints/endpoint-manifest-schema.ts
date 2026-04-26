@@ -15,19 +15,23 @@ import { z } from 'zod';
 
 const NonEmptyStringSchema = z.string().min(1);
 
+// Shared shape for auth-bearing kinds (api_key and bearer).
+// Zod 3.25+ requires each discriminatedUnion branch to expose a single
+// z.literal() discriminator — z.union([z.literal('a'), z.literal('b')])
+// is no longer extractable. Split into two branches with identical fields.
+const authBearingFields = {
+  secretRef: NonEmptyStringSchema,
+  headerName: NonEmptyStringSchema,
+  prefix: NonEmptyStringSchema.optional(),
+};
+
 // Auth schema mirrors §12.3.38 ModelEndpointAuth discriminated union with .strict()
 // branches (kind: 'none' rejects secretRef/headerName/prefix; kind: api_key | bearer
 // requires secretRef + headerName, allows optional prefix).
 const ModelEndpointAuthSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('none') }).strict(),
-  z
-    .object({
-      kind: z.union([z.literal('api_key'), z.literal('bearer')]),
-      secretRef: NonEmptyStringSchema,
-      headerName: NonEmptyStringSchema,
-      prefix: NonEmptyStringSchema.optional(),
-    })
-    .strict(),
+  z.object({ kind: z.literal('api_key'), ...authBearingFields }).strict(),
+  z.object({ kind: z.literal('bearer'), ...authBearingFields }).strict(),
 ]);
 
 // Endpoint entry schema — one per ModelEndpoint (§12.3) record in the manifest.
