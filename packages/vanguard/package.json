@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@nexus/contracts": "workspace:*",
-    "js-yaml": "^4.1.0"
+    "@nexus/runtime-utils": "workspace:*",
+    "js-yaml": "^4.1.0",
+    "zod": "^3.24.2"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

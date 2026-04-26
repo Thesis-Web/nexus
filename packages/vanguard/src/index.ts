@@ -58,3 +58,6 @@ export { NvgServiceImpl } from './nvg-service.js';
 
 // NVG-internal types (§6.1 types/ directory)
 export type { NvgPipelineResult, NvgNormalizedResponse, NvgDenialContext } from './types/index.js';
+
+// ── Transport Layer (NISP-001.A) ──────────────────────────────────────────
+export * from './transport/index.js';

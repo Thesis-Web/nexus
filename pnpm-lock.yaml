@@ -225,9 +225,15 @@ importers:
       '@nexus/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@nexus/runtime-utils':
+        specifier: workspace:*
+        version: link:../runtime-utils
       js-yaml:
         specifier: ^4.1.0
         version: 4.1.1
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
     devDependencies:
       '@types/js-yaml':
         specifier: ^4.0.9
