@@ -4,14 +4,17 @@
  * Fallback constrained via TierRegistry (§26.2) — never widens ceiling.
  * Layer 3 — imports from @nexus/contracts only (+ internal vanguard modules).
  *
- * Responsibilities:
- *   - Select healthy endpoint from TierRegistry for the routed tier
- *   - Invoke model endpoint (POC stub — production replaces with HTTP transport)
- *   - Apply fallback via TierRegistry constraint check
+ * NISP-001.A updates:
+ *   - callEndpoint dispatches via ModelTransportAdapterRegistry (§24.5.2)
+ *   - invokeModel: same-tier retry — all healthy primary endpoints in manifest
+ *     order before fallbackTier eligibility (§24.5.3)
+ *   - priorAttempts: captures every failed attempt for trail visibility
+ *   - FALLBACK_TRIGGERING_CODES: only retriable denial codes trigger fallback
  *
- * Does NOT own:
- *   - Policy evaluation → policy-engine.ts
- *   - Tier definitions / availability → tier-registry.ts
+ * NvgTransportContext is optional for backward compatibility with pipeline
+ * integration tests (§38.5) that test classify→route→invoke→log flow, not
+ * transport dispatch. When absent, callEndpoint returns a stub success
+ * response. Production bootstrap always provides the transport context.
  */
 import {
   DENIAL_CODE,
@@ -21,52 +24,142 @@ import {
   type NvgOutboundRequest,
   type NvgClassificationResult,
   type NvgInvocationResult,
+  type NvgTransportContext,
+  type InvocationAttempt,
+  type IsoTimestamp,
 } from '@nexus/contracts';
 import type { TierRegistry } from './tier-registry.js';
 
 /**
- * callEndpoint — governed transport contract.
- * In POC this is a stub. Production replaces with actual HTTP transport.
- * Five invariants from §24.5 apply.
+ * Denial codes that trigger same-tier retry and cross-tier fallback (§24.5.3).
+ * Auth, config, and parse errors are NOT retriable — they would repeat.
+ * Typed as Set<string> because DenialCode is string (open governed type).
+ */
+const FALLBACK_TRIGGERING_CODES: Set<string> = new Set([
+  DENIAL_CODE.NVG_ENDPOINT_TIMEOUT,
+  DENIAL_CODE.NVG_ENDPOINT_UNREACHABLE,
+  DENIAL_CODE.NVG_TRANSPORT_RATE_LIMITED,
+  DENIAL_CODE.NVG_TRANSPORT_PROVIDER_ERROR,
+]);
+
+/**
+ * callEndpoint — governed transport dispatcher (§24.5.2).
+ *
+ * When transportContext is provided: looks up the registered adapter by
+ * endpoint.adapterId, delegates to adapter.invoke(). Returns UNKNOWN_ADAPTER
+ * denial if the adapterId is not registered.
+ *
+ * When transportContext is absent (pipeline integration tests): returns a
+ * stub success response. Production bootstrap always provides the context.
  */
 export async function callEndpoint(
   endpoint: ModelEndpoint,
-  _request: NvgOutboundRequest
+  request: NvgOutboundRequest,
+  transportContext?: NvgTransportContext
 ): Promise<ModelEndpointResponse> {
-  // POC stub — production replaces with actual HTTP transport
   const startMs = Date.now();
-  return {
-    success: true,
-    responseSize: 0,
-    latencyMs: Date.now() - startMs,
-  };
+
+  // Stub path: pipeline integration tests that don't set up transport
+  if (transportContext === undefined) {
+    return {
+      success: true,
+      responseSize: 0,
+      latencyMs: Date.now() - startMs,
+    };
+  }
+
+  // Production path: adapter registry dispatch
+  const adapter = transportContext.registry.get(endpoint.adapterId);
+  if (adapter === null) {
+    return {
+      success: false,
+      denialCode: DENIAL_CODE.NVG_TRANSPORT_UNKNOWN_ADAPTER,
+      reason: `adapterId '${endpoint.adapterId}' not registered`,
+      latencyMs: Date.now() - startMs,
+    };
+  }
+
+  return adapter.invoke(endpoint, request, transportContext.secretSource);
 }
 
 /**
- * invokeModel — select endpoint from registry, invoke, handle fallback.
- * Fallback constraint enforcement delegated to TierRegistry (§26.2).
+ * Build an NvgInvocationResult from a ModelEndpointResponse, handling
+ * exactOptionalPropertyTypes correctly: optional fields are only set
+ * when the source value is defined.
+ */
+function buildInvocationResult(
+  result: ModelEndpointResponse,
+  endpoint: ModelEndpoint | null,
+  fallbackApplied: boolean,
+  fallbackFromTier: ModelTier | null,
+  priorAttempts: InvocationAttempt[]
+): NvgInvocationResult {
+  const inv: NvgInvocationResult = {
+    success: result.success,
+    fallbackApplied,
+    fallbackFromTier,
+    endpointUsed: endpoint,
+  };
+  if (result.denialCode !== undefined) inv.denialCode = result.denialCode;
+  if (result.reason !== undefined) inv.reason = result.reason;
+  if (result.responseSize !== undefined) inv.responseSize = result.responseSize;
+  if (result.latencyMs !== undefined) inv.latencyMs = result.latencyMs;
+  if (result.opaqueProviderResponse !== undefined) {
+    inv.opaqueProviderResponse = result.opaqueProviderResponse;
+  }
+  if (result.providerModelNameReturned !== undefined) {
+    inv.providerModelNameReturned = result.providerModelNameReturned;
+  }
+  if (priorAttempts.length > 0) inv.priorAttempts = priorAttempts;
+  return inv;
+}
+
+/**
+ * invokeModel — same-tier retry + constrained fallback (§24.5.3).
+ *
+ * 1. Iterate ALL healthy primary endpoints in manifest (registry) order
+ * 2. For each: callEndpoint; on success → return; on retriable failure → next
+ * 3. After all primary endpoints exhausted: consider fallbackTier
+ * 4. Fallback constraint check via TierRegistry (never widens ceiling)
+ * 5. Single-shot fallback: try first healthy fallback endpoint
+ * 6. priorAttempts captures every failed attempt for trail visibility
  */
 export async function invokeModel(
   tier: ModelTier,
   fallbackTier: ModelTier | null,
   request: NvgOutboundRequest,
   classification: NvgClassificationResult,
-  registry: TierRegistry
+  registry: TierRegistry,
+  transportContext?: NvgTransportContext
 ): Promise<NvgInvocationResult> {
-  // Primary tier — look up healthy endpoint from registry
+  const priorAttempts: InvocationAttempt[] = [];
+
+  // ── Same-tier retry: try ALL healthy primary endpoints in manifest order ──
   const primaryEndpoints = registry.getHealthyEndpoints(tier);
-  if (primaryEndpoints.length > 0) {
-    const primary = primaryEndpoints[0]!;
-    const result = await callEndpoint(primary, request);
-    return {
-      ...result,
-      fallbackApplied: false,
-      fallbackFromTier: null,
-      endpointUsed: primary,
-    };
+  for (const primary of primaryEndpoints) {
+    const result = await callEndpoint(primary, request, transportContext);
+
+    if (result.success) {
+      return buildInvocationResult(result, primary, false, null, priorAttempts);
+    }
+
+    // Non-retriable failure → return immediately, no retry
+    const denialCode = result.denialCode ?? DENIAL_CODE.NVG_FALLBACK_DENIED;
+    if (!FALLBACK_TRIGGERING_CODES.has(denialCode)) {
+      return buildInvocationResult(result, primary, false, null, priorAttempts);
+    }
+
+    // Retriable failure → record attempt and try next same-tier endpoint
+    priorAttempts.push({
+      endpointUsed: primary.endpointId,
+      denialCode,
+      reason: result.reason ?? 'unknown',
+      latencyMs: result.latencyMs ?? 0,
+      attemptedAt: new Date().toISOString() as IsoTimestamp,
+    });
   }
 
-  // Fallback — constraint check via registry (§26.2: never widens ceiling)
+  // ── Fallback: all primary endpoints exhausted ──
   if (fallbackTier) {
     const constraint = registry.checkFallbackConstraint(
       fallbackTier,
@@ -74,7 +167,7 @@ export async function invokeModel(
       request.octLevel
     );
     if (!constraint.allowed) {
-      return {
+      const inv: NvgInvocationResult = {
         success: false,
         fallbackApplied: false,
         fallbackFromTier: null,
@@ -82,22 +175,33 @@ export async function invokeModel(
         denialCode: DENIAL_CODE.NVG_FALLBACK_DENIED,
         reason: constraint.reason ?? 'fallback constraint denied',
       };
+      if (priorAttempts.length > 0) inv.priorAttempts = priorAttempts;
+      return inv;
     }
 
+    // Single-shot fallback: first healthy endpoint on fallback tier
     const fallbackEndpoints = registry.getHealthyEndpoints(fallbackTier);
     if (fallbackEndpoints.length > 0) {
       const fallback = fallbackEndpoints[0]!;
-      const result = await callEndpoint(fallback, request);
-      return {
-        ...result,
-        fallbackApplied: true,
-        fallbackFromTier: tier,
-        endpointUsed: fallback,
-      };
+      const result = await callEndpoint(fallback, request, transportContext);
+
+      if (result.success) {
+        return buildInvocationResult(result, fallback, true, tier, priorAttempts);
+      }
+
+      // Fallback failed — record attempt
+      priorAttempts.push({
+        endpointUsed: fallback.endpointId,
+        denialCode: result.denialCode ?? DENIAL_CODE.NVG_FALLBACK_DENIED,
+        reason: result.reason ?? 'fallback endpoint failed',
+        latencyMs: result.latencyMs ?? 0,
+        attemptedAt: new Date().toISOString() as IsoTimestamp,
+      });
     }
   }
 
-  return {
+  // No endpoint succeeded
+  const inv: NvgInvocationResult = {
     success: false,
     fallbackApplied: false,
     fallbackFromTier: null,
@@ -105,4 +209,6 @@ export async function invokeModel(
     denialCode: DENIAL_CODE.NVG_FALLBACK_DENIED,
     reason: `no healthy endpoint for tier ${tier}`,
   };
+  if (priorAttempts.length > 0) inv.priorAttempts = priorAttempts;
+  return inv;
 }
