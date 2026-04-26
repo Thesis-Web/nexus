@@ -1,10 +1,10 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — all 16 steps in spec §6.4 order.
+ * Nexus CI Gate — all 19 steps in spec §6.4 order.
  *
  * Governing law:
- *   §6.4   — 16-step ci:gate sequence
+ *   §6.4   — 19-step ci:gate sequence (F-02a)
  *   §16.2  — verifyChain: sequence + hash chain + Ed25519 signature per record
  *   §37.6  — Ledger Chain Gate (Step 7)
  *   §37.8  — CCV Integrity Gate (Step 8): re-derive + re-hash
@@ -14,6 +14,9 @@
  *   §37.13 — Bypass Annotation Gate (Step 15)
  *   §38.1  — 95% line coverage on packages/core/src/gates/
  *   §37.8  — CCV inside hash verification
+ *   §37.19 — Signed Manifest Signature Gate (Step 17)
+ *   §37.20 — Transport Adapter Conformance Gate (Step 18)
+ *   §37.21 — Transport Package Boundary Gate (Step 19)
  *
  * HOLE-001 Option A (owner-approved):
  *   PRE-GATE  — pnpm build (environment setup; not a numbered gate step)
@@ -818,6 +821,35 @@ async function main(): Promise<void> {
   }
   if (!candidateFound) pass('candidate aliases absent from production output');
 
+  // -------------------------------------------------------------------------
+  // Step 17: signed manifest signature gate — §6.4 step 17, §37.19
+  // All four domain manifests must have valid Ed25519 signatures.
+  // RIA legacy bridge engagement detected in CI fails the gate — §32a.4.
+  // -------------------------------------------------------------------------
+  stepLog('signed manifest signature gate');
+  const manifestCount = await validateManifestSignatures(publicKey);
+  pass(`${manifestCount} domain manifest(s) verified`);
+
+  // -------------------------------------------------------------------------
+  // Step 18: transport adapter conformance gate — §6.4 step 18, §37.20
+  // Runtime wire-through: 9 conformance scenarios per adapter + invariants.
+  // Runs the conformance test suite in tests/conformance/ as a gate.
+  // -------------------------------------------------------------------------
+  stepLog('transport adapter conformance gate');
+  runCmd('pnpm exec vitest run --reporter=verbose tests/conformance/');
+  pass();
+
+  // -------------------------------------------------------------------------
+  // Step 19: transport package boundary gate — §6.4 step 19, §37.21
+  // AST-walk packages/vanguard/src/transport/** AND packages/runtime-utils/src/**
+  // — only allow-listed imports per §37.21; any other import = gate failure.
+  // -------------------------------------------------------------------------
+  stepLog('transport package boundary gate');
+  const boundaryResult = validateTransportPackageBoundary();
+  pass(
+    `${boundaryResult.vanguardFiles} transport + ${boundaryResult.runtimeUtilsFiles} runtime-utils file(s) scanned`
+  );
+
   // POST-GATE: bin assertion — HOLE-001 Option A (owner approved)
   // Both nexus and nexus-mcp-proxy bins must be executable after pnpm build.
   // -------------------------------------------------------------------------
@@ -837,7 +869,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  console.log('\n=== ci:gate PASSED — all 16 steps ===\n');
+  console.log('\n=== ci:gate PASSED — all 19 steps ===\n');
 }
 
 // ===========================================================================
@@ -1021,6 +1053,229 @@ function validateBypassAnnotations(): number {
     count++;
   }
   return count;
+}
+
+// ===========================================================================
+// Step 17 — Signed manifest signature gate
+// §37.19: All four domain manifests must have valid Ed25519 signatures.
+// §32a.4: RIA legacy bridge engagement detected in CI fails the gate.
+// ===========================================================================
+const MANIFEST_PATHS = [
+  'config/identity/providers.v1.yaml',
+  'config/connectors/connectors.v1.yaml',
+  'config/channels/channels.v1.yaml',
+  'config/nvg/endpoints.v1.yaml',
+] as const;
+
+async function validateManifestSignatures(publicKey: string): Promise<number> {
+  // RIA legacy bridge detection — §32a.4
+  if (process.env.NEXUS_RIA_LEGACY_BRIDGE === '1') {
+    fail(
+      'RIA legacy bridge engagement detected in CI environment ' +
+        '(NEXUS_RIA_LEGACY_BRIDGE=1). Bridge engagement is forbidden in CI — §32a.4'
+    );
+  }
+
+  let count = 0;
+  for (const manifestPath of MANIFEST_PATHS) {
+    if (!fs.existsSync(manifestPath)) {
+      fail(`Signed manifest not found: ${manifestPath} — clean-clone requires all four manifests`);
+    }
+
+    let raw: string;
+    try {
+      raw = fs.readFileSync(manifestPath, 'utf-8');
+    } catch (err) {
+      fail(`Cannot read manifest: ${manifestPath}: ${(err as Error).message}`);
+    }
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = yaml.load(raw) as Record<string, unknown>;
+    } catch (err) {
+      fail(`YAML parse error in manifest: ${manifestPath}: ${(err as Error).message}`);
+    }
+
+    // Envelope shape: manifestVersion, issuer, issuedAt, signature, body
+    if (typeof parsed['manifestVersion'] !== 'string' || parsed['manifestVersion'].length === 0) {
+      fail(`Manifest envelope invalid: ${manifestPath} — missing/empty manifestVersion`);
+    }
+    if (typeof parsed['issuer'] !== 'string' || parsed['issuer'].length === 0) {
+      fail(`Manifest envelope invalid: ${manifestPath} — missing/empty issuer`);
+    }
+    if (typeof parsed['issuedAt'] !== 'string' || parsed['issuedAt'].length === 0) {
+      fail(`Manifest envelope invalid: ${manifestPath} — missing/empty issuedAt`);
+    }
+    if (typeof parsed['signature'] !== 'string' || parsed['signature'].length === 0) {
+      fail(`Manifest envelope invalid: ${manifestPath} — missing/empty signature`);
+    }
+    const body = parsed['body'];
+    if (body === undefined || body === null || typeof body !== 'object') {
+      fail(`Manifest envelope invalid: ${manifestPath} — missing/invalid body`);
+    }
+
+    // Ed25519 signature verification over canonicalize(body)
+    const canonicalBody = canonicalize(body);
+    const sigValid = await verifyEd25519(canonicalBody, parsed['signature'] as string, publicKey);
+    if (!sigValid) {
+      fail(
+        `Ed25519 signature verification failed for manifest: ${manifestPath}\n` +
+          `  Ensure the manifest was signed with the matching control-plane key.`
+      );
+    }
+    count++;
+  }
+  return count;
+}
+
+// ===========================================================================
+// Step 19 — Transport package boundary gate
+// §37.21: AST-walk packages/vanguard/src/transport/** AND
+// packages/runtime-utils/src/** — only allow-listed imports.
+// ===========================================================================
+
+/** Extract import specifiers from a TypeScript source file via regex. */
+function extractImportSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  // Match: import ... from 'specifier' or import ... from "specifier"
+  const importPattern = /import\s+(?:type\s+)?(?:\{[^}]*\}|[^;{]*)\s+from\s+['"]([^'"]+)['"]/g;
+  let match: RegExpExecArray | null;
+  while ((match = importPattern.exec(source)) !== null) {
+    const spec = match[1];
+    if (spec) specifiers.push(spec);
+  }
+  // Also match side-effect imports: import 'specifier'
+  const sideEffectPattern = /import\s+['"]([^'"]+)['"]/g;
+  while ((match = sideEffectPattern.exec(source)) !== null) {
+    const spec = match[1];
+    if (spec) specifiers.push(spec);
+  }
+  return specifiers;
+}
+
+/** Collect all .ts source files (non-test) under a directory recursively. */
+function collectTsSourceFiles(dir: string): string[] {
+  const results: string[] = [];
+  if (!fs.existsSync(dir)) return results;
+  const walk = (d: string): void => {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (
+        entry.name.endsWith('.ts') &&
+        !entry.name.endsWith('.test.ts') &&
+        !entry.name.endsWith('.threat.test.ts')
+      ) {
+        results.push(full);
+      }
+    }
+  };
+  walk(dir);
+  return results;
+}
+
+// Approved Node 20+ built-ins per §37.21
+const APPROVED_NODE_BUILTINS = new Set([
+  'node:crypto',
+  'node:fs',
+  'node:fs/promises',
+  'node:path',
+  'node:url',
+  'node:buffer',
+  'node:stream',
+  'node:timers',
+  'node:util',
+]);
+
+// Approved external libs per §37.21
+const APPROVED_EXTERNAL_LIBS_RUNTIME_UTILS = new Set([
+  'js-yaml',
+  'zod',
+  '@noble/ed25519',
+  '@noble/hashes',
+]);
+
+// Prohibited implementation packages for runtime-utils
+const PROHIBITED_IMPL_PACKAGES = [
+  '@nexus/core',
+  '@nexus/vanguard',
+  '@nexus/connectors',
+  '@nexus/identity-ref',
+  '@nexus/interfaces',
+];
+
+function isRelativeImport(specifier: string): boolean {
+  return specifier.startsWith('./') || specifier.startsWith('../');
+}
+
+function isApprovedNodeBuiltin(specifier: string): boolean {
+  // Exact match or prefix match for sub-paths (e.g. node:fs/promises)
+  return APPROVED_NODE_BUILTINS.has(specifier);
+}
+
+function isApprovedExternalLib(specifier: string, libs: Set<string>): boolean {
+  // Match exact or scoped sub-path (e.g. '@noble/hashes/sha512' starts with '@noble/hashes')
+  for (const lib of libs) {
+    if (specifier === lib || specifier.startsWith(lib + '/')) return true;
+  }
+  return false;
+}
+
+function validateTransportPackageBoundary(): { vanguardFiles: number; runtimeUtilsFiles: number } {
+  const violations: string[] = [];
+
+  // --- Scope 1: packages/vanguard/src/transport/** ---
+  const vanguardTransportDir = path.join('packages', 'vanguard', 'src', 'transport');
+  const vanguardFiles = collectTsSourceFiles(vanguardTransportDir);
+  const vanguardApprovedExternals = new Set(['zod', 'js-yaml', '@noble/ed25519', '@noble/hashes']);
+
+  for (const fpath of vanguardFiles) {
+    const source = fs.readFileSync(fpath, 'utf-8');
+    const specifiers = extractImportSpecifiers(source);
+    for (const spec of specifiers) {
+      if (isRelativeImport(spec)) continue;
+      if (spec === '@nexus/contracts' || spec.startsWith('@nexus/contracts/')) continue;
+      if (spec === '@nexus/runtime-utils' || spec.startsWith('@nexus/runtime-utils/')) continue;
+      if (isApprovedNodeBuiltin(spec)) continue;
+      if (isApprovedExternalLib(spec, vanguardApprovedExternals)) continue;
+      violations.push(`  ${fpath}: disallowed import '${spec}'`);
+    }
+  }
+
+  // --- Scope 2: packages/runtime-utils/src/** ---
+  const runtimeUtilsDir = path.join('packages', 'runtime-utils', 'src');
+  const runtimeUtilsFiles = collectTsSourceFiles(runtimeUtilsDir);
+
+  for (const fpath of runtimeUtilsFiles) {
+    const source = fs.readFileSync(fpath, 'utf-8');
+    const specifiers = extractImportSpecifiers(source);
+    for (const spec of specifiers) {
+      if (isRelativeImport(spec)) continue;
+      if (spec === '@nexus/contracts' || spec.startsWith('@nexus/contracts/')) continue;
+      if (isApprovedNodeBuiltin(spec)) continue;
+      if (isApprovedExternalLib(spec, APPROVED_EXTERNAL_LIBS_RUNTIME_UTILS)) continue;
+
+      // Explicit check for prohibited implementation packages
+      const isProhibited = PROHIBITED_IMPL_PACKAGES.some(
+        pkg => spec === pkg || spec.startsWith(pkg + '/')
+      );
+      if (isProhibited) {
+        violations.push(
+          `  ${fpath}: PROHIBITED implementation-package import '${spec}' — ` +
+            'runtime-utils must not import from implementation packages'
+        );
+      } else {
+        violations.push(`  ${fpath}: disallowed import '${spec}'`);
+      }
+    }
+  }
+
+  if (violations.length > 0) {
+    fail(`Transport package boundary violations (§37.21):\n${violations.join('\n')}`);
+  }
+
+  return { vanguardFiles: vanguardFiles.length, runtimeUtilsFiles: runtimeUtilsFiles.length };
 }
 
 main().catch(err => {
