@@ -22,6 +22,40 @@ export async function logInboundResponse(
   trailWriter: RoutingTrailWriter,
   routingPolicyVersion: NonEmpty
 ): Promise<void> {
+  const dataClassification =
+    request.dataLabels.length > 0 ? resolveHighestDataClass(request.dataLabels) : DATA_CLASS.PUBLIC;
+
+  // §24.6 — write one trail entry per prior attempt before the final-outcome entry
+  if (invocation.priorAttempts) {
+    for (const attempt of invocation.priorAttempts) {
+      await trailWriter.append({
+        entryId: crypto.randomUUID(),
+        runId: request.runId,
+        correlationId,
+        direction: 'inbound',
+        actorId: request.actorId,
+        octLevel: request.octLevel,
+        dataClassification,
+        routingPolicyVersion,
+        modelTierSelected: null,
+        modelTierInvoked: null,
+        endpointId: attempt.endpointUsed,
+        adapterId: null,
+        modelName: null,
+        providerModelNameReturned: null,
+        denialCode: attempt.denialCode,
+        denialReason: attempt.reason,
+        fallbackApplied: false,
+        fallbackFromTier: null,
+        costMetrics: { requestCost: null, responseCost: null },
+        latencyMs: attempt.latencyMs,
+        responseSize: attempt.responseSize ?? null,
+        timestamp: attempt.attemptedAt,
+      });
+    }
+  }
+
+  // Final-outcome trail entry
   await trailWriter.append({
     entryId: crypto.randomUUID(),
     runId: request.runId,
@@ -29,10 +63,7 @@ export async function logInboundResponse(
     direction: 'inbound',
     actorId: request.actorId,
     octLevel: request.octLevel,
-    dataClassification:
-      request.dataLabels.length > 0
-        ? resolveHighestDataClass(request.dataLabels)
-        : DATA_CLASS.PUBLIC,
+    dataClassification,
     routingPolicyVersion,
     modelTierSelected: invocation.endpointUsed?.tier ?? null,
     modelTierInvoked: invocation.endpointUsed?.tier ?? null,
