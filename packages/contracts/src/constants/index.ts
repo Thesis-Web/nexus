@@ -232,6 +232,14 @@ export const DENIAL_CODE = {
   NVG_ENDPOINT_TIMEOUT: 'nvg_endpoint_timeout',
   NVG_ENDPOINT_UNREACHABLE: 'nvg_endpoint_unreachable',
   NVG_POLICY_SIG_INVALID: 'nvg_routing_policy_signature_invalid',
+  // ─── NISP-001.A Transport Denial Codes (§12.2, F-03) ───
+  NVG_TRANSPORT_UNKNOWN_ADAPTER: 'nvg_transport_unknown_adapter',
+  NVG_TRANSPORT_AUTH_MISSING: 'nvg_transport_auth_missing',
+  NVG_TRANSPORT_AUTH_FAILED: 'nvg_transport_auth_failed',
+  NVG_TRANSPORT_RATE_LIMITED: 'nvg_transport_rate_limited',
+  NVG_TRANSPORT_PROVIDER_ERROR: 'nvg_transport_provider_error',
+  NVG_TRANSPORT_PARSE_ERROR: 'nvg_transport_parse_error',
+  NVG_TRANSPORT_SECRET_SOURCE_ERROR: 'nvg_transport_secret_source_error',
 } as const;
 export type DenialCode = string;
 

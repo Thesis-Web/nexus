@@ -24,7 +24,8 @@
       "@nexus/cli": ["packages/interfaces/cli/src/index.ts"],
       "@nexus/api": ["packages/interfaces/api/src/server.ts"],
       "@nexus/adapter-mcp": ["packages/adapters/mcp/src/index.ts"],
-      "@nexus/connector-stub": ["packages/connectors/stub/stub.connector.ts"]
+      "@nexus/connector-stub": ["packages/connectors/stub/stub.connector.ts"],
+      "@nexus/runtime-utils": ["packages/runtime-utils/src/index.ts"]
     }
   },
   "include": [
@@ -34,6 +35,7 @@
     "packages/identity-ref/src/**/*.ts",
     "packages/adapters/*/src/**/*.ts",
     "packages/connectors/**/*.ts",
+    "packages/runtime-utils/src/**/*.ts",
     "packages/interfaces/*/src/**/*.ts",
     "scripts/**/*.ts"
   ],

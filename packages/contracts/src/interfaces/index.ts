@@ -3,6 +3,8 @@
 // Layer 2 — all interface contracts. Imports from types and constants only.
 
 import type { Uuid, IsoTimestamp, Sha256Hex, Base64Url, NonEmpty, SemVer } from '../types/index.js';
+import type { ModelEndpointAuth } from './model-endpoint-auth.js';
+import type { InvocationAttempt } from './invocation-attempt.js';
 
 import type {
   ActorClass,
@@ -908,8 +910,18 @@ export interface NvgRoutingRule {
 
 export interface ModelEndpoint {
   endpointId: NonEmpty;
-  tier: ModelTier;
+  tier: NonEmpty;
   url: NonEmpty;
+  /** §12.3.37 — which transport adapter wire-format family */
+  adapterId: NonEmpty;
+  /** Provider-side model identifier */
+  modelName: NonEmpty;
+  /** §12.3.38 — governed auth shape (discriminated by kind) */
+  auth: ModelEndpointAuth;
+  /** Per-endpoint timeout override in ms; default 30_000 */
+  timeoutMs?: number;
+  /** Per-adapter config, schema-validated at manifest load (§26.5 Step 6.5) */
+  adapterConfig?: Record<string, unknown>;
   healthy: boolean;
   lastCheckAt: IsoTimestamp;
 }
@@ -920,6 +932,10 @@ export interface ModelEndpointResponse {
   reason?: string;
   responseSize?: number;
   latencyMs?: number;
+  /** Opaque parsed provider response body — never inspected downstream (§13.7.1) */
+  opaqueProviderResponse?: unknown;
+  /** Provider-returned model identifier, version, or alias (§22.1) */
+  providerModelNameReturned?: NonEmpty;
 }
 
 export interface NvgInvocationResult {
@@ -931,6 +947,12 @@ export interface NvgInvocationResult {
   reason?: string;
   responseSize?: number;
   latencyMs?: number;
+  /** All same-tier + cross-tier failed attempts before final result (§12.3.44) */
+  priorAttempts?: InvocationAttempt[];
+  /** Opaque parsed provider response body — carried, never inspected (§13.7.1) */
+  opaqueProviderResponse?: unknown;
+  /** Provider-returned model identifier (§22.1) */
+  providerModelNameReturned?: NonEmpty;
 }
 
 export interface RoutingProvenanceTrailEntry {
@@ -944,6 +966,14 @@ export interface RoutingProvenanceTrailEntry {
   routingPolicyVersion: NonEmpty;
   modelTierSelected: ModelTier | null;
   modelTierInvoked: ModelTier | null;
+  /** Endpoint identity at event time (§22.1 — recorded at event time, not by mutable lookup) */
+  endpointId: NonEmpty | null;
+  /** Adapter wire-format family used */
+  adapterId: NonEmpty | null;
+  /** Provider-side model name from manifest */
+  modelName: NonEmpty | null;
+  /** Provider-returned model identifier, version, or alias */
+  providerModelNameReturned: NonEmpty | null;
   denialCode: DenialCode | null;
   denialReason: string | null;
   fallbackApplied: boolean;
@@ -1008,3 +1038,21 @@ export interface PipelineInterface {
     context: PipelineContext
   ): Promise<EvidenceRecord>;
 }
+
+// ─── NISP-001.A Transport Layer Re-exports (§12.3.37–§12.3.51) ───
+export type { AdapterConfigSchema } from './adapter-config-schema.js';
+export type { ModelEndpointAuth } from './model-endpoint-auth.js';
+export type { SecretSource } from './secret-source.js';
+export type { ModelTransportAdapterId, ModelTransportAdapter } from './transport-adapter.js';
+export type { SignedManifest } from './signed-manifest.js';
+export type { InvocationAttempt } from './invocation-attempt.js';
+export type {
+  ModelTransportAdapterRegistry,
+  NvgTransportContext,
+  IdentityProviderFactoryRegistry,
+  ConnectorFactoryRegistry,
+  ApprovalChannelFactoryRegistry,
+} from './transport-registries.js';
+export type { IdentityProviderFactory } from './identity-provider-factory.js';
+export type { ConnectorFactory } from './connector-factory.js';
+export type { ApprovalChannelFactory } from './approval-channel-factory.js';

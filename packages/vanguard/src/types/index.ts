@@ -50,6 +50,10 @@ export interface NvgNormalizedResponse {
   latencyMs: number;
   /** Timestamp of normalization */
   normalizedAt: IsoTimestamp;
+  /** Opaque model output — carried, never inspected by NVG (§13.7.1, drift D2) */
+  opaqueModelOutput?: unknown;
+  /** Provider-returned model identifier, version, or alias (§22.1, drift D2) */
+  providerModelNameReturned?: string;
 }
 
 // ── NVG Denial Context ──────────────────────────────────────────────────────

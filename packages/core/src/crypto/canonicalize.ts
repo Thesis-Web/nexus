@@ -1,43 +1,12 @@
 /**
- * Canonical serialization — spec §15.5
+ * Canonical serialization — thin re-export from @nexus/runtime-utils
  *
- * PROHIBITION: JSON.stringify(obj, Object.keys(obj).sort()) is PROHIBITED throughout
- * the codebase. All signature, hash, and fingerprint computation must use this function.
+ * Per §32a.0.1 (HOLE-S10-001 CLOSED, owner ratification S10-T3):
+ * Physical implementation lives in packages/runtime-utils/src/canonicalize.ts.
+ * This file re-exports for backward compatibility — all 20+ relative-path
+ * callers within packages/core/ continue to work unchanged.
  *
- * SOLVE-004: undefined is illegal in canonical payloads. Keys with undefined values
- * are stripped. Non-key undefined (array element, top-level) throws.
- *
- * Blueprint drift prevention: "do not let canonicalization for signing or hashing be non-recursive"
+ * @nexus/core export compatibility preserved: CLI and other external
+ * importers of { canonicalize } from '@nexus/core' continue to work.
  */
-export function canonicalize(val: unknown): string {
-  if (val === null) return 'null';
-  if (val === undefined) {
-    throw new TypeError(
-      'canonicalize: undefined is not a legal canonical value — use null or omit the field'
-    );
-  }
-  if (typeof val !== 'object') return JSON.stringify(val);
-  if (Array.isArray(val)) {
-    return (
-      '[' +
-      val
-        .map(v => {
-          if (v === undefined) {
-            throw new TypeError(
-              'canonicalize: undefined element in array — use null or remove the element'
-            );
-          }
-          return canonicalize(v);
-        })
-        .join(',') +
-      ']'
-    );
-  }
-  const obj = val as Record<string, unknown>;
-  // Strip keys whose value is undefined — they are not part of the canonical payload.
-  const keys = Object.keys(obj)
-    .filter(k => obj[k] !== undefined)
-    .sort();
-  const pairs = keys.map(k => JSON.stringify(k) + ':' + canonicalize(obj[k]!));
-  return '{' + pairs.join(',') + '}';
-}
+export { canonicalize } from '@nexus/runtime-utils';
