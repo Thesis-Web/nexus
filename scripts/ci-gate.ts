@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — all 19 steps in spec §6.4 order.
+ * Nexus CI Gate — all 20 steps in spec §6.4 order.
  *
  * Governing law:
  *   §6.4   — 19-step ci:gate sequence (F-02a)
@@ -855,6 +855,25 @@ async function main(): Promise<void> {
     `${boundaryResult.vanguardFiles} transport + ${boundaryResult.runtimeUtilsFiles} runtime-utils file(s) scanned`
   );
 
+  // -------------------------------------------------------------------------
+  // Step 20: seven-layer import-law gate — BOUNDARY-001 FIX
+  // Full package-boundary enforcement across all seven layers.
+  // Layer dependency: higher layers may import from lower, never reverse.
+  //   L2 (contracts):    no @nexus/*
+  //   L2 (runtime-utils): @nexus/contracts
+  //   L1 (core):          @nexus/contracts, @nexus/runtime-utils
+  //   L3 (vanguard):      @nexus/contracts, @nexus/runtime-utils
+  //   L4 (adapters/*):    @nexus/contracts
+  //   L5 (connectors/*):  @nexus/contracts
+  //   L6 (identity-ref):  @nexus/contracts
+  //   L7 (interfaces/*):  @nexus/contracts, @nexus/core (RAT-003), @nexus/adapter-mcp (serve)
+  // -------------------------------------------------------------------------
+  stepLog('seven-layer import-law gate');
+  const importLawResult = validateSevenLayerImportLaw();
+  pass(
+    `${importLawResult.filesScanned} source file(s) across ${importLawResult.packagesScanned} package(s) scanned`
+  );
+
   // POST-GATE: bin assertion — HOLE-001 Option A (owner approved)
   // Both nexus and nexus-mcp-proxy bins must be executable after pnpm build.
   // -------------------------------------------------------------------------
@@ -874,7 +893,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  console.log('\n=== ci:gate PASSED — all 19 steps ===\n');
+  console.log('\n=== ci:gate PASSED — all 20 steps ===\n');
 }
 
 // ===========================================================================
@@ -1339,6 +1358,141 @@ function validateTransportPackageBoundary(): { vanguardFiles: number; runtimeUti
   }
 
   return { vanguardFiles: vanguardFiles.length, runtimeUtilsFiles: runtimeUtilsFiles.length };
+}
+
+// ===========================================================================
+// Step 20 — Seven-layer import-law gate (BOUNDARY-001 FIX)
+// Enforces layer dependency law across ALL packages, not just transport.
+// ===========================================================================
+
+interface LayerRule {
+  /** Package directory relative to repo root */
+  dir: string;
+  /** Allowed @nexus/* package imports (self-imports always allowed) */
+  allowedNexus: string[];
+  /** Layer name for error messages */
+  layerName: string;
+  /** The package's own @nexus/* scope (self-imports are allowed) */
+  selfPackage: string;
+}
+
+const LAYER_RULES: LayerRule[] = [
+  {
+    dir: path.join('packages', 'contracts', 'src'),
+    allowedNexus: [],
+    layerName: 'L2 contracts',
+    selfPackage: '@nexus/contracts',
+  },
+  {
+    dir: path.join('packages', 'runtime-utils', 'src'),
+    allowedNexus: ['@nexus/contracts'],
+    layerName: 'L2 runtime-utils',
+    selfPackage: '@nexus/runtime-utils',
+  },
+  {
+    dir: path.join('packages', 'core', 'src'),
+    allowedNexus: ['@nexus/contracts', '@nexus/runtime-utils'],
+    layerName: 'L1 core',
+    selfPackage: '@nexus/core',
+  },
+  {
+    dir: path.join('packages', 'vanguard', 'src'),
+    allowedNexus: ['@nexus/contracts', '@nexus/runtime-utils'],
+    layerName: 'L3 vanguard',
+    selfPackage: '@nexus/vanguard',
+  },
+  {
+    dir: path.join('packages', 'adapters', 'mcp', 'src'),
+    allowedNexus: ['@nexus/contracts'],
+    layerName: 'L4 adapter-mcp',
+    selfPackage: '@nexus/adapter-mcp',
+  },
+  {
+    dir: path.join('packages', 'connectors', 'stub'),
+    allowedNexus: ['@nexus/contracts'],
+    layerName: 'L5 connector-stub',
+    selfPackage: '@nexus/connector-stub',
+  },
+  {
+    dir: path.join('packages', 'connectors', 'vault'),
+    allowedNexus: ['@nexus/contracts'],
+    layerName: 'L5 connector-vault',
+    selfPackage: '@nexus/connector-vault',
+  },
+  {
+    dir: path.join('packages', 'identity-ref', 'src'),
+    allowedNexus: ['@nexus/contracts'],
+    layerName: 'L6 identity-ref',
+    selfPackage: '@nexus/identity-ref',
+  },
+  {
+    dir: path.join('packages', 'interfaces', 'cli', 'src'),
+    allowedNexus: ['@nexus/contracts', '@nexus/core', '@nexus/adapter-mcp', '@nexus/api'],
+    layerName: 'L7 cli (RAT-003 + serve composition)',
+    selfPackage: '@nexus/cli',
+  },
+  {
+    dir: path.join('packages', 'interfaces', 'api', 'src'),
+    allowedNexus: ['@nexus/contracts', '@nexus/core'],
+    layerName: 'L7 api (RAT-003)',
+    selfPackage: '@nexus/api',
+  },
+];
+
+function isNexusScopedImport(specifier: string): boolean {
+  return specifier.startsWith('@nexus/');
+}
+
+function getNexusPackageName(specifier: string): string {
+  // '@nexus/contracts' from '@nexus/contracts/foo' → '@nexus/contracts'
+  const parts = specifier.split('/');
+  return parts.slice(0, 2).join('/');
+}
+
+function validateSevenLayerImportLaw(): {
+  filesScanned: number;
+  packagesScanned: number;
+} {
+  const violations: string[] = [];
+  let filesScanned = 0;
+  let packagesScanned = 0;
+
+  for (const rule of LAYER_RULES) {
+    if (!fs.existsSync(rule.dir)) continue;
+    packagesScanned++;
+    const files = collectTsSourceFiles(rule.dir);
+
+    for (const fpath of files) {
+      filesScanned++;
+      const source = fs.readFileSync(fpath, 'utf-8');
+      const specifiers = extractImportSpecifiers(source);
+
+      for (const spec of specifiers) {
+        if (isRelativeImport(spec)) continue;
+        if (!isNexusScopedImport(spec)) continue; // Non-@nexus imports handled by Step 19
+
+        const pkg = getNexusPackageName(spec);
+
+        // Self-import is always allowed
+        if (pkg === rule.selfPackage) continue;
+
+        // Check against allowed list
+        const allowed = rule.allowedNexus.some(a => pkg === a || spec.startsWith(a + '/'));
+        if (!allowed) {
+          violations.push(
+            `  ${fpath} (${rule.layerName}): imports '${spec}' — ` +
+              `only ${rule.allowedNexus.length > 0 ? rule.allowedNexus.join(', ') : 'no @nexus/*'} allowed`
+          );
+        }
+      }
+    }
+  }
+
+  if (violations.length > 0) {
+    fail(`Seven-layer import-law violations (BOUNDARY-001):\n${violations.join('\n')}`);
+  }
+
+  return { filesScanned, packagesScanned };
 }
 
 main().catch(err => {
