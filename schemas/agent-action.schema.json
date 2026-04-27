@@ -2,10 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "nexus/agent-action",
   "title": "AgentAction",
-  "description": "Spec §10.3.5 — agent action as normalized at adapter ingress",
+  "description": "Spec \u00a710.3.5 \u2014 agent action as normalized at adapter ingress",
   "type": "object",
   "required": [
     "actionId",
+    "runId",
     "receivedAt",
     "protocol",
     "adapterVersion",
@@ -17,6 +18,7 @@
     "tool",
     "rawVerb",
     "rawTarget",
+    "rawPayload",
     "intent",
     "resolvedVerb",
     "resolvedCapability",
@@ -26,6 +28,10 @@
   ],
   "properties": {
     "actionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "runId": {
       "type": "string",
       "format": "uuid"
     },
@@ -72,6 +78,41 @@
     "rawTarget": {
       "type": "string",
       "minLength": 1
+    },
+    "rawPayload": {
+      "description": "Opaque adapter payload \u2014 never stored in evidence"
+    },
+    "intent": {
+      "type": "object",
+      "description": "IntentContext \u2014 \u00a712.3.6",
+      "required": ["objectiveSummary", "triggeringSource", "toolchainContext", "extractedAt"],
+      "properties": {
+        "objectiveSummary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "triggeringSource": {
+          "type": "string",
+          "minLength": 1
+        },
+        "toolchainContext": {
+          "type": "string",
+          "minLength": 1
+        },
+        "modelId": {
+          "type": ["string", "null"]
+        },
+        "modelConfidence": {
+          "type": ["number", "null"]
+        },
+        "riskNote": {
+          "type": ["string", "null"]
+        },
+        "extractedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
     },
     "resolvedVerb": {
       "type": ["string", "null"]

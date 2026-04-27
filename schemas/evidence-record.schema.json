@@ -2,12 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "nexus/evidence-record",
   "title": "EvidenceRecord",
-  "description": "Spec §10.3.20 — tamper-evident signed hash-chained evidence record",
+  "description": "Spec \u00a710.3.20 \u2014 tamper-evident signed hash-chained evidence record",
   "type": "object",
   "required": [
     "recordId",
     "actionId",
     "sessionId",
+    "runId",
     "ledgerSequence",
     "actionSummary",
     "intentEvidence",
@@ -17,6 +18,8 @@
     "policyOutcome",
     "approvalRequest",
     "approvalResponse",
+    "approvalRequired",
+    "approvalDecisionLabel",
     "grantMetadata",
     "executionResult",
     "finalOutcome",
@@ -72,7 +75,7 @@
     },
     "compilerView": {
       "type": "object",
-      "description": "CompilerComparisonView §14.1 — inside signed body"
+      "description": "CompilerComparisonView \u00a714.1 \u2014 inside signed body"
     },
     "gateDecisions": {
       "type": "array"
@@ -112,6 +115,34 @@
       "not": {
         "required": ["secretValue"]
       }
+    },
+    "runId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "intentEvidence": {
+      "type": "object",
+      "description": "IntentEvidence \u2014 \u00a712.3.17"
+    },
+    "delegationContextSnapshot": {
+      "type": "object",
+      "description": "DelegationContextSnapshot \u2014 \u00a712.3.18"
+    },
+    "policyRuleId": {
+      "type": "string",
+      "description": "Policy rule ID or EVIDENCE_SENTINEL"
+    },
+    "policyOutcome": {
+      "type": "string",
+      "description": "OutcomeLabel or EVIDENCE_SENTINEL"
+    },
+    "approvalRequired": {
+      "type": ["boolean", "string"],
+      "description": "boolean or EVIDENCE_SENTINEL"
+    },
+    "approvalDecisionLabel": {
+      "type": "string",
+      "description": "ApprovalDecisionLabel or EVIDENCE_SENTINEL"
     }
   },
   "additionalProperties": true

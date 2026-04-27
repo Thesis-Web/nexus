@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "nexus/approval-request",
   "title": "ApprovalRequest",
-  "description": "Spec §10.3.11",
+  "description": "Spec \u00a710.3.11",
   "type": "object",
   "required": [
     "approvalId",
@@ -83,6 +83,30 @@
     "signature": {
       "type": "string",
       "minLength": 1
+    },
+    "proposedTarget": {
+      "type": "object",
+      "description": "ResourceTarget \u2014 \u00a712.3.8",
+      "required": ["system", "resourceType", "resourceScope", "environment", "externalFacing"],
+      "properties": {
+        "system": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceScope": {
+          "enum": ["single", "bulk", "collection", "system"]
+        },
+        "environment": {
+          "type": "string"
+        },
+        "externalFacing": {
+          "type": "boolean"
+        }
+      }
     }
   },
   "additionalProperties": false

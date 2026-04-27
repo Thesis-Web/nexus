@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "nexus/execution-grant",
   "title": "ExecutionGrant",
-  "description": "Spec §10.3.13 — note: secretValue is NOT on this schema; WeakMap only",
+  "description": "Spec \u00a710.3.13 \u2014 note: secretValue is NOT on this schema; WeakMap only",
   "type": "object",
   "required": [
     "grantId",
@@ -56,6 +56,39 @@
     "signature": {
       "type": "string",
       "minLength": 1
+    },
+    "credentialSubject": {
+      "type": "object",
+      "description": "CredentialSubject \u2014 \u00a712.3.13",
+      "required": ["type", "identifier"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "identifier": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "resourceBounds": {
+      "type": "object",
+      "description": "ResourceBounds \u2014 \u00a712.3.8",
+      "required": ["system", "resourceType", "resourceScope"],
+      "properties": {
+        "system": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceScope": {
+          "enum": ["single", "bulk", "collection", "system"]
+        }
+      }
     }
   },
   "not": {
