@@ -79,6 +79,34 @@ export async function verifyChain(
     expectedSeq++;
   }
 
+  // ─── Range completeness check (CHAIN-001) ─────────────────────────────────
+  // A missing or corrupted terminal record must not silently pass.
+  const expectedCount = toSeq - fromSeq + 1;
+  if (records.length !== expectedCount) {
+    errors.push({
+      seq: toSeq,
+      type: 'sequence_anomaly',
+      denialCode: DENIAL_CODE.SEQUENCE_ANOMALY,
+      detail: `Range incomplete: expected ${expectedCount} records (${fromSeq}–${toSeq}), got ${records.length}`,
+    });
+  }
+  if (records.length > 0 && records[0]!.ledgerSequence !== fromSeq) {
+    errors.push({
+      seq: records[0]!.ledgerSequence,
+      type: 'sequence_anomaly',
+      denialCode: DENIAL_CODE.SEQUENCE_ANOMALY,
+      detail: `First record sequence is ${records[0]!.ledgerSequence}, expected ${fromSeq}`,
+    });
+  }
+  if (records.length > 0 && records[records.length - 1]!.ledgerSequence !== toSeq) {
+    errors.push({
+      seq: records[records.length - 1]!.ledgerSequence,
+      type: 'sequence_anomaly',
+      denialCode: DENIAL_CODE.SEQUENCE_ANOMALY,
+      detail: `Last record sequence is ${records[records.length - 1]!.ledgerSequence}, expected ${toSeq}`,
+    });
+  }
+
   return {
     ok: errors.length === 0,
     checkedFrom: fromSeq,
