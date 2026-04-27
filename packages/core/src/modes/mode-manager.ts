@@ -135,17 +135,19 @@ export async function disableEnforcingLock(
   primaryAdminId: NonEmpty,
   primaryAdminKeypair: KeyPair,
   runLedger: RunLedgerWriter,
-  minRequired: number = 2
+  minRequired: number = 2,
+  requestedAt: IsoTimestamp = nowIso() as IsoTimestamp // MODE-003 FIX: caller-provided for multi-party
 ): Promise<ModeConfiguration> {
   if (adminSignatures.length < minRequired) {
     throw new Error('MULTI_PARTY_REQUIRED: need ' + minRequired + ' admin signatures');
   }
 
   // Verify each admin signature over canonical unlock-request payload
+  // MODE-003 FIX: use caller-provided requestedAt so all parties sign the same payload
   const unlockPayload = canonicalize({
     action: 'disable_enforcing_lock',
     configSignature: currentConfig.signature,
-    requestedAt: nowIso(),
+    requestedAt,
   });
   for (const sig of adminSignatures) {
     const adminKey = await loadAdminPublicKey(sig.adminId);

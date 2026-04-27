@@ -48,7 +48,12 @@ export async function cmdModeSet(opts: { engine: string; mode: string }): Promis
   try {
     currentConfig = await loadModeConfig(MODE_CONFIG_PATH);
   } catch {
-    // No config exists — create default first
+    // MODE-002 FIX: warn instead of silently creating default config
+    console.warn(
+      '⚠ No mode configuration found at ' +
+        MODE_CONFIG_PATH +
+        '. Creating default observe/observe/unlocked.'
+    );
     currentConfig = await createDefaultModeConfig(adminId, adminKeypair);
     await saveModeConfig(currentConfig, MODE_CONFIG_PATH);
   }
