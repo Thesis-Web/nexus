@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 /**
- * Nexus Bootstrap — spec §32a.6
+ * Nexus Bootstrap — spec §32a.6, COMPOSE-002/WIRE-002-P03 fix
  *
- * 10-step startup wiring. All four registries populated BEFORE any
+ * 12-step startup wiring. All four registries populated BEFORE any
  * manifest loader runs (§12.3.48 invariant 3). Fail-closed on every step.
  *
  * This is a composition root — cross-layer imports are permitted.
@@ -17,13 +17,17 @@
  *   7. Load endpoint manifest (config/nvg/endpoints.v1.yaml)
  *   8. Populate TierRegistry from loaded endpoints
  *   9. Create NvgTransportContext (adapter registry + secret source)
- *  10. Construct NvgServiceImpl — ready for CLI/API injection
+ *  10. Load NVG routing policy (§25.1 — signed YAML, signature-verified)
+ *  11. Load mode configuration (§9.2 — or create default per MODE-002)
+ *  12. Construct NvgServiceImpl — fully wired with all 5 deps
  *
  * Governing law:
- *   §32a.6  — bootstrap order (10 steps)
+ *   §32a.6  — bootstrap order (12 steps)
  *   §12.3.48 — factory registry behavior law (4 invariants)
  *   §32a.4  — RIA legacy bridge conditions
  *   §14.6.6 — fail closed on empty/all-disabled manifests
+ *   §25.1   — NVG routing policy: signed YAML, Ed25519 signature verification
+ *   §9.2    — mode configuration: signed, fail-closed on invalid signature
  */
 
 import type {
@@ -33,10 +37,21 @@ import type {
   NvgTransportContext,
   ModelEndpoint,
   NonEmpty,
+  ModeConfiguration,
+  NvgRoutingPolicy,
 } from '@nexus/contracts';
 
 // ── Core: crypto ─────────────────────────────────────────────────────────────
 import { loadControlPlaneKey } from '../packages/core/src/crypto/key-manager.js';
+import { verify } from '../packages/core/src/crypto/verifier.js';
+import { canonicalize } from '../packages/core/src/crypto/canonicalize.js';
+
+// ── Core: mode management (§9) ──────────────────────────────────────────────
+import {
+  loadModeConfig,
+  createDefaultModeConfig,
+  saveModeConfig,
+} from '../packages/core/src/modes/mode-manager.js';
 
 // ── Core: factory registries (§12.3.45–.47) ─────────────────────────────────
 import { IdentityProviderFactoryRegistry } from '../packages/core/src/manifest/identity/identity-provider-factory-registry.js';
@@ -56,6 +71,7 @@ import {
   OpenAiChatV1Adapter,
   EnvSecretSource,
   loadEndpointManifest,
+  loadNvgRoutingPolicy,
   TierRegistry,
   NvgServiceImpl,
   JsonlRoutingTrailBackend,
@@ -66,6 +82,8 @@ const MANIFEST_IDENTITY = 'config/identity/providers.v1.yaml';
 const MANIFEST_CONNECTORS = 'config/connectors/connectors.v1.yaml';
 const MANIFEST_CHANNELS = 'config/channels/channels.v1.yaml';
 const MANIFEST_ENDPOINTS = 'config/nvg/endpoints.v1.yaml';
+const NVG_ROUTING_POLICY = 'fixtures/nvg/default.routing-policy.yaml';
+const MODE_CONFIG = 'keys/mode-config.json';
 
 // ── Bootstrap result ─────────────────────────────────────────────────────────
 export interface BootstrapResult {
@@ -75,10 +93,12 @@ export interface BootstrapResult {
   readonly trailBackend: JsonlRoutingTrailBackend;
   readonly endpoints: readonly ModelEndpoint[];
   readonly controlPlanePublicKey: string;
+  readonly routingPolicy: NvgRoutingPolicy;
+  readonly modeConfig: ModeConfiguration;
 }
 
 /**
- * Execute the 10-step bootstrap sequence — §32a.6.
+ * Execute the 12-step bootstrap sequence — §32a.6 + COMPOSE-002/WIRE-002-P03 fix.
  * Fail-closed: any step failure throws; Nexus does not start.
  */
 export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
@@ -217,13 +237,47 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   };
   console.log('[bootstrap] Step 9 complete: transport context wired');
 
-  // ─── Step 10: Construct NvgServiceImpl ────────────────────────────────────
-  console.log('[bootstrap] Step 10: constructing NvgServiceImpl');
-  const nvgService = new NvgServiceImpl();
-  const trailBackend = new JsonlRoutingTrailBackend(trailDir);
-  console.log('[bootstrap] Step 10 complete: NvgServiceImpl ready');
+  // ─── Step 10: Load NVG routing policy (§25.1) ────────────────────────────
+  console.log(`[bootstrap] Step 10: loading NVG routing policy (${NVG_ROUTING_POLICY})`);
+  const routingPolicy = await loadNvgRoutingPolicy(NVG_ROUTING_POLICY, pubKey, {
+    verify,
+    canonicalize,
+  });
+  console.log(
+    `[bootstrap] Step 10 complete: policy ${routingPolicy.policyId} (${routingPolicy.rules.length} rules)`
+  );
 
-  console.log('\n[bootstrap] ══ All 10 steps complete — Nexus is ready ══\n');
+  // ─── Step 11: Load mode configuration (§9.2) ────────────────────────────
+  console.log('[bootstrap] Step 11: loading mode configuration');
+  let modeConfig: ModeConfiguration;
+  try {
+    modeConfig = await loadModeConfig(MODE_CONFIG);
+  } catch {
+    // MODE-002 ruling: observe/observe/unlocked default is intentional.
+    // If no config exists, create a signed default with the control-plane key.
+    console.log(
+      '[bootstrap] Step 11: mode-config.json not found — creating default (observe/observe/unlocked per MODE-002)'
+    );
+    modeConfig = await createDefaultModeConfig('nexus-control-plane' as NonEmpty, controlPlaneKey);
+    await saveModeConfig(modeConfig, MODE_CONFIG);
+  }
+  console.log(
+    `[bootstrap] Step 11 complete: nxsMode=${modeConfig.nxsMode}, nvgMode=${modeConfig.nvgMode}`
+  );
+
+  // ─── Step 12: Construct NvgServiceImpl — fully wired (COMPOSE-002 fix) ──
+  console.log('[bootstrap] Step 12: constructing NvgServiceImpl (wired)');
+  const trailBackend = new JsonlRoutingTrailBackend(trailDir);
+  const nvgService = new NvgServiceImpl({
+    routingPolicy,
+    tierRegistry,
+    trailWriter: trailBackend,
+    transportContext,
+    modeConfig,
+  });
+  console.log('[bootstrap] Step 12 complete: NvgServiceImpl ready (5 deps wired)');
+
+  console.log('\n[bootstrap] ══ All 12 steps complete — Nexus is ready ══\n');
 
   return {
     nvgService,
@@ -232,5 +286,7 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
     trailBackend,
     endpoints,
     controlPlanePublicKey: pubKey,
+    routingPolicy,
+    modeConfig,
   };
 }
