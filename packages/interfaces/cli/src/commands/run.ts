@@ -119,7 +119,7 @@ export async function cmdRun(opts: RunOptions): Promise<void> {
     console.error(`✗ Unknown scenario: ${opts.scenario}`);
     process.exit(1);
   }
-  const runId = 'RUN-' + crypto.randomUUID().slice(0, 8).toUpperCase();
+  const runId = crypto.randomUUID();
   const outDir = path.resolve(opts.outDir ?? path.join('runs', runId));
   await fs.mkdir(outDir, { recursive: true });
   console.log(`Starting run ${runId} → ${outDir}`);

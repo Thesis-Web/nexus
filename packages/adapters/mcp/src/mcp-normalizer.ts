@@ -249,7 +249,7 @@ export class McpAdapter implements Adapter {
       resolvedRiskTier: null;
     } = {
       actionId: newUuid() as Uuid,
-      runId: newUuid() as Uuid,
+      runId: (extractHeader(mcp, 'X-Nexus-Run-Id') ?? newUuid()) as Uuid,
       receivedAt: nowIso(),
       protocol: ADAPTER_PROTOCOL,
       adapterVersion: ADAPTER_VERSION,
