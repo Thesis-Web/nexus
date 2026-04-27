@@ -23,6 +23,7 @@ function makeRequest(toolName: string) {
       'x-nexus-principal-id': 'principal-001',
       'x-nexus-session-id': 'session-001',
       'x-nexus-delegation-id': 'delegation-001',
+      'x-nexus-run-id': 'run-001',
     },
   };
 }
@@ -188,6 +189,26 @@ describe('MCP Normalizer — verb prefix map', () => {
     if (r.ok) {
       expect(r.action.intent.objectiveSummary).not.toContain('fallback-default');
     }
+  });
+
+  it('rejects missing X-Nexus-Run-Id header — workspace must assign runId (ADAPTER-001)', async () => {
+    const r = await adapter.normalize({
+      method: 'get_users',
+      headers: {
+        'x-nexus-actor-id': 'actor-001',
+        'x-nexus-principal-id': 'principal-001',
+        'x-nexus-session-id': 'session-001',
+        'x-nexus-delegation-id': 'delegation-001',
+      },
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok === false) expect(r.error).toContain('X-Nexus-Run-Id');
+  });
+
+  it('preserves workspace-assigned runId from X-Nexus-Run-Id header (ADAPTER-001)', async () => {
+    const r = await adapter.normalize(makeRequest('get_users'));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.action.runId).toBe('run-001');
   });
 
   it('execute_ prefix is a positive match, not a fallback', async () => {

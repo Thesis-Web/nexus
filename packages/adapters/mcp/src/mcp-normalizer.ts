@@ -232,6 +232,12 @@ export class McpAdapter implements Adapter {
       ) as NonEmpty;
     }
 
+    // ADAPTER-001 FIX: workspace must assign runId — adapter never generates it
+    const workspaceRunId = extractHeader(mcp, 'X-Nexus-Run-Id');
+    if (workspaceRunId === undefined || workspaceRunId === null || workspaceRunId === '') {
+      return { ok: false, error: 'Missing X-Nexus-Run-Id header — workspace must assign runId' };
+    }
+
     // Build the AgentAction with all classification fields null (Gate 02 resolves)
     // delegationSequence is assigned by the pipeline at ingress — never by the adapter
     const action: Omit<
@@ -249,7 +255,7 @@ export class McpAdapter implements Adapter {
       resolvedRiskTier: null;
     } = {
       actionId: newUuid() as Uuid,
-      runId: (extractHeader(mcp, 'X-Nexus-Run-Id') ?? newUuid()) as Uuid,
+      runId: workspaceRunId as Uuid,
       receivedAt: nowIso(),
       protocol: ADAPTER_PROTOCOL,
       adapterVersion: ADAPTER_VERSION,
