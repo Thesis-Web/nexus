@@ -106,6 +106,46 @@ export class IdentityGate implements Gate {
       );
     }
 
+    // ─── Tuple binding enforcement (§4.1 owner ruling: DEF-GATE01-001) ────────
+    // Every leg of the identity tuple must be coherent. A session created with
+    // mismatched actor/principal/delegation is caught here at runtime even if
+    // session-creation routes were loose.
+    if (session.actorId !== action.actorId) {
+      return gateDeny(
+        DENIAL_CODE.SESSION_ACTOR_MISMATCH,
+        'session.actorId does not match action.actorId',
+        startMs
+      );
+    }
+    if (session.principalId !== action.principalId) {
+      return gateDeny(
+        DENIAL_CODE.SESSION_PRINCIPAL_MISMATCH,
+        'session.principalId does not match action.principalId',
+        startMs
+      );
+    }
+    if (session.delegationId !== action.delegationId) {
+      return gateDeny(
+        DENIAL_CODE.SESSION_DELEGATION_MISMATCH,
+        'session.delegationId does not match action.delegationId',
+        startMs
+      );
+    }
+    if (delegationContext.actorId !== action.actorId) {
+      return gateDeny(
+        DENIAL_CODE.DELEGATION_ACTOR_MISMATCH,
+        'delegation.actorId does not match action.actorId',
+        startMs
+      );
+    }
+    if (delegationContext.principalId !== action.principalId) {
+      return gateDeny(
+        DENIAL_CODE.DELEGATION_PRINCIPAL_MISMATCH,
+        'delegation.principalId does not match action.principalId',
+        startMs
+      );
+    }
+
     // Write the full identity tuple into context — downstream gates use non-null assertions.
     context.actor = actor;
     context.principal = principal;

@@ -237,6 +237,43 @@ describe('Gate 01 — Identity', () => {
     expect(result.decision.denialCode).toBe(DENIAL_CODE.CHAIN_INTEGRITY_BROKEN);
   });
 
+  // ─── Tuple binding tests (DEF-GATE01-001) ──────────────────────────────────
+
+  it('denies SESSION_ACTOR_MISMATCH when session.actorId != action.actorId', async () => {
+    const { gate } = makeGate({ session: { ...SESSION, actorId: 'other-actor' } });
+    const result = await gate.evaluate(ACTION, makeContext(), []);
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.SESSION_ACTOR_MISMATCH);
+  });
+
+  it('denies SESSION_PRINCIPAL_MISMATCH when session.principalId != action.principalId', async () => {
+    const { gate } = makeGate({ session: { ...SESSION, principalId: 'other-principal' } });
+    const result = await gate.evaluate(ACTION, makeContext(), []);
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.SESSION_PRINCIPAL_MISMATCH);
+  });
+
+  it('denies SESSION_DELEGATION_MISMATCH when session.delegationId != action.delegationId', async () => {
+    const { gate } = makeGate({ session: { ...SESSION, delegationId: 'other-delegation' } });
+    const result = await gate.evaluate(ACTION, makeContext(), []);
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.SESSION_DELEGATION_MISMATCH);
+  });
+
+  it('denies DELEGATION_ACTOR_MISMATCH when delegation.actorId != action.actorId', async () => {
+    const { gate } = makeGate({ delegation: { ...DELEGATION, actorId: 'other-actor' } });
+    const result = await gate.evaluate(ACTION, makeContext(), []);
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.DELEGATION_ACTOR_MISMATCH);
+  });
+
+  it('denies DELEGATION_PRINCIPAL_MISMATCH when delegation.principalId != action.principalId', async () => {
+    const { gate } = makeGate({ delegation: { ...DELEGATION, principalId: 'other-principal' } });
+    const result = await gate.evaluate(ACTION, makeContext(), []);
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.DELEGATION_PRINCIPAL_MISMATCH);
+  });
+
   it('has gateId gate_01_identity, gateOrder 1, plane control', () => {
     const { gate } = makeGate({});
     expect(gate.gateId).toBe('gate_01_identity');

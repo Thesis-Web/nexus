@@ -21,6 +21,7 @@ import {
   type DelegationStore,
   type KeyPair,
   type Actor,
+  type Principal,
 } from '../types/index.js';
 import { nowIso, addSeconds } from '../utils/time.js';
 
@@ -73,6 +74,17 @@ function makeSubagentActor(actorId: string, principalId: string): Actor {
     octLevel: 'OCT-OPEN' as any,
     allowedSystems: ['vault'],
     registeredAt: nowIso(),
+  };
+}
+
+function makePrincipal(principalId: string): Principal {
+  return {
+    principalId,
+    displayName: 'test-principal',
+    email: 'test@example.com',
+    registeredAt: nowIso(),
+    maxDelegableRiskTier: RISK_TIER.MEDIUM,
+    allowedSystems: ['vault'],
   };
 }
 
@@ -132,10 +144,19 @@ describe('Threat: Delegation Expansion (spec §13.4, §7.3)', () => {
       delegationContext: dc,
       delegationStore: makeStore(dc),
       actor: makeSubagentActor(dc.actorId, dc.principalId),
+      principal: makePrincipal(dc.principalId),
     };
 
     const gate = new DelegationGate(controlPlanePair);
-    const result = await gate.evaluate(makeAction(), context as PipelineContext, []);
+    const result = await gate.evaluate(
+      makeAction({
+        actorId: dc.actorId,
+        principalId: dc.principalId,
+        delegationId: dc.delegationId,
+      }),
+      context as PipelineContext,
+      []
+    );
 
     expect(result.decision.outcome).toBe('deny');
     expect(result.decision.denialCode).toBe(DENIAL_CODE.CHAIN_DEPTH_EXCEEDED);
@@ -154,10 +175,16 @@ describe('Threat: Delegation Expansion (spec §13.4, §7.3)', () => {
       delegationContext: dc,
       delegationStore: makeStore(dc),
       actor: makeSubagentActor(dc.actorId, dc.principalId),
+      principal: makePrincipal(dc.principalId),
     };
 
     const gate = new DelegationGate(controlPlanePair);
-    const action = makeAction({ resolvedCapability: 'create:record:internal' });
+    const action = makeAction({
+      actorId: dc.actorId,
+      principalId: dc.principalId,
+      delegationId: dc.delegationId,
+      resolvedCapability: 'create:record:internal',
+    });
     const result = await gate.evaluate(action, context as PipelineContext, []);
 
     expect(result.decision.outcome).toBe('deny');
@@ -182,10 +209,19 @@ describe('Threat: Delegation Expansion (spec §13.4, §7.3)', () => {
         allowedSystems: ['vault'],
         registeredAt: nowIso(),
       },
+      principal: makePrincipal(dc.principalId),
     };
 
     const gate = new DelegationGate(controlPlanePair);
-    const result = await gate.evaluate(makeAction(), context as PipelineContext, []);
+    const result = await gate.evaluate(
+      makeAction({
+        actorId: dc.actorId,
+        principalId: dc.principalId,
+        delegationId: dc.delegationId,
+      }),
+      context as PipelineContext,
+      []
+    );
 
     // Should not be CHAIN_DEPTH_EXCEEDED — that check is DELEGATED_SUBAGENT only
     expect(result.decision.denialCode).not.toBe(DENIAL_CODE.CHAIN_DEPTH_EXCEEDED);

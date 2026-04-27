@@ -62,6 +62,30 @@ export class DelegationGate implements Gate {
       return deny(DENIAL_CODE.DELEGATION_EXPIRED, 'delegation expired', startMs);
     }
 
+    // ─── Delegation-to-context binding (§4.1 owner ruling: DEF-GATE03-001) ───
+    // The live DelegationContext must bind to the already-resolved Gate 01 identity.
+    if (dc.actorId !== context.actor!.actorId) {
+      return deny(
+        DENIAL_CODE.DELEGATION_ACTOR_MISMATCH,
+        'delegation.actorId does not match resolved actor',
+        startMs
+      );
+    }
+    if (dc.principalId !== context.principal!.principalId) {
+      return deny(
+        DENIAL_CODE.DELEGATION_PRINCIPAL_MISMATCH,
+        'delegation.principalId does not match resolved principal',
+        startMs
+      );
+    }
+    if (dc.delegationId !== action.delegationId) {
+      return deny(
+        DENIAL_CODE.CHAIN_INTEGRITY_BROKEN,
+        'delegation.delegationId does not match action.delegationId',
+        startMs
+      );
+    }
+
     if (!dc.allowedCapabilities.includes(action.resolvedCapability!)) {
       return deny(
         DENIAL_CODE.CAPABILITY_NOT_IN_DELEGATION,

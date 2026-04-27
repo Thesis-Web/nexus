@@ -187,6 +187,11 @@ export const DENIAL_CODE = {
   PRINCIPAL_NOT_RESOLVABLE: 'principal_not_resolvable',
   ACTOR_PRINCIPAL_MISMATCH: 'actor_principal_mismatch',
   NON_HUMAN_ACTOR_INCOMPLETE: 'non_human_actor_incomplete_registry',
+  SESSION_ACTOR_MISMATCH: 'session_actor_mismatch',
+  SESSION_PRINCIPAL_MISMATCH: 'session_principal_mismatch',
+  SESSION_DELEGATION_MISMATCH: 'session_delegation_mismatch',
+  DELEGATION_ACTOR_MISMATCH: 'delegation_actor_mismatch',
+  DELEGATION_PRINCIPAL_MISMATCH: 'delegation_principal_mismatch',
   // Gate 02
   UNRESOLVABLE_VERB: 'unresolvable_action_verb',
   UNRESOLVABLE_TARGET: 'unresolvable_target',

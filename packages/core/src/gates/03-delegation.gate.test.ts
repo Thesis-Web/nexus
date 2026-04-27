@@ -20,6 +20,7 @@ import {
   type DelegationStore,
   type KeyPair,
   type Actor,
+  type Principal,
 } from '../types/index.js';
 
 // ─── keypair: loaded ONCE in beforeAll — MUST be awaited ─────────────────────
@@ -78,6 +79,17 @@ function makeActor(actorId: string, principalId: string): Actor {
   };
 }
 
+function makePrincipal(principalId: string): Principal {
+  return {
+    principalId,
+    displayName: 'test-principal',
+    email: 'test@example.com',
+    registeredAt: nowIso(),
+    maxDelegableRiskTier: RISK_TIER.HIGH,
+    allowedSystems: ['vault'],
+  };
+}
+
 function makeAction(overrides: Partial<AgentAction> = {}): AgentAction {
   return {
     actionId: randomUUID(),
@@ -125,6 +137,7 @@ function makeContext(dc: DelegationContext, store?: DelegationStore): Partial<Pi
     delegationContext: dc,
     delegationStore: store ?? makeStore(dc),
     actor: makeActor(dc.actorId, dc.principalId),
+    principal: makePrincipal(dc.principalId),
   } as Partial<PipelineContext>;
 }
 
@@ -142,6 +155,9 @@ describe('Gate 03 — Delegation', () => {
     const dc = await makeSignedDelegation();
     const gate = new DelegationGate(controlPlanePair);
     const action = makeAction({
+      actorId: dc.actorId,
+      principalId: dc.principalId,
+      delegationId: dc.delegationId,
       resolvedCapability: 'read:record:single',
       resolvedTarget: {
         system: 'vault',
@@ -187,7 +203,12 @@ describe('Gate 03 — Delegation', () => {
   it('denies CAPABILITY_NOT_IN_DELEGATION when capability not allowed', async () => {
     const dc = await makeSignedDelegation({ allowedCapabilities: ['create:record:internal'] });
     const gate = new DelegationGate(controlPlanePair);
-    const action = makeAction({ resolvedCapability: 'read:record:single' });
+    const action = makeAction({
+      actorId: dc.actorId,
+      principalId: dc.principalId,
+      delegationId: dc.delegationId,
+      resolvedCapability: 'read:record:single',
+    });
 
     const result = await gate.evaluate(action, makeContext(dc) as PipelineContext, []);
 
@@ -199,6 +220,9 @@ describe('Gate 03 — Delegation', () => {
     const dc = await makeSignedDelegation({ allowedSystems: ['other-system'] });
     const gate = new DelegationGate(controlPlanePair);
     const action = makeAction({
+      actorId: dc.actorId,
+      principalId: dc.principalId,
+      delegationId: dc.delegationId,
       resolvedCapability: 'read:record:single',
       resolvedTarget: {
         system: 'vault',
@@ -220,6 +244,9 @@ describe('Gate 03 — Delegation', () => {
     const dc = await makeSignedDelegation({ environment: 'production' });
     const gate = new DelegationGate(controlPlanePair);
     const action = makeAction({
+      actorId: dc.actorId,
+      principalId: dc.principalId,
+      delegationId: dc.delegationId,
       resolvedCapability: 'read:record:single',
       resolvedTarget: {
         system: 'vault',
@@ -234,6 +261,92 @@ describe('Gate 03 — Delegation', () => {
 
     expect(result.decision.outcome).toBe('deny');
     expect(result.decision.denialCode).toBe(DENIAL_CODE.ENVIRONMENT_MISMATCH);
+  });
+
+  // ─── Delegation-to-context binding tests (DEF-GATE03-001) ──────────────────
+
+  it('denies DELEGATION_ACTOR_MISMATCH when dc.actorId != resolved actor', async () => {
+    const dc = await makeSignedDelegation();
+    const gate = new DelegationGate(controlPlanePair);
+    const action = makeAction({
+      actorId: dc.actorId,
+      principalId: dc.principalId,
+      delegationId: dc.delegationId,
+      resolvedCapability: 'read:record:single',
+      resolvedTarget: {
+        system: 'vault',
+        resourceType: 'secret',
+        resourceScope: 'single',
+        environment: 'dev',
+        externalFacing: false,
+      },
+      resolvedRiskTier: RISK_TIER.LOW,
+    });
+    // Context with a DIFFERENT actor than delegation expects
+    const ctx = {
+      delegationContext: dc,
+      delegationStore: makeStore(dc),
+      actor: makeActor('mismatched-actor-id', dc.principalId),
+      principal: makePrincipal(dc.principalId),
+    } as unknown as PipelineContext;
+
+    const result = await gate.evaluate(action, ctx, []);
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.DELEGATION_ACTOR_MISMATCH);
+  });
+
+  it('denies DELEGATION_PRINCIPAL_MISMATCH when dc.principalId != resolved principal', async () => {
+    const dc = await makeSignedDelegation();
+    const gate = new DelegationGate(controlPlanePair);
+    const action = makeAction({
+      actorId: dc.actorId,
+      principalId: dc.principalId,
+      delegationId: dc.delegationId,
+      resolvedCapability: 'read:record:single',
+      resolvedTarget: {
+        system: 'vault',
+        resourceType: 'secret',
+        resourceScope: 'single',
+        environment: 'dev',
+        externalFacing: false,
+      },
+      resolvedRiskTier: RISK_TIER.LOW,
+    });
+    // Context with matching actor but DIFFERENT principal
+    const ctx = {
+      delegationContext: dc,
+      delegationStore: makeStore(dc),
+      actor: makeActor(dc.actorId, dc.principalId),
+      principal: makePrincipal('mismatched-principal-id'),
+    } as unknown as PipelineContext;
+
+    const result = await gate.evaluate(action, ctx, []);
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.DELEGATION_PRINCIPAL_MISMATCH);
+  });
+
+  it('denies CHAIN_INTEGRITY_BROKEN when dc.delegationId != action.delegationId', async () => {
+    const dc = await makeSignedDelegation();
+    const gate = new DelegationGate(controlPlanePair);
+    // Action has a DIFFERENT delegationId than dc
+    const action = makeAction({
+      actorId: dc.actorId,
+      principalId: dc.principalId,
+      delegationId: 'mismatched-delegation-id',
+      resolvedCapability: 'read:record:single',
+      resolvedTarget: {
+        system: 'vault',
+        resourceType: 'secret',
+        resourceScope: 'single',
+        environment: 'dev',
+        externalFacing: false,
+      },
+      resolvedRiskTier: RISK_TIER.LOW,
+    });
+
+    const result = await gate.evaluate(action, makeContext(dc) as PipelineContext, []);
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.CHAIN_INTEGRITY_BROKEN);
   });
 
   it('denies CHAIN_INTEGRITY_BROKEN when parent delegation is missing from store (spec §13.4)', async () => {
@@ -257,6 +370,9 @@ describe('Gate 03 — Delegation', () => {
 
     const gate = new DelegationGate(controlPlanePair);
     const action = makeAction({
+      actorId: dc.actorId,
+      principalId: dc.principalId,
+      delegationId: dc.delegationId,
       resolvedCapability: 'read:record:single',
       resolvedTarget: {
         system: 'vault',
