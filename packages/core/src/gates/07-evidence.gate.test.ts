@@ -254,6 +254,23 @@ describe('Gate 07 — Evidence', () => {
     expect(record.compilerView).toBeDefined();
   });
 
+  it('EvidenceRecord written even when Gate06 produces error outcome (GATE06-001)', async () => {
+    const kp = await makeEphemeralKeyPair();
+    const ledger = makeLedger();
+    const gate = new EvidenceGate(ledger, kp);
+    const decisions = [
+      passDecision(GATE_ID.G01, 1),
+      passDecision(GATE_ID.G02, 2),
+      passDecision(GATE_ID.G03, 3),
+      passDecision(GATE_ID.G04, 4),
+      denyDecision(GATE_ID.G06, 6, DENIAL_CODE.CONNECTOR_NOT_REGISTERED),
+    ];
+    await gate.evaluate(baseAction(), makeCtx(), decisions);
+    expect(ledger.appended).toHaveLength(1);
+    const record = ledger.appended[0]!;
+    expect(record.finalOutcome).toBe(FINAL_OUTCOME.DENIED_THREAT);
+  });
+
   it('EvidenceRecord has non-empty actorClass and actorEnvironment', async () => {
     const kp = await makeEphemeralKeyPair();
     const ledger = makeLedger();
