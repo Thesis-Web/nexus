@@ -7,7 +7,7 @@ import type { LedgerBackend, EvidenceRecord, Uuid } from '../../types/index.js';
 
 export class JsonlLedgerBackend implements LedgerBackend {
   readonly backendId = 'jsonl-v1';
-  readonly backendVersion = 'v0.1.0';
+  readonly backendVersion = 'v1.0.0'; // LEDGER-002 FIX: align with spec §16.1
 
   constructor(private readonly ledgerPath: string) {}
 
