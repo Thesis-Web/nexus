@@ -176,12 +176,11 @@ export class EvidenceGate implements Gate {
     const finalOutcome = computeFinalOutcome(decisions);
 
     // approvalRequired and approvalDecisionLabel — new v1.8.26 fields
-    const approvalRequired: boolean | typeof EVIDENCE_SENTINEL =
-      context.approvalRequest !== undefined
-        ? context.approvalRequest !== null
-          ? true
-          : false
-        : EVIDENCE_SENTINEL;
+    // GATE07-001 FIX: derive from Gate 04 verdict, not approvalRequest presence.
+    // Gate 04 outcome REQUIRE_APPROVAL = true; ALLOW/DENY = false; no Gate 04 = sentinel.
+    const approvalRequired: boolean | typeof EVIDENCE_SENTINEL = policyDecision
+      ? policyDecision.outcome === OUTCOME_LABEL.REQUIRE_APPROVAL
+      : EVIDENCE_SENTINEL;
 
     const approvalDecisionLabel = context.approvalResponse?.decision ?? EVIDENCE_SENTINEL;
 
