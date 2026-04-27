@@ -28,6 +28,7 @@ import type { EvidenceGate } from '../gates/07-evidence.gate.js';
 import type { ReplayDetector } from '../security/replay-detector.js';
 import type { RateLimiter } from '../security/rate-limiter.js';
 import { buildThreatEvent } from '../security/threat-log.js';
+import { guardString, INTENT_MAX_CHARS, RISK_NOTE_MAX_CHARS } from '../security/injection-guard.js';
 import { nextSequence } from '../identity/delegation-store.js';
 import type Database from 'better-sqlite3';
 
@@ -104,6 +105,35 @@ export class Pipeline implements PipelineInterface {
         ]);
       }
       throw err;
+    }
+
+    // SECURITY-INGRESS-002 / REDACT-001 FIX: Intent field sanitization at ingress
+    // spec §17.2 — sanitize before Gate 02 classification
+    const summaryGuard = guardString(rawAction.intent.objectiveSummary, INTENT_MAX_CHARS);
+    rawAction.intent.objectiveSummary = summaryGuard.value || rawAction.intent.objectiveSummary;
+    if (summaryGuard.truncated) {
+      context.threatLog.push(
+        buildThreatEvent('intent_overflow', 'ingress', 'objectiveSummary truncated')
+      );
+    }
+    if (summaryGuard.injectionDetected) {
+      context.threatLog.push(
+        buildThreatEvent('security_violation', 'ingress', 'objectiveSummary injection pattern')
+      );
+    }
+    if (rawAction.intent.riskNote) {
+      const riskGuard = guardString(rawAction.intent.riskNote, RISK_NOTE_MAX_CHARS);
+      rawAction.intent.riskNote = riskGuard.value;
+      if (riskGuard.truncated) {
+        context.threatLog.push(
+          buildThreatEvent('intent_overflow', 'ingress', 'riskNote truncated')
+        );
+      }
+      if (riskGuard.injectionDetected) {
+        context.threatLog.push(
+          buildThreatEvent('security_violation', 'ingress', 'riskNote injection pattern')
+        );
+      }
     }
 
     // Assign delegation sequence — engine-assigned, never adapter-provided
