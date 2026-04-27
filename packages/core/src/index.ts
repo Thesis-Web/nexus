@@ -68,6 +68,8 @@ export {
   clearGrantSecret,
   assertGrantPresent,
   assertGrantNotExpired,
+  pruneExpiredGrants,
+  getActiveGrantCount,
   GrantVaultImpl,
   grantVault,
 } from './execution/grant-vault.js';
