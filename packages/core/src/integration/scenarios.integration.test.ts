@@ -23,6 +23,7 @@ import { randomUUID } from 'crypto';
 import { Pipeline, SimpleConnectorRegistry, SimpleChannelRegistry } from '../engine/pipeline.js';
 import { IdentityGate } from '../gates/01-identity.gate.js';
 import { RegistryBackedIdentityProvider } from '../identity/registry-identity-provider.js';
+import type { ModeConfiguration } from '../types/index.js';
 import { ClassificationGate } from '../gates/02-classification.gate.js';
 import { DelegationGate } from '../gates/03-delegation.gate.js';
 import { PolicyGate } from '../gates/04-policy.gate.js';
@@ -93,6 +94,16 @@ import { nowIso, addSeconds } from '../utils/time.js';
 
 // ─── keypair loaded once ─────────────────────────────────────────────────────
 let controlPlanePair: KeyPair;
+
+// ─── MODE-001: Test mode config — enforcing mode preserves existing test behavior ──
+const TEST_MODE_CONFIG: import('../types/index.js').ModeConfiguration = {
+  nxsMode: 'enforcing',
+  nvgMode: 'enforcing',
+  enforcingLocked: false,
+  updatedAt: new Date().toISOString(),
+  updatedBy: { adminId: 'test-admin', publicKey: 'test-key' },
+  signature: 'test-sig',
+};
 
 // ─── Shared integration ledger (INFRA-003 — ci:gate steps 7 and 8) ──────────
 // All 10 scenarios write to one continuous chain. ci:gate reads this file.
@@ -435,7 +446,8 @@ export async function runScenario(
     },
     replayDetector,
     rateLimiter,
-    db
+    db,
+    TEST_MODE_CONFIG
   );
 
   // 14. Build action (no delegationSequence — pipeline assigns it)
@@ -477,7 +489,8 @@ export async function runScenario(
   } as any;
 
   // 16. Run pipeline
-  const evidenceRecord = await pipeline.process(rawAction, context);
+  const result = await pipeline.process(rawAction, context);
+  const evidenceRecord = result.evidenceRecord;
 
   // 17. Write run ledger events (DEF-002 — §30, ci:gate step 14 cross-link)
   if (integrationRunLedger) {
@@ -671,7 +684,8 @@ describe('Integration: POC Scenarios (spec §27.3)', () => {
       },
       new ReplayDetector(db),
       new RateLimiter(),
-      db
+      db,
+      TEST_MODE_CONFIG
     );
 
     const { StubConnector } = await import('../../../connectors/stub/stub.connector.js');
@@ -717,11 +731,13 @@ describe('Integration: POC Scenarios (spec §27.3)', () => {
     });
 
     // First run — should succeed
-    const first = await pipeline.process(baseAction(), baseContext());
+    const firstResult = await pipeline.process(baseAction(), baseContext());
+    const first = firstResult.evidenceRecord;
     expect(first.finalOutcome).toBe(FINAL_OUTCOME.EXECUTED);
 
     // Second run — SAME actionId → replay detected → denied_threat
-    const second = await pipeline.process(baseAction(), baseContext());
+    const secondResult = await pipeline.process(baseAction(), baseContext());
+    const second = secondResult.evidenceRecord;
     expect(second.finalOutcome).toBe(FINAL_OUTCOME.DENIED_THREAT);
 
     // Assert actorClass and actorEnvironment present in replay record

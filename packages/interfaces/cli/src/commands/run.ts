@@ -37,6 +37,7 @@ import {
   addSeconds,
   ACTOR_CLASS,
   LexicalVerbResolver,
+  loadModeConfig,
 } from '@nexus/core';
 import type {
   ConnectorRegistry,
@@ -130,6 +131,8 @@ export async function cmdRun(opts: RunOptions): Promise<void> {
   // §30 Run Ledger — DEF-002
   const runEventLedger = new JsonlRunLedgerWriter(path.join(outDir, '14-run-ledger.jsonl'));
   const controlPlaneKey = await loadControlPlaneKey();
+  // MODE-001: Load signed mode config — pipeline enforces based on active mode
+  const modeConfig = await loadModeConfig();
   const scenarioIds: ScenarioId[] = opts.fixturesAll
     ? (Object.keys(SCENARIO_MANIFEST) as ScenarioId[])
     : [opts.scenario!];
@@ -166,7 +169,8 @@ export async function cmdRun(opts: RunOptions): Promise<void> {
         runLedger,
         controlPlaneKey,
         runId,
-        opts.createConnectorRegistry
+        opts.createConnectorRegistry,
+        modeConfig
       );
       results.push({
         scenarioId,
@@ -296,7 +300,8 @@ async function runScenario(
   ledger: JsonlLedgerBackend,
   controlPlaneKey: any,
   runId: string,
-  createConnectorRegistry: () => ConnectorRegistry
+  createConnectorRegistry: () => ConnectorRegistry,
+  modeConfig: import('@nexus/contracts').ModeConfiguration
 ): Promise<{ record: EvidenceRecord; sessionId: string; delegationId: string }> {
   const actorReg = new SqliteActorRegistry(db);
   const principalReg = new SqlitePrincipalRegistry(db);
@@ -386,7 +391,8 @@ async function runScenario(
     },
     new ReplayDetector(db),
     new RateLimiter(),
-    db
+    db,
+    modeConfig
   );
   const rawAction: Omit<AgentAction, 'delegationSequence'> = {
     actionId: setup.replayActionId ?? newUuid(),
@@ -417,7 +423,7 @@ async function runScenario(
     resolvedDataClasses: [],
     resolvedRiskTier: null,
   };
-  const record = await pipeline.process(rawAction, {
+  const pipelineResult = await pipeline.process(rawAction, {
     sessionId,
     delegationContext: undefined as any,
     actor: undefined as any,
@@ -430,6 +436,7 @@ async function runScenario(
     startedAt: nowIso(),
     delegationStore: delegStore,
   });
+  const record = pipelineResult.evidenceRecord;
   return { record, sessionId, delegationId: dc.delegationId };
 }
 async function wj(filePath: string, data: unknown): Promise<void> {

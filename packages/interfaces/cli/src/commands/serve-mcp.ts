@@ -48,6 +48,7 @@ import {
   ReplayDetector,
   RateLimiter,
   loadPolicyFile,
+  loadModeConfig,
 } from '@nexus/core';
 
 import type { ConnectorRegistry } from '@nexus/contracts';
@@ -78,6 +79,8 @@ export async function cmdServeMcp(opts: ServeMcpOptions): Promise<void> {
 
   // 2. Crypto — control-plane keypair
   const controlPlaneKey = await loadControlPlaneKey();
+  // MODE-001: Load signed mode config at startup
+  const modeConfig = await loadModeConfig();
 
   // 3. Ledger backend (JSONL — Backend v1)
   const ledger = new JsonlLedgerBackend(LEDGER_PATH);
@@ -146,7 +149,7 @@ export async function cmdServeMcp(opts: ServeMcpOptions): Promise<void> {
   };
 
   // 12. Pipeline
-  const pipeline = new Pipeline(gates, replayDetector, rateLimiter, db);
+  const pipeline = new Pipeline(gates, replayDetector, rateLimiter, db, modeConfig);
 
   // 13. MCP adapter and proxy
   const adapter = new McpAdapter();

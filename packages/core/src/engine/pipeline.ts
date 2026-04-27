@@ -1,8 +1,15 @@
 /**
- * Pipeline orchestrator — spec §13.1
+ * Pipeline orchestrator — spec §13.1, §9.1
  * Explicit stateful control-flow branch — NOT a generic gate loop. (BS-101)
  * Gate 05 and Gate 06 are NOT in the main gate array.
  * Gate 07 always runs exactly once unconditionally.
+ *
+ * MODE-001 FIX: Pipeline consumes signed ModeConfiguration at construction.
+ * In all modes, Gates 01-04 evaluate identically and Gate 07 writes evidence.
+ * Mode controls whether Gates 05-06 (enforcement) execute:
+ *   enforcing: full enforcement — block denials, route approvals, execute actions
+ *   observe: evaluate and log only — no enforcement, no execution
+ *   advisory: evaluate and log only — caller decides enforcement
  */
 import {
   OUTCOME_LABEL,
@@ -17,6 +24,8 @@ import {
   type Connector,
   type ApprovalChannel,
   type PipelineInterface,
+  type ModeConfiguration,
+  type PipelineResult,
 } from '../types/index.js';
 import type { IdentityGate } from '../gates/01-identity.gate.js';
 import type { ClassificationGate } from '../gates/02-classification.gate.js';
@@ -31,6 +40,7 @@ import { buildThreatEvent } from '../security/threat-log.js';
 import { guardString, INTENT_MAX_CHARS, RISK_NOTE_MAX_CHARS } from '../security/injection-guard.js';
 import { validateActionSchema } from '../security/ingress-validator.js';
 import { nextSequence } from '../identity/delegation-store.js';
+import { getRuntimeMode, shouldEnforce, resolveDisposition } from '../modes/mode-runtime.js';
 import type Database from 'better-sqlite3';
 
 export interface PipelineGates {
@@ -48,13 +58,18 @@ export class Pipeline implements PipelineInterface {
     private readonly gates: PipelineGates,
     private readonly replay: ReplayDetector,
     private readonly limiter: RateLimiter,
-    private readonly db: Database.Database
+    private readonly db: Database.Database,
+    private readonly modeConfig: ModeConfiguration // MODE-001: signed infrastructure config
   ) {}
 
   async process(
     rawAction: Omit<AgentAction, 'delegationSequence'>,
     context: PipelineContext
-  ): Promise<EvidenceRecord> {
+  ): Promise<PipelineResult> {
+    // MODE-001: Resolve NXS mode from signed config — never caller-supplied
+    const nxsMode = getRuntimeMode(this.modeConfig, 'nxs');
+    const disposition = resolveDisposition(nxsMode);
+    const enforcing = shouldEnforce(nxsMode);
     // === INGRESS SECURITY ===
     // Rate limit
     try {
@@ -64,20 +79,25 @@ export class Pipeline implements PipelineInterface {
         const te: ThreatEvent = buildThreatEvent('rate_limit_exceeded', 'ingress', err.message);
         context.threatLog.push(te);
         const action = this.assignSequence(rawAction, context);
-        return this.runGate07(action, context, [
-          {
-            gateId: 'ingress',
-            gateOrder: 0,
-            plane: 'control',
-            outcome: 'deny',
-            reason: err.message,
-            denialCode: DENIAL_CODE.RATE_LIMIT_EXCEEDED,
-            policyRuleId: null,
-            evaluatedAt: new Date().toISOString(),
-            durationMs: 0,
-            metadata: {},
-          },
-        ]);
+        return this.runGate07(
+          action,
+          context,
+          [
+            {
+              gateId: 'ingress',
+              gateOrder: 0,
+              plane: 'control',
+              outcome: 'deny',
+              reason: err.message,
+              denialCode: DENIAL_CODE.RATE_LIMIT_EXCEEDED,
+              policyRuleId: null,
+              evaluatedAt: new Date().toISOString(),
+              durationMs: 0,
+              metadata: {},
+            },
+          ],
+          disposition
+        );
       }
       throw err;
     }
@@ -90,20 +110,25 @@ export class Pipeline implements PipelineInterface {
         const te: ThreatEvent = buildThreatEvent('replay_detected', 'ingress', err.message);
         context.threatLog.push(te);
         const action = this.assignSequence(rawAction, context);
-        return this.runGate07(action, context, [
-          {
-            gateId: 'ingress',
-            gateOrder: 0,
-            plane: 'control',
-            outcome: 'deny',
-            reason: err.message,
-            denialCode: DENIAL_CODE.REPLAY_DETECTED,
-            policyRuleId: null,
-            evaluatedAt: new Date().toISOString(),
-            durationMs: 0,
-            metadata: {},
-          },
-        ]);
+        return this.runGate07(
+          action,
+          context,
+          [
+            {
+              gateId: 'ingress',
+              gateOrder: 0,
+              plane: 'control',
+              outcome: 'deny',
+              reason: err.message,
+              denialCode: DENIAL_CODE.REPLAY_DETECTED,
+              policyRuleId: null,
+              evaluatedAt: new Date().toISOString(),
+              durationMs: 0,
+              metadata: {},
+            },
+          ],
+          disposition
+        );
       }
       throw err;
     }
@@ -119,20 +144,25 @@ export class Pipeline implements PipelineInterface {
       );
       context.threatLog.push(te);
       const action = this.assignSequence(rawAction, context);
-      return this.runGate07(action, context, [
-        {
-          gateId: 'ingress',
-          gateOrder: 0,
-          plane: 'control',
-          outcome: 'deny',
-          reason: `ingress schema invalid: ${schemaViolation}`,
-          denialCode: DENIAL_CODE.INGRESS_SCHEMA_INVALID,
-          policyRuleId: null,
-          evaluatedAt: new Date().toISOString(),
-          durationMs: 0,
-          metadata: {},
-        },
-      ]);
+      return this.runGate07(
+        action,
+        context,
+        [
+          {
+            gateId: 'ingress',
+            gateOrder: 0,
+            plane: 'control',
+            outcome: 'deny',
+            reason: `ingress schema invalid: ${schemaViolation}`,
+            denialCode: DENIAL_CODE.INGRESS_SCHEMA_INVALID,
+            policyRuleId: null,
+            evaluatedAt: new Date().toISOString(),
+            durationMs: 0,
+            metadata: {},
+          },
+        ],
+        disposition
+      );
     }
 
     // SECURITY-INGRESS-002 / REDACT-001 FIX: Intent field sanitization at ingress
@@ -196,7 +226,10 @@ export class Pipeline implements PipelineInterface {
       }
 
       // === POST-GATE-04 BRANCH — explicit on OutcomeLabel (BS-101) ===
-      if (!earlyDenial) {
+      // MODE-001: Gates 05/06 only execute in enforcing mode.
+      // In observe/advisory, Gates 01-04 evaluated identically. Gate 07 still writes
+      // evidence with the real evaluated outcome. Mode controls enforcement, not evaluation.
+      if (!earlyDenial && enforcing) {
         const outcome = decisions[decisions.length - 1]!.outcome;
 
         if (outcome === OUTCOME_LABEL.REQUIRE_APPROVAL || outcome === OUTCOME_LABEL.ESCALATE) {
@@ -228,6 +261,8 @@ export class Pipeline implements PipelineInterface {
         }
         // else: DENY or unknown — fall through to Gate 07
       }
+      // In observe/advisory (!enforcing): Gates 01-04 ran, now fall through to Gate 07.
+      // Evidence records the evaluated outcome. Caller uses disposition to decide behavior.
     } catch (err) {
       // Mid-pipeline exception — Gate 07 must still run.
       // Swallow the error into a threat event so evidence is recorded.
@@ -245,21 +280,22 @@ export class Pipeline implements PipelineInterface {
     }
 
     // === GATE 07: Evidence (always runs — every path, including thrown exceptions) ===
-    return this.runGate07(action, context, decisions);
+    return this.runGate07(action, context, decisions, disposition);
   }
 
   /** Gate 07 always runs exactly once per action. Extracted to prevent duplication. */
   private async runGate07(
     action: AgentAction,
     context: PipelineContext,
-    decisions: import('../types/index.js').GateDecision[]
-  ): Promise<EvidenceRecord> {
+    decisions: import('../types/index.js').GateDecision[],
+    disposition: import('../types/index.js').RuntimeDisposition
+  ): Promise<PipelineResult> {
     const evidenceResult = await this.gates.evidence.evaluate(action, context, decisions);
     decisions.push(evidenceResult.decision);
     if (!context.lastEvidenceRecord) {
       throw new Error('invariant: lastEvidenceRecord must be set by Gate 07');
     }
-    return context.lastEvidenceRecord;
+    return { evidenceRecord: context.lastEvidenceRecord, disposition };
   }
 
   private assignSequence(

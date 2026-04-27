@@ -1029,6 +1029,19 @@ export interface NormalizationResult {
   error?: NonEmpty;
 }
 
+// ─── §9.1 Runtime Disposition (MODE-001) ───
+// Mode controls whether evaluated decisions are acted upon — not whether they are recorded.
+// Callers of pipeline.process() use disposition to determine their response behavior.
+export type RuntimeDisposition = 'enforce' | 'observe' | 'advisory';
+
+// ─── §9.1 PipelineResult (MODE-001) ───
+// Pipeline always returns the evidence record (written to ledger in every mode).
+// Disposition tells the caller what to do with the result.
+export interface PipelineResult {
+  evidenceRecord: EvidenceRecord;
+  disposition: RuntimeDisposition;
+}
+
 // ─── §12.3.38 PipelineInterface (DEF-001) ───
 // Pure interface for the pipeline entry point. Adapters import this from
 // contracts instead of the Pipeline class from core. Core Pipeline class
@@ -1037,7 +1050,7 @@ export interface PipelineInterface {
   process(
     rawAction: Omit<AgentAction, 'delegationSequence'>,
     context: PipelineContext
-  ): Promise<EvidenceRecord>;
+  ): Promise<PipelineResult>;
 }
 
 // ─── NISP-001.A Transport Layer Re-exports (§12.3.37–§12.3.51) ───

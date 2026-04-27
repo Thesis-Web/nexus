@@ -39,6 +39,7 @@ import {
   FINAL_OUTCOME,
   type PipelineInterface,
   type PipelineContext,
+  type PipelineResult,
   type DelegationStore,
   type LoadedPolicyFile,
   type ApproverRegistry,
@@ -126,9 +127,9 @@ export class NexusMcpProxy {
     };
 
     // 5. Run the pipeline
-    let evidenceRecord: EvidenceRecord;
+    let pipelineResult: PipelineResult;
     try {
-      evidenceRecord = await this.pipeline.process(action, context);
+      pipelineResult = await this.pipeline.process(action, context);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       sendJson(res, 500, {
@@ -138,20 +139,35 @@ export class NexusMcpProxy {
       return;
     }
 
-    // 6. Return response based on finalOutcome
+    const evidenceRecord = pipelineResult.evidenceRecord;
+    const disposition = pipelineResult.disposition;
+
+    // 6. Return response based on finalOutcome + mode disposition
+    // MODE-001: In observe/advisory modes, denials are NOT hard blocks.
+    // Caller receives the evidence record with disposition indicator.
     const outcome = evidenceRecord.finalOutcome;
     if (outcome === FINAL_OUTCOME.EXECUTED) {
       sendJson(res, 200, {
         ok: true,
         finalOutcome: outcome,
+        disposition,
+        evidenceRecord,
+      });
+    } else if (disposition === 'observe' || disposition === 'advisory') {
+      // Non-enforcing mode: return 200 with the evaluated decision.
+      // The decision is real and logged — caller decides whether to block.
+      sendJson(res, 200, {
+        ok: true,
+        finalOutcome: outcome,
+        disposition,
         evidenceRecord,
       });
     } else {
-      // All denial and error paths: 403 with evidence record so caller can inspect.
-      // Gate 07 always wrote evidence — the record is always present.
+      // Enforcing mode: denial/error → 403
       sendJson(res, 403, {
         ok: false,
         finalOutcome: outcome,
+        disposition,
         evidenceRecord,
       });
     }

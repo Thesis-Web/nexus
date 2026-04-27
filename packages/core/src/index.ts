@@ -104,6 +104,9 @@ export {
   intersect,
 } from './classification/ceiling-resolver.js';
 
+// §9.1 — Mode Runtime (MODE-001)
+export { getRuntimeMode, shouldEnforce, resolveDisposition } from './modes/mode-runtime.js';
+
 // §11.3 — OCT Manager
 export { assignOct } from './identity/oct-manager.js';
 export type { SignedOctAssignmentRequest } from './identity/oct-manager.js';
