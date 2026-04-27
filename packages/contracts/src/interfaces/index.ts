@@ -1014,6 +1014,32 @@ export interface NvgService {
     classification: NvgClassificationResult
   ): NvgRoutingDecision;
   validatePolicy(policy: NvgRoutingPolicy): void;
+  /** §7.5 composition surface — full NVG wall: classify → route → ceiling → invoke → RPT */
+  classifyAndRoute(request: NvgOutboundRequest): Promise<NvgClassifyAndRouteResult>;
+}
+
+// ─── §7.5 NvgClassifyAndRouteResult — composition surface return type ───
+export interface NvgClassifyAndRouteResult {
+  /** Whether the wall allowed this request through to model invocation */
+  allowed: boolean;
+  /** Data classification result — always present */
+  classification: NvgClassificationResult;
+  /** Model tier selected by routing policy (null if denied before routing) */
+  modelTierSelected: ModelTier | null;
+  /** Model tier actually invoked — may differ if fallback applied (null if denied/non-enforcing) */
+  modelTierInvoked: ModelTier | null;
+  /** Denial code if denied at any step */
+  denialCode: DenialCode | null;
+  /** Human-readable denial reason */
+  denialReason: string | null;
+  /** Trail correlation ID for cross-linking outbound/inbound RPT entries */
+  trailCorrelationId: Uuid;
+  /** Runtime disposition from mode config */
+  disposition: RuntimeDisposition;
+  /** Model invocation result (null if denied or non-enforcing mode) */
+  invocation: NvgInvocationResult | null;
+  /** Completion timestamp */
+  completedAt: IsoTimestamp;
 }
 
 // ─── §19 Adapter Interface ───

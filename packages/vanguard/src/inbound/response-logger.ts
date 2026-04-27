@@ -104,12 +104,13 @@ export async function handleNvgDenial(
   denialCode: string,
   reason: string,
   trailWriter: RoutingTrailWriter,
-  routingPolicyVersion: NonEmpty
+  routingPolicyVersion: NonEmpty,
+  correlationId?: Uuid
 ): Promise<void> {
   await trailWriter.append({
     entryId: crypto.randomUUID(),
     runId: request.runId,
-    correlationId: crypto.randomUUID(),
+    correlationId: correlationId ?? (crypto.randomUUID() as Uuid),
     direction: 'outbound',
     actorId: request.actorId,
     octLevel: request.octLevel,
