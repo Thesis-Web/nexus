@@ -27,7 +27,11 @@ export class JsonlLedgerBackend implements LedgerBackend {
       try {
         const record = JSON.parse(line) as EvidenceRecord;
         if (record.ledgerSequence >= from && record.ledgerSequence <= to) results.push(record);
-      } catch {
+      } catch (err) {
+        // LEDGER-001 FIX: log malformed line instead of silent skip
+        console.error(
+          `[JsonlLedgerBackend] malformed ledger line skipped in listRange: ${(err as Error).message}`
+        );
         continue;
       }
     }
@@ -49,7 +53,11 @@ export class JsonlLedgerBackend implements LedgerBackend {
       try {
         const record = JSON.parse(line) as EvidenceRecord;
         if (record.recordId === recordId) return record;
-      } catch {
+      } catch (err) {
+        // LEDGER-001 FIX: log malformed line instead of silent skip
+        console.error(
+          `[JsonlLedgerBackend] malformed ledger line skipped in getByRecordId: ${(err as Error).message}`
+        );
         continue;
       }
     }
@@ -67,7 +75,11 @@ export class JsonlLedgerBackend implements LedgerBackend {
     if (!lines.length) return 0;
     try {
       return (JSON.parse(lines[lines.length - 1]!) as EvidenceRecord).ledgerSequence;
-    } catch {
+    } catch (err) {
+      // LEDGER-001 FIX: log malformed last line instead of silent fallback
+      console.error(
+        `[JsonlLedgerBackend] malformed last ledger line in getLatestSequence: ${(err as Error).message}`
+      );
       return 0;
     }
   }
