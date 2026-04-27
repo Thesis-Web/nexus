@@ -250,4 +250,41 @@ describe('Gate 05 — Approval', () => {
     expect(result.decision.outcome).toBe('pass');
     expect(result.approvalResponse?.decision).toBe(APPROVAL_DECISION_LABEL.APPROVED);
   });
+
+  it('denies APPROVAL_SIG_INVALID when approver is not registered (GATE05-001 P0 fix)', async () => {
+    const kp = await loadControlPlaneKey();
+    const gate = new ApprovalGate(kp);
+    const template = makeTemplate('cli');
+
+    // Unknown approver submits an APPROVED response — this MUST be denied
+    const response: ApprovalResponse = {
+      approvalId: 'apr-unknown',
+      decision: APPROVAL_DECISION_LABEL.APPROVED,
+      decidedBy: 'unknown-approver-evil',
+      decidedAt: NOW,
+      channel: 'cli',
+      note: null,
+      signature: 'forged-sig-does-not-matter',
+    };
+
+    const channel: ApprovalChannel = {
+      channelId: 'cli',
+      channelVersion: 'v0.1.0',
+      dispatch: vi.fn().mockResolvedValue(undefined),
+      awaitDecision: vi.fn().mockResolvedValue(response),
+    };
+
+    const ctx = makeCtx(channel, template);
+    // approverRegistry.getPublicKey returns null — approver not registered
+    (ctx as Record<string, unknown>).approverRegistry = {
+      getPublicKey: vi.fn().mockResolvedValue(null),
+      register: vi.fn(),
+    };
+
+    const result = await gate.evaluate(baseAction(), ctx, []);
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.APPROVAL_SIG_INVALID);
+    expect(result.decision.reason).toContain('not registered');
+    expect(result.approvalResponse?.decidedBy).toBe('unknown-approver-evil');
+  });
 });

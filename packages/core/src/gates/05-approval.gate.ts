@@ -143,6 +143,18 @@ export class ApprovalGate implements Gate {
             response
           );
         }
+      } else {
+        // GATE05-001 FIX: fail-closed — unknown/unregistered approver always produces DENY.
+        // Blueprint §19.7: "An unsigned response, a response signed by an unregistered
+        // approver, or a response with an invalid signature always produces DENY
+        // with APPROVAL_SIG_INVALID."
+        return deny(
+          DENIAL_CODE.APPROVAL_SIG_INVALID,
+          `approver '${response.decidedBy}' not registered — signature unverifiable`,
+          startMs,
+          signedRequest,
+          response
+        );
       }
     }
 
