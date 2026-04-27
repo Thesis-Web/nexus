@@ -42,7 +42,7 @@ export interface Actor {
   principalId: Uuid;
   displayName: NonEmpty;
   environment: EnvironmentId;
-  octLevel: OctLevel;
+  octLevel: OctLevel | null;
   riskCeiling: RiskTier;
   allowedSystems: string[];
   registeredAt: IsoTimestamp;

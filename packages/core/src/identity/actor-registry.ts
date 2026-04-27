@@ -40,14 +40,10 @@ function rowToActor(row: ActorRow): Actor {
     riskCeiling: row.risk_ceiling,
     allowedSystems: JSON.parse(row.allowed_systems) as string[],
     registeredAt: row.registered_at,
-    // OCT-001 FIX: fail closed per §11.3 — no silent OCT-OPEN default
-    octLevel: row.oct_level
-      ? (row.oct_level as OctLevel)
-      : (() => {
-          throw new Error(
-            `OCT_MISSING: actor ${row.actor_id} has null oct_level — fail closed per §11.3`
-          );
-        })(),
+    // OCT-001 FIX: null octLevel permitted — actors start without OCT.
+    // Gate 02 enforces fail-closed: null/unknown OCT = deny.
+    // oct_assignment signed operator action assigns OCT post-registration.
+    octLevel: row.oct_level ? (row.oct_level as OctLevel) : null,
     ...(row.owner !== null ? { owner: row.owner } : {}),
     ...(row.purpose !== null ? { purpose: row.purpose } : {}),
     ...(row.review_cadence !== null ? { reviewCadence: row.review_cadence } : {}),
@@ -81,7 +77,8 @@ export class SqliteActorRegistry implements ActorRegistry {
       );
     }
 
-    // OCT-001 FIX: octLevel is mandatory — no silent default to OCT-OPEN
+    // OCT-001: octLevel is mandatory at registration — operator must assign via signed action.
+    // Null octLevel in DB is permitted (for oct_assignment flow), but register() rejects null.
     if (!actor.octLevel) {
       throw new Error(
         `OCT_REQUIRED: actor ${actor.actorId} must have explicit octLevel at registration per §11.3`

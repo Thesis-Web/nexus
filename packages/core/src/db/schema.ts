@@ -29,7 +29,7 @@ export function initializeSchema(db: Database.Database): void {
       owner               TEXT,
       purpose             TEXT,
       review_cadence      TEXT,
-      oct_level           TEXT NOT NULL DEFAULT 'OCT-OPEN',
+      oct_level           TEXT DEFAULT NULL,
       approver_public_key TEXT,
       approver_channels   TEXT
     );
@@ -101,7 +101,7 @@ function migrateSchema(db: Database.Database): void {
   const cols = db.prepare('PRAGMA table_info(actors)').all() as Array<{ name: string }>;
   const hasOctLevel = cols.some(c => c.name === 'oct_level');
   if (!hasOctLevel) {
-    db.exec("ALTER TABLE actors ADD COLUMN oct_level TEXT NOT NULL DEFAULT 'OCT-OPEN'");
+    db.exec('ALTER TABLE actors ADD COLUMN oct_level TEXT DEFAULT NULL');
   }
 }
 

@@ -79,11 +79,19 @@ export class ClassificationGate implements Gate {
 
     // ── §11.1: OCT is mandatory actor state ─────────────────────────────
     // DEF-S10-001: Missing or unknown octLevel is a deterministic deny.
+    // OCT-001: null octLevel is permitted in DB — fail closed here.
+    if (!actor.octLevel) {
+      return deny(
+        DENIAL_CODE.OCT_UNASSIGNED,
+        `actor ${actor.actorId} has null OCT level — assign via signed oct_assignment`,
+        startMs
+      );
+    }
     const octCeiling = OCT_CEILINGS[actor.octLevel];
     if (!octCeiling) {
       return deny(
         DENIAL_CODE.OCT_UNASSIGNED,
-        `actor ${actor.actorId} has missing or unknown OCT level: ${actor.octLevel}`,
+        `actor ${actor.actorId} has unknown OCT level: ${actor.octLevel}`,
         startMs
       );
     }
