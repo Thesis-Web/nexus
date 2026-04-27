@@ -56,18 +56,19 @@ export async function loadConnectorManifest(
   const records: ConnectorManifestRecord[] = [];
 
   for (const entry of body.connectors) {
-    // Disabled entries: skip validation, emit notice
+    // connectorId uniqueness within manifest (§14.6.4) — checked for ALL entries
+    // including disabled, so manifest never contains ambiguous duplicate IDs
+    if (seenIds.has(entry.connectorId)) {
+      throw new Error(`connector manifest: duplicate connectorId '${entry.connectorId}'`);
+    }
+    seenIds.add(entry.connectorId);
+
+    // Disabled entries: skip remaining validation, emit notice
     if (!entry.enabled) {
       // eslint-disable-next-line no-console
       console.info(`[connector-manifest] disabled connector: ${entry.connectorId} (skipped)`);
       continue;
     }
-
-    // connectorId uniqueness within manifest (§14.6.4)
-    if (seenIds.has(entry.connectorId)) {
-      throw new Error(`connector manifest: duplicate connectorId '${entry.connectorId}'`);
-    }
-    seenIds.add(entry.connectorId);
 
     // connectorType registered in factory registry (§12.3.48 invariant 2)
     const factory = opts.factoryRegistry.get(entry.connectorType);

@@ -55,18 +55,19 @@ export async function loadChannelManifest(
   const records: ChannelManifestRecord[] = [];
 
   for (const entry of body.channels) {
-    // Disabled entries: skip validation, emit notice
+    // channelId uniqueness within manifest (§14.6.4) — checked for ALL entries
+    // including disabled, so manifest never contains ambiguous duplicate IDs
+    if (seenIds.has(entry.channelId)) {
+      throw new Error(`channel manifest: duplicate channelId '${entry.channelId}'`);
+    }
+    seenIds.add(entry.channelId);
+
+    // Disabled entries: skip remaining validation, emit notice
     if (!entry.enabled) {
       // eslint-disable-next-line no-console
       console.info(`[channel-manifest] disabled channel: ${entry.channelId} (skipped)`);
       continue;
     }
-
-    // channelId uniqueness within manifest (§14.6.4)
-    if (seenIds.has(entry.channelId)) {
-      throw new Error(`channel manifest: duplicate channelId '${entry.channelId}'`);
-    }
-    seenIds.add(entry.channelId);
 
     // channelType registered in factory registry (§12.3.48 invariant 2)
     const factory = opts.factoryRegistry.get(entry.channelType);

@@ -55,18 +55,19 @@ export async function loadIdentityManifest(
   const records: IdentityProviderManifestRecord[] = [];
 
   for (const entry of body.providers) {
-    // Disabled entries: skip validation, emit notice
+    // providerId uniqueness within manifest (§14.6.4) — checked for ALL entries
+    // including disabled, so manifest never contains ambiguous duplicate IDs
+    if (seenIds.has(entry.providerId)) {
+      throw new Error(`identity manifest: duplicate providerId '${entry.providerId}'`);
+    }
+    seenIds.add(entry.providerId);
+
+    // Disabled entries: skip remaining validation, emit notice
     if (!entry.enabled) {
       // eslint-disable-next-line no-console
       console.info(`[identity-manifest] disabled provider: ${entry.providerId} (skipped)`);
       continue;
     }
-
-    // providerId uniqueness within manifest (§14.6.4)
-    if (seenIds.has(entry.providerId)) {
-      throw new Error(`identity manifest: duplicate providerId '${entry.providerId}'`);
-    }
-    seenIds.add(entry.providerId);
 
     // providerType registered in factory registry (§12.3.48 invariant 2)
     const factory = opts.factoryRegistry.get(entry.providerType);

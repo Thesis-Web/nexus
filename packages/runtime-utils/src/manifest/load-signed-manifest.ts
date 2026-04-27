@@ -37,13 +37,15 @@ function base64urlDecode(s: string): Uint8Array {
  * before signature verification. Domain-specific body validation happens
  * AFTER signature check via the caller-provided bodySchema.
  */
-const ManifestEnvelopeSchema = z.object({
-  manifestVersion: z.string().min(1),
-  issuer: z.string().min(1),
-  issuedAt: z.string().min(1),
-  signature: z.string().min(1),
-  body: z.record(z.unknown()),
-});
+const ManifestEnvelopeSchema = z
+  .object({
+    manifestVersion: z.string().min(1),
+    issuer: z.string().min(1),
+    issuedAt: z.string().min(1),
+    signature: z.string().min(1),
+    body: z.record(z.unknown()),
+  })
+  .strict();
 
 export interface LoadSignedManifestResult<TBody> {
   readonly manifestVersion: string;
