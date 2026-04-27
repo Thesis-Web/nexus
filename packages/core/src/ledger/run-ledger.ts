@@ -50,11 +50,10 @@ export class JsonlRunLedgerWriter implements RunLedgerWriter {
       try {
         results.push(JSON.parse(line) as RunLedgerEntry);
       } catch (err) {
-        // RUNLEDGER-003 FIX: log malformed line instead of silent skip
-        console.error(
-          `[JsonlRunLedgerWriter] malformed run-ledger line skipped: ${(err as Error).message}`
+        // LEDGER-001 FIX: fail closed — malformed run ledger entry is a data integrity violation
+        throw new Error(
+          `[JsonlRunLedgerWriter] malformed run-ledger line: ${(err as Error).message}`
         );
-        continue;
       }
     }
     return results;
