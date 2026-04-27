@@ -742,14 +742,68 @@ describe('Integration: POC Scenarios (spec §27.3)', () => {
     });
 
     // First run — should succeed
-    const firstResult = await pipeline.process(baseAction(), baseContext());
+    const firstAction = baseAction();
+    const firstResult = await pipeline.process(firstAction, baseContext());
     const first = firstResult.evidenceRecord;
     expect(first.finalOutcome).toBe(FINAL_OUTCOME.EXECUTED);
 
+    // Write run ledger for first run (CROSS-001/002 FIX — all evidence must cross-link)
+    if (integrationRunLedger) {
+      const rid = firstAction.runId as Uuid;
+      await integrationRunLedger.writeEvent({
+        runId: rid,
+        eventType: 'run_opened',
+        timestamp: nowIso(),
+        actorId: actor.actorId as Uuid,
+        detail: { scenarioId: '06-replay-detected', pass: 'first' },
+      });
+      await integrationRunLedger.writeEvent({
+        runId: rid,
+        eventType: 'nxs_action',
+        timestamp: nowIso(),
+        actorId: actor.actorId as Uuid,
+        detail: { actionId: firstAction.actionId, finalOutcome: first.finalOutcome },
+      });
+      await integrationRunLedger.writeEvent({
+        runId: rid,
+        eventType: 'run_closed',
+        timestamp: nowIso(),
+        actorId: null,
+        detail: { scenarioId: '06-replay-detected', finalOutcome: first.finalOutcome },
+      });
+    }
+
     // Second run — SAME actionId → replay detected → denied_threat
-    const secondResult = await pipeline.process(baseAction(), baseContext());
+    const secondAction = baseAction();
+    const secondResult = await pipeline.process(secondAction, baseContext());
     const second = secondResult.evidenceRecord;
     expect(second.finalOutcome).toBe(FINAL_OUTCOME.DENIED_THREAT);
+
+    // Write run ledger for replay run
+    if (integrationRunLedger) {
+      const rid = secondAction.runId as Uuid;
+      await integrationRunLedger.writeEvent({
+        runId: rid,
+        eventType: 'run_opened',
+        timestamp: nowIso(),
+        actorId: actor.actorId as Uuid,
+        detail: { scenarioId: '06-replay-detected', pass: 'replay' },
+      });
+      await integrationRunLedger.writeEvent({
+        runId: rid,
+        eventType: 'nxs_action',
+        timestamp: nowIso(),
+        actorId: actor.actorId as Uuid,
+        detail: { actionId: secondAction.actionId, finalOutcome: second.finalOutcome },
+      });
+      await integrationRunLedger.writeEvent({
+        runId: rid,
+        eventType: 'run_closed',
+        timestamp: nowIso(),
+        actorId: null,
+        detail: { scenarioId: '06-replay-detected', finalOutcome: second.finalOutcome },
+      });
+    }
 
     // Assert actorClass and actorEnvironment present in replay record
     expect(second.actionSummary.actorClass).toBeTruthy();

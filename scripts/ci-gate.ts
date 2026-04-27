@@ -796,7 +796,9 @@ async function main(): Promise<void> {
   stepLog('Run Ledger cross-link gate');
   const crossLinkResult = validateRunLedgerCrossLinks(CI_LEDGER_PATH, CI_RUN_LEDGER_PATH);
   pass(
-    `${crossLinkResult.evidenceCount} evidence + ${crossLinkResult.runLedgerCount} run-ledger entries cross-linked`
+    `${crossLinkResult.evidenceCount} evidence + ${crossLinkResult.runLedgerCount} run-ledger` +
+      (crossLinkResult.rptCount > 0 ? ` + ${crossLinkResult.rptCount} RPT` : '') +
+      ` entries cross-linked`
   );
 
   // -------------------------------------------------------------------------
@@ -968,7 +970,7 @@ function validateNvgClassificationEnforcement(): number {
 // Step 14 helper — Run Ledger cross-link gate
 // §37.12: All three audit streams must have runId. Missing runId = gate failure.
 // §33: Cross-link validation across evidence ledger + run ledger + RPT.
-// DEF-002: Now validates both evidence and run ledger streams.
+// CROSS-001/002 FIX: Validates runId set equality across all three streams.
 // ===========================================================================
 interface RunLedgerEntryRaw {
   entryId: string;
@@ -979,18 +981,32 @@ interface RunLedgerEntryRaw {
   detail: Record<string, unknown>;
 }
 
+interface RptEntryRaw {
+  entryId: string;
+  runId: string;
+  correlationId: string;
+  direction: string;
+  [key: string]: unknown;
+}
+
 function validateRunLedgerCrossLinks(
   evidenceLedgerPath: string,
   runLedgerPath: string
-): { evidenceCount: number; runLedgerCount: number } {
+): { evidenceCount: number; runLedgerCount: number; rptCount: number } {
+  const evidenceRunIds = new Set<string>();
+  const runLedgerRunIds = new Set<string>();
+  const rptRunIds = new Set<string>();
+
   // Stream 1: Evidence Ledger
   let evidenceCount = 0;
   if (fs.existsSync(evidenceLedgerPath)) {
     const records = readLedger(evidenceLedgerPath);
     for (const record of records) {
-      if (!record.runId && !(record as any).actionSummary?.runId) {
+      const runId = record.runId ?? (record as any).actionSummary?.runId;
+      if (!runId) {
         fail(`Cross-link failure: evidence record at seq ${record.ledgerSequence} missing runId`);
       }
+      evidenceRunIds.add(runId as string);
       evidenceCount++;
     }
   }
@@ -1014,7 +1030,28 @@ function validateRunLedgerCrossLinks(
       if (!entry.entryId) {
         fail(`Cross-link failure: run ledger entry missing entryId`);
       }
+      runLedgerRunIds.add(entry.runId);
       runLedgerCount++;
+    }
+  }
+
+  // Stream 3: Routing Provenance Trail (§27, CROSS-001 FIX)
+  // RPT is optional — NXS-only scenarios don't produce RPT entries.
+  const rptPath = path.join(path.dirname(evidenceLedgerPath), '13-routing-provenance-trail.jsonl');
+  let rptCount = 0;
+  if (fs.existsSync(rptPath)) {
+    const raw = fs.readFileSync(rptPath, 'utf-8');
+    for (const line of raw.split('\n').filter(Boolean)) {
+      try {
+        const entry = JSON.parse(line) as RptEntryRaw;
+        if (!entry.runId) {
+          fail(`Cross-link failure: RPT entry ${entry.entryId ?? 'unknown'} missing runId`);
+        }
+        rptRunIds.add(entry.runId);
+        rptCount++;
+      } catch {
+        fail(`RPT parse error: ${line.slice(0, 80)}`);
+      }
     }
   }
 
@@ -1031,7 +1068,30 @@ function validateRunLedgerCrossLinks(
     );
   }
 
-  return { evidenceCount, runLedgerCount };
+  // ── CROSS-002 FIX: Cross-stream runId set equality ───────────────────────
+  // Every evidence runId must appear in the run ledger.
+  for (const eid of evidenceRunIds) {
+    if (!runLedgerRunIds.has(eid)) {
+      fail(
+        `Cross-link set mismatch: evidence runId ${eid} not found in run ledger — ` +
+          'all evidence runs must have corresponding run ledger entries'
+      );
+    }
+  }
+
+  // If RPT entries exist, their runIds must also appear in run ledger.
+  if (rptCount > 0) {
+    for (const rid of rptRunIds) {
+      if (!runLedgerRunIds.has(rid)) {
+        fail(
+          `Cross-link set mismatch: RPT runId ${rid} not found in run ledger — ` +
+            'all RPT runs must have corresponding run ledger entries'
+        );
+      }
+    }
+  }
+
+  return { evidenceCount, runLedgerCount, rptCount };
 }
 
 // ===========================================================================

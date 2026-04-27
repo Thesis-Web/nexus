@@ -56,11 +56,11 @@ export class JsonlRoutingTrailReader implements RoutingTrailReader {
       try {
         results.push(JSON.parse(line) as RoutingProvenanceTrailEntry);
       } catch (err) {
-        // NVG-RPT-003 FIX: log malformed line instead of silent skip
-        console.error(
-          `[JsonlRoutingTrailReader] malformed trail line skipped: ${(err as Error).message}`
+        // NVG-RPT-003 FIX: fail closed — malformed trail line is a data integrity violation.
+        // Matches LEDGER-001 pattern. Governance audit trails must not silently drop records.
+        throw new Error(
+          `[JsonlRoutingTrailReader] malformed routing trail line: ${(err as Error).message}`
         );
-        continue;
       }
     }
     return results;
