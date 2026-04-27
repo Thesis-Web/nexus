@@ -27,6 +27,15 @@ export async function cmdSessionStart(opts: {
     console.error(`✗ Delegation not found: ${opts.delegation}`);
     process.exit(1);
   }
+  // GATE01-002 FIX: delegation must be bound to this actor and principal
+  if (delegation.actorId !== actor.actorId) {
+    console.error(`✗ delegation.actorId does not match actor.actorId`);
+    process.exit(1);
+  }
+  if (delegation.principalId !== actor.principalId) {
+    console.error(`✗ delegation.principalId does not match actor.principalId`);
+    process.exit(1);
+  }
   const ttlSeconds = opts.ttl ?? 3600;
   const createdAt = nowIso();
   const session: Session = {

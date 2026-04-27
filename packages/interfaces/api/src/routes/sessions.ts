@@ -46,6 +46,13 @@ export function registerSessionRoutes(
           .json({ ok: false, error: 'actor.principalId does not match delegation.principalId' });
         return;
       }
+      // GATE01-002 FIX: delegation must be bound to this actor
+      if (delegation.actorId !== actor.actorId) {
+        res
+          .status(400)
+          .json({ ok: false, error: 'delegation.actorId does not match actor.actorId' });
+        return;
+      }
       const session: Session = {
         sessionId: newUuid(),
         actorId: actor.actorId,

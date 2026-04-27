@@ -40,7 +40,15 @@ function rowToActor(row: ActorRow): Actor {
     riskCeiling: row.risk_ceiling,
     allowedSystems: JSON.parse(row.allowed_systems) as string[],
     registeredAt: row.registered_at,
-    octLevel: row.oct_level ?? OCT_LEVEL.OPEN,
+    octLevel: row.oct_level
+      ? (row.oct_level as OctLevel)
+      : (() => {
+          // OCT-002 FIX: log instead of silent default
+          console.warn(
+            `[ActorRegistry] actor ${row.actor_id}: oct_level is null, defaulting to OCT-OPEN`
+          );
+          return OCT_LEVEL.OPEN;
+        })(),
     ...(row.owner !== null ? { owner: row.owner } : {}),
     ...(row.purpose !== null ? { purpose: row.purpose } : {}),
     ...(row.review_cadence !== null ? { reviewCadence: row.review_cadence } : {}),
