@@ -27,10 +27,12 @@ import {
   type PipelineContext,
   type GateDecision,
   type DelegationStore,
+  type NonEmpty,
 } from '../types/index.js';
 import type { ActorRegistry } from '../types/index.js';
 import type { SessionStoreInterface } from '../types/index.js';
 import type { PrincipalRegistry } from '../types/index.js';
+import type { IdentityProviderInterface } from '../types/index.js';
 
 function gateDeny(code: string, reason: string, startMs: number): GateResult {
   return {
@@ -58,7 +60,8 @@ export class IdentityGate implements Gate {
     private readonly actorRegistry: ActorRegistry,
     private readonly sessionStore: SessionStoreInterface,
     private readonly principalRegistry: PrincipalRegistry,
-    private readonly delegationStore: DelegationStore // HOLE-002
+    private readonly delegationStore: DelegationStore, // HOLE-002
+    private readonly identityProvider?: IdentityProviderInterface // IDENTITY-001
   ) {}
 
   async evaluate(
@@ -150,6 +153,14 @@ export class IdentityGate implements Gate {
     context.actor = actor;
     context.principal = principal;
     context.delegationContext = delegationContext;
+
+    // IDENTITY-001 FIX: resolve identity claims via provider if available
+    if (this.identityProvider) {
+      const claims = await this.identityProvider.resolveIdentity(actor.actorId as NonEmpty);
+      if (claims) {
+        context.identityClaims = claims;
+      }
+    }
 
     return {
       decision: {

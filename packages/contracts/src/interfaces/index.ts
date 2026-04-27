@@ -476,6 +476,7 @@ export interface PipelineContext {
   approvalRequest?: ApprovalRequest;
   approvalResponse?: ApprovalResponse;
   lastEvidenceRecord?: EvidenceRecord;
+  identityClaims?: IdentityClaims; // IDENTITY-001: populated by Gate01 via IdentityProviderInterface
 }
 
 // ─── §12.3.24 LedgerBackend Interface ───

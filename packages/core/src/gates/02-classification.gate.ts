@@ -108,12 +108,19 @@ export class ClassificationGate implements Gate {
     );
 
     // ── §10.4: Post-classification OCT ceiling check (mandatory) ─────────
-    // Build identity-provider ceiling from actor registration data
-    const identityCeiling: CapabilityCeiling = {
-      allowedSystems: actor.allowedSystems,
-      allowedCapabilities: ['*'],
-      maxRiskTier: actor.riskCeiling as RiskTier,
-    };
+    // IDENTITY-002 FIX: Use identity provider claims if available, else actor registration data
+    const claimsCeiling = context.identityClaims?.capabilityCeilings?.[0];
+    const identityCeiling: CapabilityCeiling = claimsCeiling
+      ? {
+          allowedSystems: claimsCeiling.allowedSystems,
+          allowedCapabilities: claimsCeiling.allowedCapabilities,
+          maxRiskTier: claimsCeiling.maxRiskTier,
+        }
+      : {
+          allowedSystems: actor.allowedSystems,
+          allowedCapabilities: ['*'],
+          maxRiskTier: actor.riskCeiling as RiskTier,
+        };
     const effective = resolveEffectiveCeiling(identityCeiling, octCeiling);
     if (riskTierExceeds(riskTier, effective.maxRiskTier)) {
       return deny(
