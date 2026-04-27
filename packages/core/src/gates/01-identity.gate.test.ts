@@ -3,6 +3,7 @@
  * Spec: nexus-engineering-spec-v1-8-26.md §13.2
  * SOLVE-011: session store returns regardless of expiry; Gate 01 owns expiry semantics.
  * HOLE-002: Gate 01 resolves delegationContext as the fourth item of the identity tuple.
+ * IDENTITY-001 HARDENED: identityProvider is REQUIRED. Null claims → DENY.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -16,6 +17,7 @@ import {
   type DelegationContext,
   type AgentAction,
   type PipelineContext,
+  type IdentityClaims,
 } from '../types/index.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -72,6 +74,19 @@ const DELEGATION: DelegationContext = {
   mintedBy: 'nexus-delegation-engine/v0.1.0',
   signature: 'test-sig',
 };
+const IDENTITY_CLAIMS: IdentityClaims = {
+  principalIdentity: 'principal-001',
+  roleAssignments: [],
+  capabilityCeilings: [
+    {
+      allowedSystems: ['stub'],
+      allowedCapabilities: ['*'],
+      maxRiskTier: 'high',
+    },
+  ],
+  environmentContext: 'dev',
+  actorClass: ACTOR_CLASS.HUMAN,
+};
 const ACTION: AgentAction = {
   actionId: 'action-001',
   receivedAt: NOW,
@@ -122,6 +137,7 @@ interface GateOverrides {
   session?: Session | null;
   principal?: Principal | null;
   delegation?: DelegationContext | null;
+  identityClaims?: IdentityClaims | null; // null = provider returns null → DENY
 }
 
 function makeGate(overrides: GateOverrides) {
@@ -131,6 +147,9 @@ function makeGate(overrides: GateOverrides) {
   const sessionVal = Object.hasOwn(overrides, 'session') ? overrides.session : SESSION;
   const principalVal = Object.hasOwn(overrides, 'principal') ? overrides.principal : PRINCIPAL;
   const delegationVal = Object.hasOwn(overrides, 'delegation') ? overrides.delegation : DELEGATION;
+  const claimsVal = Object.hasOwn(overrides, 'identityClaims')
+    ? overrides.identityClaims
+    : IDENTITY_CLAIMS;
 
   const actorRegistry = { get: vi.fn().mockResolvedValue(actorVal) };
   const sessionStore = {
@@ -144,14 +163,22 @@ function makeGate(overrides: GateOverrides) {
     save: vi.fn(),
     listForActor: vi.fn(),
   };
+  const identityProvider = {
+    providerType: 'reference_adapter' as const,
+    providerVersion: 'v1.0.0',
+    resolveIdentity: vi.fn().mockResolvedValue(claimsVal),
+    authenticate: vi.fn(),
+  };
 
   return {
     gate: new IdentityGate(
       actorRegistry as never,
       sessionStore as never,
       principalRegistry as never,
-      delegationStore as never
+      delegationStore as never,
+      identityProvider as never
     ),
+    identityProvider,
   };
 }
 
@@ -166,6 +193,7 @@ describe('Gate 01 — Identity', () => {
     expect(ctx.actor).toEqual(ACTOR);
     expect(ctx.principal).toEqual(PRINCIPAL);
     expect(ctx.delegationContext).toEqual(DELEGATION);
+    expect(ctx.identityClaims).toEqual(IDENTITY_CLAIMS);
   });
 
   it('denies ACTOR_NOT_REGISTERED when actor not found', async () => {
@@ -235,6 +263,17 @@ describe('Gate 01 — Identity', () => {
     const result = await gate.evaluate(ACTION, makeContext(), []);
     expect(result.decision.outcome).toBe('deny');
     expect(result.decision.denialCode).toBe(DENIAL_CODE.CHAIN_INTEGRITY_BROKEN);
+  });
+
+  // ─── IDENTITY-001 HARDENED: provider-required, null-claims → DENY ─────────
+
+  it('denies IDENTITY_CLAIMS_UNRESOLVABLE when identity provider returns null', async () => {
+    const { gate } = makeGate({ identityClaims: null });
+    const ctx = makeContext();
+    const result = await gate.evaluate(ACTION, ctx, []);
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.IDENTITY_CLAIMS_UNRESOLVABLE);
+    expect(result.decision.reason).toContain('identity provider could not resolve claims');
   });
 
   // ─── Tuple binding tests (DEF-GATE01-001) ──────────────────────────────────

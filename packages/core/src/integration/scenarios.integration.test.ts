@@ -22,6 +22,7 @@ import { randomUUID } from 'crypto';
 // Core
 import { Pipeline, SimpleConnectorRegistry, SimpleChannelRegistry } from '../engine/pipeline.js';
 import { IdentityGate } from '../gates/01-identity.gate.js';
+import { RegistryBackedIdentityProvider } from '../identity/registry-identity-provider.js';
 import { ClassificationGate } from '../gates/02-classification.gate.js';
 import { DelegationGate } from '../gates/03-delegation.gate.js';
 import { PolicyGate } from '../gates/04-policy.gate.js';
@@ -373,7 +374,14 @@ export async function runScenario(
   const riskClassifier = new RiskClassifier(capabilityRegistry);
 
   // 11. Wire gates
-  const identityGate = new IdentityGate(actorReg, sessionStore, principalReg, delegStore);
+  const identityProvider = new RegistryBackedIdentityProvider(actorReg, principalReg);
+  const identityGate = new IdentityGate(
+    actorReg,
+    sessionStore,
+    principalReg,
+    delegStore,
+    identityProvider
+  );
   const classificationGate = new ClassificationGate(
     new VerbNormalizer(LexicalVerbResolver.loadFromFixture(process.cwd())),
     new TargetNormalizer(),
@@ -635,9 +643,16 @@ describe('Integration: POC Scenarios (spec §27.3)', () => {
 
     const policyFile = await loadPolicyFile(setup.policyFile!, controlPlanePair);
     const capReg = new CapabilityRegistry();
+    const replayIdentityProvider = new RegistryBackedIdentityProvider(actorReg, principalReg);
     const pipeline = new Pipeline(
       {
-        identity: new IdentityGate(actorReg, sessionStore, principalReg, delegStore),
+        identity: new IdentityGate(
+          actorReg,
+          sessionStore,
+          principalReg,
+          delegStore,
+          replayIdentityProvider
+        ),
         classification: new ClassificationGate(
           new VerbNormalizer(LexicalVerbResolver.loadFromFixture(process.cwd())),
           new TargetNormalizer(),

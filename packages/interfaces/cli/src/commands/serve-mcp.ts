@@ -34,6 +34,7 @@ import {
   DataClassifier,
   RiskClassifier,
   IdentityGate,
+  RegistryBackedIdentityProvider,
   ClassificationGate,
   DelegationGate,
   PolicyGate,
@@ -122,8 +123,15 @@ export async function cmdServeMcp(opts: ServeMcpOptions): Promise<void> {
   const rateLimiter = new RateLimiter();
 
   // 11. Gates — fixed order (spec §13.2–§13.8)
+  const identityProvider = new RegistryBackedIdentityProvider(actorRegistry, principalRegistry);
   const gates = {
-    identity: new IdentityGate(actorRegistry, sessionStore, principalRegistry, delegationStore),
+    identity: new IdentityGate(
+      actorRegistry,
+      sessionStore,
+      principalRegistry,
+      delegationStore,
+      identityProvider
+    ),
     classification: new ClassificationGate(
       verbNormalizer,
       targetNormalizer,

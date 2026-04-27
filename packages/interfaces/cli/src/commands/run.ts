@@ -17,6 +17,7 @@ import {
   DataClassifier,
   RiskClassifier,
   IdentityGate,
+  RegistryBackedIdentityProvider,
   ClassificationGate,
   DelegationGate,
   PolicyGate,
@@ -361,9 +362,16 @@ async function runScenario(
   const connectorReg = createConnectorRegistry();
   const capReg = new CapabilityRegistry();
   const riskClassifier = new RiskClassifier(capReg);
+  const identityProvider = new RegistryBackedIdentityProvider(actorReg, principalReg);
   const pipeline = new Pipeline(
     {
-      identity: new IdentityGate(actorReg, sessionStore, principalReg, delegStore),
+      identity: new IdentityGate(
+        actorReg,
+        sessionStore,
+        principalReg,
+        delegStore,
+        identityProvider
+      ),
       classification: new ClassificationGate(
         new VerbNormalizer(LexicalVerbResolver.loadFromFixture(process.cwd())),
         new TargetNormalizer(),

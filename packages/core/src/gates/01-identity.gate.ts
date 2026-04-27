@@ -14,8 +14,12 @@
  * This gate populates all three. Downstream gates use non-null assertions (!) with
  * the invariant that Gate 01 passed if they are executing.
  *
- * Spec: nexus-engineering-spec-v1-8-26.md §11.1, §13.2
- * Blueprint: nexus-blueprint-v1-4-12.md §5.1, §5.4, §8.1
+ * IDENTITY-001 HARDENED: identityProvider is REQUIRED (not optional).
+ * If provider.resolveIdentity() returns null → DENY with IDENTITY_CLAIMS_UNRESOLVABLE.
+ * Gate 01 MUST populate context.identityClaims on every pass. Default-deny — no exceptions.
+ *
+ * Spec: nexus-engineering-spec-v1-8-26.md §10.2, §11.1, §13.2
+ * Blueprint: nexus-blueprint-v1-5-13.md §7.1–§7.3, §17.1
  */
 import {
   GATE_ID,
@@ -61,7 +65,7 @@ export class IdentityGate implements Gate {
     private readonly sessionStore: SessionStoreInterface,
     private readonly principalRegistry: PrincipalRegistry,
     private readonly delegationStore: DelegationStore, // HOLE-002
-    private readonly identityProvider?: IdentityProviderInterface // IDENTITY-001
+    private readonly identityProvider: IdentityProviderInterface // IDENTITY-001 HARDENED: REQUIRED — not optional
   ) {}
 
   async evaluate(
@@ -154,13 +158,19 @@ export class IdentityGate implements Gate {
     context.principal = principal;
     context.delegationContext = delegationContext;
 
-    // IDENTITY-001 FIX: resolve identity claims via provider if available
-    if (this.identityProvider) {
-      const claims = await this.identityProvider.resolveIdentity(actor.actorId as NonEmpty);
-      if (claims) {
-        context.identityClaims = claims;
-      }
+    // ─── IDENTITY-001 HARDENED: resolve identity claims — DENY if unresolvable ────
+    // Blueprint §7.2: "the identity provider must supply five claims for every actor
+    // before the actor enters the governed stack."
+    // NULL = actor not found in provider = DENY. No fallback. No wildcard. No open door.
+    const claims = await this.identityProvider.resolveIdentity(actor.actorId as NonEmpty);
+    if (!claims) {
+      return gateDeny(
+        DENIAL_CODE.IDENTITY_CLAIMS_UNRESOLVABLE,
+        `identity provider could not resolve claims for actor ${actor.actorId}`,
+        startMs
+      );
     }
+    context.identityClaims = claims;
 
     return {
       decision: {

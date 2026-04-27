@@ -4,6 +4,10 @@
  * §10.4: OCT ceiling enforcement — more restrictive of identity + OCT wins.
  * DEF-S10-001: OCT enforcement is MANDATORY. Missing/unknown octLevel = deny.
  * ADAPTER ENVIRONMENT LAW: environment comes from actor registry only.
+ *
+ * IDENTITY-002 HARDENED: identityClaims MUST be present in context (set by Gate01).
+ * If missing → DENY. No wildcard fallback. No ['*'] invention. Default-deny.
+ * The identity PROVIDER decides what capabilities an actor has — the gate enforces.
  */
 import {
   GATE_ID,
@@ -16,7 +20,6 @@ import {
   type AgentAction,
   type PipelineContext,
   type GateDecision,
-  type RiskTier,
   type CapabilityCeiling,
 } from '../types/index.js';
 import type { VerbNormalizer } from '../classification/verb-normalizer.js';
@@ -63,6 +66,17 @@ export class ClassificationGate implements Gate {
     const startMs = Date.now();
     const actor = context.actor!; // Gate 01 invariant: actor resolved
 
+    // ── IDENTITY-002 HARDENED: identity claims MUST be present ────────────
+    // Gate 01 sets context.identityClaims on pass. If absent, something
+    // bypassed Gate 01 or Gate 01 is broken. Either way: DENY.
+    if (!context.identityClaims) {
+      return deny(
+        DENIAL_CODE.IDENTITY_CLAIMS_UNRESOLVABLE,
+        'identity claims not present in context — Gate 01 must resolve claims before Gate 02',
+        startMs
+      );
+    }
+
     // ── §11.1: OCT is mandatory actor state ─────────────────────────────
     // DEF-S10-001: Missing or unknown octLevel is a deterministic deny.
     const octCeiling = OCT_CEILINGS[actor.octLevel];
@@ -108,8 +122,10 @@ export class ClassificationGate implements Gate {
     );
 
     // ── §10.4: Post-classification OCT ceiling check (mandatory) ─────────
-    // IDENTITY-002 FIX: Use identity provider claims if available, else actor registration data
-    const claimsCeiling = context.identityClaims?.capabilityCeilings?.[0];
+    // IDENTITY-002 HARDENED: Use identity provider claims directly.
+    // No fallback to actor.riskCeiling with ['*'] wildcard.
+    // The provider already made the capability decision — we enforce it.
+    const claimsCeiling = context.identityClaims.capabilityCeilings[0];
     const identityCeiling: CapabilityCeiling = claimsCeiling
       ? {
           allowedSystems: claimsCeiling.allowedSystems,
@@ -117,16 +133,17 @@ export class ClassificationGate implements Gate {
           maxRiskTier: claimsCeiling.maxRiskTier,
         }
       : {
-          allowedSystems: actor.allowedSystems,
-          allowedCapabilities: ['*'],
-          maxRiskTier: actor.riskCeiling as RiskTier,
+          // No capability ceilings in claims = no capabilities allowed = DENY path via ceiling
+          allowedSystems: [],
+          allowedCapabilities: [],
+          maxRiskTier: 'low',
         };
     const effective = resolveEffectiveCeiling(identityCeiling, octCeiling);
     if (riskTierExceeds(riskTier, effective.maxRiskTier)) {
       return deny(
         DENIAL_CODE.RISK_CEILING_EXCEEDED,
         `risk tier ${riskTier} exceeds effective ceiling ${effective.maxRiskTier} ` +
-          `(OCT: ${actor.octLevel}, identity: ${actor.riskCeiling})`,
+          `(OCT: ${actor.octLevel}, identity: ${identityCeiling.maxRiskTier})`,
         startMs
       );
     }

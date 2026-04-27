@@ -29,6 +29,7 @@ export { SqliteSessionStore } from './identity/session-store.js';
 export { SqliteDelegationStore, nextSequence } from './identity/delegation-store.js';
 export { mintRootDelegation, mintSubDelegation } from './identity/delegation-engine.js';
 export type { RootDelegationParams, SubDelegationParams } from './identity/delegation-engine.js';
+export { RegistryBackedIdentityProvider } from './identity/registry-identity-provider.js';
 
 // §13.3 — Classification
 export { VerbNormalizer } from './classification/verb-normalizer.js';

@@ -192,6 +192,7 @@ export const DENIAL_CODE = {
   SESSION_DELEGATION_MISMATCH: 'session_delegation_mismatch',
   DELEGATION_ACTOR_MISMATCH: 'delegation_actor_mismatch',
   DELEGATION_PRINCIPAL_MISMATCH: 'delegation_principal_mismatch',
+  IDENTITY_CLAIMS_UNRESOLVABLE: 'identity_claims_unresolvable',
   // Gate 02
   UNRESOLVABLE_VERB: 'unresolvable_action_verb',
   UNRESOLVABLE_TARGET: 'unresolvable_target',

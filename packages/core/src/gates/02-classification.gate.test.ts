@@ -1,6 +1,7 @@
 /**
  * Gate 02 — Classification — unit tests
  * Spec: nexus-engineering-spec-v1-8-26.md §13.3
+ * IDENTITY-002 HARDENED: context.identityClaims MUST be present. Missing = DENY.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -8,8 +9,10 @@ import { ClassificationGate } from '../gates/02-classification.gate.js';
 import {
   DENIAL_CODE,
   ACTION_VERB,
+  ACTOR_CLASS,
   type AgentAction,
   type PipelineContext,
+  type IdentityClaims,
 } from '../types/index.js';
 
 const NOW = new Date().toISOString();
@@ -46,8 +49,22 @@ function makeAction(verb: string, target: string): AgentAction {
   };
 }
 
-function makeCtx(): PipelineContext {
-  return {
+const DEFAULT_CLAIMS: IdentityClaims = {
+  principalIdentity: 'p-001',
+  roleAssignments: [],
+  capabilityCeilings: [
+    {
+      allowedSystems: ['stub'],
+      allowedCapabilities: ['*'],
+      maxRiskTier: 'high',
+    },
+  ],
+  environmentContext: 'dev',
+  actorClass: ACTOR_CLASS.HUMAN,
+};
+
+function makeCtx(claimsOverride?: IdentityClaims | undefined | null): PipelineContext {
+  const ctx: Record<string, unknown> = {
     sessionId: 's-001',
     actor: {
       actorId: 'actor-001',
@@ -70,7 +87,15 @@ function makeCtx(): PipelineContext {
     channelRegistry: { get: vi.fn(), register: vi.fn(), list: vi.fn() },
     threatLog: [],
     startedAt: NOW,
-  } as unknown as PipelineContext;
+  };
+  // If explicitly null or undefined, do NOT set identityClaims (tests missing-claims path)
+  // Otherwise set to provided or default claims
+  if (claimsOverride === null) {
+    // intentionally absent — tests the DENY path
+  } else {
+    ctx.identityClaims = claimsOverride ?? DEFAULT_CLAIMS;
+  }
+  return ctx as unknown as PipelineContext;
 }
 
 function makeGate(
@@ -138,6 +163,25 @@ describe('Gate 02 — Classification', () => {
   });
 });
 
+// ── IDENTITY-002 HARDENED: deny on missing claims ──────────────────────────
+
+it('denies IDENTITY_CLAIMS_UNRESOLVABLE when identityClaims missing from context (IDENTITY-002)', async () => {
+  const tgt = {
+    system: 'stub',
+    resourceType: 'record',
+    resourceScope: 'single',
+    environment: 'dev',
+    externalFacing: false,
+  };
+  const { gate } = makeGate(ACTION_VERB.READ, tgt, 'read:record:single', 'low');
+  // Pass null to makeCtx → identityClaims will be absent
+  const ctx = makeCtx(null);
+  const result = await gate.evaluate(makeAction('read', '{}'), ctx, []);
+  expect(result.decision.outcome).toBe('deny');
+  expect(result.decision.denialCode).toBe(DENIAL_CODE.IDENTITY_CLAIMS_UNRESOLVABLE);
+  expect(result.decision.reason).toContain('identity claims not present');
+});
+
 // ── OCT denial code path tests — spec §13.3, §11.1, §11.2 ────────────────
 
 it('denies RISK_CEILING_EXCEEDED when actor is OCT-COMPILE (spec §11.2 — no system actions)', async () => {
@@ -167,9 +211,18 @@ it('denies RISK_CEILING_EXCEEDED when risk tier exceeds OCT ceiling (spec §10.4
   };
   // OCT-OPEN ceiling maxRiskTier = medium; inject riskClassifier returning critical
   const { gate } = makeGate(ACTION_VERB.READ, tgt, 'read:record:single', 'critical');
-  const ctx = makeCtx();
+  const ctx = makeCtx({
+    ...DEFAULT_CLAIMS,
+    capabilityCeilings: [
+      {
+        allowedSystems: ['stub'],
+        allowedCapabilities: ['*'],
+        maxRiskTier: 'critical', // identity ceiling doesn't block
+      },
+    ],
+  });
   ctx.actor!.octLevel = 'OCT-OPEN';
-  ctx.actor!.riskCeiling = 'critical'; // identity ceiling doesn't block
+  ctx.actor!.riskCeiling = 'critical';
   const result = await gate.evaluate(makeAction('read', '{}'), ctx, []);
   expect(result.decision.outcome).toBe('deny');
   expect(result.decision.denialCode).toBe(DENIAL_CODE.RISK_CEILING_EXCEEDED);
