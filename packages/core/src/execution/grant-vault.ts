@@ -46,19 +46,14 @@ function getRef(grant: ExecutionGrant): object {
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
-export function setGrantSecret(
-  grant: ExecutionGrant,
-  secretValue: string,
-): void {
+export function setGrantSecret(grant: ExecutionGrant, secretValue: string): void {
   // GRANT-SECRET-002: lazy prune before adding — prevents unbounded growth
   pruneExpiredGrants();
   grantSecrets.set(getRef(grant), secretValue);
 }
 
 // CONTRA-602 FIX: returns string | undefined — does not throw (spec §17.5)
-export function getGrantSecret(
-  grant: ExecutionGrant,
-): string | undefined {
+export function getGrantSecret(grant: ExecutionGrant): string | undefined {
   const entry = grantRefs.get(grant.grantId);
   return entry ? grantSecrets.get(entry.ref) : undefined;
 }
@@ -78,7 +73,7 @@ export function assertGrantPresent(grant: ExecutionGrant): void {
   if (!secret) {
     throw new NexusSecurityViolation(
       DENIAL_CODE.BROAD_TOKEN_BYPASS,
-      'grant secret absent — execution without valid grant is a bypass attempt',
+      'grant secret absent — execution without valid grant is a bypass attempt'
     );
   }
 }
@@ -87,7 +82,7 @@ export function assertGrantNotExpired(grant: ExecutionGrant): void {
   if (new Date(grant.expiresAt) <= new Date()) {
     throw new NexusSecurityViolation(
       DENIAL_CODE.GRANT_EXPIRED,
-      `grant ${grant.grantId} expired at ${grant.expiresAt}`,
+      `grant ${grant.grantId} expired at ${grant.expiresAt}`
     );
   }
 }

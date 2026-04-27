@@ -21,10 +21,7 @@ import {
 } from '../execution/grant-vault.js';
 import type { ExecutionGrant } from '../types/index.js';
 
-function makeGrant(
-  grantId: string,
-  expiresInMs: number = 300_000,
-): ExecutionGrant {
+function makeGrant(grantId: string, expiresInMs: number = 300_000): ExecutionGrant {
   return {
     grantId,
     actionId: `action-${grantId}`,
