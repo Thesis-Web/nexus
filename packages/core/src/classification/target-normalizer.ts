@@ -1,11 +1,14 @@
 /**
  * Target normalizer — spec §13.3, §19.2
  *
- * ADAPTER ENVIRONMENT LAW (blueprint §5.4):
+ * ADAPTER ENVIRONMENT LAW (blueprint §24.5, spec §19.5):
  * Adapters MUST NOT set or override environment. Environment is authoritative from
- * actor registry only. This normalizer replaces any 'ACTOR_ENVIRONMENT' sentinel
- * with context.actor.environment. Raw targets from the MCP adapter carry
- * 'ACTOR_ENVIRONMENT' as a sentinel — Gate 02 calls normalize() with actor.environment.
+ * actor registry only. This normalizer ALWAYS uses actorEnvironment — no exceptions.
+ *
+ * ENV-001 FIX: the fromParsed() path previously allowed non-sentinel environment
+ * values from rawTarget JSON to pass through. Now ALL paths unconditionally use
+ * actorEnvironment. Adapter-supplied environment is discarded — the actor registry
+ * is the sole authority.
  */
 import type { ResourceTarget, EnvironmentId } from '../types/index.js';
 
@@ -56,13 +59,14 @@ export class TargetNormalizer {
     obj: Record<string, unknown>,
     actorEnvironment: EnvironmentId
   ): ResourceTarget {
-    const env = obj['environment'] as string | undefined;
+    // ENV-001 FIX: ALWAYS use actorEnvironment. Adapter-supplied environment is NEVER trusted.
+    // Blueprint §24.5: "Adapters MUST NOT set or override environment."
+    // Any environment value in rawTarget JSON is discarded.
     return {
       system: (obj['system'] as string) || 'unknown',
       resourceType: (obj['resourceType'] as string) || 'resource',
       resourceScope: this.normalizeScope((obj['resourceScope'] as string) ?? 'single'),
-      // Replace ACTOR_ENVIRONMENT sentinel with authoritative actor environment
-      environment: env === 'ACTOR_ENVIRONMENT' || !env ? actorEnvironment : env,
+      environment: actorEnvironment,
       externalFacing: Boolean(obj['externalFacing']),
     };
   }
