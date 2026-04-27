@@ -104,6 +104,7 @@ export {
 
 // §11.3 — OCT Manager
 export { assignOct } from './identity/oct-manager.js';
+export type { SignedOctAssignmentRequest } from './identity/oct-manager.js';
 
 // §13.1 — Pipeline
 export { Pipeline, SimpleConnectorRegistry, SimpleChannelRegistry } from './engine/pipeline.js';
