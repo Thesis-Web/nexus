@@ -20,6 +20,7 @@ export * from './security/replay-detector.js';
 export * from './security/injection-guard.js';
 export * from './security/rate-limiter.js';
 export * from './security/threat-log.js';
+export { validateActionSchema } from './security/ingress-validator.js';
 
 // §20 — Identity registries
 export { SqliteActorRegistry } from './identity/actor-registry.js';

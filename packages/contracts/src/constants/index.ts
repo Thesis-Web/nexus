@@ -225,6 +225,7 @@ export const DENIAL_CODE = {
   // Security / ingress
   REPLAY_DETECTED: 'replay_detected',
   RATE_LIMIT_EXCEEDED: 'rate_limit_exceeded',
+  INGRESS_SCHEMA_INVALID: 'ingress_schema_invalid',
   BROAD_TOKEN_BYPASS: 'broad_token_bypass',
   TEMPLATE_INTEGRITY_FAILED: 'template_integrity_failed',
   GRANT_EXPIRED: 'grant_expired',

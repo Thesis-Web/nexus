@@ -29,6 +29,7 @@ import type { ReplayDetector } from '../security/replay-detector.js';
 import type { RateLimiter } from '../security/rate-limiter.js';
 import { buildThreatEvent } from '../security/threat-log.js';
 import { guardString, INTENT_MAX_CHARS, RISK_NOTE_MAX_CHARS } from '../security/injection-guard.js';
+import { validateActionSchema } from '../security/ingress-validator.js';
 import { nextSequence } from '../identity/delegation-store.js';
 import type Database from 'better-sqlite3';
 
@@ -105,6 +106,33 @@ export class Pipeline implements PipelineInterface {
         ]);
       }
       throw err;
+    }
+
+    // SECURITY-INGRESS-001 FIX: Structural schema validation at ingress
+    // Spec §8.1: "Security Layer: checkIngress → replay check, rate limit, schema validation"
+    const schemaViolation = validateActionSchema(rawAction);
+    if (schemaViolation) {
+      const te: ThreatEvent = buildThreatEvent(
+        'security_violation',
+        'ingress',
+        `schema validation failed: ${schemaViolation}`
+      );
+      context.threatLog.push(te);
+      const action = this.assignSequence(rawAction, context);
+      return this.runGate07(action, context, [
+        {
+          gateId: 'ingress',
+          gateOrder: 0,
+          plane: 'control',
+          outcome: 'deny',
+          reason: `ingress schema invalid: ${schemaViolation}`,
+          denialCode: DENIAL_CODE.INGRESS_SCHEMA_INVALID,
+          policyRuleId: null,
+          evaluatedAt: new Date().toISOString(),
+          durationMs: 0,
+          metadata: {},
+        },
+      ]);
     }
 
     // SECURITY-INGRESS-002 / REDACT-001 FIX: Intent field sanitization at ingress
