@@ -122,7 +122,7 @@ export async function assignOct(
 
   // 8. Mandatory Run Ledger audit event — §11.3
   await emitInfrastructureAuditEvent(
-    'oct_assignment',
+    action,
     {
       actorId,
       previousOctLevel,

@@ -142,7 +142,7 @@ describe('OCT Manager — spec §11.3', () => {
 
     expect(ledger.events).toHaveLength(1);
     const event = ledger.events[0]!;
-    expect(event['eventType']).toBe('oct_assignment');
+    expect(event['eventType']).toBe('oct_change');
     expect((event['detail'] as any).signatureHash).toBeTruthy();
     expect((event['detail'] as any).operatorId).toBe(operatorId);
   });
