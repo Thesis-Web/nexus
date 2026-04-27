@@ -1055,6 +1055,32 @@ export interface NormalizationResult {
   error?: NonEmpty;
 }
 
+// ─── §28.1 Post-Inference Action Normalizer — NVG→NXS boundary plug point ───
+// Pure normalization. Zero governance decisions. Any governance decision inside
+// the normalizer is a build violation (blueprint §15.1, spec §28.1).
+// External implementations provide this; Nexus defines the contract.
+// The lexical-normalizer.ts is a subordinate helper, not the normalizer itself (§28.2).
+
+/** Context carried from the governed workspace/orchestrator through NVG to the normalizer. */
+export interface NormalizerContext {
+  runId: Uuid;
+  actorId: Uuid;
+  principalId: Uuid;
+  sessionId: Uuid;
+  delegationId: Uuid;
+  protocol: NonEmpty;
+}
+
+/**
+ * Post-Inference Action Normalizer — converts model output to AgentAction format.
+ * Sits at the NVG→NXS boundary. Makes zero governance decisions.
+ * Produces a consistent AgentAction entering NXS regardless of model source.
+ * External implementations register via bootstrap DI — Nexus never owns the implementation.
+ */
+export interface PostInferenceNormalizer {
+  normalize(modelOutput: unknown, context: NormalizerContext): AgentAction;
+}
+
 // ─── §9.1 Runtime Disposition (MODE-001) ───
 // Mode controls whether evaluated decisions are acted upon — not whether they are recorded.
 // Callers of pipeline.process() use disposition to determine their response behavior.
