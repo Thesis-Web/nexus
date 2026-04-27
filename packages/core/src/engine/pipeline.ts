@@ -110,58 +110,83 @@ export class Pipeline implements PipelineInterface {
     const action: AgentAction = this.assignSequence(rawAction, context);
     const decisions: import('../types/index.js').GateDecision[] = [];
 
-    // === GATES 01-04: fixed sequential pipeline ===
-    const linearGates = [
-      this.gates.identity,
-      this.gates.classification,
-      this.gates.delegation,
-      this.gates.policy,
-    ];
+    // === GATES 01-06: exception-safe wrapper (PIPELINE-001) ===
+    // Gate 07 must always run. If any gate throws, we catch and still run Gate 07.
+    try {
+      // === GATES 01-04: fixed sequential pipeline ===
+      const linearGates = [
+        this.gates.identity,
+        this.gates.classification,
+        this.gates.delegation,
+        this.gates.policy,
+      ];
 
-    for (const gate of linearGates) {
-      const result = await gate.evaluate(action, context, decisions);
-      decisions.push(result.decision);
+      let earlyDenial = false;
+      for (const gate of linearGates) {
+        const result = await gate.evaluate(action, context, decisions);
+        decisions.push(result.decision);
 
-      if (result.actionMutations) Object.assign(action, result.actionMutations);
-      if (result.delegationSnapshot) context.delegationSnapshot = result.delegationSnapshot;
-      if (result.grantTemplate) context.grantTemplate = result.grantTemplate;
+        if (result.actionMutations) Object.assign(action, result.actionMutations);
+        if (result.delegationSnapshot) context.delegationSnapshot = result.delegationSnapshot;
+        if (result.grantTemplate) context.grantTemplate = result.grantTemplate;
 
-      const isDeny = result.decision.outcome === 'deny' || result.decision.outcome === 'error';
-      if (isDeny) return this.runGate07(action, context, decisions);
+        const isDeny = result.decision.outcome === 'deny' || result.decision.outcome === 'error';
+        if (isDeny) {
+          earlyDenial = true;
+          break;
+        }
+      }
+
+      // === POST-GATE-04 BRANCH — explicit on OutcomeLabel (BS-101) ===
+      if (!earlyDenial) {
+        const outcome = decisions[decisions.length - 1]!.outcome;
+
+        if (outcome === OUTCOME_LABEL.REQUIRE_APPROVAL || outcome === OUTCOME_LABEL.ESCALATE) {
+          // === GATE 05: Approval (conditional — never on ALLOW paths) ===
+          const approvalResult = await this.gates.approval.evaluate(action, context, decisions);
+          decisions.push(approvalResult.decision);
+          if (approvalResult.approvalRequest)
+            context.approvalRequest = approvalResult.approvalRequest;
+          if (approvalResult.approvalResponse)
+            context.approvalResponse = approvalResult.approvalResponse;
+
+          const approvalDenied =
+            approvalResult.decision.outcome === 'deny' ||
+            approvalResult.decision.outcome === 'error';
+
+          if (!approvalDenied) {
+            // Gate 05 passed → Gate 06
+            const execResult = await this.gates.execution.evaluate(action, context, decisions);
+            decisions.push(execResult.decision);
+            if (execResult.grant) context.executionGrant = execResult.grant;
+            if (execResult.executionResult) context.executionResult = execResult.executionResult;
+          }
+        } else if (outcome === OUTCOME_LABEL.ALLOW) {
+          // === GATE 06: Execution (no approval required) ===
+          const execResult = await this.gates.execution.evaluate(action, context, decisions);
+          decisions.push(execResult.decision);
+          if (execResult.grant) context.executionGrant = execResult.grant;
+          if (execResult.executionResult) context.executionResult = execResult.executionResult;
+        }
+        // else: DENY or unknown — fall through to Gate 07
+      }
+    } catch (err) {
+      // Mid-pipeline exception — Gate 07 must still run.
+      // Swallow the error into a threat event so evidence is recorded.
+      if (err instanceof NexusSecurityViolation) {
+        context.threatLog.push(buildThreatEvent('security_violation', 'ingress', err.message));
+      } else {
+        context.threatLog.push(
+          buildThreatEvent(
+            'security_violation',
+            'ingress',
+            err instanceof Error ? err.message : 'unknown pipeline error'
+          )
+        );
+      }
     }
 
-    // === POST-GATE-04 BRANCH — explicit on OutcomeLabel (BS-101) ===
-    const outcome = decisions[decisions.length - 1]!.outcome;
-
-    if (outcome === OUTCOME_LABEL.REQUIRE_APPROVAL || outcome === OUTCOME_LABEL.ESCALATE) {
-      // === GATE 05: Approval (conditional — never on ALLOW paths) ===
-      const approvalResult = await this.gates.approval.evaluate(action, context, decisions);
-      decisions.push(approvalResult.decision);
-      if (approvalResult.approvalRequest) context.approvalRequest = approvalResult.approvalRequest;
-      if (approvalResult.approvalResponse)
-        context.approvalResponse = approvalResult.approvalResponse;
-
-      const approvalDenied =
-        approvalResult.decision.outcome === 'deny' || approvalResult.decision.outcome === 'error';
-      if (approvalDenied) return this.runGate07(action, context, decisions);
-
-      // Gate 05 passed → Gate 06
-      const execResult = await this.gates.execution.evaluate(action, context, decisions);
-      decisions.push(execResult.decision);
-      if (execResult.grant) context.executionGrant = execResult.grant;
-      if (execResult.executionResult) context.executionResult = execResult.executionResult;
-    } else if (outcome === OUTCOME_LABEL.ALLOW) {
-      // === GATE 06: Execution (no approval required) ===
-      const execResult = await this.gates.execution.evaluate(action, context, decisions);
-      decisions.push(execResult.decision);
-      if (execResult.grant) context.executionGrant = execResult.grant;
-      if (execResult.executionResult) context.executionResult = execResult.executionResult;
-    } else {
-      // DENY or unknown — Gate 07 directly
-      return this.runGate07(action, context, decisions);
-    }
-
-    // === GATE 07: Evidence (always runs) ===
+    // === GATE 07: Evidence (always runs — every path, including thrown exceptions) ===
     return this.runGate07(action, context, decisions);
   }
 
