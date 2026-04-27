@@ -504,6 +504,17 @@ export async function runScenario(
     });
     await integrationRunLedger.writeEvent({
       runId: actionRunId,
+      eventType: 'delegation_issued',
+      timestamp: nowIso(),
+      actorId: actor.actorId as Uuid,
+      detail: {
+        delegationId: dc.delegationId,
+        principalId: principal.principalId,
+        environment: dc.environment,
+      },
+    });
+    await integrationRunLedger.writeEvent({
+      runId: actionRunId,
       eventType: 'nxs_action',
       timestamp: nowIso(),
       actorId: actor.actorId as Uuid,

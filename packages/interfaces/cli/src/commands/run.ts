@@ -170,7 +170,8 @@ export async function cmdRun(opts: RunOptions): Promise<void> {
         controlPlaneKey,
         runId,
         opts.createConnectorRegistry,
-        modeConfig
+        modeConfig,
+        runEventLedger
       );
       results.push({
         scenarioId,
@@ -301,7 +302,8 @@ async function runScenario(
   controlPlaneKey: any,
   runId: string,
   createConnectorRegistry: () => ConnectorRegistry,
-  modeConfig: import('@nexus/contracts').ModeConfiguration
+  modeConfig: import('@nexus/contracts').ModeConfiguration,
+  runEventLedger: JsonlRunLedgerWriter
 ): Promise<{ record: EvidenceRecord; sessionId: string; delegationId: string }> {
   const actorReg = new SqliteActorRegistry(db);
   const principalReg = new SqlitePrincipalRegistry(db);
@@ -347,6 +349,18 @@ async function runScenario(
     maxChainDepth: setup.delegation.maxChainDepth,
   });
   await delegStore.save(dc);
+  // §30.1: delegation_issued event — RUNLEDGER-004 fix
+  await runEventLedger.writeEvent({
+    runId: runId as Uuid,
+    eventType: 'delegation_issued',
+    timestamp: nowIso(),
+    actorId: (actor.actorId ?? null) as Uuid | null,
+    detail: {
+      delegationId: dc.delegationId,
+      principalId: principal.principalId,
+      environment: dc.environment,
+    },
+  });
   const sessionId = newUuid();
   await sessionStore.create({
     sessionId,
