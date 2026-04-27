@@ -40,14 +40,13 @@ function rowToActor(row: ActorRow): Actor {
     riskCeiling: row.risk_ceiling,
     allowedSystems: JSON.parse(row.allowed_systems) as string[],
     registeredAt: row.registered_at,
+    // OCT-001 FIX: fail closed per §11.3 — no silent OCT-OPEN default
     octLevel: row.oct_level
       ? (row.oct_level as OctLevel)
       : (() => {
-          // OCT-002 FIX: log instead of silent default
-          console.warn(
-            `[ActorRegistry] actor ${row.actor_id}: oct_level is null, defaulting to OCT-OPEN`
+          throw new Error(
+            `OCT_MISSING: actor ${row.actor_id} has null oct_level — fail closed per §11.3`
           );
-          return OCT_LEVEL.OPEN;
         })(),
     ...(row.owner !== null ? { owner: row.owner } : {}),
     ...(row.purpose !== null ? { purpose: row.purpose } : {}),
@@ -82,6 +81,13 @@ export class SqliteActorRegistry implements ActorRegistry {
       );
     }
 
+    // OCT-001 FIX: octLevel is mandatory — no silent default to OCT-OPEN
+    if (!actor.octLevel) {
+      throw new Error(
+        `OCT_REQUIRED: actor ${actor.actorId} must have explicit octLevel at registration per §11.3`
+      );
+    }
+
     this.db
       .prepare(
         `INSERT INTO actors
@@ -101,7 +107,7 @@ export class SqliteActorRegistry implements ActorRegistry {
         actor.owner ?? null,
         actor.purpose ?? null,
         actor.reviewCadence ?? null,
-        actor.octLevel ?? OCT_LEVEL.OPEN
+        actor.octLevel
       );
   }
 
