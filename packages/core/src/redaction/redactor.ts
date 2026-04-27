@@ -25,6 +25,11 @@ export function redactExecutionResult(
   else if (dataClasses.includes(DATA_CLASS.PII)) summary = REDACTION_MARKERS.PII;
   else if (dataClasses.includes(DATA_CLASS.FINANCIAL)) summary = REDACTION_MARKERS.FINANCIAL;
 
+  // REDACT-002 FIX: §18 requires secret-pattern fields replaced on full evidence surface
+  if (summary) {
+    summary = summary.replace(SECRET_PATTERN, '[REDACTED:SECRET]');
+  }
+
   const errorMessage = result.errorMessage
     ? result.errorMessage.replace(SECRET_PATTERN, '[REDACTED:SECRET]')
     : null;

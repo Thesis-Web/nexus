@@ -61,17 +61,18 @@ export class JsonlRoutingTrailBackend implements RoutingTrailWriter, RoutingTrai
     } catch {
       return [];
     }
-    return raw
-      .trim()
-      .split('\n')
-      .filter(Boolean)
-      .map(line => {
-        try {
-          return JSON.parse(line) as RoutingProvenanceTrailEntry;
-        } catch {
-          return null;
-        }
-      })
-      .filter((e): e is RoutingProvenanceTrailEntry => e !== null);
+    const results: RoutingProvenanceTrailEntry[] = [];
+    for (const line of raw.trim().split('\n').filter(Boolean)) {
+      try {
+        results.push(JSON.parse(line) as RoutingProvenanceTrailEntry);
+      } catch (err) {
+        // NVG-RPT-003 FIX: log malformed line instead of silent skip
+        console.error(
+          `[JsonlRoutingTrailBackend] malformed trail line skipped: ${(err as Error).message}`
+        );
+        continue;
+      }
+    }
+    return results;
   }
 }

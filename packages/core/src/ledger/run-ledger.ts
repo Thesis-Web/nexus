@@ -49,7 +49,11 @@ export class JsonlRunLedgerWriter implements RunLedgerWriter {
     for (const line of raw.split('\n').filter(Boolean)) {
       try {
         results.push(JSON.parse(line) as RunLedgerEntry);
-      } catch {
+      } catch (err) {
+        // RUNLEDGER-003 FIX: log malformed line instead of silent skip
+        console.error(
+          `[JsonlRunLedgerWriter] malformed run-ledger line skipped: ${(err as Error).message}`
+        );
         continue;
       }
     }

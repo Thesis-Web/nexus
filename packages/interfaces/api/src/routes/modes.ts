@@ -31,15 +31,11 @@ export function registerModeRoutes(
           updatedBy: config.updatedBy.adminId,
         },
       });
-    } catch {
-      res.json({
-        ok: true,
-        data: {
-          nxsMode: 'observe',
-          nvgMode: 'observe',
-          enforcingLocked: false,
-          updatedAt: null,
-        },
+    } catch (err) {
+      // MODE-004 FIX: report failure instead of masking as ok observe/unlocked
+      res.status(500).json({
+        ok: false,
+        error: `mode config load failed: ${(err as Error).message}`,
       });
     }
   });

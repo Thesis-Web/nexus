@@ -45,15 +45,24 @@ export class JsonlRoutingTrailReader implements RoutingTrailReader {
 
   private async readAll(): Promise<RoutingProvenanceTrailEntry[]> {
     const filePath = path.join(this.outputDir, '13-routing-provenance-trail.jsonl');
+    let raw: string;
     try {
-      const raw = await fs.readFile(filePath, 'utf-8');
-      return raw
-        .trim()
-        .split('\n')
-        .filter(Boolean)
-        .map(line => JSON.parse(line) as RoutingProvenanceTrailEntry);
+      raw = await fs.readFile(filePath, 'utf-8');
     } catch {
       return [];
     }
+    const results: RoutingProvenanceTrailEntry[] = [];
+    for (const line of raw.trim().split('\n').filter(Boolean)) {
+      try {
+        results.push(JSON.parse(line) as RoutingProvenanceTrailEntry);
+      } catch (err) {
+        // NVG-RPT-003 FIX: log malformed line instead of silent skip
+        console.error(
+          `[JsonlRoutingTrailReader] malformed trail line skipped: ${(err as Error).message}`
+        );
+        continue;
+      }
+    }
+    return results;
   }
 }
