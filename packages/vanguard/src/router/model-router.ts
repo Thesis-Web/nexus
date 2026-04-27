@@ -162,6 +162,7 @@ export async function invokeModel(
   // ── Fallback: all primary endpoints exhausted ──
   if (fallbackTier) {
     const constraint = registry.checkFallbackConstraint(
+      tier,
       fallbackTier,
       classification.effectiveDataClass,
       request.octLevel

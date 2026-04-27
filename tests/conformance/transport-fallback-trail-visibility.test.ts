@@ -80,10 +80,10 @@ describe('Transport Fallback Trail Visibility (§24.5.3)', () => {
     const tr = new TierRegistry();
     tr.registerEndpoint(makeEndpoint('primary-1', 'on_prem_general'));
     tr.registerEndpoint(makeEndpoint('primary-2', 'on_prem_general'));
-    tr.registerEndpoint(makeEndpoint('fallback-1', 'fallback'));
+    tr.registerEndpoint(makeEndpoint('fallback-1', 'on_prem_sensitive'));
     const r = await invokeModel(
       'on_prem_general',
-      'fallback',
+      'on_prem_sensitive',
       makeRequest(),
       makeClassification(),
       tr,
@@ -102,10 +102,10 @@ describe('Transport Fallback Trail Visibility (§24.5.3)', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(err));
     const tr = new TierRegistry();
     tr.registerEndpoint(makeEndpoint('primary-1', 'on_prem_general'));
-    tr.registerEndpoint(makeEndpoint('fallback-1', 'fallback'));
+    tr.registerEndpoint(makeEndpoint('fallback-1', 'on_prem_sensitive'));
     const r = await invokeModel(
       'on_prem_general',
-      'fallback',
+      'on_prem_sensitive',
       makeRequest(),
       makeClassification(),
       tr,

@@ -73,10 +73,10 @@ describe('Transport Fallback Law (§24.5.3)', () => {
     );
     const tr = new TierRegistry();
     tr.registerEndpoint(makeEndpoint('primary-1', 'on_prem_general'));
-    tr.registerEndpoint(makeEndpoint('fallback-1', 'fallback'));
+    tr.registerEndpoint(makeEndpoint('fallback-1', 'on_prem_sensitive'));
     const r = await invokeModel(
       'on_prem_general',
-      'fallback',
+      'on_prem_sensitive',
       makeRequest(),
       makeClassification(),
       tr,
@@ -99,10 +99,10 @@ describe('Transport Fallback Law (§24.5.3)', () => {
     );
     const tr = new TierRegistry();
     tr.registerEndpoint(makeEndpoint('primary-1', 'on_prem_general'));
-    tr.registerEndpoint(makeEndpoint('fallback-1', 'fallback'));
+    tr.registerEndpoint(makeEndpoint('fallback-1', 'on_prem_sensitive'));
     const r = await invokeModel(
       'on_prem_general',
-      'fallback',
+      'on_prem_sensitive',
       makeRequest(),
       makeClassification(),
       tr,
@@ -120,10 +120,10 @@ describe('Transport Fallback Law (§24.5.3)', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(err));
     const tr = new TierRegistry();
     tr.registerEndpoint(makeEndpoint('primary-1', 'on_prem_general'));
-    tr.registerEndpoint(makeEndpoint('fallback-1', 'fallback'));
+    tr.registerEndpoint(makeEndpoint('fallback-1', 'on_prem_sensitive'));
     const r = await invokeModel(
       'on_prem_general',
-      'fallback',
+      'on_prem_sensitive',
       makeRequest(),
       makeClassification(),
       tr,
@@ -145,6 +145,26 @@ describe('Transport Fallback Law (§24.5.3)', () => {
       'frontier_general',
       makeRequest(),
       makeClassification('pii'),
+      tr,
+      makeContext()
+    );
+    expect(r.success).toBe(false);
+    expect(r.denialCode).toBe(DENIAL_CODE.NVG_FALLBACK_DENIED);
+    expect(r.fallbackApplied).toBe(false);
+  });
+
+  it('fallback denied: tier widening (NVG-FALLBACK-001)', async () => {
+    const err = new Error('timeout');
+    err.name = 'AbortError';
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(err));
+    const tr = new TierRegistry();
+    tr.registerEndpoint(makeEndpoint('primary-1', 'on_prem_general'));
+    tr.registerEndpoint(makeEndpoint('fallback-1', 'fallback'));
+    const r = await invokeModel(
+      'on_prem_general',
+      'fallback',
+      makeRequest(),
+      makeClassification(),
       tr,
       makeContext()
     );

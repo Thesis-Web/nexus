@@ -92,10 +92,21 @@ export class TierRegistry {
    * Returns whether the proposed fallback tier is permitted.
    */
   checkFallbackConstraint(
+    primaryTier: ModelTier,
     fallbackTier: ModelTier,
     effectiveDataClass: DataClass,
     octLevel: OctLevel
   ): FallbackConstraintResult {
+    // Non-widening check — fallback must be same or more restrictive than primary (NVG-FALLBACK-001)
+    const primaryIdx = this.getTierSensitivityIndex(primaryTier);
+    const fallbackIdx = this.getTierSensitivityIndex(fallbackTier);
+    if (fallbackIdx > primaryIdx) {
+      return {
+        allowed: false,
+        reason: `fallback to ${fallbackTier} denied: widens primary tier ${primaryTier}`,
+      };
+    }
+
     // Sensitive data → frontier fallback = denied
     if (isSensitiveDataClass(effectiveDataClass) && isFrontierTier(fallbackTier)) {
       return {
