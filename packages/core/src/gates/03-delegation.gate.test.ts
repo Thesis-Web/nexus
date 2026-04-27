@@ -389,4 +389,76 @@ describe('Gate 03 — Delegation', () => {
     expect(result.decision.outcome).toBe('deny');
     expect(result.decision.denialCode).toBe(DENIAL_CODE.CHAIN_INTEGRITY_BROKEN);
   });
+
+  // ─── GATE03-002: Chain-depth enforcement proof (DELEGATED_SUBAGENT only) ───
+
+  it('denies CHAIN_DEPTH_EXCEEDED when chainDepth >= maxChainDepth for DELEGATED_SUBAGENT', async () => {
+    // chainDepth=3, maxChainDepth=3 → 3 >= 3 → must deny
+    const dc = await makeSignedDelegation({
+      chainDepth: 3,
+      maxChainDepth: 3,
+      allowDownstreamPropagation: true,
+      environment: 'dev',
+    });
+    const gate = new DelegationGate(controlPlanePair);
+    const action = makeAction({
+      actorId: dc.actorId,
+      principalId: dc.principalId,
+      delegationId: dc.delegationId,
+      resolvedCapability: 'read:record:single',
+      resolvedTarget: {
+        system: 'vault',
+        resourceType: 'secret',
+        resourceScope: 'single',
+        environment: 'dev',
+        externalFacing: false,
+      },
+      resolvedRiskTier: RISK_TIER.LOW,
+    });
+    // Actor MUST be DELEGATED_SUBAGENT for chain-depth check to fire
+    const ctx = {
+      delegationContext: dc,
+      delegationStore: makeStore(dc),
+      actor: {
+        ...makeActor(dc.actorId, dc.principalId),
+        actorClass: ACTOR_CLASS.DELEGATED_SUBAGENT,
+      },
+      principal: makePrincipal(dc.principalId),
+    } as unknown as PipelineContext;
+
+    const result = await gate.evaluate(action, ctx, []);
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.CHAIN_DEPTH_EXCEEDED);
+  });
+
+  it('does NOT deny chain-depth when actor is not DELEGATED_SUBAGENT (GATE03-002 conditional proof)', async () => {
+    // Same chainDepth >= maxChainDepth, but actor is SUPERVISED_AGENT → should pass
+    const dc = await makeSignedDelegation({
+      chainDepth: 3,
+      maxChainDepth: 3,
+      allowDownstreamPropagation: true,
+      environment: 'dev',
+    });
+    const gate = new DelegationGate(controlPlanePair);
+    const action = makeAction({
+      actorId: dc.actorId,
+      principalId: dc.principalId,
+      delegationId: dc.delegationId,
+      resolvedCapability: 'read:record:single',
+      resolvedTarget: {
+        system: 'vault',
+        resourceType: 'secret',
+        resourceScope: 'single',
+        environment: 'dev',
+        externalFacing: false,
+      },
+      resolvedRiskTier: RISK_TIER.LOW,
+    });
+    // Actor is SUPERVISED_AGENT — NOT DELEGATED_SUBAGENT
+    const ctx = makeContext(dc) as PipelineContext;
+
+    const result = await gate.evaluate(action, ctx, []);
+    // Chain-depth check is conditional on DELEGATED_SUBAGENT — must pass for other classes
+    expect(result.decision.outcome).toBe('pass');
+  });
 });

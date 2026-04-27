@@ -65,6 +65,34 @@ function registerTestActor(db: Database.Database, octLevel: string = OCT_LEVEL.O
   return actorId;
 }
 
+function registerTestActorNullOct(db: Database.Database): string {
+  const principalId = 'p-' + Math.random().toString(36).slice(2, 10);
+  const actorId = 'a-' + Math.random().toString(36).slice(2, 10);
+  db.prepare(
+    `INSERT INTO principals (principal_id, display_name, email, registered_at, max_risk_tier, allowed_systems)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(principalId, 'Test', actorId + '@test.local', nowIso(), 'high', '["stub"]');
+  // Insert with NULL oct_level — actor has no OCT assignment yet (OCT-001 fix)
+  db.prepare(
+    `INSERT INTO actors (actor_id, actor_class, principal_id, display_name, environment,
+      risk_ceiling, allowed_systems, registered_at, owner, purpose, review_cadence, oct_level)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+  ).run(
+    actorId,
+    ACTOR_CLASS.SUPERVISED_AGENT,
+    principalId,
+    'Test Agent',
+    'dev',
+    'high',
+    '["stub"]',
+    nowIso(),
+    'test-owner',
+    'testing',
+    '90d'
+  );
+  return actorId;
+}
+
 describe('OCT Manager — spec §11.3', () => {
   let db: Database.Database;
   let registry: SqliteActorRegistry;
@@ -220,5 +248,67 @@ describe('OCT Manager — spec §11.3', () => {
     await expect(assignOct(request, registry, ledger as any)).rejects.toThrow(
       'OCT_PREVIOUS_MISMATCH'
     );
+  });
+
+  // ─── OCT-003: Event type proof tests ──────────────────────────────────────
+
+  it('oct_change emits eventType "oct_change" NOT "oct_assignment" (OCT-003 proof)', async () => {
+    const actorId = registerTestActor(db, OCT_LEVEL.OPEN);
+    const ledger = new MockRunLedgerWriter();
+    const request = await buildSignedRequest({
+      action: 'oct_change',
+      actorId: actorId as Uuid,
+      newOctLevel: OCT_LEVEL.CONFIDENTIAL,
+      previousOctLevel: OCT_LEVEL.OPEN as any,
+    });
+    await assignOct(request, registry, ledger as any);
+
+    expect(ledger.events).toHaveLength(1);
+    const event = ledger.events[0]!;
+    // OCT-003 original bug: oct_change was emitting 'oct_assignment'
+    // FIX: action field flows through — must emit 'oct_change'
+    expect(event['eventType']).toBe('oct_change');
+    expect(event['eventType']).not.toBe('oct_assignment');
+  });
+
+  it('oct_assignment rejects actor that already has OCT level (OCT-003 action field proof)', async () => {
+    // Actors in current schema always have oct_level (NOT NULL DEFAULT OCT-OPEN).
+    // oct_assignment must reject them with OCT_ALREADY_ASSIGNED.
+    // This proves the action field IS being checked, not ignored/hardcoded.
+    const actorId = registerTestActor(db, OCT_LEVEL.OPEN);
+    const ledger = new MockRunLedgerWriter();
+    const request = await buildSignedRequest({
+      action: 'oct_assignment',
+      actorId: actorId as Uuid,
+      newOctLevel: OCT_LEVEL.SECURE,
+      previousOctLevel: null as any,
+    });
+    await expect(assignOct(request, registry, ledger as any)).rejects.toThrow(
+      'OCT_ALREADY_ASSIGNED'
+    );
+    // Prove no audit event was emitted on rejection
+    expect(ledger.events).toHaveLength(0);
+  });
+
+  // ─── OCT-001: oct_assignment for actor with null OCT ──────────────────
+
+  it('oct_assignment succeeds for actor with null octLevel (OCT-001 proof)', async () => {
+    const actorId = registerTestActorNullOct(db);
+    const ledger = new MockRunLedgerWriter();
+    const request = await buildSignedRequest({
+      action: 'oct_assignment',
+      actorId: actorId as Uuid,
+      newOctLevel: OCT_LEVEL.CONFIDENTIAL,
+      previousOctLevel: null as any,
+    });
+    await assignOct(request, registry, ledger as any);
+
+    // Verify actor now has OCT
+    const actor = await registry.get(actorId as Uuid);
+    expect(actor!.octLevel).toBe(OCT_LEVEL.CONFIDENTIAL);
+
+    // Verify audit event has correct type
+    expect(ledger.events).toHaveLength(1);
+    expect(ledger.events[0]!['eventType']).toBe('oct_assignment');
   });
 });
