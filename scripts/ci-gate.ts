@@ -308,7 +308,10 @@ function readLedger(ledgerPath: string): EvidenceRecord[] {
 
 // ---------------------------------------------------------------------------
 // §14.2 — computeNormalizedActionHash (inlined for ci:gate independence)
+// CCV-001 FIX: sentinel-faithful — use EVIDENCE_SENTINEL, not null/[]
 // ---------------------------------------------------------------------------
+const EVIDENCE_SENTINEL_CIGATE = 'NOT_APPLICABLE';
+
 function computeNormalizedActionHash(action: ActionSummaryRecord): string {
   const target = action.resolvedTarget;
   const isObj = typeof target === 'object' && target !== null;
@@ -316,13 +319,13 @@ function computeNormalizedActionHash(action: ActionSummaryRecord): string {
     tool: action.tool,
     resolvedVerb: action.resolvedVerb,
     resolvedCapability: action.resolvedCapability,
-    targetSystem: isObj ? target.system : null,
-    targetResourceType: isObj ? target.resourceType : null,
-    targetScope: isObj ? target.resourceScope : null,
-    externalFacing: isObj ? target.externalFacing : null,
+    targetSystem: isObj ? target.system : EVIDENCE_SENTINEL_CIGATE,
+    targetResourceType: isObj ? target.resourceType : EVIDENCE_SENTINEL_CIGATE,
+    targetScope: isObj ? target.resourceScope : EVIDENCE_SENTINEL_CIGATE,
+    externalFacing: isObj ? target.externalFacing : EVIDENCE_SENTINEL_CIGATE,
     dataClasses: Array.isArray(action.resolvedDataClasses)
       ? [...action.resolvedDataClasses].sort()
-      : [],
+      : EVIDENCE_SENTINEL_CIGATE,
     riskTier: action.resolvedRiskTier,
   };
   return sha256Hex(canonicalize(normalized));

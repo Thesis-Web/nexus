@@ -30,17 +30,18 @@ export function computeNormalizedActionHash(
   actionSummary: EvidenceRecord['actionSummary']
 ): string {
   const target = actionSummary.resolvedTarget;
+  // CCV-001 FIX: spec §14.2 — sentinel-faithful; use EVIDENCE_SENTINEL, not null/[]
   const normalized = {
     tool: actionSummary.tool,
     resolvedVerb: actionSummary.resolvedVerb,
     resolvedCapability: actionSummary.resolvedCapability,
-    targetSystem: isResourceTarget(target) ? target.system : null,
-    targetResourceType: isResourceTarget(target) ? target.resourceType : null,
-    targetScope: isResourceTarget(target) ? target.resourceScope : null,
-    externalFacing: isResourceTarget(target) ? target.externalFacing : null,
+    targetSystem: isResourceTarget(target) ? target.system : EVIDENCE_SENTINEL,
+    targetResourceType: isResourceTarget(target) ? target.resourceType : EVIDENCE_SENTINEL,
+    targetScope: isResourceTarget(target) ? target.resourceScope : EVIDENCE_SENTINEL,
+    externalFacing: isResourceTarget(target) ? target.externalFacing : EVIDENCE_SENTINEL,
     dataClasses: Array.isArray(actionSummary.resolvedDataClasses)
       ? [...actionSummary.resolvedDataClasses].sort()
-      : [],
+      : EVIDENCE_SENTINEL,
     riskTier: actionSummary.resolvedRiskTier,
   };
   return sha256(canonicalize(normalized));
