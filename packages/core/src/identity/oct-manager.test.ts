@@ -118,4 +118,20 @@ describe('OCT Manager — spec §11.3', () => {
       assignOct('nonexistent' as Uuid, OCT_LEVEL.OPEN, 'op' as NonEmpty, registry, ledger as any)
     ).rejects.toThrow('ACTOR_NOT_FOUND');
   });
+
+  // ── OCT-003 FIX: self-assignment guard ────────────────────────────────────
+
+  it('assignOct throws OCT_SELF_ASSIGNMENT when actor tries to assign own OCT', async () => {
+    const actorId = registerTestActor(db, OCT_LEVEL.OPEN);
+    const ledger = new MockRunLedgerWriter();
+    await expect(
+      assignOct(
+        actorId as Uuid,
+        OCT_LEVEL.SECURE,
+        actorId as NonEmpty, // operator === actor → self-assignment
+        registry,
+        ledger as any
+      )
+    ).rejects.toThrow('OCT_SELF_ASSIGNMENT');
+  });
 });

@@ -33,6 +33,13 @@ export async function assignOct(
     throw new Error(`INVALID_OCT_LEVEL: ${octLevel} — must be one of ${validLevels.join(', ')}`);
   }
 
+  // OCT-003 FIX: §11.3 — an actor cannot request its own OCT assignment or change
+  if (operatorId === actorId) {
+    throw new Error(
+      `OCT_SELF_ASSIGNMENT: actor ${actorId} cannot assign or change its own OCT level`
+    );
+  }
+
   // Verify actor exists
   const actor = await actorRegistry.get(actorId);
   if (!actor) {
