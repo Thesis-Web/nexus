@@ -6,4 +6,4 @@ pnpm-lock.yaml
 runs
 .turbo
 docs/archive-v0
-docs/*.md
+docs/**/*.md
