@@ -77,6 +77,9 @@ import {
   JsonlRoutingTrailBackend,
 } from '@nexus/vanguard';
 
+// ── Runtime-utils: cross-domain collision detection (§14.6.4) ────────────
+import { detectCrossDomainCollisions, type ManifestDomain } from '@nexus/runtime-utils';
+
 // ── Manifest paths (§32a.6 — all four domains) ──────────────────────────────
 const MANIFEST_IDENTITY = 'config/identity/providers.v1.yaml';
 const MANIFEST_CONNECTORS = 'config/connectors/connectors.v1.yaml';
@@ -220,6 +223,26 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
     secretSource,
   });
   console.log(`[bootstrap] Step 7 complete: ${endpoints.length} enabled endpoint(s)`);
+
+  // ─── Cross-domain identifier collision check (§14.6.4, audit-approved additive) ──
+  // Warning-only — does not fail closed. Detects when two manifest domains
+  // share the same primary identifier (e.g. endpoint and connector both using 'prod-01').
+  const domainIds = new Map<ManifestDomain, ReadonlySet<string>>();
+  domainIds.set('identity', new Set(identityRecords.map(r => r.providerId)));
+  domainIds.set('connector', new Set(connectorRecords.map(r => r.connectorId)));
+  domainIds.set('channel', new Set(channelRecords.map(r => r.channelId)));
+  domainIds.set('endpoint', new Set(endpoints.map(e => e.endpointId)));
+  const collisionWarnings = detectCrossDomainCollisions(domainIds);
+  for (const w of collisionWarnings) {
+    console.warn('[bootstrap] WARNING: ' + w);
+  }
+  if (collisionWarnings.length > 0) {
+    console.warn(
+      '[bootstrap] ' +
+        collisionWarnings.length +
+        ' cross-domain collision(s) detected — review manifest IDs'
+    );
+  }
 
   // ─── Step 8: Populate TierRegistry from loaded endpoints ─────────────────
   console.log('[bootstrap] Step 8: populating TierRegistry');
