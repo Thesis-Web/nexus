@@ -11,6 +11,11 @@
  *   - priorAttempts: captures every failed attempt for trail visibility
  *   - FALLBACK_TRIGGERING_CODES: only retriable denial codes trigger fallback
  *
+ * WIRE-003 fix:
+ *   - invokeModel calls registry.updateEndpointHealth() after every callEndpoint
+ *     result — success marks healthy, failure marks unhealthy. Feeds back into
+ *     getHealthyEndpoints() for subsequent invocation selection (§24.5, blueprint §13.6).
+ *
  * NvgTransportContext is optional for backward compatibility with pipeline
  * integration tests (§38.5) that test classify→route→invoke→log flow, not
  * transport dispatch. When absent, callEndpoint returns a stub success
@@ -123,6 +128,10 @@ function buildInvocationResult(
  * 4. Fallback constraint check via TierRegistry (never widens ceiling)
  * 5. Single-shot fallback: try first healthy fallback endpoint
  * 6. priorAttempts captures every failed attempt for trail visibility
+ *
+ * WIRE-003: After every callEndpoint result, registry.updateEndpointHealth()
+ * is called. Success → marks healthy. Failure → marks unhealthy. This feeds
+ * back into getHealthyEndpoints() for subsequent invocation selection.
  */
 export async function invokeModel(
   tier: ModelTier,
@@ -138,6 +147,13 @@ export async function invokeModel(
   const primaryEndpoints = registry.getHealthyEndpoints(tier);
   for (const primary of primaryEndpoints) {
     const result = await callEndpoint(primary, request, transportContext);
+
+    // WIRE-003: update health state after every transport call
+    registry.updateEndpointHealth(
+      primary.endpointId,
+      result.success,
+      new Date().toISOString() as IsoTimestamp
+    );
 
     if (result.success) {
       return buildInvocationResult(result, primary, false, null, priorAttempts);
@@ -185,6 +201,13 @@ export async function invokeModel(
     if (fallbackEndpoints.length > 0) {
       const fallback = fallbackEndpoints[0]!;
       const result = await callEndpoint(fallback, request, transportContext);
+
+      // WIRE-003: update health state after every transport call
+      registry.updateEndpointHealth(
+        fallback.endpointId,
+        result.success,
+        new Date().toISOString() as IsoTimestamp
+      );
 
       if (result.success) {
         return buildInvocationResult(result, fallback, true, tier, priorAttempts);
