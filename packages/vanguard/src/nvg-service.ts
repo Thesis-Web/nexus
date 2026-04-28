@@ -36,6 +36,7 @@ import {
 } from '@nexus/contracts';
 import { classifyOutboundData } from './classifier/data-classifier.js';
 import { enforceOctModelCeiling } from './classifier/ceiling-enforcer.js';
+import { readLabels } from './classifier/label-reader.js';
 import { evaluateRoutingPolicy, validateRoutingPolicy } from './router/policy-engine.js';
 import { invokeModel } from './router/model-router.js';
 import { handleInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
@@ -97,9 +98,10 @@ export class NvgServiceImpl implements NvgService {
    * Full NVG wall checkpoint: classify → route → ceiling → invoke → inbound → RPT.
    *
    * Pipeline:
-   *   1. Data classification (§24.2) — label-driven, never infers content
-   *   2. Policy-governed routing (§24.3, §25) — default-deny if no match
-   *   3. OCT ceiling enforcement (§24.2, blueprint §13.3) — more restrictive wins
+   *   1. Label validation (§24.1) — readLabels() validates structure, rejects invalid
+   *   2. Data classification (§24.2) — label-driven, never infers content
+   *   3. Policy-governed routing (§24.3, §25) — default-deny if no match
+   *   4. OCT ceiling enforcement (§24.2, blueprint §13.3) — more restrictive wins
    *   4. Outbound RPT entry (§27) — written on every event
    *   5. Mode check — non-enforcing evaluates but does not invoke (MODE-001)
    *   6. Model invocation with same-tier retry + fallback (§24.5)
@@ -122,8 +124,38 @@ export class NvgServiceImpl implements NvgService {
     const policyVersion = routingPolicy.version;
     const disposition = this.resolveNvgDisposition();
 
+    // ── Step 1: Label Validation (§24.1) ──────────────────────────────────────
+    // readLabels validates structure, clamps confidence, rejects unknown data
+    // classes, and flags unknown provenance. This is the canonical label-validation
+    // boundary per spec §24.1, blueprint §13.2–§13.3.
+    const labelResult = readLabels(request.dataLabels);
+
+    if (labelResult.rejectedCount > 0 && labelResult.validLabels.length === 0) {
+      // All labels rejected — fail closed. Cannot classify without valid labels.
+      const reason = `all ${labelResult.rejectedCount} label(s) rejected: ${labelResult.notes.join('; ')}`;
+      await handleNvgDenial(
+        request,
+        DENIAL_CODE.NVG_CLASSIFICATION_DENIED,
+        reason,
+        trailWriter,
+        policyVersion,
+        correlationId
+      );
+      return this.buildResult({
+        allowed: false,
+        classification: classifyOutboundData([]),
+        modelTierSelected: null,
+        modelTierInvoked: null,
+        denialCode: DENIAL_CODE.NVG_CLASSIFICATION_DENIED as DenialCode,
+        denialReason: reason,
+        trailCorrelationId: correlationId,
+        disposition,
+        invocation: null,
+      });
+    }
+
     // ── Step 2: Data Classification (§24.2) ────────────────────────────────
-    const classification = classifyOutboundData(request.dataLabels);
+    const classification = classifyOutboundData(labelResult.validLabels);
 
     // ── Step 3: Policy-Governed Model Router (§24.3, §25) ──────────────────
     const routingDecision = evaluateRoutingPolicy(routingPolicy, request, classification);

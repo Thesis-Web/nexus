@@ -406,3 +406,72 @@ describe('NVG classifyAndRoute — Individual Methods Backward Compat', () => {
     expect(result.allowed).toBe(true);
   });
 });
+
+// ─── Label Validation Proof (NVG-CLASS-001 / D2-AUD-026) ──────────────────
+// Proves readLabels() is wired into classifyAndRoute() before classifyOutboundData().
+
+describe('NVG classifyAndRoute — Label Validation (NVG-CLASS-001)', () => {
+  function makeDeps(trailDir: string): NvgServiceDeps {
+    const tierReg = new TierRegistry();
+    tierReg.registerEndpoint(makeEndpoint(MODEL_TIER.FRONTIER_GENERAL, 'ep-fg-1'));
+    tierReg.registerEndpoint(makeEndpoint(MODEL_TIER.ON_PREM_SENSITIVE, 'ep-ops-1'));
+    const tb = new JsonlRoutingTrailBackend(trailDir);
+    return {
+      routingPolicy: makePolicy(),
+      tierRegistry: tierReg,
+      trailWriter: tb,
+      modeConfig: makeModeConfig(),
+    };
+  }
+
+  it('denies when all labels are rejected (malformed) — fail closed', async () => {
+    const deps = makeDeps(tmpDir);
+    const nvg = new NvgServiceImpl(deps);
+
+    const result = await nvg.classifyAndRoute(
+      makeRequest({
+        dataLabels: [
+          // Missing source → rejected by readLabels
+          { source: '' as NonEmpty, label: DATA_CLASS.PUBLIC, confidence: 0.9 },
+          // Unknown data class → rejected by readLabels
+          { source: 'dlp' as NonEmpty, label: 'INVALID_CLASS' as any, confidence: 0.9 },
+        ],
+      })
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.denialCode).toBe(DENIAL_CODE.NVG_CLASSIFICATION_DENIED);
+    expect(result.denialReason).toContain('rejected');
+  });
+
+  it('passes valid labels through to classification after readLabels validation', async () => {
+    const deps = makeDeps(tmpDir);
+    const nvg = new NvgServiceImpl(deps);
+
+    const result = await nvg.classifyAndRoute(
+      makeRequest({
+        dataLabels: [
+          // One valid label + one invalid → readLabels keeps valid, rejects invalid
+          { source: 'dlp' as NonEmpty, label: DATA_CLASS.PII, confidence: 0.95 },
+          { source: '' as NonEmpty, label: DATA_CLASS.PUBLIC, confidence: 0.5 },
+        ],
+      })
+    );
+
+    // Should succeed — valid PII label survives validation
+    // PII → sensitive → routed to on_prem_sensitive by policy
+    expect(result.classification.effectiveDataClass).toBe(DATA_CLASS.PII);
+    expect(result.classification.isSensitive).toBe(true);
+  });
+
+  it('allows empty labels — classifies as public (no labels is not a rejection)', async () => {
+    const deps = makeDeps(tmpDir);
+    const nvg = new NvgServiceImpl(deps);
+
+    const result = await nvg.classifyAndRoute(makeRequest({ dataLabels: [] }));
+
+    // Empty labels → readLabels returns empty validLabels with 0 rejected
+    // classifyOutboundData([]) → PUBLIC
+    expect(result.classification.effectiveDataClass).toBe(DATA_CLASS.PUBLIC);
+  });
+});
