@@ -129,7 +129,9 @@ export class NexusMcpProxy {
     // 5. Run the pipeline
     let pipelineResult: PipelineResult;
     try {
-      pipelineResult = await this.pipeline.process(action, context);
+      // ADAPTER-002: strip adapter-assigned delegationSequence — pipeline assigns real value at ingress
+      const { delegationSequence: _adapterPlaceholder, ...rawAction } = action;
+      pipelineResult = await this.pipeline.process(rawAction, context);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       sendJson(res, 500, {
