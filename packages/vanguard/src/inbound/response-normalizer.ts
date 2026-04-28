@@ -7,9 +7,13 @@
  *
  * Responsibilities:
  *   - Normalize invocation result into a clean NvgNormalizedResponse
+ *   - Carry opaqueProviderResponse and providerModelNameReturned (§13.7.1, §22.1)
  *   - Strip internal transport details that should not leave NVG
  *   - Stamp normalization timestamp
  *   - Make zero governance decisions — pure normalization
+ *
+ * NVG-INBOUND-001 fix: opaqueProviderResponse and providerModelNameReturned
+ * are now carried through to the orchestrator. Previously silently dropped.
  *
  * Does NOT own:
  *   - Trail writing → response-logger.ts + trail-writer
@@ -29,10 +33,13 @@ import type { NvgNormalizedResponse } from '../types/index.js';
  * details (endpoint URLs, health state, raw error objects) are stripped.
  * NVG does not inspect or modify model output content — only metadata.
  *
+ * opaqueProviderResponse is carried as opaqueModelOutput (§13.7.1 — never inspected).
+ * providerModelNameReturned is carried for audit linkage (§22.1).
+ *
  * @param invocation - Raw invocation result from model-router
  */
 export function normalizeInboundResponse(invocation: NvgInvocationResult): NvgNormalizedResponse {
-  return {
+  const result: NvgNormalizedResponse = {
     success: invocation.success,
     sourceTier: invocation.endpointUsed?.tier ?? null,
     fallbackApplied: invocation.fallbackApplied,
@@ -40,6 +47,17 @@ export function normalizeInboundResponse(invocation: NvgInvocationResult): NvgNo
     latencyMs: invocation.latencyMs ?? 0,
     normalizedAt: new Date().toISOString() as IsoTimestamp,
   };
+
+  // NVG-INBOUND-001: carry opaque response and provider model name through
+  // to orchestrator. exactOptionalPropertyTypes: only set when defined.
+  if (invocation.opaqueProviderResponse !== undefined) {
+    result.opaqueModelOutput = invocation.opaqueProviderResponse;
+  }
+  if (invocation.providerModelNameReturned !== undefined) {
+    result.providerModelNameReturned = invocation.providerModelNameReturned;
+  }
+
+  return result;
 }
 
 /**

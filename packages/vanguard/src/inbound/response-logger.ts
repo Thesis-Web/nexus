@@ -2,6 +2,10 @@
  * NVG Inbound Response Logger — spec §24.6
  * Log-and-normalize. No content inspection.
  * Layer 3 — imports from @nexus/contracts only.
+ *
+ * NVG-RPT-002 fix: priorAttempts trail entries now carry tier, adapterId,
+ * modelName from enriched InvocationAttempt (§12.3.44) for self-contained
+ * forensic visibility. Previously these fields were null.
  */
 import {
   DATA_CLASS,
@@ -26,6 +30,7 @@ export async function logInboundResponse(
     request.dataLabels.length > 0 ? resolveHighestDataClass(request.dataLabels) : DATA_CLASS.PUBLIC;
 
   // §24.6 — write one trail entry per prior attempt before the final-outcome entry
+  // NVG-RPT-002: tier, adapterId, modelName now populated from enriched InvocationAttempt
   if (invocation.priorAttempts) {
     for (const attempt of invocation.priorAttempts) {
       await trailWriter.append({
@@ -37,11 +42,11 @@ export async function logInboundResponse(
         octLevel: request.octLevel,
         dataClassification,
         routingPolicyVersion,
-        modelTierSelected: null,
-        modelTierInvoked: null,
+        modelTierSelected: attempt.tier ?? null,
+        modelTierInvoked: attempt.tier ?? null,
         endpointId: attempt.endpointUsed,
-        adapterId: null,
-        modelName: null,
+        adapterId: attempt.adapterId ?? null,
+        modelName: attempt.modelName ?? null,
         providerModelNameReturned: null,
         denialCode: attempt.denialCode,
         denialReason: attempt.reason,

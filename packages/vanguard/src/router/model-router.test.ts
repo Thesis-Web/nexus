@@ -248,6 +248,10 @@ describe('WIRE-003: invokeModel health update wiring (§24.5, blueprint §13.6)'
     // ep1 was tried and failed → should be in priorAttempts
     expect(result1.priorAttempts).toHaveLength(1);
     expect(result1.priorAttempts![0]!.endpointUsed).toBe('ep-timeout');
+    // NVG-RPT-002: verify enriched metadata carried from ModelEndpoint
+    expect(result1.priorAttempts![0]!.tier).toBe(MODEL_TIER.FRONTIER_GENERAL);
+    expect(result1.priorAttempts![0]!.adapterId).toBe('timeout-adapter');
+    expect(result1.priorAttempts![0]!.modelName).toBe('test-model');
 
     // Verify: ep1 is now unhealthy, ep2 is healthy
     const healthyAfterFirst = registry.getHealthyEndpoints(MODEL_TIER.FRONTIER_GENERAL);

@@ -166,8 +166,12 @@ export async function invokeModel(
     }
 
     // Retriable failure → record attempt and try next same-tier endpoint
+    // NVG-RPT-002: carry endpoint metadata for self-contained trail forensics
     priorAttempts.push({
       endpointUsed: primary.endpointId,
+      tier: primary.tier,
+      adapterId: primary.adapterId,
+      modelName: primary.modelName,
       denialCode,
       reason: result.reason ?? 'unknown',
       latencyMs: result.latencyMs ?? 0,
@@ -214,8 +218,12 @@ export async function invokeModel(
       }
 
       // Fallback failed — record attempt
+      // NVG-RPT-002: carry endpoint metadata for self-contained trail forensics
       priorAttempts.push({
         endpointUsed: fallback.endpointId,
+        tier: fallback.tier,
+        adapterId: fallback.adapterId,
+        modelName: fallback.modelName,
         denialCode: result.denialCode ?? DENIAL_CODE.NVG_FALLBACK_DENIED,
         reason: result.reason ?? 'fallback endpoint failed',
         latencyMs: result.latencyMs ?? 0,
