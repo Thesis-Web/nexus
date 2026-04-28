@@ -53,6 +53,13 @@ export interface CliDeps {
   createConnectorRegistry: () => ConnectorRegistry;
   /** Load + verify signed YAML NVG routing policy (CONTRA-S29-001) */
   loadNvgRoutingPolicy: (filepath: string) => Promise<NvgRoutingPolicy>;
+  /**
+   * Optional: lazy bootstrap for serve command — returns fully wired NvgService
+   * with routingPolicy, tierRegistry, trailWriter, transportContext, modeConfig.
+   * Ad-hoc CLI commands (classify, route) use createNvgService() instead.
+   * COMPOSE-001 fix: consolidates composition to the bootstrap root.
+   */
+  bootstrapNvgService?: () => Promise<NvgService>;
 }
 
 // ── createCli — builds the Commander program with injected dependencies ───────
@@ -188,18 +195,26 @@ export function createCli(deps: CliDeps): Command {
     .action(runDir => cmdReplay(runDir).catch(fatal));
 
   // ── serve: NVG deps injected from composition root ────────────────────────
+  // COMPOSE-001 fix: use bootstrapNvgService (wired) when available;
+  // fall back to createNvgService (empty) for backward compat.
   program
     .command('serve')
     .description('Start Management API server with DI (§23.1)')
     .option('--port <port>', 'API port', v => parseInt(v, 10))
-    .action(opts =>
-      cmdServe({
-        port: opts.port,
-        createNvgService: deps.createNvgService,
-        createTrailReader: deps.createTrailReader,
-        loadNvgRoutingPolicy: deps.loadNvgRoutingPolicy,
-      }).catch(fatal)
-    );
+    .action(opts => {
+      const run = async (): Promise<void> => {
+        const nvgService = deps.bootstrapNvgService
+          ? await deps.bootstrapNvgService()
+          : deps.createNvgService();
+        return cmdServe({
+          port: opts.port,
+          createNvgService: () => nvgService,
+          createTrailReader: deps.createTrailReader,
+          loadNvgRoutingPolicy: deps.loadNvgRoutingPolicy,
+        });
+      };
+      run().catch(fatal);
+    });
 
   // ── serve-mcp: DEF-025 — MCP proxy HTTP server ─────────────────────────
   program

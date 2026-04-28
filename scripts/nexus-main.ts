@@ -6,17 +6,21 @@
  * It is the sole point where cross-layer construction occurs for the CLI binary.
  * Cross-layer imports are permitted here because this is a composition root.
  *
- * NISP-001.A: wires the 10-step bootstrap (§32a.6) via nexus-bootstrap.ts.
+ * NISP-001.A: wires the 12-step bootstrap (§32a.6) via nexus-bootstrap.ts.
  * The bootstrap result is lazily initialized — only commands that need
  * transport or manifest-loaded state trigger the full startup sequence.
  * The --help path and non-transport commands use the pre-existing factories.
+ *
+ * COMPOSE-001 fix: serve command uses bootstrapNvgService (wired, lazy)
+ * instead of createNvgService (empty). Ad-hoc CLI commands (classify, route)
+ * keep the lightweight empty NvgServiceImpl for individual method calls.
  *
  * MODULAR-S29-002 fix: removed @nexus/vanguard from CLI package dependencies.
  * NVG service construction happens here; CLI commands receive Layer 2 interfaces only.
  *
  * Spec: nexus-engineering-spec-v1-8-26.md §22.1
  * Blueprint: nexus-blueprint-v1-5-13.md §24.8
- * Bootstrap: AMEND-spec F-09 §32a.6 (10 steps)
+ * Bootstrap: AMEND-spec F-09 §32a.6 (12 steps)
  */
 
 import {
@@ -35,9 +39,9 @@ const DEFAULT_TRAIL_DIR = path.join(process.cwd(), 'runs');
 
 // ---------------------------------------------------------------------------
 // Lazy bootstrap — §32a.6.
-// Cached so the 10-step sequence runs at most once per process lifetime.
-// Commands that need transport context call getBootstrap(). Commands that
-// don't (--help, init, trail read) use the pre-existing factories below.
+// Cached so the 12-step sequence runs at most once per process lifetime.
+// The serve command calls getBootstrap() via bootstrapNvgService.
+// Ad-hoc commands (--help, classify, route, trail) skip bootstrap.
 // ---------------------------------------------------------------------------
 let _bootstrapResult: BootstrapResult | null = null;
 
@@ -47,9 +51,6 @@ async function getBootstrap(): Promise<BootstrapResult> {
   }
   return _bootstrapResult;
 }
-
-// getBootstrap is available for future transport-requiring CLI commands.
-// Current commands use the pre-existing factory pattern below.
 
 const program = createCli({
   createNvgService: () => new NvgServiceImpl(),
@@ -62,6 +63,10 @@ const program = createCli({
     const reg = new SimpleConnectorRegistry();
     reg.register(new StubConnector());
     return reg;
+  },
+  bootstrapNvgService: async () => {
+    const br = await getBootstrap();
+    return br.nvgService;
   },
 });
 
