@@ -1,0 +1,33 @@
+manifestVersion: '1.0'
+issuer: nexus-dev
+issuedAt: '2026-04-30T23:16:40.261Z'
+signature: HVStIc8cYh6ll1qVSkVfXMMQ_chtbUD3m7Pu9mOcuGKf1D4u5HZWlKmscJmc41ZcGj3JkZ60UGW4n-mjsD6lAg
+body:
+  compilers:
+    - compilerSocketId: reference-deterministic-compiler
+      compilerType: reference_deterministic_renderer
+      enabled: true
+      actorRegistration: exempt_reference_deterministic_renderer
+      compilerActorId: null
+      octMode: OCT-COMPILE
+      allowedModes:
+        - deterministic_render
+      readsFromMailboxId: core-return-mailbox
+      outputContractVersion: v1
+      artifactSigning:
+        kind: control_plane
+      configuration: {}
+    - compilerSocketId: customer-onprem-compiler
+      compilerType: customer_onprem_synthesis
+      enabled: false
+      actorRegistration: required
+      compilerActorId: 00000000-0000-4000-a000-000000000099
+      octMode: OCT-COMPILE
+      allowedModes:
+        - on_prem_synthesis
+      readsFromMailboxId: core-return-mailbox
+      outputContractVersion: v1
+      artifactSigning:
+        kind: actor_registry_key
+        keyId: dev-compiler-actor-key
+      configuration: {}

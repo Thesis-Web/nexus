@@ -1,0 +1,23 @@
+manifestVersion: '1.0'
+issuer: nexus-dev
+issuedAt: '2026-04-30T23:16:35.928Z'
+signature: LfqDElu1fcOPrjo1tKgJWbOg_7dRDKzeDSdHLMo-kO48wiNXHZ6lEoyawfDpCydgyiC0ZwYMfmIptmV-LBMYCg
+body:
+  orchestrators:
+    - orchestratorSocketId: reference-orchestrator
+      orchestratorType: reference_deterministic
+      enabled: true
+      orchestratorActorId: 00000000-0000-4000-a000-000000000001
+      plannerMode: deterministic_first
+      maxSplitDepth: 1
+      planCheckbackDefault: true
+      secureMode:
+        octSecureDefault: single_agent_no_helper
+        allowSecureMultiAgentOnlyBySignedPolicy: true
+      retryPolicy:
+        transientAutoRetryCount: 1
+      timeouts:
+        systemActionMs: 30000
+        modelCallMs: 60000
+      outputSlotPolicy: strict_declared_slots
+      configuration: {}
