@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-04-30T23:07:37.972Z'
-signature: YNdcUOPXxnI4BhaR73KGajYPSgWKvlA6m35x759XGVkDbnenqrOMTjwoGxe4FkTDclmoTLny0CzVfecHyXwPCQ
+issuedAt: '1970-01-01T00:00:00.000Z'
+signature: UNSIGNED
 body:
   workspaces:
     - workspaceSocketId: reference-workspace
