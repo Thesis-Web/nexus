@@ -247,6 +247,22 @@ export const DENIAL_CODE = {
   NVG_TRANSPORT_PROVIDER_ERROR: 'nvg_transport_provider_error',
   NVG_TRANSPORT_PARSE_ERROR: 'nvg_transport_parse_error',
   NVG_TRANSPORT_SECRET_SOURCE_ERROR: 'nvg_transport_secret_source_error',
+  // ─── Externals Infrastructure Denial Codes (AMEND-spec §7.3) ───
+  MAILBOX_DIGEST_MISMATCH: 'mailbox_digest_mismatch',
+  MAILBOX_CLASSIFICATION_MISSING: 'mailbox_classification_missing',
+  MAILBOX_REDACTION_BLOCKED: 'mailbox_redaction_blocked',
+  MAILBOX_ITEM_EXPIRED: 'mailbox_item_expired',
+  MAILBOX_ITEM_CANCELLED: 'mailbox_item_cancelled',
+  MAILBOX_ITEM_CONSUMED: 'mailbox_item_consumed',
+  OUTPUT_CONTRACT_EMPTY: 'output_contract_empty',
+  COMPILE_FRONTIER_DENIED: 'compile_frontier_denied',
+  COMPILE_RETURN_SIGNATURE_INVALID: 'compile_return_signature_invalid',
+  COMPILE_RETURN_DIGEST_MISMATCH: 'compile_return_digest_mismatch',
+  EXTERNAL_MANIFEST_CROSS_DOMAIN_COLLISION: 'external_manifest_cross_domain_collision',
+  UNDECLARED_OUTPUT_SLOT: 'undeclared_output_slot',
+  PAYLOAD_RESOLVER_NOT_FOUND: 'payload_resolver_not_found',
+  COMPILER_SIGNATURE_KEY_UNRESOLVED: 'compiler_signature_key_unresolved',
+  COMPILE_RETURN_DISPATCH_FAILED: 'compile_return_dispatch_failed',
 } as const;
 export type DenialCode = string;
 

@@ -12,3 +12,4 @@ export * from './interfaces/index.js';
 export * from './utils/time.js';
 export * from './utils/helpers.js';
 export * from './lexicon/index.js';
+export * from './externals/index.js';

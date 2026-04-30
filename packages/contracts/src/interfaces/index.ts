@@ -786,7 +786,8 @@ export type RunEventType =
   | 'oct_assignment'
   | 'mode_change'
   | 'enforcing_lock_disabled'
-  | 'bypass_annotation';
+  | 'bypass_annotation'
+  | 'mailbox_item_status_changed';
 
 export interface RunLedgerEntry {
   entryId: Uuid;
