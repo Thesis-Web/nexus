@@ -1,0 +1,18 @@
+manifestVersion: '1.0'
+issuer: nexus-dev
+issuedAt: '2026-04-30T23:07:37.972Z'
+signature: YNdcUOPXxnI4BhaR73KGajYPSgWKvlA6m35x759XGVkDbnenqrOMTjwoGxe4FkTDclmoTLny0CzVfecHyXwPCQ
+body:
+  workspaces:
+    - workspaceSocketId: reference-workspace
+      workspaceType: reference_http
+      enabled: true
+      entryMode: governed_only
+      baseUrl: http://localhost:4100
+      returnEndpointId: reference-workspace-return
+      capabilities:
+        promptEntry: true
+        planReview: true
+        finalDisplay: true
+        fileSpace: false
+      configuration: {}

@@ -68,3 +68,11 @@ export type {
 } from './factories.js';
 
 export type { PayloadResolver, PayloadStore } from './payload.js';
+
+export type {
+  WorkspaceFactoryRegistry,
+  OrchestratorFactoryRegistry,
+  MailboxBackendFactoryRegistry,
+  CompilerFactoryRegistry,
+  CompileReturnTransportFactoryRegistry,
+} from './factory-registries.js';
