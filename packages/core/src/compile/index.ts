@@ -37,3 +37,5 @@ export {
   computeTemplateDigest,
 } from './template-loader.js';
 export type { TemplateVerifier, TemplateLoader } from './template-loader.js';
+export { DefaultTemplateGeneratorImpl } from './default-template-generator.js';
+export type { DefaultTemplateGenerator } from './default-template-generator.js';
