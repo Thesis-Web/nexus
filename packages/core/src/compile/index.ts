@@ -64,3 +64,14 @@ export type {
 } from './guard-evaluator.js';
 export { DenialMarkerInserterImpl } from './denial-marker-inserter.js';
 export type { DenialMarkerInserter, DenialOutput, DenialEntry } from './denial-marker-inserter.js';
+export {
+  ProseRenderer,
+  TableRenderer,
+  RawRenderer,
+  MixedRenderer,
+  buildFormatRendererMap,
+  assertNotFileBundleFormat,
+} from './format-renderer.js';
+export type { FormatRenderer } from './format-renderer.js';
+export { CompileAssemblerImpl } from './compile-assembler.js';
+export type { CompileAssembler, AssemblyResult, ValidationFailure } from './compile-assembler.js';
