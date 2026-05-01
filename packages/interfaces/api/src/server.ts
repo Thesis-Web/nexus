@@ -12,6 +12,7 @@
  * BS-D2-004: Routes extracted to routes/ directory per spec §6.1.
  *
  * EXT-12: Expanded ApiDependencies with externals DI per AMEND-spec §11.1.
+ * CMP-07: Added template admin route DI per AMEND-spec-nexus-compile §6.
  * The API must not import core/vanguard implementation classes directly.
  * It receives already-constructed service instances from scripts/nexus-bootstrap.ts.
  *
@@ -58,6 +59,7 @@ import type {
   OutputCollector,
   MailboxService,
   CompileService,
+  CompileTemplate,
   Uuid,
   NonEmpty,
   IsoTimestamp,
@@ -171,6 +173,14 @@ export interface ApiDependencies {
   ) => Promise<boolean>;
   recomputeArtifactDigest?: (artifact: FinalResponseArtifact) => Sha256Hex;
   controlPlanePublicKey?: string;
+
+  // ── AMEND-spec-nexus-compile §6: Template admin route deps ───────────────
+  // Function-based — Layer 7 cannot import core types (DIFF-S23-002).
+  // Bootstrap wires concrete implementations from core.
+  validateTemplate?: (raw: unknown) => CompileTemplate;
+  verifyTemplate?: (template: CompileTemplate) => Promise<void>;
+  storeTemplate?: (template: CompileTemplate, ingestedBy: NonEmpty) => void;
+  templateExists?: (templateId: NonEmpty, templateVersion: NonEmpty) => boolean;
 }
 
 // ── §23.1 createApiServer — DI factory ───────────────────────────────────────

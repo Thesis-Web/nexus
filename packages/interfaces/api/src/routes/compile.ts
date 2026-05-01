@@ -1,5 +1,5 @@
 /**
- * Compile Reference Harness Route — AMEND-spec §6.8, §11.2
+ * Compile Reference Harness Route — AMEND-spec §6.8, §10
  *
  * File: packages/interfaces/api/src/routes/compile.ts
  * Layer 7 — reference harness for mailbox-to-compile wire.
@@ -20,10 +20,18 @@
  *   7. ack = compileReturnDispatcher.dispatch({ runId, endpoint, artifact, sentAt })
  *   8. mark mailbox items consumed only after successful compile-return acceptance
  *
- * Run Ledger events (§6.8):
- *   - compile_started when output contract is created
- *   - compile_mode_selected after compile mode is selected
- *   - final_response after artifact created and compile-return handoff accepted
+ * §10 Enhancement (AMEND-spec-nexus-compile):
+ *   Request body accepts { templateId?, templateVersion?, preferences? }.
+ *   templateVersion without templateId is rejected (400).
+ *   preferences honored only by default generation.
+ *   No raw templates accepted. Fields passed to CompileRequest as-is.
+ *
+ * P4 audit fixes applied:
+ *   T7-F01: compile_started written by OutputCollector — removed from route.
+ *   T7-F02: final_response written by compile-return — removed from route.
+ *   T7-F03: catch block writes run_closed via closeRunOnCompileError.
+ *   T8-F06: compile_mode_selected written by CompileService — removed from route.
+ *   T10-F03: duplicate final_response — same as T7-F02 fix.
  */
 import type { Express } from 'express';
 import type {
@@ -37,6 +45,7 @@ import type {
   CompilerManifestRecord,
   MailboxManifestRecord,
   CompileReturnEndpointRecord,
+  CompilePreferences,
   Uuid,
   NonEmpty,
   IsoTimestamp,
@@ -73,6 +82,31 @@ export interface CompileRouteDeps {
   }) => Promise<CompileReturnAck>;
 }
 
+// ─── T7-F03 Fix: closeRunOnCompileError ───
+// Writes run_closed with closeReason: error to Run Ledger on compile failure.
+// Best-effort — does not mask the original error if ledger write fails.
+
+async function closeRunOnCompileError(
+  runLedgerWriter: RunLedgerWriter,
+  runId: Uuid,
+  error: unknown
+): Promise<void> {
+  try {
+    await runLedgerWriter.writeEvent({
+      runId,
+      eventType: 'run_closed',
+      timestamp: nowIso(),
+      actorId: null,
+      detail: {
+        closeReason: 'error',
+        error: san(error),
+      },
+    });
+  } catch {
+    // Best-effort — don't mask the original error
+  }
+}
+
 // ─── Route Registration ───
 
 export function registerCompileRoutes(app: Express, deps: Partial<CompileRouteDeps>): void {
@@ -91,27 +125,37 @@ export function registerCompileRoutes(app: Express, deps: Partial<CompileRouteDe
       return;
     }
 
+    // Extract runId before try — catch needs it for run_closed (T7-F03)
+    const runId = req.params['runId'] as Uuid;
+
     try {
-      const runId = req.params['runId'] as Uuid;
+      // §10: Parse optional template selectors + preferences from request body
+      const body = req.body as
+        | {
+            templateId?: string;
+            templateVersion?: string;
+            preferences?: CompilePreferences;
+          }
+        | undefined;
+
+      const templateId =
+        typeof body?.templateId === 'string' ? (body.templateId as NonEmpty) : undefined;
+      const templateVersion =
+        typeof body?.templateVersion === 'string' ? (body.templateVersion as NonEmpty) : undefined;
+      const preferences = body?.preferences;
+
+      // §10: templateVersion without templateId is rejected
+      if (templateVersion !== undefined && templateId === undefined) {
+        res.status(400).json({
+          ok: false,
+          error: 'templateVersion requires templateId',
+        });
+        return;
+      }
 
       // §6.8 step 1: build output contract
+      // T7-F01: compile_started is written by OutputCollector — not here.
       const outputContract = await deps.outputCollector.buildOutputContract(runId);
-
-      // Write Run Ledger compile_started
-      await deps.runLedgerWriter.writeEvent({
-        runId,
-        eventType: 'compile_started',
-        timestamp: nowIso(),
-        actorId: null,
-        detail: {
-          outputContractId: outputContract.outputContractId,
-          mailboxId: outputContract.mailboxId,
-          mailboxItemCount: outputContract.mailboxItems.length,
-          inputDataClasses: outputContract.inputDataClasses,
-          inheritedCompileDataClass: outputContract.inheritedCompileDataClass,
-          contractDigest: outputContract.contractDigest,
-        },
-      });
 
       // §6.8 step 2: select enabled compiler from manifest
       const compiler = deps.getDefaultCompiler();
@@ -122,60 +166,34 @@ export function registerCompileRoutes(app: Express, deps: Partial<CompileRouteDe
       const items = await deps.mailboxService.listEligibleForCompile(mailboxId, runId);
 
       // §6.8 step 4: build compile request
+      // §10: pass templateId/templateVersion/preferences as-is.
+      // exactOptionalPropertyTypes: conditional spread for optional fields.
       const compileRequest: CompileRequest = {
         runId,
         compilerSocketId: compiler.compilerSocketId,
         mailboxId,
         outputContractId: outputContract.outputContractId,
         requestedAt: nowIso(),
+        ...(templateId !== undefined ? { templateId } : {}),
+        ...(templateVersion !== undefined ? { templateVersion } : {}),
+        ...(preferences !== undefined ? { preferences } : {}),
       };
 
       // §6.8 step 5: invoke compile service
+      // T8-F06: compile_mode_selected is written by CompileService — not here.
       const artifact = await deps.compileService.compile(compileRequest, outputContract, items);
-
-      // Write Run Ledger compile_mode_selected
-      await deps.runLedgerWriter.writeEvent({
-        runId,
-        eventType: 'compile_mode_selected',
-        timestamp: nowIso(),
-        actorId: null,
-        detail: {
-          compilerSocketId: compiler.compilerSocketId,
-          compileMode: artifact.compileMode,
-          outputContractId: outputContract.outputContractId,
-          artifactId: artifact.artifactId,
-        },
-      });
 
       // §6.8 step 6: resolve return endpoint
       const endpoint = await deps.resolveReturnEndpointForRun(runId);
 
       // §6.8 step 7: dispatch compile-return
+      // T7-F02 / T10-F03: final_response is written by compile-return route — not here.
       const sentAt = nowIso();
       const ack = await deps.dispatchCompileReturn({
         runId,
         endpoint,
         artifact,
         sentAt,
-      });
-
-      // Write Run Ledger final_response after successful handoff
-      await deps.runLedgerWriter.writeEvent({
-        runId,
-        eventType: 'final_response',
-        timestamp: nowIso(),
-        actorId: null,
-        detail: {
-          artifactId: artifact.artifactId,
-          compilerSocketId: artifact.compilerSocketId,
-          compileMode: artifact.compileMode,
-          bodyRef: artifact.bodyRef,
-          bodyDigest: artifact.bodyDigest,
-          returnEndpointId: endpoint.returnEndpointId,
-          sourceMailboxItemCount: artifact.sourceMailboxItems.length,
-          accepted: ack.accepted,
-          acceptedAt: ack.acceptedAt,
-        },
       });
 
       // §6.8 step 8: mark consumed ONLY after successful compile-return acceptance
@@ -196,6 +214,8 @@ export function registerCompileRoutes(app: Express, deps: Partial<CompileRouteDe
         },
       });
     } catch (err) {
+      // T7-F03: write run_closed with closeReason: error before returning 500
+      await closeRunOnCompileError(deps.runLedgerWriter, runId, err);
       res.status(500).json({ ok: false, error: san(err) });
     }
   });

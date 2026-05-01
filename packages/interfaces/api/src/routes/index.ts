@@ -1,6 +1,7 @@
 /**
  * API Routes barrel — spec §6.1 (routes/ directory), §23.2
  * AMEND-spec §11.2 — registers all route modules including reference harness.
+ * AMEND-spec-nexus-compile §6 — registers template admin route.
  * Registers all route modules on the Express app.
  * Layer 7 — imports @nexus/contracts ONLY.
  *
@@ -31,6 +32,7 @@ import { registerOrchestratorRoutes } from './orchestrator.js';
 import { registerMailboxRoutes } from './mailbox.js';
 import { registerCompileRoutes } from './compile.js';
 import { registerCompileReturnRoutes } from './compile-return.js';
+import { registerTemplateRoutes } from './templates.js';
 
 export function registerAllRoutes(
   app: Express,
@@ -141,6 +143,15 @@ export function registerAllRoutes(
       ? { controlPlanePublicKey: deps.controlPlanePublicKey }
       : {}),
     // runLedgerWriter already spread above — reuse for compile-return
+    ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
+  });
+
+  // Template admin route — AMEND-spec-nexus-compile §6
+  registerTemplateRoutes(app, {
+    ...(deps.validateTemplate !== undefined ? { validateTemplate: deps.validateTemplate } : {}),
+    ...(deps.verifyTemplate !== undefined ? { verifyTemplate: deps.verifyTemplate } : {}),
+    ...(deps.storeTemplate !== undefined ? { storeTemplate: deps.storeTemplate } : {}),
+    ...(deps.templateExists !== undefined ? { templateExists: deps.templateExists } : {}),
     ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
   });
 }

@@ -57,6 +57,7 @@ import type {
   MailboxService,
   OutputCollector,
   CompileService,
+  CompileTemplate,
   PayloadResolver,
   Uuid,
 } from '@nexus/contracts';
@@ -189,6 +190,12 @@ export interface ExternalsRuntime {
   readonly compileReturnDispatcher: CompileReturnDispatcher;
   readonly socketRegistry: ExternalSocketRegistry;
   readonly compileReturnEndpoints: readonly CompileReturnEndpointRecord[];
+  // ── Template admin route deps (AMEND-spec-nexus-compile §12) ──────────
+  // Function-based — DIFF-S23-002: Layer 7 cannot import core types.
+  readonly validateTemplate: (raw: unknown) => CompileTemplate;
+  readonly verifyTemplate: (template: CompileTemplate) => Promise<void>;
+  readonly storeTemplate: (template: CompileTemplate, ingestedBy: NonEmpty) => void;
+  readonly templateExists: (templateId: NonEmpty, templateVersion: NonEmpty) => boolean;
 }
 
 // ── BootstrapResult — §5.2, expanded ────────────────────────────────────────
@@ -723,6 +730,20 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
     keyId: 'nexus-control-plane' as NonEmpty,
   });
 
+  // 13. Template admin route function bindings (DIFF-S23-002 — function sigs only)
+  // Wraps core implementations into function signatures that Layer 7 can consume
+  // without importing core types.
+  const validateTemplateFn = (raw: unknown): CompileTemplate =>
+    templateValidator.validateForIngestion(raw);
+  const verifyTemplateFn = async (template: CompileTemplate): Promise<void> => {
+    await templateVerifier.verifyOrThrow(template);
+  };
+  const storeTemplateFn = (template: CompileTemplate, ingestedBy: NonEmpty): void => {
+    templateStore.ingest(template, ingestedBy);
+  };
+  const templateExistsFn = (templateId: NonEmpty, templateVersion: NonEmpty): boolean =>
+    templateStore.exists(templateId, templateVersion);
+
   // Assemble ExternalsRuntime (§5.2)
   const externals: ExternalsRuntime = {
     workspaceSockets: workspaceRecords,
@@ -733,6 +754,10 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
     compileReturnDispatcher,
     socketRegistry,
     compileReturnEndpoints: compileReturnRecords,
+    validateTemplate: validateTemplateFn,
+    verifyTemplate: verifyTemplateFn,
+    storeTemplate: storeTemplateFn,
+    templateExists: templateExistsFn,
   };
 
   console.log('[bootstrap] Step 21 complete: ExternalsRuntime assembled');
