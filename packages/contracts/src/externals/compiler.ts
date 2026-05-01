@@ -29,6 +29,7 @@ import type { OutputContract } from './output-contract.js';
 import type { MailboxItem } from './mailbox.js';
 import type { CompilerManifestRecord } from './manifests.js';
 import type { CompileConfig } from '../interfaces/index.js';
+import type { CompilePreferences } from './compile-template.js';
 
 // ─── CompileMode ───
 
@@ -42,6 +43,10 @@ export interface CompileRequest {
   mailboxId: NonEmpty;
   outputContractId: Uuid;
   requestedAt: IsoTimestamp;
+  // ── Compile-ref §2.1: template selection (additive, optional) ────────────
+  templateId?: NonEmpty;
+  templateVersion?: NonEmpty;
+  preferences?: CompilePreferences;
 }
 
 // ─── FinalResponseArtifact ───

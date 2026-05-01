@@ -265,6 +265,16 @@ export const DENIAL_CODE = {
   PAYLOAD_RESOLVER_NOT_FOUND: 'payload_resolver_not_found',
   COMPILER_SIGNATURE_KEY_UNRESOLVED: 'compiler_signature_key_unresolved',
   COMPILE_RETURN_DISPATCH_FAILED: 'compile_return_dispatch_failed',
+  // ─── Compile-Ref Denial Codes (AMEND-spec-nexus-compile §2.2) ──────────
+  TEMPLATE_NOT_FOUND: 'template_not_found',
+  TEMPLATE_SIGNATURE_INVALID: 'template_signature_invalid',
+  TEMPLATE_DIGEST_MISMATCH: 'template_digest_mismatch',
+  TEMPLATE_VALIDATION_FAILED: 'template_validation_failed',
+  SLOT_VALIDATION_FAILED: 'slot_validation_failed',
+  GUARD_HALT: 'guard_halt',
+  FILL_TYPE_MISMATCH: 'fill_type_mismatch',
+  ASSEMBLY_INCOMPLETE: 'assembly_incomplete',
+  FILE_BUNDLE_DENIED: 'file_bundle_denied', // DIFF-S23-001: file_bundle fail-closed V1 [blueprint §12]
 } as const;
 export type DenialCode = string;
 

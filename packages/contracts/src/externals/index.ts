@@ -43,6 +43,24 @@ export type {
 } from './compiler.js';
 
 export type {
+  CompileFormat,
+  DenialHandling,
+  ContentGranularity,
+  EntityRegistryName,
+  SlotTypeName,
+  SlotType,
+  CompileLocation,
+  CompileSection,
+  GuardCondition,
+  GuardAction,
+  CompileGuard,
+  CompileTemplate,
+  CompilePreferences,
+  AgentTaskSummary,
+  ContractDesigner,
+} from './compile-template.js';
+
+export type {
   CompileReturnAuthEnvelope,
   CompileReturnRequest,
   CompileReturnVerifier,

@@ -15,3 +15,8 @@ export type {
   CompileReturnDispatcher,
   CompileReturnDispatcherDeps,
 } from './compile-return-dispatcher.js';
+export {
+  CompileTemplateError,
+  CompileAssemblyError,
+  CompileGuardHaltError,
+} from './compile-errors.js';

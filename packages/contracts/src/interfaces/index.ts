@@ -788,7 +788,15 @@ export type RunEventType =
   | 'mode_change'
   | 'enforcing_lock_disabled'
   | 'bypass_annotation'
-  | 'mailbox_item_status_changed';
+  | 'mailbox_item_status_changed'
+  // ── Compile-Ref Run Ledger Events (AMEND-spec-nexus-compile §11.1) ──────
+  | 'template_ingested'
+  | 'compile_template_loaded'
+  | 'compile_slot_matched'
+  | 'compile_slot_missing'
+  | 'compile_guard_fired'
+  | 'compile_guard_halt'
+  | 'compile_assembly_complete';
 
 export interface RunLedgerEntry {
   entryId: Uuid;
