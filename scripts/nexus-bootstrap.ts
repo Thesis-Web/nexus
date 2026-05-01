@@ -111,6 +111,21 @@ import { CompileServiceImpl } from '../packages/core/src/compile/compile-service
 import { DeterministicRenderer } from '../packages/core/src/compile/deterministic-renderer.js';
 import { CompileReturnDispatcherImpl } from '../packages/core/src/compile/compile-return-dispatcher.js';
 import type { CompileReturnDispatcher } from '../packages/core/src/compile/compile-return-dispatcher.js';
+// ── Core: compile-ref (AMEND-spec-nexus-compile §12) ────────────────────────
+import { TemplateRegistryStoreImpl } from '../packages/core/src/compile/template-registry-store.js';
+import { TemplateValidatorImpl } from '../packages/core/src/compile/template-schemas.js';
+import {
+  TemplateVerifierImpl,
+  TemplateLoaderImpl,
+} from '../packages/core/src/compile/template-loader.js';
+import { DefaultTemplateGeneratorImpl } from '../packages/core/src/compile/default-template-generator.js';
+import { SlotMatcherImpl } from '../packages/core/src/compile/slot-matcher.js';
+import { SlotValidatorImpl } from '../packages/core/src/compile/slot-validator.js';
+import type { EntityRefResolver } from '../packages/core/src/compile/slot-validator.js';
+import { GuardEvaluatorImpl } from '../packages/core/src/compile/guard-evaluator.js';
+import { DenialMarkerInserterImpl } from '../packages/core/src/compile/denial-marker-inserter.js';
+import { CompileAssemblerImpl } from '../packages/core/src/compile/compile-assembler.js';
+import { buildFormatRendererMap } from '../packages/core/src/compile/format-renderer.js';
 
 // ── Core: externals (§4.8) ──────────────────────────────────────────────────
 import { ExternalSocketRegistryImpl } from '../packages/core/src/externals/external-socket-registry.js';
@@ -143,6 +158,7 @@ import {
 // ── Node builtins ────────────────────────────────────────────────────────────
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import Database from 'better-sqlite3';
 
 // ── Manifest paths ───────────────────────────────────────────────────────────
 // §32a.6 — original four domains
@@ -601,11 +617,70 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
 
   const defaultCompiler = socketRegistry.getDefaultCompiler();
 
+  // ── Compile-ref infrastructure (AMEND-spec-nexus-compile §12) ─────────
+
+  // 1. Template registry store — SQLite Zone 1
+  const templateDbPath = process.env['NEXUS_DB_PATH'] ?? path.join(process.cwd(), 'nexus.db');
+  const templateDb = new Database(templateDbPath);
+  const templateStore = new TemplateRegistryStoreImpl(templateDb);
+  templateStore.initialize();
+
+  // 2. Template validator (Zod + structural)
+  const templateValidator = new TemplateValidatorImpl();
+
+  // 3. Template verifier (Ed25519 + digest)
+  const templateVerifier = new TemplateVerifierImpl(pubKey);
+
+  // 4. Template loader (store + verifier)
+  const templateLoader = new TemplateLoaderImpl(templateStore, templateVerifier);
+
+  // 5. Default template generator (sync Ed25519 signing)
+  const defaultTemplateGenerator = new DefaultTemplateGeneratorImpl(privKey);
+
+  // 6. Slot matcher
+  const slotMatcher = new SlotMatcherImpl();
+
+  // 7. Slot validator + V1 entity ref resolver
+  const entityRefResolver: EntityRefResolver = {
+    async resolve(_registry, _entityId) {
+      // V1: reference implementation — always resolves true.
+      // Production: wire to actual actor/principal/system registries.
+      return true;
+    },
+  };
+  const slotValidator = new SlotValidatorImpl(entityRefResolver);
+
+  // 8. Guard evaluator
+  const guardEvaluator = new GuardEvaluatorImpl();
+
+  // 9. Denial marker inserter
+  const denialMarkerInserter = new DenialMarkerInserterImpl();
+
+  // 10. Format renderers
+  const formatRenderers = buildFormatRendererMap();
+
+  // 11. Compile assembler
+  const compileAssembler = new CompileAssemblerImpl(
+    slotMatcher,
+    slotValidator,
+    guardEvaluator,
+    formatRenderers,
+    denialMarkerInserter
+  );
+
+  // 12. Payload resolver array for DeterministicRenderer
+  const payloadResolvers: PayloadResolver[] = [fileResolver];
+
   // Reference deterministic renderer — actor-registration exempt
   const deterministicRenderer = new DeterministicRenderer(
     defaultCompiler.compilerSocketId,
     privKey,
-    COMPILE_OUTPUT_ROOT
+    COMPILE_OUTPUT_ROOT,
+    templateLoader,
+    defaultTemplateGenerator,
+    compileAssembler,
+    payloadResolvers,
+    runLedgerWriter
   );
 
   // CompileService — selects compile mode and invokes compiler

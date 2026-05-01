@@ -105,6 +105,41 @@ export class CompileServiceImpl implements ICompileService {
     // Invoke the selected compiler
     const artifact = await this.compiler.compile(request, contract, items);
 
+    // ── T7-F05: Verify artifact integrity after compiler returns ──────────
+    // Non-reference compilers could return mismatched fields.
+    if (artifact.runId !== request.runId) {
+      throw new Error(
+        `Compile artifact integrity: runId mismatch (expected '${request.runId}', got '${artifact.runId}')`
+      );
+    }
+    if (artifact.compilerSocketId !== request.compilerSocketId) {
+      throw new Error(
+        `Compile artifact integrity: compilerSocketId mismatch (expected '${request.compilerSocketId}', got '${artifact.compilerSocketId}')`
+      );
+    }
+    if (artifact.compileMode !== mode) {
+      throw new Error(
+        `Compile artifact integrity: compileMode mismatch (selected '${mode}', artifact reports '${artifact.compileMode}')`
+      );
+    }
+    // Verify source item set matches input
+    const inputIds = new Set(items.map(i => i.mailboxItemId));
+    const artifactIds = new Set(artifact.sourceMailboxItems);
+    if (inputIds.size !== artifactIds.size || [...inputIds].some(id => !artifactIds.has(id))) {
+      throw new Error(
+        `Compile artifact integrity: sourceMailboxItems mismatch (expected ${inputIds.size} items, got ${artifactIds.size})`
+      );
+    }
+    // Verify classifications do not understate input
+    const inputClasses = new Set(contract.inputDataClasses);
+    for (const cls of inputClasses) {
+      if (!artifact.outputClassifications.includes(cls)) {
+        throw new Error(
+          `Compile artifact integrity: outputClassifications understate input (missing '${cls}')`
+        );
+      }
+    }
+
     return artifact;
   }
 }
