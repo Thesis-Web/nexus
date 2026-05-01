@@ -477,6 +477,7 @@ export interface PipelineContext {
   approvalResponse?: ApprovalResponse;
   lastEvidenceRecord?: EvidenceRecord;
   identityClaims?: IdentityClaims; // IDENTITY-001: populated by Gate01 via IdentityProviderInterface
+  effectiveCeiling?: EffectiveCeiling; // T16-F01/RULING-005: populated by Gate 02 after resolveEffectiveCeiling
 }
 
 // ─── §12.3.24 LedgerBackend Interface ───
@@ -1039,6 +1040,9 @@ export interface NvgClassifyAndRouteResult {
   disposition: RuntimeDisposition;
   /** Model invocation result (null if denied or non-enforcing mode) */
   invocation: NvgInvocationResult | null;
+  // T6-F04 / RULING-001: explicit metadata when NVG mode is observe/advisory.
+  // Classification and routing are evaluated but model is NOT invoked.
+  nonEnforcingDisposition?: 'routed_not_invoked';
   /** Completion timestamp */
   completedAt: IsoTimestamp;
 }
@@ -1093,6 +1097,11 @@ export type RuntimeDisposition = 'enforce' | 'observe' | 'advisory';
 export interface PipelineResult {
   evidenceRecord: EvidenceRecord;
   disposition: RuntimeDisposition;
+  // T4-F02 / RULING-001: explicit metadata when mode is observe/advisory.
+  // Gates 01-04 evaluate identically. Gates 05/06 are skipped (not executed).
+  // Gate 07 always runs. These fields tell the caller exactly what happened.
+  nonEnforcingDisposition?: 'evaluated_not_executed';
+  modeSkippedGates?: string[];
 }
 
 // ─── §12.3.38 PipelineInterface (DEF-001) ───

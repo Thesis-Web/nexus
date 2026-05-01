@@ -26,6 +26,10 @@ import {
   DENIAL_CODE,
   type NvgOutboundRequest,
   type NvgRoutingPolicy,
+  type NvgTransportContext,
+  type ModelTransportAdapter,
+  type ModelEndpointResponse,
+  type SecretSource,
   type Uuid,
   type NonEmpty,
   type IsoTimestamp,
@@ -34,6 +38,39 @@ import {
   type OctLevel,
   type EnvironmentId,
 } from '@nexus/contracts';
+
+// T6-F03 FIX: Tests must inject an explicit fixture transport adapter.
+// The stub-success path in model-router was removed — transportContext is mandatory.
+function makeFixtureTransportContext(): NvgTransportContext {
+  const fixtureAdapter: ModelTransportAdapter = {
+    adapterId: 'fixture-adapter' as NonEmpty,
+    adapterVersion: 'v0.0.1' as NonEmpty,
+    configSchema: { parse: (v: unknown) => v } as any,
+    async invoke(): Promise<ModelEndpointResponse> {
+      return { success: true, responseSize: 0, latencyMs: 1 };
+    },
+  };
+  const registry = {
+    register() {},
+    get(): ModelTransportAdapter | null {
+      return fixtureAdapter;
+    },
+    list(): ModelTransportAdapter[] {
+      return [fixtureAdapter];
+    },
+  };
+  const secretSource: SecretSource = {
+    async canResolve() {
+      return true;
+    },
+    async resolve() {
+      return 'FIXTURE_SECRET';
+    },
+  };
+  return { registry, secretSource };
+}
+
+const fixtureTransport = makeFixtureTransportContext();
 
 let tmpDir: string;
 let trailBackend: JsonlRoutingTrailBackend;
@@ -156,7 +193,8 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
       routingDecision.fallbackTier,
       request,
       classification,
-      registry
+      registry,
+      fixtureTransport
     );
     expect(invocation.success).toBe(true);
     expect(invocation.fallbackApplied).toBe(false);
@@ -221,7 +259,8 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
       routingDecision.fallbackTier ?? null,
       request,
       classification,
-      registry
+      registry,
+      fixtureTransport
     );
     expect(invocation.success).toBe(true);
 
@@ -284,7 +323,8 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
       routingDecision.fallbackTier,
       request,
       classification,
-      registry
+      registry,
+      fixtureTransport
     );
     expect(invocation.success).toBe(true);
     expect(invocation.fallbackApplied).toBe(true);
@@ -326,7 +366,8 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
       routingDecision.fallbackTier,
       request,
       classification,
-      registry
+      registry,
+      fixtureTransport
     );
     expect(invocation.success).toBe(false);
     expect(invocation.denialCode).toBe(DENIAL_CODE.NVG_FALLBACK_DENIED);
@@ -346,7 +387,8 @@ describe('NVG Integration: Full Pipeline (§38.5)', () => {
       routingDecision.fallbackTier,
       request,
       classification,
-      registry
+      registry,
+      fixtureTransport
     );
 
     // Log both outbound denial for another request and inbound for this one

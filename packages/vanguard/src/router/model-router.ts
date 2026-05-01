@@ -54,24 +54,16 @@ const FALLBACK_TRIGGERING_CODES: Set<string> = new Set([
  * endpoint.adapterId, delegates to adapter.invoke(). Returns UNKNOWN_ADAPTER
  * denial if the adapterId is not registered.
  *
- * When transportContext is absent (pipeline integration tests): returns a
- * stub success response. Production bootstrap always provides the context.
+ * T6-F03 FIX: transportContext is MANDATORY. The stub-success path for missing
+ * transport is removed. Tests must inject a fixture transport adapter explicitly.
+ * Production bootstrap always provides the context.
  */
 export async function callEndpoint(
   endpoint: ModelEndpoint,
   request: NvgOutboundRequest,
-  transportContext?: NvgTransportContext
+  transportContext: NvgTransportContext
 ): Promise<ModelEndpointResponse> {
   const startMs = Date.now();
-
-  // Stub path: pipeline integration tests that don't set up transport
-  if (transportContext === undefined) {
-    return {
-      success: true,
-      responseSize: 0,
-      latencyMs: Date.now() - startMs,
-    };
-  }
 
   // Production path: adapter registry dispatch
   const adapter = transportContext.registry.get(endpoint.adapterId);
@@ -139,7 +131,7 @@ export async function invokeModel(
   request: NvgOutboundRequest,
   classification: NvgClassificationResult,
   registry: TierRegistry,
-  transportContext?: NvgTransportContext
+  transportContext: NvgTransportContext
 ): Promise<NvgInvocationResult> {
   const priorAttempts: InvocationAttempt[] = [];
 

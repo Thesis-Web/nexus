@@ -15,6 +15,7 @@ import {
   OUTCOME_LABEL,
   NexusSecurityViolation,
   DENIAL_CODE,
+  GATE_ID,
   type AgentAction,
   type PipelineContext,
   type EvidenceRecord,
@@ -264,23 +265,41 @@ export class Pipeline implements PipelineInterface {
       // In observe/advisory (!enforcing): Gates 01-04 ran, now fall through to Gate 07.
       // Evidence records the evaluated outcome. Caller uses disposition to decide behavior.
     } catch (err) {
-      // Mid-pipeline exception — Gate 07 must still run.
-      // Swallow the error into a threat event so evidence is recorded.
-      if (err instanceof NexusSecurityViolation) {
-        context.threatLog.push(buildThreatEvent('security_violation', 'ingress', err.message));
-      } else {
-        context.threatLog.push(
-          buildThreatEvent(
-            'security_violation',
-            'ingress',
-            err instanceof Error ? err.message : 'unknown pipeline error'
-          )
-        );
-      }
+      // T4-F03 FIX: Mid-pipeline exception — Gate 07 must still run.
+      // Push BOTH a ThreatEvent AND a synthetic GateDecision with outcome 'error'.
+      // Without the GateDecision, computeFinalOutcome() sees only prior pass/allow
+      // decisions and can return 'executed' — a false positive.
+      const errMsg = err instanceof Error ? err.message : 'unknown pipeline error';
+      const threatType =
+        err instanceof NexusSecurityViolation ? 'security_violation' : 'security_violation';
+      context.threatLog.push(buildThreatEvent(threatType, 'ingress', errMsg));
+
+      // Synthetic deny decision — ensures Gate 07 computes 'error' or 'denied_threat'
+      decisions.push({
+        gateId: 'pipeline_runtime',
+        gateOrder: decisions.length,
+        plane: 'control',
+        outcome: 'error',
+        reason: `pipeline gate exception: ${errMsg}`,
+        denialCode: DENIAL_CODE.PIPELINE_GATE_EXCEPTION,
+        policyRuleId: null,
+        evaluatedAt: new Date().toISOString(),
+        durationMs: 0,
+        metadata: {
+          exceptionType: err instanceof NexusSecurityViolation ? 'security_violation' : 'runtime',
+        },
+      });
     }
 
     // === GATE 07: Evidence (always runs — every path, including thrown exceptions) ===
-    return this.runGate07(action, context, decisions, disposition);
+    // T4-F02 / RULING-001: when mode is not enforcing, include explicit skip metadata.
+    const modeMetadata = enforcing
+      ? undefined
+      : {
+          nonEnforcingDisposition: 'evaluated_not_executed' as const,
+          modeSkippedGates: [GATE_ID.G05, GATE_ID.G06],
+        };
+    return this.runGate07(action, context, decisions, disposition, modeMetadata);
   }
 
   /** Gate 07 always runs exactly once per action. Extracted to prevent duplication. */
@@ -288,14 +307,22 @@ export class Pipeline implements PipelineInterface {
     action: AgentAction,
     context: PipelineContext,
     decisions: import('../types/index.js').GateDecision[],
-    disposition: import('../types/index.js').RuntimeDisposition
+    disposition: import('../types/index.js').RuntimeDisposition,
+    modeMetadata?: {
+      nonEnforcingDisposition: 'evaluated_not_executed';
+      modeSkippedGates: string[];
+    }
   ): Promise<PipelineResult> {
     const evidenceResult = await this.gates.evidence.evaluate(action, context, decisions);
     decisions.push(evidenceResult.decision);
     if (!context.lastEvidenceRecord) {
       throw new Error('invariant: lastEvidenceRecord must be set by Gate 07');
     }
-    return { evidenceRecord: context.lastEvidenceRecord, disposition };
+    return {
+      evidenceRecord: context.lastEvidenceRecord,
+      disposition,
+      ...modeMetadata,
+    };
   }
 
   private assignSequence(

@@ -147,6 +147,9 @@ export class ClassificationGate implements Gate {
           maxRiskTier: 'low',
         };
     const effective = resolveEffectiveCeiling(identityCeiling, octCeiling);
+    // T16-F01 / RULING-005: store effective ceiling in context for downstream gates,
+    // NVG integration, and bypass path enforcement.
+    context.effectiveCeiling = effective;
     if (riskTierExceeds(riskTier, effective.maxRiskTier)) {
       return deny(
         DENIAL_CODE.RISK_CEILING_EXCEEDED,

@@ -116,9 +116,35 @@ describe('Transport Five Invariants (§24.5.1)', () => {
     expect(result.denialCode).toBe(DENIAL_CODE.NVG_TRANSPORT_UNKNOWN_ADAPTER);
   });
 
-  it('stub path: callEndpoint without transportContext returns stub success', async () => {
-    const result = await callEndpoint(makeEndpoint(), makeRequest());
+  it('T6-F03: callEndpoint with fixture transport returns success', async () => {
+    // T6-F03: stub-success path removed. Use explicit fixture adapter.
+    const fixtureCtx: NvgTransportContext = {
+      registry: {
+        register() {},
+        get() {
+          return {
+            adapterId: 'fixture' as any,
+            adapterVersion: 'v0' as any,
+            configSchema: { parse: (v: unknown) => v } as any,
+            async invoke() {
+              return { success: true, responseSize: 0, latencyMs: 1 };
+            },
+          };
+        },
+        list() {
+          return [];
+        },
+      },
+      secretSource: {
+        async canResolve() {
+          return true;
+        },
+        async resolve() {
+          return 'x';
+        },
+      },
+    };
+    const result = await callEndpoint(makeEndpoint(), makeRequest(), fixtureCtx);
     expect(result.success).toBe(true);
-    expect(result.responseSize).toBe(0);
   });
 });

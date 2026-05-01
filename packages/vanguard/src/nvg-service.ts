@@ -49,7 +49,7 @@ export interface NvgServiceDeps {
   readonly routingPolicy: NvgRoutingPolicy;
   readonly tierRegistry: TierRegistry;
   readonly trailWriter: RoutingTrailWriter;
-  readonly transportContext?: NvgTransportContext;
+  readonly transportContext: NvgTransportContext; // T6-F03: mandatory — no stub-success path
   readonly modeConfig: ModeConfiguration;
 }
 
@@ -184,58 +184,30 @@ export class NvgServiceImpl implements NvgService {
     }
 
     // ── Step 2b: OCT Ceiling Enforcement (§24.2, blueprint §13.3) ──────────
-    // Check primary tier. If ceiling-denied, try fallback tier.
+    // T6-F05 FIX: Primary OCT ceiling denial is TERMINAL per blueprint §13.5.
+    // Fallback is for availability/health only (inside invokeModel), never for
+    // escaping an OCT ceiling denial. If primary tier exceeds ceiling, deny.
     let approvedTier: ModelTier = routingDecision.routeTo;
-    let fallbackTier: ModelTier | null = routingDecision.fallbackTier;
+    const fallbackTier: ModelTier | null = routingDecision.fallbackTier;
 
     const ceilingPrimary = enforceOctModelCeiling(request.octLevel, approvedTier, classification);
 
     if (!ceilingPrimary.allowed) {
-      if (fallbackTier) {
-        const ceilingFallback = enforceOctModelCeiling(
-          request.octLevel,
-          fallbackTier,
-          classification
-        );
-        if (ceilingFallback.allowed) {
-          // Primary ceiling-denied, fallback ceiling-allowed — use fallback as primary
-          approvedTier = fallbackTier;
-          fallbackTier = null; // consumed
-        } else {
-          // Both tiers ceiling-denied
-          const code = ceilingPrimary.denialCode ?? DENIAL_CODE.NVG_OCT_CEILING_DENIED;
-          const reason =
-            ceilingPrimary.reason ?? 'OCT ceiling denied both primary and fallback tiers';
-          await handleNvgDenial(request, code, reason, trailWriter, policyVersion, correlationId);
-          return this.buildResult({
-            allowed: false,
-            classification,
-            modelTierSelected: routingDecision.routeTo,
-            modelTierInvoked: null,
-            denialCode: code as DenialCode,
-            denialReason: reason,
-            trailCorrelationId: correlationId,
-            disposition,
-            invocation: null,
-          });
-        }
-      } else {
-        // No fallback — primary ceiling-denied is terminal
-        const code = ceilingPrimary.denialCode ?? DENIAL_CODE.NVG_OCT_CEILING_DENIED;
-        const reason = ceilingPrimary.reason ?? 'OCT ceiling denied';
-        await handleNvgDenial(request, code, reason, trailWriter, policyVersion, correlationId);
-        return this.buildResult({
-          allowed: false,
-          classification,
-          modelTierSelected: routingDecision.routeTo,
-          modelTierInvoked: null,
-          denialCode: code as DenialCode,
-          denialReason: reason,
-          trailCorrelationId: correlationId,
-          disposition,
-          invocation: null,
-        });
-      }
+      // OCT ceiling denied — terminal. Do NOT try fallback.
+      const code = ceilingPrimary.denialCode ?? DENIAL_CODE.NVG_OCT_CEILING_DENIED;
+      const reason = ceilingPrimary.reason ?? 'OCT ceiling denied primary tier';
+      await handleNvgDenial(request, code, reason, trailWriter, policyVersion, correlationId);
+      return this.buildResult({
+        allowed: false,
+        classification,
+        modelTierSelected: routingDecision.routeTo,
+        modelTierInvoked: null,
+        denialCode: code as DenialCode,
+        denialReason: reason,
+        trailCorrelationId: correlationId,
+        disposition,
+        invocation: null,
+      });
     }
 
     // ── Step 4: Outbound RPT entry (§27) — approved routing decision ───────
@@ -270,6 +242,7 @@ export class NvgServiceImpl implements NvgService {
     // "Mode controls whether the decision is acted upon — not whether it is recorded." (§9.1)
     // Uses resolved disposition — unknown mode maps to 'enforce' (fail closed, §9.1).
     if (disposition !== 'enforce') {
+      // T6-F04 / RULING-001: classification/routing evaluated but model NOT invoked.
       return this.buildResult({
         allowed: true,
         classification,
@@ -280,6 +253,7 @@ export class NvgServiceImpl implements NvgService {
         trailCorrelationId: correlationId,
         disposition,
         invocation: null,
+        nonEnforcingDisposition: 'routed_not_invoked',
       });
     }
 

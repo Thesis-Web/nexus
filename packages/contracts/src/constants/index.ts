@@ -222,10 +222,12 @@ export const DENIAL_CODE = {
   // Gate 06
   CONNECTOR_NOT_REGISTERED: 'connector_not_registered',
   CONNECTOR_CAP_UNSUPPORTED: 'connector_capability_unsupported',
+  CONNECTOR_REDEEM_FAILED: 'connector_redeem_failed', // T9-F03: redeemGrant threw non-security error
   // Security / ingress
   REPLAY_DETECTED: 'replay_detected',
   RATE_LIMIT_EXCEEDED: 'rate_limit_exceeded',
   INGRESS_SCHEMA_INVALID: 'ingress_schema_invalid',
+  PIPELINE_GATE_EXCEPTION: 'pipeline_gate_exception', // T4-F03: mid-pipeline thrown error → synthetic deny
   BROAD_TOKEN_BYPASS: 'broad_token_bypass',
   TEMPLATE_INTEGRITY_FAILED: 'template_integrity_failed',
   GRANT_EXPIRED: 'grant_expired',

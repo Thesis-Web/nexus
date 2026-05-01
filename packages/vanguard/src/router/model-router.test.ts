@@ -129,6 +129,23 @@ function makeMockTransportContext(
 
 // ── WIRE-003 Proof Tests ─────────────────────────────────────────────────
 
+// T6-F03 FIX: transportContext is now mandatory. Use a fixture adapter that returns success.
+const fixtureStubTransport = makeMockTransportContext(
+  new Map<string, ModelTransportAdapter>([
+    [
+      'fixture-adapter',
+      {
+        adapterId: 'fixture-adapter' as NonEmpty,
+        adapterVersion: 'v0.0.1' as NonEmpty,
+        configSchema: { parse: (v: unknown) => v } as any,
+        async invoke() {
+          return { success: true, responseSize: 0, latencyMs: 1 };
+        },
+      },
+    ],
+  ])
+);
+
 describe('WIRE-003: invokeModel health update wiring (§24.5, blueprint §13.6)', () => {
   it('marks succeeding endpoint healthy with updated lastCheckAt', async () => {
     const oldTimestamp = '2020-01-01T00:00:00.000Z' as IsoTimestamp;
@@ -142,13 +159,14 @@ describe('WIRE-003: invokeModel health update wiring (§24.5, blueprint §13.6)'
     const request = makeRequest();
     const classification = classifyOutboundData(request.dataLabels);
 
-    // No transportContext → stub path → always succeeds
+    // T6-F03: fixtureStubTransport injected — mandatory transport context
     const result = await invokeModel(
       MODEL_TIER.FRONTIER_GENERAL,
       null,
       request,
       classification,
-      registry
+      registry,
+      fixtureStubTransport
     );
 
     expect(result.success).toBe(true);

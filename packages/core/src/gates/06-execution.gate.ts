@@ -97,7 +97,51 @@ export class ExecutionGate implements Gate {
       }
 
       // GRANT-SECRET-001 FIX: redeemGrant now INSIDE try/finally
-      await connector.redeemGrant(grant, grantVault);
+      // T9-F03 FIX: wrap redeemGrant in its own try/catch so generic failures
+      // produce a typed GateResult, not an unhandled exception.
+      try {
+        await connector.redeemGrant(grant, grantVault);
+      } catch (redeemErr) {
+        if (redeemErr instanceof NexusSecurityViolation) {
+          context.threatLog.push({
+            threatType: 'security_violation',
+            detectedAt: new Date().toISOString(),
+            gateId: GATE_ID.G06,
+            detail: `Security violation in redeemGrant: ${redeemErr.message}`.slice(0, 300),
+          });
+          return {
+            decision: {
+              gateId: GATE_ID.G06,
+              gateOrder: 6,
+              plane: 'data',
+              outcome: 'deny',
+              reason: redeemErr.message,
+              denialCode: redeemErr.denialCode,
+              policyRuleId: null,
+              evaluatedAt: new Date().toISOString(),
+              durationMs: Date.now() - startMs,
+              metadata: {},
+            },
+            grant,
+          };
+        }
+        // Generic redeem failure (e.g. Vault unavailable) — error, not threat
+        return {
+          decision: {
+            gateId: GATE_ID.G06,
+            gateOrder: 6,
+            plane: 'data',
+            outcome: 'error',
+            reason: `redeemGrant failed: ${sanitizeError(redeemErr)}`,
+            denialCode: DENIAL_CODE.CONNECTOR_REDEEM_FAILED,
+            policyRuleId: null,
+            evaluatedAt: new Date().toISOString(),
+            durationMs: Date.now() - startMs,
+            metadata: {},
+          },
+          grant,
+        };
+      }
 
       let executionResult: ExecutionResult;
       try {

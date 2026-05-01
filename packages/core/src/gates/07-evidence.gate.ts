@@ -66,6 +66,22 @@ function buildGrantMetadata(
   };
 }
 
+/** T11-F01: Sentinel delegation snapshot for pre-Gate01 denials */
+function buildSentinelDelegationSnapshot(): DelegationContextSnapshot {
+  return {
+    delegationId: EVIDENCE_SENTINEL,
+    principalId: EVIDENCE_SENTINEL,
+    actorId: EVIDENCE_SENTINEL,
+    chainDepth: 0,
+    chainAncestors: [],
+    chainHash: EVIDENCE_SENTINEL,
+    allowedSystems: [],
+    maxRiskTier: EVIDENCE_SENTINEL,
+    environment: EVIDENCE_SENTINEL,
+    expiresAt: EVIDENCE_SENTINEL,
+  };
+}
+
 /** Sentinel-encoded grant metadata when no grant was minted */
 function buildSentinelGrantMetadata(): ExecutionGrantMetadata {
   return {
@@ -135,17 +151,24 @@ export class EvidenceGate implements Gate {
     const nextSeq = prevSeq + 1;
 
     // delegationContextSnapshot is non-nullable in v1.8.26
-    const delegationSnapshot: DelegationContextSnapshot =
-      context.delegationSnapshot ?? buildMinimalDelegationSnapshot(context.delegationContext);
+    // T11-F01 FIX: pre-Gate01 denials (rate limit, replay, schema) may have
+    // undefined delegationContext. Use sentinel snapshot instead of crashing.
+    const delegationSnapshot: DelegationContextSnapshot = context.delegationSnapshot
+      ? context.delegationSnapshot
+      : context.delegationContext
+        ? buildMinimalDelegationSnapshot(context.delegationContext)
+        : buildSentinelDelegationSnapshot();
 
     // actionSummary: resolved* fields use EVIDENCE_SENTINEL when absent
+    // T11-F01 FIX: context.actor may be undefined for pre-Gate01 denials
+    const actor = context.actor;
     const actionSummary: EvidenceRecord['actionSummary'] = {
       actionId: action.actionId,
       receivedAt: action.receivedAt,
       protocol: action.protocol,
       actorId: action.actorId,
-      actorClass: context.actor.actorClass,
-      actorEnvironment: context.actor.environment,
+      actorClass: actor?.actorClass ?? EVIDENCE_SENTINEL,
+      actorEnvironment: actor?.environment ?? EVIDENCE_SENTINEL,
       principalId: action.principalId,
       delegationSequence: action.delegationSequence,
       tool: action.tool,
@@ -177,9 +200,11 @@ export class EvidenceGate implements Gate {
 
     // approvalRequired and approvalDecisionLabel — new v1.8.26 fields
     // GATE07-001 FIX: derive from Gate 04 verdict, not approvalRequest presence.
-    // Gate 04 outcome REQUIRE_APPROVAL = true; ALLOW/DENY = false; no Gate 04 = sentinel.
+    // T11-F02 FIX: ESCALATE also routes to Gate 05, so approvalRequired = true.
+    // Gate 04 outcome REQUIRE_APPROVAL or ESCALATE = true; ALLOW/DENY = false; no Gate 04 = sentinel.
     const approvalRequired: boolean | typeof EVIDENCE_SENTINEL = policyDecision
-      ? policyDecision.outcome === OUTCOME_LABEL.REQUIRE_APPROVAL
+      ? policyDecision.outcome === OUTCOME_LABEL.REQUIRE_APPROVAL ||
+        policyDecision.outcome === OUTCOME_LABEL.ESCALATE
       : EVIDENCE_SENTINEL;
 
     const approvalDecisionLabel = context.approvalResponse?.decision ?? EVIDENCE_SENTINEL;

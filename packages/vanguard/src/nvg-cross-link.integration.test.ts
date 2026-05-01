@@ -26,6 +26,10 @@ import {
   DENIAL_CODE,
   type NvgOutboundRequest,
   type NvgRoutingPolicy,
+  type NvgTransportContext,
+  type ModelTransportAdapter,
+  type ModelEndpointResponse,
+  type SecretSource,
   type Uuid,
   type NonEmpty,
   type IsoTimestamp,
@@ -34,6 +38,34 @@ import {
   type OctLevel,
   type EnvironmentId,
 } from '@nexus/contracts';
+
+// T6-F03 FIX: fixture transport — transportContext is now mandatory
+const fixtureTransport: NvgTransportContext = {
+  registry: {
+    register() {},
+    get(): ModelTransportAdapter | null {
+      return {
+        adapterId: 'fixture-adapter' as NonEmpty,
+        adapterVersion: 'v0.0.1' as NonEmpty,
+        configSchema: { parse: (v: unknown) => v } as any,
+        async invoke(): Promise<ModelEndpointResponse> {
+          return { success: true, responseSize: 0, latencyMs: 1 };
+        },
+      };
+    },
+    list() {
+      return [];
+    },
+  },
+  secretSource: {
+    async canResolve() {
+      return true;
+    },
+    async resolve() {
+      return 'FIXTURE_SECRET';
+    },
+  },
+};
 
 let tmpDir: string;
 let trailBackend: JsonlRoutingTrailBackend;
@@ -114,7 +146,8 @@ describe('NVG Cross-Link: runId consistency (§38.7)', () => {
           decision.fallbackTier,
           req,
           classification,
-          registry
+          registry,
+          fixtureTransport
         );
         const correlationId = randomUUID() as Uuid;
         await handleInboundResponse(correlationId, req, invocation, trailBackend, policy.version);
@@ -151,14 +184,28 @@ describe('NVG Cross-Link: runId consistency (§38.7)', () => {
     const req1 = makeRequest(runId1);
     const c1 = classifyOutboundData(req1.dataLabels);
     const d1 = evaluateRoutingPolicy(policy, req1, c1);
-    const inv1 = await invokeModel(d1.routeTo!, d1.fallbackTier, req1, c1, registry);
+    const inv1 = await invokeModel(
+      d1.routeTo!,
+      d1.fallbackTier,
+      req1,
+      c1,
+      registry,
+      fixtureTransport
+    );
     await handleInboundResponse(randomUUID() as Uuid, req1, inv1, trailBackend, policy.version);
 
     // Run 2
     const req2 = makeRequest(runId2);
     const c2 = classifyOutboundData(req2.dataLabels);
     const d2 = evaluateRoutingPolicy(policy, req2, c2);
-    const inv2 = await invokeModel(d2.routeTo!, d2.fallbackTier, req2, c2, registry);
+    const inv2 = await invokeModel(
+      d2.routeTo!,
+      d2.fallbackTier,
+      req2,
+      c2,
+      registry,
+      fixtureTransport
+    );
     await handleInboundResponse(randomUUID() as Uuid, req2, inv2, trailBackend, policy.version);
 
     const run1Entries = await trailBackend.getByRunId(runId1);
@@ -184,7 +231,8 @@ describe('NVG Cross-Link: runId consistency (§38.7)', () => {
       decision.fallbackTier,
       req,
       classification,
-      registry
+      registry,
+      fixtureTransport
     );
 
     // Log inbound with specific correlationId
