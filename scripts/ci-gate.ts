@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — 42 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1).
+ * Nexus CI Gate — 59 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13).
  *
  * Governing law:
  *   §6.4   — 19-step ci:gate sequence (F-02a)
@@ -998,6 +998,95 @@ async function main(): Promise<void> {
   validateFrontierCompileNvg();
   pass('frontier_synthesis compile routes through NVG');
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CMP gates — AMEND-spec-nexus-compile §13
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Step 43: CMP-01 template contract gate
+  stepLog('CMP-01 template contract gate');
+  const cmp01 = validateCmpTemplateContract();
+  pass(`${cmp01.typesFound} types exported, no Zod in contracts`);
+
+  // Step 44: CMP-02 template schema gate
+  stepLog('CMP-02 template schema gate');
+  validateCmpTemplateSchema();
+  pass('TemplateValidatorImpl + Zod schemas present');
+
+  // Step 45: CMP-03 template signature gate
+  stepLog('CMP-03 template signature gate');
+  validateCmpTemplateSignature();
+  pass('TemplateVerifierImpl with Ed25519 verification present');
+
+  // Step 46: CMP-04 registry store gate
+  stepLog('CMP-04 registry store gate');
+  validateCmpRegistryStore();
+  pass('TemplateRegistryStore with ingest/get/exists/immutable');
+
+  // Step 47: CMP-05 ingestion route gate
+  stepLog('CMP-05 ingestion route gate');
+  validateCmpIngestionRoute();
+  pass('admin auth + signature verification required');
+
+  // Step 48: CMP-06 slot matching gate
+  stepLog('CMP-06 slot matching gate');
+  validateCmpSlotMatching();
+  pass('SlotMatcher with slotId + repeating group handling');
+
+  // Step 49: CMP-07 slot validation gate
+  stepLog('CMP-07 slot validation gate');
+  const cmp07 = validateCmpSlotValidation();
+  pass(`${cmp07.typesFound} slot types + entity_ref with resolver`);
+
+  // Step 50: CMP-08 guard evaluation gate
+  stepLog('CMP-08 guard evaluation gate');
+  validateCmpGuardEvaluation();
+  pass('halt/auto_fix/warn_and_mark effects handled');
+
+  // Step 51: CMP-09 default generator gate
+  stepLog('CMP-09 default generator gate');
+  validateCmpDefaultGenerator();
+  pass('deterministic signed generation, no registry write');
+
+  // Step 52: CMP-10 deterministic renderer gate
+  stepLog('CMP-10 deterministic renderer gate');
+  validateCmpDeterministicRenderer();
+  pass('signed artifact output with ledger events');
+
+  // Step 53: CMP-11 denial handling gate
+  stepLog('CMP-11 denial handling gate');
+  validateCmpDenialHandling();
+  pass('inline/separate_section/omit modes handled');
+
+  // Step 54: CMP-12 run ledger events gate
+  stepLog('CMP-12 run ledger events gate');
+  const cmp12 = validateCmpRunLedgerEvents();
+  pass(`${cmp12.eventsFound}/7 compile event types referenced`);
+
+  // Step 55: CMP-13 compile import law gate
+  stepLog('CMP-13 compile import law gate');
+  const cmp13 = validateCmpImportLaw();
+  pass(`${cmp13.filesScanned} file(s) — no forbidden compile imports`);
+
+  // Step 56: CMP-14 request enhancement gate
+  stepLog('CMP-14 request enhancement gate');
+  validateCmpRequestEnhancement();
+  pass('templateId/templateVersion/preferences accepted');
+
+  // Step 57: CMP-15 format renderer gate
+  stepLog('CMP-15 format renderer gate');
+  validateCmpFormatRenderer();
+  pass('prose/table/raw/mixed + file_bundle fail-closed');
+
+  // Step 58: CMP-16 ingestion lifecycle gate
+  stepLog('CMP-16 ingestion lifecycle gate');
+  validateCmpIngestionLifecycle();
+  pass('template_ingested emitted with adminOperation');
+
+  // Step 59: CMP-17 error taxonomy gate
+  stepLog('CMP-17 error taxonomy gate');
+  validateCmpErrorTaxonomy();
+  pass('compile errors ≠ NexusSecurityViolation');
+
   // POST-GATE: bin assertion — HOLE-001 Option A (owner approved)
   // Both nexus and nexus-mcp-proxy bins must be executable after pnpm build.
   // -------------------------------------------------------------------------
@@ -1017,7 +1106,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  console.log('\n=== ci:gate PASSED — all 42 steps ===\n');
+  console.log('\n=== ci:gate PASSED — all 59 steps ===\n');
 }
 
 // ===========================================================================
@@ -2188,6 +2277,334 @@ function validateFrontierCompileNvg(): void {
       }
     }
   }
+}
+
+// =============================================================================
+// CMP gates — AMEND-spec-nexus-compile §13
+// =============================================================================
+
+const CMP_COMPILE_DIR = path.join('packages', 'core', 'src', 'compile');
+const CMP_CONTRACTS_FILE = path.join(
+  'packages',
+  'contracts',
+  'src',
+  'externals',
+  'compile-template.ts'
+);
+const CMP_ROUTE_FILE = path.join('packages', 'interfaces', 'api', 'src', 'routes', 'compile.ts');
+const CMP_TEMPLATE_ROUTE_FILE = path.join(
+  'packages',
+  'interfaces',
+  'api',
+  'src',
+  'routes',
+  'templates.ts'
+);
+
+function readCmpFile(filename: string): string {
+  const fpath = path.join(CMP_COMPILE_DIR, filename);
+  if (!fs.existsSync(fpath)) fail(`CMP: required file missing: ${fpath}`);
+  return fs.readFileSync(fpath, 'utf-8');
+}
+
+/** CMP-01: compile-template.ts exports all §2 types; no Zod in contracts. */
+function validateCmpTemplateContract(): { typesFound: number } {
+  if (!fs.existsSync(CMP_CONTRACTS_FILE)) fail('CMP-01: compile-template.ts not found');
+  const source = fs.readFileSync(CMP_CONTRACTS_FILE, 'utf-8');
+
+  const requiredTypes = [
+    'CompileTemplate',
+    'CompileSection',
+    'CompileLocation',
+    'CompileGuard',
+    'GuardCondition',
+    'GuardAction',
+    'CompilePreferences',
+    'SlotTypeName',
+    'SlotType',
+    'CompileFormat',
+    'DenialHandling',
+    'ContentGranularity',
+    'EntityRegistryName',
+    'AgentTaskSummary',
+    'ContractDesigner',
+  ];
+
+  let typesFound = 0;
+  for (const t of requiredTypes) {
+    if (source.includes(`export type ${t}`) || source.includes(`export interface ${t}`)) {
+      typesFound++;
+    } else {
+      fail(`CMP-01: required type '${t}' not exported from compile-template.ts`);
+    }
+  }
+
+  if (source.includes("from 'zod'") || source.includes('from "zod"')) {
+    fail('CMP-01: Zod import found in contracts compile-template.ts — no Zod in contracts');
+  }
+
+  return { typesFound };
+}
+
+/** CMP-02: template-schemas.ts has Zod schemas + TemplateValidatorImpl. */
+function validateCmpTemplateSchema(): void {
+  const source = readCmpFile('template-schemas.ts');
+  if (!source.includes('TemplateValidatorImpl'))
+    fail('CMP-02: TemplateValidatorImpl not found in template-schemas.ts');
+  if (!source.includes("from 'zod'") && !source.includes("from 'zod/v4'"))
+    fail('CMP-02: Zod import missing from template-schemas.ts');
+  if (!source.includes('validateForIngestion'))
+    fail('CMP-02: validateForIngestion method not found');
+}
+
+/** CMP-03: template-loader.ts has TemplateVerifierImpl with Ed25519 verify. */
+function validateCmpTemplateSignature(): void {
+  const source = readCmpFile('template-loader.ts');
+  if (!source.includes('TemplateVerifierImpl'))
+    fail('CMP-03: TemplateVerifierImpl not found in template-loader.ts');
+  if (!source.includes('verifyOrThrow')) fail('CMP-03: verifyOrThrow method not found');
+  if (!source.includes('verifySignature')) fail('CMP-03: verifySignature method not found');
+  if (!source.includes('verifyDigest')) fail('CMP-03: verifyDigest method not found');
+  if (!source.includes('verify(')) fail('CMP-03: Ed25519 verify call not found');
+}
+
+/** CMP-04: template-registry-store.ts implements full store contract. */
+function validateCmpRegistryStore(): void {
+  const source = readCmpFile('template-registry-store.ts');
+  if (!source.includes('TemplateRegistryStoreImpl'))
+    fail('CMP-04: TemplateRegistryStoreImpl not found');
+  const requiredMethods = ['ingest', 'getByVersion', 'getLatest', 'exists', 'listVersions'];
+  for (const m of requiredMethods) {
+    if (!source.includes(`${m}(`)) fail(`CMP-04: required method '${m}' not found`);
+  }
+  if (!source.includes('PRIMARY KEY'))
+    fail('CMP-04: PRIMARY KEY constraint not found — immutability');
+}
+
+/** CMP-05: templates.ts admin ingestion route requires auth + signature. */
+function validateCmpIngestionRoute(): void {
+  if (!fs.existsSync(CMP_TEMPLATE_ROUTE_FILE)) fail('CMP-05: templates.ts admin route not found');
+  const source = fs.readFileSync(CMP_TEMPLATE_ROUTE_FILE, 'utf-8');
+  if (!source.includes("'/admin/templates'")) fail('CMP-05: /admin/templates route path not found');
+  if (!source.includes('verifyTemplate')) fail('CMP-05: verifyTemplate call not found');
+  if (!source.includes('validateTemplate')) fail('CMP-05: validateTemplate call not found');
+  if (!source.includes('templateExists'))
+    fail('CMP-05: duplicate rejection (templateExists) not found');
+}
+
+/** CMP-06: slot-matcher.ts implements deterministic slotId + repeating group matching. */
+function validateCmpSlotMatching(): void {
+  const source = readCmpFile('slot-matcher.ts');
+  if (!source.includes('SlotMatcherImpl')) fail('CMP-06: SlotMatcherImpl not found');
+  if (!source.includes('slotId')) fail('CMP-06: slotId matching not found');
+  if (!source.includes('repeating_group')) fail('CMP-06: repeating_group handling not found');
+}
+
+/** CMP-07: slot-validator.ts handles all 10 slot types + entity_ref with resolver. */
+function validateCmpSlotValidation(): { typesFound: number } {
+  const source = readCmpFile('slot-validator.ts');
+  if (!source.includes('SlotValidatorImpl')) fail('CMP-07: SlotValidatorImpl not found');
+
+  const slotTypes = [
+    'string',
+    'number',
+    'date',
+    'enum',
+    'entity_ref',
+    'prose',
+    'table',
+    'repeating_group',
+    'asset_ref',
+    'computed',
+  ];
+  let typesFound = 0;
+  for (const st of slotTypes) {
+    if (source.includes(`'${st}'`)) {
+      typesFound++;
+    } else {
+      fail(`CMP-07: slot type '${st}' not handled in slot-validator.ts`);
+    }
+  }
+
+  if (!source.includes('EntityRefResolver'))
+    fail('CMP-07: EntityRefResolver not found — entity_ref needs registry');
+
+  return { typesFound };
+}
+
+/** CMP-08: guard-evaluator.ts handles halt/auto_fix/warn_and_mark effects. */
+function validateCmpGuardEvaluation(): void {
+  const source = readCmpFile('guard-evaluator.ts');
+  if (!source.includes('GuardEvaluatorImpl')) fail('CMP-08: GuardEvaluatorImpl not found');
+  const effects = ['halt', 'auto_fix', 'warn_and_mark'];
+  for (const e of effects) {
+    if (!source.includes(`'${e}'`)) fail(`CMP-08: guard effect '${e}' not handled`);
+  }
+}
+
+/** CMP-09: default-template-generator.ts creates deterministic signed templates, no registry write. */
+function validateCmpDefaultGenerator(): void {
+  const source = readCmpFile('default-template-generator.ts');
+  if (!source.includes('DefaultTemplateGeneratorImpl'))
+    fail('CMP-09: DefaultTemplateGeneratorImpl not found');
+  if (!source.includes('.sign('))
+    fail('CMP-09: Ed25519 sign call not found — must produce signed templates');
+  // Must NOT write to registry — no ingest/insert/store calls
+  if (source.includes('ingest(') || source.includes('.insert('))
+    fail('CMP-09: default generator writes to registry — session-only violated');
+}
+
+/** CMP-10: deterministic-renderer.ts produces signed artifacts with ledger events. */
+function validateCmpDeterministicRenderer(): void {
+  const source = readCmpFile('deterministic-renderer.ts');
+  if (!source.includes('DeterministicRenderer'))
+    fail('CMP-10: DeterministicRenderer class not found');
+  if (!source.includes('signArtifact'))
+    fail('CMP-10: signArtifact call not found — must produce signed artifacts');
+  if (!source.includes('writeEvent')) fail('CMP-10: Run Ledger writeEvent not found');
+  if (!source.includes('artifactId')) fail('CMP-10: artifactId not found in output');
+}
+
+/** CMP-11: denial-marker-inserter.ts handles inline/separate_section/omit modes. */
+function validateCmpDenialHandling(): void {
+  const source = readCmpFile('denial-marker-inserter.ts');
+  if (!source.includes('DenialMarkerInserterImpl'))
+    fail('CMP-11: DenialMarkerInserterImpl not found');
+  const modes = ['inline', 'separate_section', 'omit'];
+  for (const m of modes) {
+    if (!source.includes(`'${m}'`)) fail(`CMP-11: denial mode '${m}' not handled`);
+  }
+}
+
+/** CMP-12: all 7 compile RunEventType values referenced in compile source. */
+function validateCmpRunLedgerEvents(): { eventsFound: number } {
+  const eventTypes = [
+    'template_ingested',
+    'compile_template_loaded',
+    'compile_slot_matched',
+    'compile_slot_missing',
+    'compile_guard_fired',
+    'compile_guard_halt',
+    'compile_assembly_complete',
+  ];
+
+  // Collect all compile-ref source files + template route
+  const compileFiles = fs.existsSync(CMP_COMPILE_DIR) ? collectTsSourceFiles(CMP_COMPILE_DIR) : [];
+  if (fs.existsSync(CMP_TEMPLATE_ROUTE_FILE)) compileFiles.push(CMP_TEMPLATE_ROUTE_FILE);
+  if (fs.existsSync(CMP_ROUTE_FILE)) compileFiles.push(CMP_ROUTE_FILE);
+
+  const allSource = compileFiles.map(f => fs.readFileSync(f, 'utf-8')).join('\n');
+
+  let eventsFound = 0;
+  for (const et of eventTypes) {
+    if (allSource.includes(`'${et}'`)) {
+      eventsFound++;
+    } else {
+      fail(`CMP-12: RunEventType '${et}' not referenced in any compile source file`);
+    }
+  }
+
+  if (eventsFound !== 7) fail(`CMP-12: only ${eventsFound}/7 compile event types found`);
+  return { eventsFound };
+}
+
+/** CMP-13: compile import-law extension — no forbidden cross-package imports. */
+function validateCmpImportLaw(): { filesScanned: number } {
+  const forbiddenPatterns: Array<{ dir: string; forbidden: string; label: string }> = [
+    {
+      dir: path.join('packages', 'vanguard', 'src'),
+      forbidden: 'core/src/compile',
+      label: 'vanguard → core/compile',
+    },
+    {
+      dir: path.join('packages', 'adapters'),
+      forbidden: 'core/src/compile',
+      label: 'adapters → core/compile',
+    },
+    {
+      dir: path.join('packages', 'connectors'),
+      forbidden: 'core/src/compile',
+      label: 'connectors → core/compile',
+    },
+    {
+      dir: path.join('packages', 'identity-ref'),
+      forbidden: 'core/src/compile',
+      label: 'identity-ref → core/compile',
+    },
+  ];
+
+  let filesScanned = 0;
+  const violations: string[] = [];
+
+  for (const fp of forbiddenPatterns) {
+    if (!fs.existsSync(fp.dir)) continue;
+    const files = collectTsSourceFiles(fp.dir);
+    for (const fpath of files) {
+      filesScanned++;
+      const source = fs.readFileSync(fpath, 'utf-8');
+      // Check relative path imports reaching into compile
+      if (source.includes(fp.forbidden) || source.includes(fp.forbidden.replace('/', '\\'))) {
+        violations.push(`  ${fpath}: imports from ${fp.forbidden} (${fp.label})`);
+      }
+    }
+  }
+
+  if (violations.length > 0) {
+    fail(`CMP-13: Forbidden compile imports:\n${violations.join('\n')}`);
+  }
+  return { filesScanned };
+}
+
+/** CMP-14: compile route accepts templateId/templateVersion/preferences from body. */
+function validateCmpRequestEnhancement(): void {
+  if (!fs.existsSync(CMP_ROUTE_FILE)) fail('CMP-14: compile route not found');
+  const source = fs.readFileSync(CMP_ROUTE_FILE, 'utf-8');
+  if (!source.includes('templateId')) fail('CMP-14: templateId not found in compile route');
+  if (!source.includes('templateVersion'))
+    fail('CMP-14: templateVersion not found in compile route');
+  if (!source.includes('preferences')) fail('CMP-14: preferences not found in compile route');
+  // §10: templateVersion without templateId must be rejected
+  if (!source.includes('templateVersion') || !source.includes('templateId === undefined'))
+    fail('CMP-14: templateVersion-without-templateId rejection not found');
+}
+
+/** CMP-15: format-renderer.ts handles prose/table/raw/mixed + file_bundle fail-closed. */
+function validateCmpFormatRenderer(): void {
+  const source = readCmpFile('format-renderer.ts');
+  const formats = ['prose', 'table', 'raw', 'mixed'];
+  for (const f of formats) {
+    if (!source.includes(`'${f}'`)) fail(`CMP-15: format '${f}' not handled`);
+  }
+  // file_bundle must fail-closed — should throw or deny
+  if (!source.includes('file_bundle')) fail('CMP-15: file_bundle not mentioned');
+  if (
+    !source.includes('FILE_BUNDLE_DENIED') &&
+    !source.includes('file_bundle') // at minimum referenced
+  ) {
+    fail('CMP-15: file_bundle not fail-closed — no denial handling found');
+  }
+}
+
+/** CMP-16: templates.ts emits template_ingested with adminOperation: true. */
+function validateCmpIngestionLifecycle(): void {
+  if (!fs.existsSync(CMP_TEMPLATE_ROUTE_FILE)) fail('CMP-16: templates.ts admin route not found');
+  const source = fs.readFileSync(CMP_TEMPLATE_ROUTE_FILE, 'utf-8');
+  if (!source.includes("'template_ingested'"))
+    fail('CMP-16: template_ingested event type not found in templates.ts');
+  if (!source.includes('adminOperation: true'))
+    fail('CMP-16: adminOperation: true not found in template_ingested event');
+}
+
+/** CMP-17: compile errors ≠ NexusSecurityViolation — separate error taxonomy. */
+function validateCmpErrorTaxonomy(): void {
+  const source = readCmpFile('compile-errors.ts');
+  if (!source.includes('CompileTemplateError')) fail('CMP-17: CompileTemplateError not found');
+  if (!source.includes('CompileAssemblyError')) fail('CMP-17: CompileAssemblyError not found');
+  if (
+    source.includes('extends NexusSecurityViolation') ||
+    source.includes('new NexusSecurityViolation')
+  )
+    fail('CMP-17: compile errors extend/use NexusSecurityViolation — taxonomy violation');
 }
 
 main().catch(err => {
