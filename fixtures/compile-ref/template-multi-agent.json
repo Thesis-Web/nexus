@@ -1,0 +1,72 @@
+{
+  "templateId": "fixture-multi-agent",
+  "templateVersion": "1.0.0",
+  "format": "prose",
+  "sections": [
+    {
+      "sectionId": "sales-section",
+      "position": 0,
+      "title": "Sales Results",
+      "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+      "expectedContentType": "prose",
+      "locations": [
+        {
+          "locationId": "loc-sales",
+          "position": 0,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "sales-result",
+          "slotType": {
+            "type": "prose",
+            "granularity": "paragraph"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "sectionId": "market-section",
+      "position": 1,
+      "title": "Market Intelligence",
+      "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+      "expectedContentType": "prose",
+      "locations": [
+        {
+          "locationId": "loc-market",
+          "position": 0,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "market-result",
+          "slotType": {
+            "type": "prose",
+            "granularity": "paragraph"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "sectionId": "finance-section",
+      "position": 2,
+      "title": "Financial Analysis",
+      "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+      "expectedContentType": "table",
+      "locations": [
+        {
+          "locationId": "loc-finance",
+          "position": 0,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "finance-result",
+          "slotType": {
+            "type": "table"
+          },
+          "required": false
+        }
+      ]
+    }
+  ],
+  "guards": [],
+  "denialHandling": "separate_section",
+  "createdAt": "2026-05-01T00:00:00.000Z",
+  "createdBy": "user",
+  "templateDigest": "851eaf4ea89f160d45d8dfa78ea7dfbae65fad27a5ae9466e54faf0c19998cc1",
+  "signature": "Tz2h1oPYwshq-IZLdfq35fUizRQz43Fk7bG7QTmFbxfrZPQ4YDamjoZ3llqpTbRX8z3ph84Rqr0QnuORzmaRDQ"
+}

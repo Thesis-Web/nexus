@@ -1,0 +1,30 @@
+{
+  "templateId": "fixture-invalid-signature",
+  "templateVersion": "1.0.0",
+  "format": "prose",
+  "sections": [
+    {
+      "sectionId": "tampered-section",
+      "position": 0,
+      "title": "Tampered Section",
+      "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+      "expectedContentType": "prose",
+      "locations": [
+        {
+          "locationId": "loc-tampered",
+          "position": 0,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "tampered-data",
+          "slotType": { "type": "string", "maxLength": 100 },
+          "required": true
+        }
+      ]
+    }
+  ],
+  "guards": [],
+  "denialHandling": "inline",
+  "createdAt": "2026-05-01T00:00:00.000Z",
+  "createdBy": "default",
+  "templateDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+}

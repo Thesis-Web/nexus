@@ -1,0 +1,76 @@
+{
+  "templateId": "fixture-repeating-group",
+  "templateVersion": "1.0.0",
+  "format": "table",
+  "sections": [
+    {
+      "sectionId": "header-section",
+      "position": 0,
+      "title": "Report Header",
+      "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+      "expectedContentType": "prose",
+      "locations": [
+        {
+          "locationId": "loc-header-title",
+          "position": 0,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "report-title",
+          "slotType": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "sectionId": "agents-section",
+      "position": 1,
+      "title": "Agent Results",
+      "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+      "expectedContentType": "mixed",
+      "locations": [
+        {
+          "locationId": "loc-agent-group",
+          "position": 0,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "agent-results-group",
+          "slotType": {
+            "type": "repeating_group",
+            "childLocations": [
+              {
+                "locationId": "loc-agent-name",
+                "position": 0,
+                "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+                "expectedSlotId": "agent-name",
+                "slotType": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "required": true
+              },
+              {
+                "locationId": "loc-agent-output",
+                "position": 1,
+                "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+                "expectedSlotId": "agent-output",
+                "slotType": {
+                  "type": "prose",
+                  "granularity": "sentence"
+                },
+                "required": true
+              }
+            ]
+          },
+          "required": true
+        }
+      ]
+    }
+  ],
+  "guards": [],
+  "denialHandling": "inline",
+  "createdAt": "2026-05-01T00:00:00.000Z",
+  "createdBy": "orchestrator",
+  "templateDigest": "eebdf2ec2ebaa9bd52165b1e706da61cdf1af82ab35c99f3a16a35feff4422cf",
+  "signature": "Hm3dbkdjbOgKR8czB6tR6gRHBWbamrISbHtgoiEM4sQqlGdlZSPLf7Sied20O7hO6hovbwEyhUF5eSaCkm0mCA"
+}

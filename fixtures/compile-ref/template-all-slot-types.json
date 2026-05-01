@@ -1,0 +1,142 @@
+{
+  "templateId": "fixture-all-slot-types",
+  "templateVersion": "1.0.0",
+  "format": "mixed",
+  "sections": [
+    {
+      "sectionId": "all-types",
+      "position": 0,
+      "title": "All Slot Types",
+      "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+      "expectedContentType": "mixed",
+      "locations": [
+        {
+          "locationId": "loc-string",
+          "position": 0,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "s-string",
+          "slotType": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "required": true
+        },
+        {
+          "locationId": "loc-number",
+          "position": 1,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "s-number",
+          "slotType": {
+            "type": "number",
+            "min": 0,
+            "max": 1000
+          },
+          "required": true
+        },
+        {
+          "locationId": "loc-date",
+          "position": 2,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "s-date",
+          "slotType": {
+            "type": "date"
+          },
+          "required": true
+        },
+        {
+          "locationId": "loc-enum",
+          "position": 3,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "s-enum",
+          "slotType": {
+            "type": "enum",
+            "values": ["alpha", "beta", "gamma"]
+          },
+          "required": true
+        },
+        {
+          "locationId": "loc-entity-ref",
+          "position": 4,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "s-entity-ref",
+          "slotType": {
+            "type": "entity_ref",
+            "registry": "actor"
+          },
+          "required": false
+        },
+        {
+          "locationId": "loc-prose",
+          "position": 5,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "s-prose",
+          "slotType": {
+            "type": "prose",
+            "granularity": "paragraph"
+          },
+          "required": true
+        },
+        {
+          "locationId": "loc-table",
+          "position": 6,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "s-table",
+          "slotType": {
+            "type": "table"
+          },
+          "required": false
+        },
+        {
+          "locationId": "loc-rg",
+          "position": 7,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "s-rg",
+          "slotType": {
+            "type": "repeating_group",
+            "childLocations": [
+              {
+                "locationId": "loc-rg-val",
+                "position": 0,
+                "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+                "expectedSlotId": "rg-val",
+                "slotType": {
+                  "type": "string"
+                },
+                "required": true
+              }
+            ]
+          },
+          "required": false
+        },
+        {
+          "locationId": "loc-asset",
+          "position": 8,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "s-asset",
+          "slotType": {
+            "type": "asset_ref"
+          },
+          "required": false
+        },
+        {
+          "locationId": "loc-computed",
+          "position": 9,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "s-computed",
+          "slotType": {
+            "type": "computed",
+            "computeFn": "count(s-string)",
+            "computeScope": "same_agent"
+          },
+          "required": false
+        }
+      ]
+    }
+  ],
+  "guards": [],
+  "denialHandling": "inline",
+  "createdAt": "2026-05-01T00:00:00.000Z",
+  "createdBy": "contract_designer",
+  "templateDigest": "edc2586ba0cb4584a6cdceb5aa046061264c42d0ff05d24e5e4a9450f047ac30",
+  "signature": "sS-BOQzzi32d6m7j_-82aKFTXOL9G7BCUfGRpFvWyvsB2XbzVMau6l8FX_fv6e-FWsN9z3oKdECc_GsPOkqkCA"
+}

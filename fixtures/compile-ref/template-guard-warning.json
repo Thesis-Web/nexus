@@ -1,0 +1,47 @@
+{
+  "templateId": "fixture-guard-warning",
+  "templateVersion": "1.0.0",
+  "format": "prose",
+  "sections": [
+    {
+      "sectionId": "warned-section",
+      "position": 0,
+      "title": "Warned Section",
+      "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+      "expectedContentType": "prose",
+      "locations": [
+        {
+          "locationId": "loc-optional-data",
+          "position": 0,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "optional-data",
+          "slotType": {
+            "type": "prose",
+            "granularity": "paragraph"
+          },
+          "required": false
+        }
+      ]
+    }
+  ],
+  "guards": [
+    {
+      "guardId": "guard-warn-001",
+      "name": "optional-data-empty",
+      "when": {
+        "locationPath": "warned-section.loc-optional-data",
+        "operator": "is_empty"
+      },
+      "then": {
+        "targetLocationPath": "warned-section.loc-optional-data",
+        "effect": "add_warning"
+      },
+      "severity": "warn_and_mark"
+    }
+  ],
+  "denialHandling": "inline",
+  "createdAt": "2026-05-01T00:00:00.000Z",
+  "createdBy": "user",
+  "templateDigest": "e3ca7c12145e62f82d9b0f2d6989005b735623678642e04fa4724fafe6dd1ad9",
+  "signature": "_Sn5ZOBldQYDN2x5bcNONiSNhb_VuIGDJe72wNFpoNrq-wvJXGfVT1gTFEuhAKQ_vEqnxTbLXJJi3zu0tTkhCQ"
+}

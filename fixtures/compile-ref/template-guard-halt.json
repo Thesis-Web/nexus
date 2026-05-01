@@ -1,0 +1,47 @@
+{
+  "templateId": "fixture-guard-halt",
+  "templateVersion": "1.0.0",
+  "format": "prose",
+  "sections": [
+    {
+      "sectionId": "guarded-section",
+      "position": 0,
+      "title": "Guarded Section",
+      "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+      "expectedContentType": "prose",
+      "locations": [
+        {
+          "locationId": "loc-critical-data",
+          "position": 0,
+          "assignedAgentId": "00000000-0000-4000-8000-000000000001",
+          "expectedSlotId": "critical-data",
+          "slotType": {
+            "type": "prose",
+            "granularity": "block"
+          },
+          "required": true
+        }
+      ]
+    }
+  ],
+  "guards": [
+    {
+      "guardId": "guard-halt-001",
+      "name": "critical-data-missing",
+      "when": {
+        "locationPath": "guarded-section.loc-critical-data",
+        "operator": "is_empty"
+      },
+      "then": {
+        "targetLocationPath": "guarded-section.loc-critical-data",
+        "effect": "block_section"
+      },
+      "severity": "halt"
+    }
+  ],
+  "denialHandling": "inline",
+  "createdAt": "2026-05-01T00:00:00.000Z",
+  "createdBy": "user",
+  "templateDigest": "0d2cbae4cee2d0f54f6f6966c2f00e31353019914d69577b01b56121bcb29a2d",
+  "signature": "_FrnFG4zU-QgnL_lq4dWHYQMpuGKyqzqoCpx1ZMExydtSIVvftvTVndOmX6oyXhXXLc-v0mDc2D6ypontpoVBA"
+}
