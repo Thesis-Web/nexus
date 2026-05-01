@@ -1,5 +1,6 @@
 /**
  * API Routes barrel — spec §6.1 (routes/ directory), §23.2
+ * AMEND-spec §11.2 — registers all route modules including reference harness.
  * Registers all route modules on the Express app.
  * Layer 7 — imports @nexus/contracts ONLY.
  *
@@ -25,6 +26,11 @@ import { registerPostureRoutes } from './posture.js';
 import { registerRunLedgerRoutes } from './run-ledger.js';
 import { registerModeRoutes } from './modes.js';
 import { registerNvgRoutes } from './nvg.js';
+import { registerWorkspaceRoutes } from './workspace.js';
+import { registerOrchestratorRoutes } from './orchestrator.js';
+import { registerMailboxRoutes } from './mailbox.js';
+import { registerCompileRoutes } from './compile.js';
+import { registerCompileReturnRoutes } from './compile-return.js';
 
 export function registerAllRoutes(
   app: Express,
@@ -71,5 +77,70 @@ export function registerAllRoutes(
     ...(deps.loadNvgRoutingPolicy !== undefined
       ? { loadNvgRoutingPolicy: deps.loadNvgRoutingPolicy }
       : {}),
+  });
+
+  // ── EXT-12: Reference harness routes — AMEND-spec §11.2 ──────────────────
+
+  // Workspace reference harness — §6.2
+  registerWorkspaceRoutes(app, {
+    ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
+    ...(deps.identityProvider !== undefined ? { identityProvider: deps.identityProvider } : {}),
+    ...(deps.workspaceSockets !== undefined ? { workspaceSockets: deps.workspaceSockets } : {}),
+    ...(deps.computeDigest !== undefined ? { computeDigest: deps.computeDigest } : {}),
+    ...(deps.dispatchToOrchestrator !== undefined
+      ? { dispatchToOrchestrator: deps.dispatchToOrchestrator }
+      : {}),
+  });
+
+  // Orchestrator reference harness — §6.3
+  registerOrchestratorRoutes(app, {
+    ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
+    ...(deps.orchestratorSockets !== undefined
+      ? { orchestratorSockets: deps.orchestratorSockets }
+      : {}),
+    ...(deps.computeDigest !== undefined ? { computeDigest: deps.computeDigest } : {}),
+  });
+
+  // Mailbox reference harness — §11.2
+  registerMailboxRoutes(app, {
+    ...(deps.mailboxService !== undefined ? { mailboxService: deps.mailboxService } : {}),
+    ...(deps.primaryMailbox !== undefined ? { primaryMailbox: deps.primaryMailbox } : {}),
+  });
+
+  // Compile reference harness — §6.8
+  registerCompileRoutes(app, {
+    ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
+    ...(deps.outputCollector !== undefined ? { outputCollector: deps.outputCollector } : {}),
+    ...(deps.mailboxService !== undefined ? { mailboxService: deps.mailboxService } : {}),
+    ...(deps.compileService !== undefined ? { compileService: deps.compileService } : {}),
+    ...(deps.getDefaultCompiler !== undefined
+      ? { getDefaultCompiler: deps.getDefaultCompiler }
+      : {}),
+    ...(deps.getPrimaryMailbox !== undefined ? { getPrimaryMailbox: deps.getPrimaryMailbox } : {}),
+    ...(deps.resolveReturnEndpointForRun !== undefined
+      ? { resolveReturnEndpointForRun: deps.resolveReturnEndpointForRun }
+      : {}),
+    ...(deps.dispatchCompileReturn !== undefined
+      ? { dispatchCompileReturn: deps.dispatchCompileReturn }
+      : {}),
+  });
+
+  // Compile-return reference harness — §6.9 (EXT-10, wired here)
+  registerCompileReturnRoutes(app, {
+    ...(deps.getReturnEndpoint !== undefined ? { getReturnEndpoint: deps.getReturnEndpoint } : {}),
+    ...(deps.verifyCallbackSignature !== undefined
+      ? { verifyCallbackSignature: deps.verifyCallbackSignature }
+      : {}),
+    ...(deps.verifyArtifactSignature !== undefined
+      ? { verifyArtifactSignature: deps.verifyArtifactSignature }
+      : {}),
+    ...(deps.recomputeArtifactDigest !== undefined
+      ? { recomputeArtifactDigest: deps.recomputeArtifactDigest }
+      : {}),
+    ...(deps.controlPlanePublicKey !== undefined
+      ? { controlPlanePublicKey: deps.controlPlanePublicKey }
+      : {}),
+    // runLedgerWriter already spread above — reuse for compile-return
+    ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
   });
 }
