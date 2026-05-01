@@ -39,3 +39,28 @@ export {
 export type { TemplateVerifier, TemplateLoader } from './template-loader.js';
 export { DefaultTemplateGeneratorImpl } from './default-template-generator.js';
 export type { DefaultTemplateGenerator } from './default-template-generator.js';
+export { SlotMatcherImpl } from './slot-matcher.js';
+export type {
+  SlotMatcher,
+  SlotMatchResult,
+  MatchedSlot,
+  UnmatchedLocation,
+  OrphanedItem,
+} from './slot-matcher.js';
+export { SlotValidatorImpl } from './slot-validator.js';
+export type {
+  SlotValidator,
+  SlotValidationResult,
+  SlotValidationError,
+  EntityRefResolver,
+} from './slot-validator.js';
+export { GuardEvaluatorImpl } from './guard-evaluator.js';
+export type {
+  GuardEvaluator,
+  GuardEvaluationResult,
+  FiredGuard,
+  GuardModification,
+  GuardWarning,
+} from './guard-evaluator.js';
+export { DenialMarkerInserterImpl } from './denial-marker-inserter.js';
+export type { DenialMarkerInserter, DenialOutput, DenialEntry } from './denial-marker-inserter.js';
