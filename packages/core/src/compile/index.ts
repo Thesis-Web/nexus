@@ -20,3 +20,20 @@ export {
   CompileAssemblyError,
   CompileGuardHaltError,
 } from './compile-errors.js';
+export { TemplateRegistryStoreImpl } from './template-registry-store.js';
+export type { TemplateRegistryStore } from './template-registry-store.js';
+export {
+  TemplateValidatorImpl,
+  CompileTemplateSchema,
+  CompileLocationSchema,
+  CompileSectionSchema,
+  CompileGuardSchema,
+  SlotTypeSchema,
+} from './template-schemas.js';
+export type { TemplateValidator } from './template-schemas.js';
+export {
+  TemplateVerifierImpl,
+  TemplateLoaderImpl,
+  computeTemplateDigest,
+} from './template-loader.js';
+export type { TemplateVerifier, TemplateLoader } from './template-loader.js';
