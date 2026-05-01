@@ -26,6 +26,7 @@ export {
   formatQualifiedId,
   parseQualifiedId,
   detectCrossDomainCollisions,
+  detectRequiredExternalsCollisions,
   type ManifestDomain,
   type QualifiedIdentifier,
 } from './qualified-identifier.js';

@@ -1,28 +1,29 @@
 #!/usr/bin/env tsx
 /**
- * Nexus Bootstrap — spec §32a.6, COMPOSE-002/WIRE-002-P03 fix
+ * Nexus Bootstrap — spec §32a.6, AMEND-spec §5.1-§5.4
  *
- * 12-step startup wiring. All four registries populated BEFORE any
+ * 21-step startup wiring. All registries populated BEFORE any
  * manifest loader runs (§12.3.48 invariant 3). Fail-closed on every step.
  *
  * This is a composition root — cross-layer imports are permitted.
  *
- * Steps:
- *   1. Register factory registries + factories (adapters, identity, connectors, channels)
- *   2. Load control-plane keypair
- *   3. Load identity manifest (config/identity/providers.v1.yaml)
- *   4. Evaluate RIA bridge conditions (§32a.4)
- *   5. Load connector manifest (config/connectors/connectors.v1.yaml)
- *   6. Load channel manifest (config/channels/channels.v1.yaml)
- *   7. Load endpoint manifest (config/nvg/endpoints.v1.yaml)
- *   8. Populate TierRegistry from loaded endpoints
- *   9. Create NvgTransportContext (adapter registry + secret source)
- *  10. Load NVG routing policy (§25.1 — signed YAML, signature-verified)
- *  11. Load mode configuration (§9.2 — or create default per MODE-002)
- *  12. Construct NvgServiceImpl — fully wired with all 5 deps
+ * Steps 1-12:  Original NVG/NISP (unchanged)
+ * Steps 13-17: Load five externals manifests
+ * Step 18:     Cross-domain collision + cross-reference validation
+ * Step 19:     Construct MailboxBackend + baked MailboxService
+ * Step 20:     Construct ExternalSocketRegistry, DeclaredOutputSlotReader,
+ *              PayloadResolver set, OutputCollector
+ * Step 21:     Construct CompileService, CompileReturnDispatcher, reference
+ *              deterministic compiler, assemble ExternalsRuntime,
+ *              return full BootstrapResult
  *
  * Governing law:
- *   §32a.6  — bootstrap order (12 steps)
+ *   §32a.6  — bootstrap order (steps 1-12)
+ *   §5.1    — expanded bootstrap order (steps 13-21)
+ *   §5.2    — ExternalsRuntime + BootstrapResult expansion
+ *   §5.3    — fail-closed startup rule
+ *   §5.4    — baked runtime services
+ *   §4.7    — cross-domain collision law (9 domains)
  *   §12.3.48 — factory registry behavior law (4 invariants)
  *   §32a.4  — RIA legacy bridge conditions
  *   §14.6.6 — fail closed on empty/all-disabled manifests
@@ -39,6 +40,25 @@ import type {
   NonEmpty,
   ModeConfiguration,
   NvgRoutingPolicy,
+  WorkspaceManifestRecord,
+  OrchestratorManifestRecord,
+  MailboxManifestRecord,
+  CompilerManifestRecord,
+  CompileReturnEndpointRecord,
+  WorkspaceFactory,
+  OrchestratorFactory,
+  MailboxBackendFactory,
+  CompilerFactory,
+  CompileReturnTransportFactory,
+  CompileReturnTransport,
+  CompileReturnAck,
+  CompileReturnRequest,
+  CompileConfig,
+  MailboxService,
+  OutputCollector,
+  CompileService,
+  PayloadResolver,
+  Uuid,
 } from '@nexus/contracts';
 
 // ── Core: crypto ─────────────────────────────────────────────────────────────
@@ -53,15 +73,51 @@ import {
   saveModeConfig,
 } from '../packages/core/src/modes/mode-manager.js';
 
-// ── Core: factory registries (§12.3.45–.47) ─────────────────────────────────
+// ── Core: factory registries (§12.3.45–.47) — original 3 ────────────────────
 import { IdentityProviderFactoryRegistry } from '../packages/core/src/manifest/identity/identity-provider-factory-registry.js';
 import { ConnectorFactoryRegistry } from '../packages/core/src/manifest/connectors/connector-factory-registry.js';
 import { ApprovalChannelFactoryRegistry } from '../packages/core/src/manifest/channels/channel-factory-registry.js';
 
-// ── Core: manifest loaders (§32a.2.1–.3) ────────────────────────────────────
+// ── Core: factory registries — externals 5 (§5.1) ───────────────────────────
+import { WorkspaceFactoryRegistry } from '../packages/core/src/manifest/workspace/workspace-factory-registry.js';
+import { OrchestratorFactoryRegistry } from '../packages/core/src/manifest/orchestrators/orchestrator-factory-registry.js';
+import { MailboxBackendFactoryRegistry } from '../packages/core/src/manifest/mailbox/mailbox-factory-registry.js';
+import { CompilerFactoryRegistry } from '../packages/core/src/manifest/compile/compiler-factory-registry.js';
+import { CompileReturnTransportFactoryRegistry } from '../packages/core/src/manifest/output/compile-return-factory-registry.js';
+
+// ── Core: manifest loaders (§32a.2.1–.3) — original 3 ──────────────────────
 import { loadIdentityManifest } from '../packages/core/src/manifest/identity/identity-manifest-loader.js';
 import { loadConnectorManifest } from '../packages/core/src/manifest/connectors/connector-manifest-loader.js';
 import { loadChannelManifest } from '../packages/core/src/manifest/channels/channel-manifest-loader.js';
+
+// ── Core: manifest loaders — externals 5 (§5.1) ─────────────────────────────
+import { loadWorkspaceManifest } from '../packages/core/src/manifest/workspace/workspace-manifest-loader.js';
+import { loadOrchestratorManifest } from '../packages/core/src/manifest/orchestrators/orchestrator-manifest-loader.js';
+import { loadMailboxManifest } from '../packages/core/src/manifest/mailbox/mailbox-manifest-loader.js';
+import { loadCompilerManifest } from '../packages/core/src/manifest/compile/compiler-manifest-loader.js';
+import { loadCompileReturnManifest } from '../packages/core/src/manifest/output/compile-return-manifest-loader.js';
+
+// ── Core: mailbox (§7, §5.4) ────────────────────────────────────────────────
+import { LocalJsonlMailboxBackend } from '../packages/core/src/mailbox/local-jsonl-mailbox.backend.js';
+import { MailboxServiceImpl } from '../packages/core/src/mailbox/mailbox-service.js';
+
+// ── Core: output (§6.7, §5.4) ───────────────────────────────────────────────
+import { OutputCollectorImpl } from '../packages/core/src/output/output-collector.js';
+import { RunLedgerSlotReader } from '../packages/core/src/output/declared-output-slot-reader.js';
+import { PayloadResolverRegistryImpl } from '../packages/core/src/output/payload-resolver.js';
+
+// ── Core: compile (§8, §3.10, §5.4) ─────────────────────────────────────────
+import { CompileServiceImpl } from '../packages/core/src/compile/compile-service.js';
+import { DeterministicRenderer } from '../packages/core/src/compile/deterministic-renderer.js';
+import { CompileReturnDispatcherImpl } from '../packages/core/src/compile/compile-return-dispatcher.js';
+import type { CompileReturnDispatcher } from '../packages/core/src/compile/compile-return-dispatcher.js';
+
+// ── Core: externals (§4.8) ──────────────────────────────────────────────────
+import { ExternalSocketRegistryImpl } from '../packages/core/src/externals/external-socket-registry.js';
+import type { ExternalSocketRegistry } from '../packages/core/src/externals/external-socket-registry.js';
+
+// ── Core: run ledger (§30) ──────────────────────────────────────────────────
+import { JsonlRunLedgerWriter } from '../packages/core/src/ledger/run-ledger.js';
 
 // ── Vanguard: transport layer (NISP-001.A) ───────────────────────────────────
 import {
@@ -77,18 +133,50 @@ import {
   JsonlRoutingTrailBackend,
 } from '@nexus/vanguard';
 
-// ── Runtime-utils: cross-domain collision detection (§14.6.4) ────────────
-import { detectCrossDomainCollisions, type ManifestDomain } from '@nexus/runtime-utils';
+// ── Runtime-utils: cross-domain collision detection (§14.6.4, §4.7) ─────────
+import {
+  detectCrossDomainCollisions,
+  detectRequiredExternalsCollisions,
+  type ManifestDomain,
+} from '@nexus/runtime-utils';
 
-// ── Manifest paths (§32a.6 — all four domains) ──────────────────────────────
+// ── Node builtins ────────────────────────────────────────────────────────────
+import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
+
+// ── Manifest paths ───────────────────────────────────────────────────────────
+// §32a.6 — original four domains
 const MANIFEST_IDENTITY = 'config/identity/providers.v1.yaml';
 const MANIFEST_CONNECTORS = 'config/connectors/connectors.v1.yaml';
 const MANIFEST_CHANNELS = 'config/channels/channels.v1.yaml';
 const MANIFEST_ENDPOINTS = 'config/nvg/endpoints.v1.yaml';
 const NVG_ROUTING_POLICY = 'fixtures/nvg/default.routing-policy.yaml';
 const MODE_CONFIG = 'keys/mode-config.json';
+// §5.1 — externals five domains
+const MANIFEST_WORKSPACE = 'config/workspace/workspaces.v1.yaml';
+const MANIFEST_ORCHESTRATORS = 'config/orchestrators/orchestrators.v1.yaml';
+const MANIFEST_MAILBOX = 'config/mailbox/mailboxes.v1.yaml';
+const MANIFEST_COMPILERS = 'config/compile/compilers.v1.yaml';
+const MANIFEST_COMPILE_RETURN = 'config/output/compile-return.v1.yaml';
+// Run ledger + output paths
+const RUN_LEDGER_FILE = 'runs/run-ledger.jsonl';
+const COMPILE_OUTPUT_ROOT = 'runs';
 
-// ── Bootstrap result ─────────────────────────────────────────────────────────
+// ── ExternalsRuntime — §5.2, bootstrap-owned, NOT in @nexus/contracts ───────
+
+export interface ExternalsRuntime {
+  readonly workspaceSockets: readonly WorkspaceManifestRecord[];
+  readonly orchestratorSockets: readonly OrchestratorManifestRecord[];
+  readonly mailboxService: MailboxService;
+  readonly outputCollector: OutputCollector;
+  readonly compileService: CompileService;
+  readonly compileReturnDispatcher: CompileReturnDispatcher;
+  readonly socketRegistry: ExternalSocketRegistry;
+  readonly compileReturnEndpoints: readonly CompileReturnEndpointRecord[];
+}
+
+// ── BootstrapResult — §5.2, expanded ────────────────────────────────────────
+
 export interface BootstrapResult {
   readonly nvgService: NvgServiceImpl;
   readonly transportContext: NvgTransportContext;
@@ -98,13 +186,20 @@ export interface BootstrapResult {
   readonly controlPlanePublicKey: string;
   readonly routingPolicy: NvgRoutingPolicy;
   readonly modeConfig: ModeConfiguration;
+  readonly externals: ExternalsRuntime;
 }
 
 /**
- * Execute the 12-step bootstrap sequence — §32a.6 + COMPOSE-002/WIRE-002-P03 fix.
+ * Execute the 21-step bootstrap sequence.
+ * Steps 1-12: §32a.6 (original NVG/NISP).
+ * Steps 13-21: §5.1 (externals expansion).
  * Fail-closed: any step failure throws; Nexus does not start.
  */
 export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEPS 1-12: ORIGINAL NVG/NISP BOOTSTRAP (unchanged)
+  // ═══════════════════════════════════════════════════════════════════════════
+
   // ─── Step 1: Register factory registries + factories ─────────────────────
   // §12.3.48 invariant 3: all factories registered before any manifest loader runs.
   console.log('[bootstrap] Step 1: registering factory registries + factories');
@@ -120,8 +215,6 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   const riaFactory: IdentityProviderFactory = {
     providerType: 'reference_adapter' as NonEmpty,
     create: async (_config: Record<string, unknown>) => {
-      // RIA provider construction deferred to identity subsystem bootstrap.
-      // The manifest loader only checks factory existence (§12.3.48 invariant 2).
       throw new Error(
         'RIA identity provider construction is handled by the identity subsystem, ' +
           'not by the manifest loader. This code path should not be reached during bootstrap.'
@@ -135,7 +228,6 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   const stubConnectorFactory: ConnectorFactory = {
     connectorType: 'stub' as NonEmpty,
     create: async (_config: Record<string, unknown>) => {
-      // Stub connector construction deferred to connector subsystem.
       throw new Error(
         'Stub connector construction is handled by the connector subsystem, ' +
           'not by the manifest loader.'
@@ -149,7 +241,6 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   const cliChannelFactory: ApprovalChannelFactory = {
     channelType: 'cli' as NonEmpty,
     create: async (_config: Record<string, unknown>) => {
-      // CLI approval channel construction deferred to approval subsystem.
       throw new Error(
         'CLI approval channel construction is handled by the approval subsystem, ' +
           'not by the manifest loader.'
@@ -158,18 +249,87 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   };
   channelFactoryRegistry.register(cliChannelFactory);
 
+  // 1e. Workspace factory registry (§5.1)
+  const workspaceFactoryRegistry = new WorkspaceFactoryRegistry();
+  const refWorkspaceFactory: WorkspaceFactory = {
+    workspaceType: 'reference_http' as NonEmpty,
+    factoryVersion: '1.0.0' as NonEmpty,
+    create: async () => {
+      throw new Error('Workspace construction deferred to API DI wiring.');
+    },
+  };
+  workspaceFactoryRegistry.register(refWorkspaceFactory);
+
+  // 1f. Orchestrator factory registry (§5.1)
+  const orchestratorFactoryRegistry = new OrchestratorFactoryRegistry();
+  const refOrchestratorFactory: OrchestratorFactory = {
+    orchestratorType: 'reference_deterministic' as NonEmpty,
+    factoryVersion: '1.0.0' as NonEmpty,
+    create: async () => {
+      throw new Error('Orchestrator construction deferred to API DI wiring.');
+    },
+  };
+  orchestratorFactoryRegistry.register(refOrchestratorFactory);
+
+  // 1g. Mailbox backend factory registry (§5.1)
+  const mailboxFactoryRegistry = new MailboxBackendFactoryRegistry();
+  const refMailboxFactory: MailboxBackendFactory = {
+    mailboxType: 'local_jsonl_reference' as NonEmpty,
+    factoryVersion: '1.0.0' as NonEmpty,
+    create: async () => {
+      throw new Error('Mailbox backend construction handled in Step 19.');
+    },
+  };
+  mailboxFactoryRegistry.register(refMailboxFactory);
+
+  // 1h. Compiler factory registry (§5.1)
+  const compilerFactoryRegistry = new CompilerFactoryRegistry();
+  const refCompilerFactory: CompilerFactory = {
+    compilerType: 'reference_deterministic_renderer' as NonEmpty,
+    factoryVersion: '1.0.0' as NonEmpty,
+    create: async () => {
+      throw new Error('Compiler construction handled in Step 21.');
+    },
+  };
+  compilerFactoryRegistry.register(refCompilerFactory);
+  const customerCompilerFactory: CompilerFactory = {
+    compilerType: 'customer_onprem_synthesis' as NonEmpty,
+    factoryVersion: '1.0.0' as NonEmpty,
+    create: async () => {
+      throw new Error('Customer compiler construction not implemented in reference harness.');
+    },
+  };
+  compilerFactoryRegistry.register(customerCompilerFactory);
+
+  // 1i. Compile-return transport factory registry (§5.1)
+  const compileReturnTransportFactoryRegistry = new CompileReturnTransportFactoryRegistry();
+  const httpCallbackTransportFactory: CompileReturnTransportFactory = {
+    endpointType: 'http_callback' as NonEmpty,
+    factoryVersion: '1.0.0' as NonEmpty,
+    create: async () => {
+      throw new Error('Transport construction handled in Step 21.');
+    },
+  };
+  compileReturnTransportFactoryRegistry.register(httpCallbackTransportFactory);
+
   console.log(
     `[bootstrap] Step 1 complete: ` +
       `${adapterRegistry.list().length} adapters, ` +
-      `${identityFactoryRegistry.list().length} identity factories, ` +
-      `${connectorFactoryRegistry.list().length} connector factories, ` +
-      `${channelFactoryRegistry.list().length} channel factories`
+      `${identityFactoryRegistry.list().length} identity, ` +
+      `${connectorFactoryRegistry.list().length} connector, ` +
+      `${channelFactoryRegistry.list().length} channel, ` +
+      `${workspaceFactoryRegistry.list().length} workspace, ` +
+      `${orchestratorFactoryRegistry.list().length} orchestrator, ` +
+      `${mailboxFactoryRegistry.list().length} mailbox, ` +
+      `${compilerFactoryRegistry.list().length} compiler, ` +
+      `${compileReturnTransportFactoryRegistry.list().length} compile-return transport`
   );
 
   // ─── Step 2: Load control-plane keypair ──────────────────────────────────
   console.log('[bootstrap] Step 2: loading control-plane keypair');
   const controlPlaneKey = await loadControlPlaneKey();
   const pubKey = controlPlaneKey.publicKey;
+  const privKey = controlPlaneKey.privateKey;
   console.log(`[bootstrap] Step 2 complete: public key ${pubKey.slice(0, 16)}...`);
 
   // ─── Step 3: Load identity manifest ──────────────────────────────────────
@@ -186,7 +346,6 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   // ─── Step 4: Evaluate RIA bridge conditions (§32a.4) ─────────────────────
   console.log('[bootstrap] Step 4: evaluating RIA bridge conditions');
   if (process.env.NEXUS_RIA_LEGACY_BRIDGE === '1') {
-    // In CI, this is caught by ci:gate Step 17. At runtime, log a warning.
     console.warn(
       '[bootstrap] WARNING: NEXUS_RIA_LEGACY_BRIDGE=1 detected. ' +
         'Legacy bridge is a transitional path only. ' +
@@ -224,9 +383,7 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   });
   console.log(`[bootstrap] Step 7 complete: ${endpoints.length} enabled endpoint(s)`);
 
-  // ─── Cross-domain identifier collision check (§14.6.4, audit-approved additive) ──
-  // Warning-only — does not fail closed. Detects when two manifest domains
-  // share the same primary identifier (e.g. endpoint and connector both using 'prod-01').
+  // ─── Cross-domain identifier collision check (§14.6.4, legacy NISP — warning-only) ──
   const domainIds = new Map<ManifestDomain, ReadonlySet<string>>();
   domainIds.set('identity', new Set(identityRecords.map(r => r.providerId)));
   domainIds.set('connector', new Set(connectorRecords.map(r => r.connectorId)));
@@ -277,7 +434,6 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
     modeConfig = await loadModeConfig(MODE_CONFIG);
   } catch {
     // MODE-002 ruling: observe/observe/unlocked default is intentional.
-    // If no config exists, create a signed default with the control-plane key.
     console.log(
       '[bootstrap] Step 11: mode-config.json not found — creating default (observe/observe/unlocked per MODE-002)'
     );
@@ -300,7 +456,212 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   });
   console.log('[bootstrap] Step 12 complete: NvgServiceImpl ready (5 deps wired)');
 
-  console.log('\n[bootstrap] ══ All 12 steps complete — Nexus is ready ══\n');
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEPS 13-21: EXTERNALS EXPANSION (§5.1)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ─── Step 13: Load workspace manifest ────────────────────────────────────
+  console.log(`[bootstrap] Step 13: loading workspace manifest (${MANIFEST_WORKSPACE})`);
+  const workspaceRecords = await loadWorkspaceManifest({
+    manifestPath: MANIFEST_WORKSPACE,
+    controlPlanePublicKey: pubKey,
+    factoryRegistry: workspaceFactoryRegistry,
+  });
+  console.log(`[bootstrap] Step 13 complete: ${workspaceRecords.length} enabled workspace(s)`);
+
+  // ─── Step 14: Load orchestrator manifest ─────────────────────────────────
+  console.log(`[bootstrap] Step 14: loading orchestrator manifest (${MANIFEST_ORCHESTRATORS})`);
+  const orchestratorRecords = await loadOrchestratorManifest({
+    manifestPath: MANIFEST_ORCHESTRATORS,
+    controlPlanePublicKey: pubKey,
+    factoryRegistry: orchestratorFactoryRegistry,
+  });
+  console.log(
+    `[bootstrap] Step 14 complete: ${orchestratorRecords.length} enabled orchestrator(s)`
+  );
+
+  // ─── Step 15: Load mailbox manifest ──────────────────────────────────────
+  console.log(`[bootstrap] Step 15: loading mailbox manifest (${MANIFEST_MAILBOX})`);
+  const mailboxRecords = await loadMailboxManifest({
+    manifestPath: MANIFEST_MAILBOX,
+    controlPlanePublicKey: pubKey,
+    factoryRegistry: mailboxFactoryRegistry,
+  });
+  console.log(`[bootstrap] Step 15 complete: ${mailboxRecords.length} enabled mailbox(es)`);
+
+  // ─── Step 16: Load compiler manifest ─────────────────────────────────────
+  console.log(`[bootstrap] Step 16: loading compiler manifest (${MANIFEST_COMPILERS})`);
+  const compilerRecords = await loadCompilerManifest({
+    manifestPath: MANIFEST_COMPILERS,
+    controlPlanePublicKey: pubKey,
+    factoryRegistry: compilerFactoryRegistry,
+  });
+  console.log(`[bootstrap] Step 16 complete: ${compilerRecords.length} enabled compiler(s)`);
+
+  // ─── Step 17: Load compile-return manifest ───────────────────────────────
+  console.log(`[bootstrap] Step 17: loading compile-return manifest (${MANIFEST_COMPILE_RETURN})`);
+  const compileReturnRecords = await loadCompileReturnManifest({
+    manifestPath: MANIFEST_COMPILE_RETURN,
+    controlPlanePublicKey: pubKey,
+    factoryRegistry: compileReturnTransportFactoryRegistry,
+  });
+  console.log(
+    `[bootstrap] Step 17 complete: ${compileReturnRecords.length} enabled compile-return endpoint(s)`
+  );
+
+  // ─── Step 18: Cross-domain collision + cross-reference validation (§4.7) ─
+  console.log(
+    '[bootstrap] Step 18: running required-domain collision + cross-reference validation'
+  );
+
+  // Add externals domains to the collision map
+  domainIds.set('workspace', new Set(workspaceRecords.map(r => r.workspaceSocketId)));
+  domainIds.set('orchestrator', new Set(orchestratorRecords.map(r => r.orchestratorSocketId)));
+  domainIds.set('mailbox', new Set(mailboxRecords.map(r => r.mailboxId)));
+  domainIds.set('compiler', new Set(compilerRecords.map(r => r.compilerSocketId)));
+  domainIds.set('compileReturn', new Set(compileReturnRecords.map(r => r.returnEndpointId)));
+
+  // Required externals collision — fail closed (§4.7)
+  const extCollisionErrors = detectRequiredExternalsCollisions(domainIds);
+  if (extCollisionErrors.length > 0) {
+    throw new Error(
+      `[bootstrap] Step 18 FAILED — required externals collisions:\n  ${extCollisionErrors.join('\n  ')}`
+    );
+  }
+
+  // Run ledger writer for ExternalSocketRegistry
+  const runLedgerWriter = new JsonlRunLedgerWriter(RUN_LEDGER_FILE);
+
+  // Build ExternalSocketRegistry early for cross-reference validation
+  const socketRegistry = new ExternalSocketRegistryImpl({
+    workspaces: workspaceRecords,
+    orchestrators: orchestratorRecords,
+    mailboxes: mailboxRecords,
+    compilers: compilerRecords,
+    compileReturnEndpoints: compileReturnRecords,
+    runLedgerWriter,
+  });
+
+  // Cross-reference validation — fail closed (§4.7)
+  socketRegistry.validateCrossReferences();
+
+  console.log('[bootstrap] Step 18 complete: no collisions, cross-references valid');
+
+  // ─── Step 19: Construct MailboxBackend + baked MailboxService ─────────────
+  console.log('[bootstrap] Step 19: constructing MailboxBackend + MailboxService');
+  const primaryMailbox = socketRegistry.getPrimaryMailbox();
+  const mailboxBackend = new LocalJsonlMailboxBackend(primaryMailbox.storageRoot);
+  const mailboxService = new MailboxServiceImpl(mailboxBackend, primaryMailbox);
+  console.log(
+    `[bootstrap] Step 19 complete: mailbox '${primaryMailbox.mailboxId}' (${primaryMailbox.mailboxType})`
+  );
+
+  // ─── Step 20: Construct ExternalSocketRegistry, DeclaredOutputSlotReader, ─
+  //              PayloadResolver set, OutputCollector
+  console.log('[bootstrap] Step 20: constructing output infrastructure');
+
+  const slotReader = new RunLedgerSlotReader(runLedgerWriter);
+
+  // PayloadResolver — reference file:// resolver
+  const payloadResolverRegistry = new PayloadResolverRegistryImpl();
+  const fileResolver: PayloadResolver = {
+    resolverId: 'file-local' as NonEmpty,
+    resolverVersion: '1.0.0' as NonEmpty,
+    canResolve: (ref: NonEmpty) => (ref as string).startsWith('file://'),
+    resolveBytes: async (ref: NonEmpty) => {
+      const filePath = (ref as string).replace('file://', '');
+      const resolved = path.resolve(filePath);
+      const buf = await fs.readFile(resolved);
+      return new Uint8Array(buf);
+    },
+  };
+  payloadResolverRegistry.register(fileResolver);
+
+  // Determine output slot policy from first enabled orchestrator
+  const primaryOrchestrator = orchestratorRecords[0];
+  const outputSlotPolicy = primaryOrchestrator
+    ? primaryOrchestrator.outputSlotPolicy
+    : ('open_slots' as const);
+
+  const outputCollector = new OutputCollectorImpl({
+    mailboxService,
+    mailboxId: primaryMailbox.mailboxId,
+    resolverRegistry: payloadResolverRegistry,
+    slotReader,
+    ledgerWriter: runLedgerWriter,
+    outputSlotPolicy,
+    expiresAt: null,
+  });
+
+  console.log('[bootstrap] Step 20 complete: OutputCollector wired');
+
+  // ─── Step 21: Construct CompileService, CompileReturnDispatcher, ──────────
+  //              reference deterministic compiler, assemble ExternalsRuntime
+  console.log('[bootstrap] Step 21: constructing compile infrastructure + ExternalsRuntime');
+
+  const defaultCompiler = socketRegistry.getDefaultCompiler();
+
+  // Reference deterministic renderer — actor-registration exempt
+  const deterministicRenderer = new DeterministicRenderer(
+    defaultCompiler.compilerSocketId,
+    privKey,
+    COMPILE_OUTPUT_ROOT
+  );
+
+  // CompileService — selects compile mode and invokes compiler
+  const compileConfig: CompileConfig = { preferFrontierSynthesis: false };
+  const compileService = new CompileServiceImpl(
+    deterministicRenderer,
+    defaultCompiler,
+    compileConfig,
+    runLedgerWriter
+  );
+
+  // Reference http_callback transport — simple HTTP POST
+  const httpCallbackTransport: CompileReturnTransport = {
+    endpointType: 'http_callback' as NonEmpty,
+    transportVersion: '1.0.0' as NonEmpty,
+    send: async (
+      endpoint: CompileReturnEndpointRecord,
+      request: CompileReturnRequest
+    ): Promise<CompileReturnAck> => {
+      const response = await fetch(endpoint.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      });
+      if (!response.ok) {
+        throw new Error(
+          `Compile-return HTTP callback to '${endpoint.url}' failed: ${response.status}`
+        );
+      }
+      const body = (await response.json()) as { ok: boolean; data: CompileReturnAck };
+      return body.data;
+    },
+  };
+
+  // CompileReturnDispatcher — signed callback dispatch
+  const compileReturnDispatcher = new CompileReturnDispatcherImpl({
+    resolveTransport: (endpointType: string) =>
+      endpointType === 'http_callback' ? httpCallbackTransport : null,
+    signingPrivateKey: privKey,
+    keyId: 'nexus-control-plane' as NonEmpty,
+  });
+
+  // Assemble ExternalsRuntime (§5.2)
+  const externals: ExternalsRuntime = {
+    workspaceSockets: workspaceRecords,
+    orchestratorSockets: orchestratorRecords,
+    mailboxService,
+    outputCollector,
+    compileService,
+    compileReturnDispatcher,
+    socketRegistry,
+    compileReturnEndpoints: compileReturnRecords,
+  };
+
+  console.log('[bootstrap] Step 21 complete: ExternalsRuntime assembled');
+  console.log('\n[bootstrap] ══ All 21 steps complete — Nexus is ready ══\n');
 
   return {
     nvgService,
@@ -311,5 +672,6 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
     controlPlanePublicKey: pubKey,
     routingPolicy,
     modeConfig,
+    externals,
   };
 }

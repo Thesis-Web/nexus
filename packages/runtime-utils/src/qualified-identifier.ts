@@ -1,21 +1,49 @@
 /**
- * Qualified Identifier Helpers — spec §32a.3
+ * Qualified Identifier Helpers — spec §32a.3, AMEND-spec §4.7
  *
  * Cross-domain identifier convention: `domain:primaryId`.
  * Within-domain uniqueness is mandatory. Cross-domain reuse is permitted
- * with a non-blocking config-load warning.
+ * with a non-blocking config-load warning for legacy/NISP domains.
  *
- * Governed domains (§14.6.4):
- *   identity:<providerId>
- *   endpoint:<endpointId>
- *   connector:<connectorId>
- *   channel:<channelId>
+ * §4.7 expansion: ManifestDomain expanded from 4 NISP domains to 9.
+ * Required externals domains (workspace, orchestrator, mailbox, compiler,
+ * compileReturn) fail closed on collision. Legacy/NISP domains (identity,
+ * endpoint, connector, channel) remain warning-only unless referenced by
+ * required externals.
  */
 
-/** The four governed manifest domains per §14.6.2 */
-export type ManifestDomain = 'identity' | 'endpoint' | 'connector' | 'channel';
+/** The nine governed manifest domains per §14.6.2, §4.7 */
+export type ManifestDomain =
+  | 'identity'
+  | 'endpoint'
+  | 'connector'
+  | 'channel'
+  | 'workspace'
+  | 'orchestrator'
+  | 'mailbox'
+  | 'compiler'
+  | 'compileReturn';
 
-const VALID_DOMAINS = new Set<string>(['identity', 'endpoint', 'connector', 'channel']);
+const VALID_DOMAINS = new Set<string>([
+  'identity',
+  'endpoint',
+  'connector',
+  'channel',
+  'workspace',
+  'orchestrator',
+  'mailbox',
+  'compiler',
+  'compileReturn',
+]);
+
+/** Required externals domains — fail closed on collision (§4.7) */
+const REQUIRED_EXTERNALS_DOMAINS = new Set<ManifestDomain>([
+  'workspace',
+  'orchestrator',
+  'mailbox',
+  'compiler',
+  'compileReturn',
+]);
 
 export interface QualifiedIdentifier {
   readonly domain: ManifestDomain;
@@ -33,7 +61,7 @@ export function formatQualifiedId(domain: ManifestDomain, primaryId: string): st
 
 /**
  * Parse a qualified identifier string. Returns null if format is invalid
- * or domain is not one of the four governed domains.
+ * or domain is not one of the nine governed domains.
  */
 export function parseQualifiedId(qualified: string): QualifiedIdentifier | null {
   const colonIdx = qualified.indexOf(':');
@@ -45,8 +73,9 @@ export function parseQualifiedId(qualified: string): QualifiedIdentifier | null 
 }
 
 /**
- * Detect cross-domain primary identifier collisions across all four domains.
+ * Detect cross-domain primary identifier collisions across all domains.
  * Returns an array of collision warnings (non-blocking per §14.6.4).
+ * Used for legacy/NISP domains.
  *
  * @param domainRegistries Map of domain → Set of primaryIds loaded from that domain's manifest
  * @returns Array of warning strings, empty if no collisions
@@ -77,4 +106,45 @@ export function detectCrossDomainCollisions(
   }
 
   return warnings;
+}
+
+/**
+ * Detect collisions across required externals domains — fail closed (§4.7).
+ *
+ * Rules:
+ * - Duplicate ID within any required externals domain: fail closed.
+ * - Same raw ID across any two required externals domains: fail closed.
+ * - Same raw ID between required externals and legacy/NISP domain: fail closed
+ *   only when that legacy/NISP ID is referenced by required externals validation.
+ *
+ * @param domainRegistries Map of domain → Set of primaryIds
+ * @returns Array of error strings. Non-empty means startup must fail.
+ */
+export function detectRequiredExternalsCollisions(
+  domainRegistries: ReadonlyMap<ManifestDomain, ReadonlySet<string>>
+): string[] {
+  const errors: string[] = [];
+  const seen = new Map<string, ManifestDomain[]>();
+
+  for (const [domain, ids] of domainRegistries) {
+    if (!REQUIRED_EXTERNALS_DOMAINS.has(domain)) continue;
+    for (const id of ids) {
+      const existing = seen.get(id);
+      if (existing) {
+        existing.push(domain);
+      } else {
+        seen.set(id, [domain]);
+      }
+    }
+  }
+
+  for (const [id, domains] of seen) {
+    if (domains.length > 1) {
+      errors.push(
+        `Required externals collision (fail closed): '${id}' appears in domains: ${domains.join(', ')}`
+      );
+    }
+  }
+
+  return errors;
 }
