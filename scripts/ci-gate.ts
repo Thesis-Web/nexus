@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — 59 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13).
+ * Nexus CI Gate — 60 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11).
  *
  * Governing law:
  *   §6.4   — 19-step ci:gate sequence (F-02a)
@@ -866,6 +866,7 @@ async function main(): Promise<void> {
   //   L4 (adapters/*):    @nexus/contracts
   //   L5 (connectors/*):  @nexus/contracts
   //   L6 (identity-ref):  @nexus/contracts
+  //   orch-ref:            @nexus/contracts (ORCH-18)
   //   L7 (interfaces/*):  @nexus/contracts, @nexus/core (RAT-003), @nexus/adapter-mcp (serve)
   // -------------------------------------------------------------------------
   stepLog('seven-layer import-law gate');
@@ -1087,6 +1088,18 @@ async function main(): Promise<void> {
   validateCmpErrorTaxonomy();
   pass('compile errors ≠ NexusSecurityViolation');
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AMEND-spec-nexus-orch §11: Orch-Ref gates
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Step 60: ORCH orch-ref unit test gate
+  // Runs all orch-ref tests (ORCH-01 through ORCH-24).
+  // Step 20 enforces ORCH-18 (import law) via LAYER_RULES.
+  // ORCH-19 enforced by interfaces/api rule in Step 20.
+  stepLog('ORCH orch-ref unit test gate');
+  runCmd('pnpm exec vitest run packages/orch-ref/src/ --reporter=verbose');
+  pass();
+
   // POST-GATE: bin assertion — HOLE-001 Option A (owner approved)
   // Both nexus and nexus-mcp-proxy bins must be executable after pnpm build.
   // -------------------------------------------------------------------------
@@ -1106,7 +1119,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  console.log('\n=== ci:gate PASSED — all 59 steps ===\n');
+  console.log('\n=== ci:gate PASSED — all 60 steps ===\n');
 }
 
 // ===========================================================================
@@ -1637,6 +1650,12 @@ const LAYER_RULES: LayerRule[] = [
     allowedNexus: ['@nexus/contracts'],
     layerName: 'L6 identity-ref',
     selfPackage: '@nexus/identity-ref',
+  },
+  {
+    dir: path.join('packages', 'orch-ref', 'src'),
+    allowedNexus: ['@nexus/contracts'],
+    layerName: 'orch-ref (ORCH-18)',
+    selfPackage: '@nexus/orch-ref',
   },
   {
     dir: path.join('packages', 'interfaces', 'cli', 'src'),
