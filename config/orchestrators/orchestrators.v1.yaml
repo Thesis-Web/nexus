@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-01T02:10:27.022Z'
-signature: LfqDElu1fcOPrjo1tKgJWbOg_7dRDKzeDSdHLMo-kO48wiNXHZ6lEoyawfDpCydgyiC0ZwYMfmIptmV-LBMYCg
+issuedAt: '2026-05-03T01:38:24.076Z'
+signature: 1bMK22zCfy3wHja_GjC7YF-tnz08enmONsq43cWeJ7-pfmOyhGnQHPmq6J6lOtG1U9gnGGwsU2aIS4O8mTzrCA
 body:
   orchestrators:
     - orchestratorSocketId: reference-orchestrator
@@ -21,3 +21,14 @@ body:
         modelCallMs: 60000
       outputSlotPolicy: strict_declared_slots
       configuration: {}
+      plannerType: ref-deterministic
+      plannerVersion: 1.0.0
+      plannerConfiguration: {}
+      planAmendment:
+        enabled: true
+        maxAmendments: 3
+        requiresCheckback: false
+      partialCompletion:
+        enabled: true
+        minRequiredCompletedNodes: 1
+        compileOnPartial: true

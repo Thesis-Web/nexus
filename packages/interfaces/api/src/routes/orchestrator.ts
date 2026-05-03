@@ -116,6 +116,7 @@ export function registerOrchestratorRoutes(
         selectedAgents,
         requiresUserApproval: false,
         planDigest,
+        plan: null, // legacy flat preview — no DAG plan in ref harness route
       };
 
       // §6.3 step 5: write Run Ledger orchestrator_dispatched

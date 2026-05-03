@@ -1,5 +1,6 @@
 /**
  * Orchestrator Manifest Loader — AMEND-spec §4.3
+ * AMEND-spec-nexus-orch §4.2 — Extended manifest fields
  *
  * File: packages/core/src/manifest/orchestrators/orchestrator-manifest-loader.ts
  * Layer 1 — imports from @nexus/contracts, @nexus/runtime-utils only.
@@ -11,6 +12,8 @@
  *   - orchestratorActorId must be syntactically UUID.
  *   - maxSplitDepth must be 0 or 1 for V1.
  *   - OCT-SECURE default must be single_agent_no_helper (schema enforced).
+ *   - partialCompletion.compileOnPartial must be false when
+ *     partialCompletion.enabled is false [AMEND-spec-nexus-orch §4.8.1].
  *
  * Cross-manifest references (actor OCT check, etc.) are validated at
  * bootstrap Step 18 cross-reference check, NOT at loader time.
@@ -86,6 +89,15 @@ export async function loadOrchestratorManifest(
       );
     }
 
+    // §4.8.1: compileOnPartial must be false when enabled is false
+    if (!entry.partialCompletion.enabled && entry.partialCompletion.compileOnPartial) {
+      throw new Error(
+        `orchestrator manifest: partialCompletion.compileOnPartial is true but ` +
+          `partialCompletion.enabled is false — impossible state` +
+          ` (orchestrator '${entry.orchestratorSocketId}')`
+      );
+    }
+
     records.push({
       orchestratorSocketId: entry.orchestratorSocketId as NonEmpty,
       orchestratorType: entry.orchestratorType as NonEmpty,
@@ -108,6 +120,20 @@ export async function loadOrchestratorManifest(
       },
       outputSlotPolicy: entry.outputSlotPolicy,
       configuration: entry.configuration,
+      // ── AMEND-spec-nexus-orch §4.2 — new manifest fields ──
+      plannerType: entry.plannerType as NonEmpty,
+      plannerVersion: entry.plannerVersion as NonEmpty,
+      plannerConfiguration: entry.plannerConfiguration,
+      planAmendment: {
+        enabled: entry.planAmendment.enabled,
+        maxAmendments: entry.planAmendment.maxAmendments,
+        requiresCheckback: entry.planAmendment.requiresCheckback,
+      },
+      partialCompletion: {
+        enabled: entry.partialCompletion.enabled,
+        minRequiredCompletedNodes: entry.partialCompletion.minRequiredCompletedNodes,
+        compileOnPartial: entry.partialCompletion.compileOnPartial,
+      },
     });
   }
 

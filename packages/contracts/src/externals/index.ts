@@ -1,5 +1,6 @@
 // packages/contracts/src/externals/index.ts
 // AMEND-spec-nexus-infra-externals-v0-2-5 §3 — Externals Barrel
+// AMEND-spec-nexus-orch §4.5 — Barrel Extensions
 // Layer 2 — public compatibility surface for external plugin contracts.
 //
 // All plugin-facing contracts are exported here. Baked service interfaces
@@ -80,6 +81,7 @@ export type {
 export type {
   WorkspaceFactory,
   OrchestratorFactory,
+  PlannerFactory,
   MailboxBackendFactory,
   CompilerFactory,
   CompileReturnTransportFactory,
@@ -90,7 +92,41 @@ export type { PayloadResolver, PayloadStore } from './payload.js';
 export type {
   WorkspaceFactoryRegistry,
   OrchestratorFactoryRegistry,
+  PlannerFactoryRegistry,
   MailboxBackendFactoryRegistry,
   CompilerFactoryRegistry,
   CompileReturnTransportFactoryRegistry,
 } from './factory-registries.js';
+
+// ── AMEND-spec-nexus-orch §4.5 — planner.ts exports ──
+
+export type {
+  PromptVisibilityTier,
+  AgentCapabilityEntry,
+  AgentRegistryReader,
+  NormalPlannerRequest,
+  MetadataPlannerRequest,
+  OctSecurePlannerRequest,
+  PlannerRequest,
+  EdgeHint,
+  PlannerContext,
+  Planner,
+} from './planner.js';
+
+// ── AMEND-spec-nexus-orch §4.5 — execution-plan.ts exports ──
+
+export type {
+  PlanNode,
+  PlanEdgeType,
+  PlanConditionOperator,
+  PlanCondition,
+  PlanEdge,
+  ExecutionPlan,
+  PlanRejectionReason,
+  PlanRejection,
+  SuggestedAgent,
+  NodeStatusType,
+  NodeStatus,
+  NodeDelegationBinding,
+  RunDagState,
+} from './execution-plan.js';

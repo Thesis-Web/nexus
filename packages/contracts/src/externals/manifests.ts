@@ -1,5 +1,6 @@
 // packages/contracts/src/externals/manifests.ts
 // AMEND-spec-nexus-infra-externals-v0-2-5 §3.11 — Manifest Record Types
+// AMEND-spec-nexus-orch §4.2 — OrchestratorManifestRecord Extensions
 // Layer 2 — typed outputs of manifest loaders.
 //
 // These records describe sockets and endpoints. They do not compose runtime
@@ -60,6 +61,20 @@ export interface OrchestratorManifestRecord {
   };
   outputSlotPolicy: OutputSlotPolicy;
   configuration: Record<string, unknown>;
+  // ── AMEND-spec-nexus-orch §4.2 — planner/amendment/partial fields ──
+  plannerType: NonEmpty;
+  plannerVersion: NonEmpty;
+  plannerConfiguration: Record<string, unknown>;
+  planAmendment: {
+    enabled: boolean;
+    maxAmendments: number;
+    requiresCheckback: boolean;
+  };
+  partialCompletion: {
+    enabled: boolean;
+    minRequiredCompletedNodes: number;
+    compileOnPartial: boolean;
+  };
 }
 
 // ─── MailboxManifestRecord ───

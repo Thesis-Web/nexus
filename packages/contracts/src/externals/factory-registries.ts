@@ -1,5 +1,6 @@
 // packages/contracts/src/externals/factory-registries.ts
 // AMEND-spec-nexus-infra-externals-v0-2-5 §5.1, §3.13 — Factory Registry Interfaces
+// AMEND-spec-nexus-orch §4.4 — PlannerFactoryRegistry
 // Layer 2 — factory registry contracts for externals manifest loading.
 //
 // Factory registries are populated in bootstrap Step 01 before any manifest
@@ -10,6 +11,7 @@
 
 import type { WorkspaceFactory } from './factories.js';
 import type { OrchestratorFactory } from './factories.js';
+import type { PlannerFactory } from './factories.js';
 import type { MailboxBackendFactory } from './factories.js';
 import type { CompilerFactory } from './factories.js';
 import type { CompileReturnTransportFactory } from './factories.js';
@@ -28,6 +30,14 @@ export interface OrchestratorFactoryRegistry {
   register(factory: OrchestratorFactory): void;
   get(orchestratorType: string): OrchestratorFactory | null;
   list(): OrchestratorFactory[];
+}
+
+// ─── PlannerFactoryRegistry ── [AMEND-spec-nexus-orch §4.4]
+
+export interface PlannerFactoryRegistry {
+  register(factory: PlannerFactory): void;
+  get(plannerType: string): PlannerFactory | null;
+  list(): PlannerFactory[];
 }
 
 // ─── MailboxBackendFactoryRegistry ───

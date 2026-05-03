@@ -1,5 +1,6 @@
 // packages/contracts/src/externals/factories.ts
 // AMEND-spec-nexus-infra-externals-v0-2-5 §3.13 — Factory Contracts
+// AMEND-spec-nexus-orch §4.3 — PlannerFactory
 // Layer 2 — factory contracts are the breaker slots.
 //
 // Manifests select a type discriminator; bootstrap factory registries resolve
@@ -17,6 +18,7 @@
 import type { NonEmpty } from '../types/index.js';
 import type { WorkspaceAdapter } from './workspace.js';
 import type { Orchestrator } from './orchestrator.js';
+import type { Planner } from './planner.js';
 import type { MailboxBackend } from './mailbox.js';
 import type { Compiler } from './compiler.js';
 import type { CompileReturnTransport } from './compile-return.js';
@@ -42,6 +44,14 @@ export interface OrchestratorFactory {
   readonly orchestratorType: NonEmpty;
   readonly factoryVersion: NonEmpty;
   create(record: OrchestratorManifestRecord): Promise<Orchestrator>;
+}
+
+// ─── PlannerFactory ── [AMEND-spec-nexus-orch §4.3]
+
+export interface PlannerFactory {
+  readonly plannerType: NonEmpty;
+  readonly factoryVersion: NonEmpty;
+  create(record: OrchestratorManifestRecord): Promise<Planner>;
 }
 
 // ─── MailboxBackendFactory ───

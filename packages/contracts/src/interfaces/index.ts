@@ -796,7 +796,26 @@ export type RunEventType =
   | 'compile_slot_missing'
   | 'compile_guard_fired'
   | 'compile_guard_halt'
-  | 'compile_assembly_complete';
+  | 'compile_assembly_complete'
+  // ── Orch-Ref Run Ledger Events (AMEND-spec-nexus-orch §4.6) ──────
+  | 'plan_created'
+  | 'plan_checkback_sent'
+  | 'plan_confirmed'
+  | 'plan_rejected'
+  | 'node_dispatched'
+  | 'node_completed'
+  | 'node_failed'
+  | 'node_skipped'
+  | 'node_timed_out'
+  | 'dependency_resolved'
+  | 'condition_evaluated'
+  | 'plan_amended'
+  | 'dag_completed'
+  | 'dag_partial_complete'
+  | 'dag_failed'
+  | 'compile_triggered'
+  | 'compile_skipped'
+  | 'run_cancelled';
 
 export interface RunLedgerEntry {
   entryId: Uuid;

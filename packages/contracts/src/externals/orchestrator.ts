@@ -1,5 +1,6 @@
 // packages/contracts/src/externals/orchestrator.ts
 // AMEND-spec-nexus-infra-externals-v0-2-5 §3.3, §3.3.1 — Orchestrator Contracts
+// AMEND-spec-nexus-orch §4.1 — Orchestrator Contract Extensions
 // Layer 2 — orchestrator plan preview, selected agent, orchestrator socket.
 //
 // OrchestratorPlanPreview law:
@@ -23,6 +24,7 @@
 import type { Uuid, Sha256Hex, NonEmpty } from '../types/index.js';
 import type { RiskTier, EvidenceSentinel } from '../constants/index.js';
 import type { WorkspaceRunRequest } from './workspace.js';
+import type { ExecutionPlan } from './execution-plan.js';
 
 // ─── OrchestratorSelectedAgent ───
 
@@ -46,6 +48,7 @@ export interface OrchestratorPlanPreview {
   selectedAgents: OrchestratorSelectedAgent[];
   requiresUserApproval: boolean;
   planDigest: Sha256Hex;
+  plan: ExecutionPlan | null; // null = legacy flat preview, non-null = DAG
 }
 
 // ─── Orchestrator — replaceable socket contract ───
@@ -54,4 +57,5 @@ export interface Orchestrator {
   readonly orchestratorSocketId: NonEmpty;
   readonly orchestratorVersion: NonEmpty;
   dispatch(request: WorkspaceRunRequest): Promise<OrchestratorPlanPreview>;
+  cancel(runId: Uuid): Promise<void>; // V1 minimal cancel [OD-ORCH-05]
 }

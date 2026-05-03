@@ -1,5 +1,6 @@
 /**
  * Orchestrator Manifest Schema — AMEND-spec §4.3
+ * AMEND-spec-nexus-orch §4.2 — Extended manifest fields
  *
  * File: packages/core/src/manifest/orchestrators/orchestrator-manifest-schema.ts
  * Layer 1 — imports zod (approved external lib).
@@ -38,6 +39,24 @@ export const OrchestratorManifestEntrySchema = z
       .strict(),
     outputSlotPolicy: z.enum(['strict_declared_slots', 'advisory_declared_slots', 'open_slots']),
     configuration: z.record(z.unknown()),
+    // ── AMEND-spec-nexus-orch §4.2 — planner/amendment/partial fields ──
+    plannerType: NonEmptyStringSchema,
+    plannerVersion: NonEmptyStringSchema,
+    plannerConfiguration: z.record(z.unknown()),
+    planAmendment: z
+      .object({
+        enabled: z.boolean(),
+        maxAmendments: z.number().int().min(0),
+        requiresCheckback: z.boolean(),
+      })
+      .strict(),
+    partialCompletion: z
+      .object({
+        enabled: z.boolean(),
+        minRequiredCompletedNodes: z.number().int().min(0),
+        compileOnPartial: z.boolean(),
+      })
+      .strict(),
   })
   .strict();
 
