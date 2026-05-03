@@ -11,3 +11,15 @@ export {
 } from './ref-deterministic-planner.js';
 
 export type { ConditionEvalResult, NodeTypeResult } from './ref-deterministic-planner.js';
+
+export { RefDagExecutor, classifyDagCompletion } from './dag-executor.js';
+
+export type {
+  DagExecutorDeps,
+  NodeDispatchResult,
+  DagExecutor,
+  DagExecutionResult,
+  PartialCompletionConfig,
+  DagClassificationInput,
+  DagClassification,
+} from './dag-executor.js';
