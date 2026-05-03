@@ -23,6 +23,7 @@ import type {
   OrchestratorManifestRecord,
   PlannerRequest,
   WorkspaceRunRequest,
+  RunEventType,
 } from '@nexus/contracts';
 
 import type { Planner, PlannerContext, AgentRegistryReader } from '@nexus/contracts';
@@ -35,6 +36,7 @@ import { EVIDENCE_SENTINEL, nowIso } from '@nexus/contracts';
 import type { DagExecutor, DagExecutionResult, NodeDispatchResult } from './dag-executor.js';
 import { classifyDagCompletion } from './dag-executor.js';
 import { validateExecutionPlan } from './validate-plan.js';
+import { evaluateCondition } from './ref-deterministic-planner.js';
 
 // ─── DelegationScope — orch-ref internal [§7.1, HOLE-ORCH-002] ───
 
@@ -134,7 +136,7 @@ export class RefRunCoordinator implements RunCoordinator {
 
     if ('rejected' in planResult && (planResult as PlanRejection).rejected) {
       const rejection = planResult as PlanRejection;
-      await this.writeLedger('plan_rejected', {
+      await this.writeLedger(request.runId, 'plan_rejected', {
         reason: rejection.reason,
         reasonDetail: rejection.reasonDetail,
         suggestedCount: rejection.suggestedAlternatives.length,
@@ -153,7 +155,7 @@ export class RefRunCoordinator implements RunCoordinator {
       this.orchestratorActorId
     );
     if (validation.failed) {
-      await this.writeLedger('plan_rejected', {
+      await this.writeLedger(request.runId, 'plan_rejected', {
         reason: 'malformed_request',
         reasonDetail: validation.reason,
         suggestedCount: 0,
@@ -166,7 +168,7 @@ export class RefRunCoordinator implements RunCoordinator {
       });
     }
 
-    await this.writeLedger('plan_created', {
+    await this.writeLedger(request.runId, 'plan_created', {
       planId: plan.planId,
       planDigest: plan.planDigest,
       plannerType: plan.plannerType,
@@ -177,17 +179,17 @@ export class RefRunCoordinator implements RunCoordinator {
     // 3. Plan checkback if requested
     if (request.planCheckbackRequested || manifest.planCheckbackDefault) {
       const preview = this.buildPlanPreview(request, plan);
-      await this.writeLedger('plan_checkback_sent', { planId: plan.planId });
+      await this.writeLedger(request.runId, 'plan_checkback_sent', { planId: plan.planId });
       const confirmed = await deps.sendPlanCheckback(preview);
       if (!confirmed) {
-        await this.writeLedger('plan_rejected', {
+        await this.writeLedger(request.runId, 'plan_rejected', {
           reason: 'user_rejected_plan',
         });
         return preview;
       }
     }
 
-    await this.writeLedger('plan_confirmed', { planId: plan.planId });
+    await this.writeLedger(request.runId, 'plan_confirmed', { planId: plan.planId });
 
     // 4. Issue delegations [blueprint §11.3]
     const nodeDelegations: NodeDelegationBinding[] = [];
@@ -199,7 +201,7 @@ export class RefRunCoordinator implements RunCoordinator {
           agentId: node.agentId,
           delegationId,
         });
-        await this.writeLedger('delegation_issued', {
+        await this.writeLedger(request.runId, 'delegation_issued', {
           planId: plan.planId,
           nodeId: node.nodeId,
           agentId: node.agentId,
@@ -218,13 +220,9 @@ export class RefRunCoordinator implements RunCoordinator {
     try {
       dagResult = await deps.dagExecutor.execute(dagState, {
         dispatchNode: deps.dispatchToGovernance,
-        resolveCondition: (condition, metadata) => {
-          // Delegate to evaluateCondition from planner
-          // This is wired at construction time in ORCH-PUSH-05
-          return false;
-        },
+        resolveCondition: (condition, metadata) => evaluateCondition(condition, metadata).result,
         onNodeEvent: async (nodeId, status) => {
-          const eventType =
+          const eventType: RunEventType | null =
             status.status === 'dispatched'
               ? 'node_dispatched'
               : status.status === 'completed'
@@ -237,7 +235,7 @@ export class RefRunCoordinator implements RunCoordinator {
                       ? 'node_timed_out'
                       : null;
           if (eventType) {
-            await this.writeLedger(eventType, {
+            await this.writeLedger(request.runId, eventType, {
               planId: plan.planId,
               nodeId,
               agentId: plan.nodes.find(n => n.nodeId === nodeId)?.agentId ?? '',
@@ -258,25 +256,25 @@ export class RefRunCoordinator implements RunCoordinator {
       });
     } catch (_executorError: unknown) {
       // Executor threw — terminal error path [§7.2 step 6]
-      await this.writeLedger('dag_failed', {
+      await this.writeLedger(request.runId, 'dag_failed', {
         planId: plan.planId,
         completedCount: 0,
         failedCount: 0,
         skippedCount: 0,
         reason: 'executor_error',
       });
-      await this.writeLedger('compile_skipped', {
+      await this.writeLedger(request.runId, 'compile_skipped', {
         planId: plan.planId,
         runId: request.runId,
         reason: 'executor_error',
       });
-      await this.writeLedger('final_response', {
+      await this.writeLedger(request.runId, 'final_response', {
         planId: plan.planId,
         runId: request.runId,
         outcome: 'executor_error',
         payload: null,
       });
-      await this.writeLedger('run_closed', {
+      await this.writeLedger(request.runId, 'run_closed', {
         planId: plan.planId,
         runId: request.runId,
         closedBy: 'orch-ref',
@@ -289,25 +287,25 @@ export class RefRunCoordinator implements RunCoordinator {
 
     // 7. Terminal classification — cancelled check FIRST [§7.3]
     if (dagResult.finalState.cancelled) {
-      await this.writeLedger('run_cancelled', {
+      await this.writeLedger(request.runId, 'run_cancelled', {
         planId: plan.planId,
         runId: request.runId,
         totalSkipped: dagResult.skippedNodes.length,
         totalCompleted: dagResult.completedNodes.length,
         reason: 'user_cancelled',
       });
-      await this.writeLedger('compile_skipped', {
+      await this.writeLedger(request.runId, 'compile_skipped', {
         planId: plan.planId,
         runId: request.runId,
         reason: 'run_cancelled',
       });
-      await this.writeLedger('final_response', {
+      await this.writeLedger(request.runId, 'final_response', {
         planId: plan.planId,
         runId: request.runId,
         outcome: 'cancelled',
         payload: null,
       });
-      await this.writeLedger('run_closed', {
+      await this.writeLedger(request.runId, 'run_closed', {
         planId: plan.planId,
         runId: request.runId,
         closedBy: 'orch-ref',
@@ -330,19 +328,19 @@ export class RefRunCoordinator implements RunCoordinator {
     });
 
     if (classification === 'dag_completed') {
-      await this.writeLedger('dag_completed', {
+      await this.writeLedger(request.runId, 'dag_completed', {
         planId: plan.planId,
         completedCount: dagResult.completedNodes.length,
       });
     } else if (classification === 'dag_partial_complete') {
-      await this.writeLedger('dag_partial_complete', {
+      await this.writeLedger(request.runId, 'dag_partial_complete', {
         planId: plan.planId,
         completedCount: dagResult.completedNodes.length,
         failedCount: dagResult.failedNodes.length,
         skippedCount: dagResult.skippedNodes.length,
       });
     } else {
-      await this.writeLedger('dag_failed', {
+      await this.writeLedger(request.runId, 'dag_failed', {
         planId: plan.planId,
         completedCount: dagResult.completedNodes.length,
         failedCount: dagResult.failedNodes.length,
@@ -358,24 +356,24 @@ export class RefRunCoordinator implements RunCoordinator {
         (manifest.partialCompletion.enabled && manifest.partialCompletion.compileOnPartial));
 
     if (compileEligible) {
-      await this.writeLedger('compile_triggered', {
+      await this.writeLedger(request.runId, 'compile_triggered', {
         planId: plan.planId,
         runId: request.runId,
       });
       await deps.triggerCompile(request.runId);
     } else {
-      await this.writeLedger('compile_skipped', {
+      await this.writeLedger(request.runId, 'compile_skipped', {
         planId: plan.planId,
         runId: request.runId,
         reason: 'no_eligible_results',
       });
-      await this.writeLedger('final_response', {
+      await this.writeLedger(request.runId, 'final_response', {
         planId: plan.planId,
         runId: request.runId,
         outcome: 'no_eligible_results',
         payload: null,
       });
-      await this.writeLedger('run_closed', {
+      await this.writeLedger(request.runId, 'run_closed', {
         planId: plan.planId,
         runId: request.runId,
         closedBy: 'orch-ref',
@@ -401,10 +399,14 @@ export class RefRunCoordinator implements RunCoordinator {
 
   // ─── Helpers ───
 
-  private async writeLedger(eventType: string, detail: Record<string, unknown>): Promise<void> {
+  private async writeLedger(
+    runId: Uuid,
+    eventType: RunEventType,
+    detail: Record<string, unknown>
+  ): Promise<void> {
     await this.deps.runLedgerWriter.writeEvent({
-      runId: (detail['runId'] as Uuid) ?? ('' as Uuid),
-      eventType: eventType as any,
+      runId,
+      eventType,
       timestamp: nowIso(),
       actorId: this.orchestratorActorId,
       detail,
