@@ -101,6 +101,7 @@ export function registerAllRoutes(
       ? { orchestratorSockets: deps.orchestratorSockets }
       : {}),
     ...(deps.computeDigest !== undefined ? { computeDigest: deps.computeDigest } : {}),
+    orchestrator: deps.orchestrator ?? null,
   });
 
   // Mailbox reference harness — §11.2

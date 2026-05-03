@@ -31,6 +31,7 @@ import type {
   OrchestratorManifestRecord,
   OrchestratorPlanPreview,
   OrchestratorSelectedAgent,
+  Orchestrator,
   Uuid,
   NonEmpty,
   Sha256Hex,
@@ -48,6 +49,8 @@ export interface OrchestratorRouteDeps {
   orchestratorSockets: readonly OrchestratorManifestRecord[];
   /** Digest function: sha256(canonicalize(obj)). Injected — Layer 7 cannot import core crypto. */
   computeDigest: (obj: unknown) => Sha256Hex;
+  /** Injected Orchestrator socket — for cancel and DAG-based dispatch [ORCH-23]. */
+  orchestrator: Orchestrator | null;
 }
 
 // ─── Route Registration ───
@@ -142,6 +145,31 @@ export function registerOrchestratorRoutes(
       });
 
       res.json({ ok: true, data: planPreview });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ─── POST /orchestrator/cancel — AMEND-spec-nexus-orch §10.4, ORCH-23 ───
+  // Cancel route receives injected Orchestrator socket through DI.
+  // Route MUST NOT import @nexus/orch-ref.
+  // Route MUST NOT inspect or mutate RunDagState directly.
+  app.post('/orchestrator/cancel', async (req, res) => {
+    if (!deps.orchestrator) {
+      res.status(501).json({ ok: false, error: 'Orchestrator not configured' });
+      return;
+    }
+
+    try {
+      const { runId } = req.body as { runId: Uuid };
+
+      if (!runId) {
+        res.status(400).json({ ok: false, error: 'runId required' });
+        return;
+      }
+
+      await deps.orchestrator.cancel(runId);
+      res.json({ ok: true, cancelled: true, runId });
     } catch (err) {
       res.status(500).json({ ok: false, error: san(err) });
     }

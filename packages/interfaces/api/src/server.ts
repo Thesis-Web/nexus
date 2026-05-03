@@ -60,6 +60,7 @@ import type {
   MailboxService,
   CompileService,
   CompileTemplate,
+  Orchestrator,
   Uuid,
   NonEmpty,
   IsoTimestamp,
@@ -146,6 +147,8 @@ export interface ApiDependencies {
 
   // ── §6.3 Orchestrator harness deps ──────────────────────────────────────
   orchestratorSockets?: readonly OrchestratorManifestRecord[];
+  /** Injected Orchestrator socket — for cancel and DAG-based dispatch [ORCH-23]. */
+  orchestrator?: Orchestrator;
 
   // ── §11.2 Mailbox harness deps ──────────────────────────────────────────
   mailboxService?: MailboxService;
