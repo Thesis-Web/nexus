@@ -23,3 +23,15 @@ export type {
   DagClassificationInput,
   DagClassification,
 } from './dag-executor.js';
+
+export { validateExecutionPlan } from './validate-plan.js';
+
+export type { PlanValidationResult } from './validate-plan.js';
+
+export { PlanAmendmentHandler, validateMerge, mergePlans } from './plan-amendment.js';
+
+export type { AmendmentDeps, AmendmentResult, MergeValidationResult } from './plan-amendment.js';
+
+export { RefRunCoordinator } from './run-coordinator.js';
+
+export type { DelegationScope, RunCoordinatorDeps, RunCoordinator } from './run-coordinator.js';
