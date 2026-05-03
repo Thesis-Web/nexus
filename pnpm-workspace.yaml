@@ -7,5 +7,6 @@ packages:
   - 'packages/connectors/vault'
   - 'packages/connectors/stub'
   - 'packages/identity-ref'
+  - 'packages/orch-ref'
   - 'packages/interfaces/cli'
   - 'packages/interfaces/api'
