@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — 68 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 8 WS (AMEND-nexus-spec-workspace §10).
+ * Nexus CI Gate — 69 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 9 WS (AMEND-nexus-spec-workspace §10).
  *
  * Governing law:
  *   §6.4   — 19-step ci:gate sequence (F-02a)
@@ -1297,6 +1297,72 @@ async function main(): Promise<void> {
   }
   pass('dispatch requires prior run_opened');
 
+  // Step 69: WS-08 workspace-event-ticket gate
+  // §10 gate 8: expired/consumed/missing ticket denied
+  stepLog('WS-08 workspace-event-ticket gate');
+  {
+    // Verify event ticket store exists
+    const storeFile = path.join(
+      'packages',
+      'workspace-ref',
+      'src',
+      'stores',
+      'workspace-event-ticket-store.ts'
+    );
+    if (!fs.existsSync(storeFile)) {
+      fail('WS-08: workspace-event-ticket-store.ts not found');
+    }
+    const storeSrc = fs.readFileSync(storeFile, 'utf-8');
+
+    // Verify consume() handles expired, consumed, and missing tickets
+    if (!storeSrc.includes('consumed')) {
+      fail('WS-08: ticket consumed check not found in store');
+    }
+    if (!storeSrc.includes('expires_at') || !storeSrc.includes('Date.now()')) {
+      fail('WS-08: ticket expiry check not found in store');
+    }
+
+    // Verify event-ticket minting route exists
+    const wsFile = path.join('packages', 'interfaces', 'api', 'src', 'routes', 'workspace.ts');
+    const wsSrc = fs.readFileSync(wsFile, 'utf-8');
+    if (!wsSrc.includes('/event-ticket')) {
+      fail('WS-08: event-ticket minting route not found');
+    }
+    if (!wsSrc.includes('workspaceEventTicketStore')) {
+      fail('WS-08: workspaceEventTicketStore not referenced in workspace routes');
+    }
+
+    // Verify SSE handler with ticket auth
+    if (!wsSrc.includes('/sse/runs/:runId')) {
+      fail('WS-08: SSE handler not found');
+    }
+    if (!wsSrc.includes('text/event-stream')) {
+      fail('WS-08: SSE Content-Type header not found');
+    }
+
+    // Verify WS upgrade handler with ticket auth
+    const serverFile = path.join('packages', 'interfaces', 'api', 'src', 'server.ts');
+    const serverSrc = fs.readFileSync(serverFile, 'utf-8');
+    if (!serverSrc.includes('WebSocketServer')) {
+      fail('WS-08: WebSocketServer not found in server.ts');
+    }
+    if (!serverSrc.includes('/ws/runs/')) {
+      fail('WS-08: WS path /ws/runs/ not found in server.ts');
+    }
+    if (!serverSrc.includes('.consume(')) {
+      fail('WS-08: ticket consume call not found in WS handler');
+    }
+
+    // Verify ticket denial paths
+    if (!wsSrc.includes('expired, or consumed ticket') && !wsSrc.includes('consumed ticket')) {
+      fail('WS-08: ticket denial message not found in SSE handler');
+    }
+    if (!serverSrc.includes('401 Unauthorized')) {
+      fail('WS-08: 401 denial not found in WS handler');
+    }
+  }
+  pass('expired/consumed/missing ticket denied');
+
   // POST-GATE: bin assertion — HOLE-001 Option A (owner approved)
   // Both nexus and nexus-mcp-proxy bins must be executable after pnpm build.
   // -------------------------------------------------------------------------
@@ -1316,7 +1382,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  console.log('\n=== ci:gate PASSED — all 68 steps ===\n');
+  console.log('\n=== ci:gate PASSED — all 69 steps ===\n');
 }
 
 // ===========================================================================

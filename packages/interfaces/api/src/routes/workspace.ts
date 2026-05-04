@@ -25,6 +25,8 @@ import type {
   WorkspaceManifestRecord,
   WorkspaceSessionStorePort,
   WorkspaceRunAclStorePort,
+  WorkspaceEventTicketStorePort,
+  WorkspaceEventTicket,
   Uuid,
   NonEmpty,
   Sha256Hex,
@@ -50,6 +52,8 @@ export interface WorkspaceRouteDeps {
   workspaceJwtSecret?: string;
   /** Run ACL store for per-run authorization [§6.1 step 6, §6.3] */
   workspaceRunAclStore?: WorkspaceRunAclStorePort;
+  /** Event ticket store for WS/SSE stream auth [§7.7] */
+  workspaceEventTicketStore?: WorkspaceEventTicketStorePort;
 }
 
 // ─── JWT Helpers (reference-only HMAC-SHA256) ────────────────────────────────
@@ -479,5 +483,102 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
     } catch (err) {
       res.status(500).json({ ok: false, error: san(err) });
     }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // §7.7 POST /workspace/runs/:runId/event-ticket — mint event ticket
+  // JWT + RunAcl required. 60s TTL, single-use. Ticket IDs redacted from logs.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.post('/workspace/runs/:runId/event-ticket', async (req: Request, res: Response) => {
+    if (!deps.workspaceEventTicketStore || !deps.workspaceRunAclStore) {
+      res.status(501).json({ ok: false, error: 'Event tickets not configured' });
+      return;
+    }
+
+    try {
+      const runId = req.params['runId'] as Uuid;
+      const principalId = res.locals['principalId'] as string;
+
+      // RunAcl check — must own the run to get a ticket
+      const authorized = await deps.workspaceRunAclStore.isAuthorized(runId, principalId);
+      if (!authorized) {
+        res.status(403).json({ ok: false, error: 'Not authorized for this run' });
+        return;
+      }
+
+      // Mint ticket: 60s TTL, single-use [§7.7]
+      const ticketId = randomUUID() as Uuid;
+      const issuedAt = nowIso();
+      const expiresAt = addSeconds(issuedAt, 60);
+
+      const ticket: WorkspaceEventTicket = {
+        ticketId,
+        runId,
+        principalId,
+        issuedAt,
+        expiresAt,
+        consumed: false,
+      };
+
+      await Promise.resolve(deps.workspaceEventTicketStore.store(ticket));
+
+      // §7.7: ticket IDs redacted from access logs — only return to caller
+      res.json({ ok: true, data: { ticketId, expiresAt } });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // §3.6/§7.2 GET /sse/runs/:runId — SSE event stream
+  // Auth: event ticket via Authorization: Bearer header [§7.7]
+  // NOT under /workspace/* JWT middleware — self-authenticating.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.get('/sse/runs/:runId', async (req: Request, res: Response) => {
+    if (!deps.workspaceEventTicketStore) {
+      res.status(501).json({ ok: false, error: 'Event tickets not configured' });
+      return;
+    }
+
+    const runId = req.params['runId'] as Uuid;
+
+    // Extract ticket from Authorization: Bearer header [§7.7]
+    const auth = req.headers['authorization'] ?? '';
+    const ticketId = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    if (!ticketId) {
+      res.status(401).json({ ok: false, error: 'Event ticket required' });
+      return;
+    }
+
+    // Consume ticket — validates TTL, single-use, and runId match
+    const ticket = await Promise.resolve(
+      deps.workspaceEventTicketStore.consume(ticketId as Uuid, runId)
+    );
+    if (!ticket) {
+      res.status(401).json({ ok: false, error: 'Invalid, expired, or consumed ticket' });
+      return;
+    }
+
+    // SSE headers
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    // Send initial connection event
+    res.write(`data: ${JSON.stringify({ type: 'connected', runId })}\n\n`);
+
+    // Keep-alive heartbeat (every 30s)
+    const heartbeat = setInterval(() => {
+      res.write(': heartbeat\n\n');
+    }, 30_000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+    });
   });
 }

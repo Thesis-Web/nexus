@@ -26,6 +26,7 @@
  *   CompileReturnDispatcher  — via bootstrap-owned type only
  */
 import express, { type Request, type Response, type NextFunction } from 'express';
+import { WebSocketServer } from 'ws';
 import path from 'node:path';
 import fs from 'node:fs';
 import { timingSafeEqual } from 'node:crypto';
@@ -69,6 +70,7 @@ import type {
   Sha256Hex,
   WorkspaceSessionStorePort,
   WorkspaceRunAclStorePort,
+  WorkspaceEventTicketStorePort,
 } from '@nexus/contracts';
 import { registerAllRoutes } from './routes/index.js';
 
@@ -193,6 +195,8 @@ export interface ApiDependencies {
   workspaceSessionStore?: WorkspaceSessionStorePort;
   /** Run ACL store for per-run authorization [AMEND-workspace §6.1, §6.3] */
   workspaceRunAclStore?: WorkspaceRunAclStorePort;
+  /** Event ticket store for WS/SSE auth [AMEND-workspace §7.7] */
+  workspaceEventTicketStore?: WorkspaceEventTicketStorePort;
   /** HMAC-SHA256 secret for workspace JWTs. If missing → workspace auth fails closed (501). */
   workspaceJwtSecret?: string;
 }
@@ -246,9 +250,47 @@ export function createApiServer(deps: ApiDependencies): {
 
   // ── Server start ──────────────────────────────────────────────────────────
   function startServer(port: number = 7701): void {
-    app.listen(port, '127.0.0.1', () => {
+    const server = app.listen(port, '127.0.0.1', () => {
       console.log(`Nexus management API listening on 127.0.0.1:${port}`);
     });
+
+    // §7.7/§3.6: WebSocket upgrade handler for /ws/runs/:runId
+    // Auth: event ticket via ?ticket= query param (protocol limit)
+    if (deps.workspaceEventTicketStore) {
+      const wss = new WebSocketServer({ noServer: true });
+
+      server.on('upgrade', (request, socket, head) => {
+        const url = new URL(request.url ?? '', `http://${request.headers.host}`);
+        const match = url.pathname.match(/^\/ws\/runs\/([^/]+)$/);
+        if (!match) {
+          socket.destroy();
+          return;
+        }
+
+        const runId = match[1] as Uuid;
+        const ticketId = url.searchParams.get('ticket');
+        if (!ticketId) {
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+
+        // Consume ticket — validates TTL, single-use, and runId match
+        void Promise.resolve(deps.workspaceEventTicketStore!.consume(ticketId as Uuid, runId)).then(
+          ticket => {
+            if (!ticket) {
+              socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+              socket.destroy();
+              return;
+            }
+
+            wss.handleUpgrade(request, socket, head, ws => {
+              ws.send(JSON.stringify({ type: 'connected', runId }));
+            });
+          }
+        );
+      });
+    }
   }
 
   return { app, start: startServer };
