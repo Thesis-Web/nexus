@@ -69,6 +69,9 @@ export function registerAllRoutes(
     ...(deps.workspaceJwtSecret !== undefined
       ? { workspaceJwtSecret: deps.workspaceJwtSecret }
       : {}),
+    ...(deps.workspaceRunAclStore !== undefined
+      ? { workspaceRunAclStore: deps.workspaceRunAclStore }
+      : {}),
   });
 
   // Compile-return routes — callback signature auth [§5.1]

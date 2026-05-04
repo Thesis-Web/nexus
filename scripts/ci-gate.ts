@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — 66 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 6 WS (AMEND-nexus-spec-workspace §10).
+ * Nexus CI Gate — 68 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 8 WS (AMEND-nexus-spec-workspace §10).
  *
  * Governing law:
  *   §6.4   — 19-step ci:gate sequence (F-02a)
@@ -1252,6 +1252,51 @@ async function main(): Promise<void> {
   }
   pass('body principalId ignored; server-resolved used');
 
+  // Step 67: WS-07 workspace-run-acl gate
+  // §10 gate 7: cross-run access denied
+  stepLog('WS-07 workspace-run-acl gate');
+  {
+    const wsFile = path.join('packages', 'interfaces', 'api', 'src', 'routes', 'workspace.ts');
+    const src = fs.readFileSync(wsFile, 'utf-8');
+    if (!src.includes('workspaceRunAclStore')) {
+      fail('WS-07: workspaceRunAclStore not referenced in workspace routes');
+    }
+    if (!src.includes('isAuthorized')) {
+      fail('WS-07: RunAcl isAuthorized check not found');
+    }
+    // Verify ACL stored at run creation
+    if (!src.includes('.store({')) {
+      fail('WS-07: RunAcl store() call not found at run creation');
+    }
+    // Verify 403 on unauthorized
+    if (!src.includes('Not authorized for this run')) {
+      fail('WS-07: 403 response for unauthorized run access not found');
+    }
+  }
+  pass('cross-run access denied');
+
+  // Step 68: WS-12 workspace-dispatch-lifecycle gate
+  // §10 gate 12: dispatch requires prior run_opened
+  stepLog('WS-12 workspace-dispatch-lifecycle gate');
+  {
+    const wsFile = path.join('packages', 'interfaces', 'api', 'src', 'routes', 'workspace.ts');
+    const src = fs.readFileSync(wsFile, 'utf-8');
+    // Verify run_opened is written before dispatch
+    const openedIdx = src.indexOf("'run_opened'");
+    const dispatchIdx = src.indexOf('deps.dispatchToOrchestrator');
+    if (openedIdx < 0) fail('WS-12: run_opened event not found');
+    if (dispatchIdx < 0) fail('WS-12: dispatchToOrchestrator not found');
+    if (openedIdx > dispatchIdx) {
+      fail('WS-12: run_opened written AFTER dispatch — must be before');
+    }
+    // Verify RunAcl stored before dispatch
+    const aclStoreIdx = src.indexOf('workspaceRunAclStore.store');
+    if (aclStoreIdx > 0 && aclStoreIdx > dispatchIdx) {
+      fail('WS-12: RunAcl stored AFTER dispatch — must be before');
+    }
+  }
+  pass('dispatch requires prior run_opened');
+
   // POST-GATE: bin assertion — HOLE-001 Option A (owner approved)
   // Both nexus and nexus-mcp-proxy bins must be executable after pnpm build.
   // -------------------------------------------------------------------------
@@ -1271,7 +1316,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  console.log('\n=== ci:gate PASSED — all 66 steps ===\n');
+  console.log('\n=== ci:gate PASSED — all 68 steps ===\n');
 }
 
 // ===========================================================================

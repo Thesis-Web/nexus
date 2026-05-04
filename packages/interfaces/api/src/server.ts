@@ -68,6 +68,7 @@ import type {
   IsoTimestamp,
   Sha256Hex,
   WorkspaceSessionStorePort,
+  WorkspaceRunAclStorePort,
 } from '@nexus/contracts';
 import { registerAllRoutes } from './routes/index.js';
 
@@ -190,6 +191,8 @@ export interface ApiDependencies {
 
   // ── AMEND-nexus-spec-workspace §7.1: Workspace auth deps ─────────────────
   workspaceSessionStore?: WorkspaceSessionStorePort;
+  /** Run ACL store for per-run authorization [AMEND-workspace §6.1, §6.3] */
+  workspaceRunAclStore?: WorkspaceRunAclStorePort;
   /** HMAC-SHA256 secret for workspace JWTs. If missing → workspace auth fails closed (501). */
   workspaceJwtSecret?: string;
 }

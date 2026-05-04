@@ -24,6 +24,7 @@ import type {
   WorkspaceRunRequest,
   WorkspaceManifestRecord,
   WorkspaceSessionStorePort,
+  WorkspaceRunAclStorePort,
   Uuid,
   NonEmpty,
   Sha256Hex,
@@ -32,6 +33,7 @@ import type {
 } from '@nexus/contracts';
 import { nowIso, addSeconds } from '@nexus/contracts';
 import { createHmac, randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import { san } from './shared.js';
 
 // ─── DI Dependencies ────────────────────────────────────────────────────────
@@ -46,6 +48,8 @@ export interface WorkspaceRouteDeps {
   workspaceSessionStore?: WorkspaceSessionStorePort;
   /** HMAC-SHA256 shared secret for workspace JWTs [§5.7] */
   workspaceJwtSecret?: string;
+  /** Run ACL store for per-run authorization [§6.1 step 6, §6.3] */
+  workspaceRunAclStore?: WorkspaceRunAclStorePort;
 }
 
 // ─── JWT Helpers (reference-only HMAC-SHA256) ────────────────────────────────
@@ -119,6 +123,60 @@ function verifyJwt(token: string, secret: string): WorkspaceJwtPayload | null {
 
 /** Default workspace session TTL: 8 hours */
 const SESSION_TTL_SECONDS = 8 * 60 * 60;
+
+// ─── §4 Zod Validation (route-layer only, NOT in contracts) ─────────────────
+// Schemas per [blueprint §3.8.1]. discriminatedUnion per promptMode.
+// outputFormat bound to OUTPUT_FORMAT_VALUES. .strict() per branch.
+
+const ModelPreferenceSchema = z
+  .object({
+    agentId: z.string(),
+    modelTier: z.string(),
+    mode: z.enum(['available', 'preferred']),
+  })
+  .strict();
+
+const FreeTextSchema = z
+  .object({
+    promptMode: z.literal('free_text'),
+    prompt: z.string().min(1),
+    agents: z.array(z.string()).optional(),
+    modelPreferences: z.array(ModelPreferenceSchema).optional(),
+    attachmentIds: z.array(z.string()).optional(),
+  })
+  .strict();
+
+const SectionedSchema = z
+  .object({
+    promptMode: z.literal('sectioned'),
+    prompt: z.string().min(1),
+    templateId: z.string(),
+    templateVersion: z.string(),
+    outputFormat: z.enum(['prose', 'table', 'raw', 'mixed', 'file_bundle']).optional(),
+    connectors: z.array(z.string()).optional(),
+    executionMode: z.enum(['human_in_the_loop', 'autonomous']).optional(),
+    agents: z.array(z.string()).optional(),
+    modelPreferences: z.array(ModelPreferenceSchema).optional(),
+    attachmentIds: z.array(z.string()).optional(),
+  })
+  .strict();
+
+const SecureRailsSchema = z
+  .object({
+    promptMode: z.literal('secure_rails'),
+    railId: z.string(),
+    railVersion: z.string(),
+    elevatedSessionId: z.string(),
+    constrainedInputs: z.record(z.string(), z.string()).optional(),
+    attachmentIds: z.array(z.string()).optional(),
+  })
+  .strict();
+
+const WorkspacePromptInputSchema = z.discriminatedUnion('promptMode', [
+  FreeTextSchema,
+  SectionedSchema,
+  SecureRailsSchema,
+]);
 
 export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRouteDeps>): void {
   // ═══════════════════════════════════════════════════════════════════════════
@@ -277,14 +335,28 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
     }
 
     try {
-      const body = req.body as Record<string, unknown>;
-      const prompt = body['prompt'] as string | undefined;
-      const selectedAgentIds = (body['selectedAgentIds'] ?? []) as string[];
-      const planCheckbackRequested = (body['planCheckbackRequested'] ?? false) as boolean;
-
-      if (!prompt) {
-        res.status(400).json({ ok: false, error: 'prompt is required' });
+      // §6.1 step 2: validate body with Zod schema [§4]
+      const parsed = WorkspacePromptInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ ok: false, error: parsed.error.message });
         return;
+      }
+      const input = parsed.data;
+
+      // Extract prompt: free_text/sectioned have .prompt, secure_rails uses constrainedInputs
+      let prompt: string;
+      let selectedAgentIds: string[] = [];
+      const planCheckbackRequested = false;
+
+      switch (input.promptMode) {
+        case 'free_text':
+        case 'sectioned':
+          prompt = input.prompt;
+          selectedAgentIds = (input.agents ?? []) as string[];
+          break;
+        case 'secure_rails':
+          prompt = JSON.stringify(input.constrainedInputs ?? {});
+          break;
       }
 
       // §5.5 Principal binding (T8-F02): server-resolved, never body-supplied
@@ -342,6 +414,16 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         },
       });
 
+      // §6.1 step 6: store RunAcl [blueprint §5.3-5.4]
+      if (deps.workspaceRunAclStore) {
+        deps.workspaceRunAclStore.store({
+          runId,
+          principalId,
+          actorId: actorId as Uuid,
+          permittedViewers: [principalId],
+        });
+      }
+
       // §6.2: dispatch to orchestrator if wired
       let planPreview: unknown = null;
       if (deps.dispatchToOrchestrator) {
@@ -364,6 +446,17 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
 
     try {
       const runId = req.params['runId'] as Uuid;
+
+      // §6.3: RunAcl check — cross-run access denied [gate 7]
+      if (deps.workspaceRunAclStore) {
+        const principalId = res.locals['principalId'] as string;
+        const authorized = await deps.workspaceRunAclStore.isAuthorized(runId, principalId);
+        if (!authorized) {
+          res.status(403).json({ ok: false, error: 'Not authorized for this run' });
+          return;
+        }
+      }
+
       const events = await deps.runLedgerWriter.getByRunId(runId);
 
       if (events.length === 0) {
