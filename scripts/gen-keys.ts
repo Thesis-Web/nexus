@@ -15,6 +15,7 @@ import {
   generateControlPlaneKeypair,
   generateAdminToken,
   generateApproverKeypair,
+  generateWorkspaceJwtSecret,
 } from '../packages/core/src/crypto/key-manager.js';
 
 const args = process.argv.slice(2);
@@ -50,6 +51,13 @@ async function main(): Promise<void> {
   console.log(`\nAdmin token generated:`);
   console.log(`  path:  keys/admin.token`);
   console.log(`  token: ${token}`);
+
+  const jwtSecret = await generateWorkspaceJwtSecret();
+  console.log(`\nWorkspace JWT secret generated:`);
+  console.log(`  path:   keys/workspace-jwt.secret`);
+  console.log(`  secret: ${jwtSecret.slice(0, 8)}... (truncated)`);
+  console.log(`  usage:  workspace session JWT signing (HMAC-SHA256)`);
+  console.log(`  note:   env var NEXUS_WORKSPACE_JWT_SECRET overrides file`);
   console.log(`\nWARNING: keys/admin.token and keys/dev.keypair.json are gitignored.`);
   console.log(`         Back them up securely. Run "pnpm ci:gate" to verify the build.`);
 }

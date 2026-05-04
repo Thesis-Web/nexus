@@ -108,4 +108,32 @@ export async function loadAdminToken(): Promise<string> {
   return (await fs.readFile(path.join('keys', 'admin.token'), 'utf-8')).trim();
 }
 
+/**
+ * Generate the workspace JWT HMAC-SHA256 signing secret.
+ * 256-bit random, base64url encoded. Written to keys/workspace-jwt.secret.
+ * Always gitignored. Same security posture as admin token.
+ */
+export async function generateWorkspaceJwtSecret(): Promise<string> {
+  const secret = randomBytes(32).toString('base64url');
+  await fs.mkdir('keys', { recursive: true });
+  await fs.writeFile(path.join('keys', 'workspace-jwt.secret'), secret, 'utf-8');
+  return secret;
+}
+
+/**
+ * Load the workspace JWT HMAC-SHA256 signing secret.
+ * Primary: keys/workspace-jwt.secret (file-based).
+ * Override: NEXUS_WORKSPACE_JWT_SECRET env var.
+ * Returns undefined if neither exists — fail-closed per §5.7.
+ */
+export async function loadWorkspaceJwtSecret(): Promise<string | undefined> {
+  const envSecret = process.env['NEXUS_WORKSPACE_JWT_SECRET'];
+  if (envSecret) return envSecret;
+  try {
+    return (await fs.readFile(path.join('keys', 'workspace-jwt.secret'), 'utf-8')).trim();
+  } catch {
+    return undefined;
+  }
+}
+
 export { base64urlDecode };

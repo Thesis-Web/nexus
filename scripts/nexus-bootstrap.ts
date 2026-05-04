@@ -63,7 +63,7 @@ import type {
 } from '@nexus/contracts';
 
 // ── Core: crypto ─────────────────────────────────────────────────────────────
-import { loadControlPlaneKey } from '../packages/core/src/crypto/key-manager.js';
+import { loadControlPlaneKey, loadWorkspaceJwtSecret } from '../packages/core/src/crypto/key-manager.js';
 import { verify } from '../packages/core/src/crypto/verifier.js';
 import { canonicalize } from '../packages/core/src/crypto/canonicalize.js';
 
@@ -879,7 +879,8 @@ export async function bootstrapWorkspace(
     path.join(process.cwd(), 'runs', 'workspace-ref.sqlite');
   const blobDir =
     process.env['NEXUS_WORKSPACE_BLOB_DIR'] ?? path.join(process.cwd(), 'runs', 'workspace-blobs');
-  const jwtSecret = process.env['NEXUS_WORKSPACE_JWT_SECRET'];
+  // Load JWT secret: file primary, env override [T8-F02, T16-F02 closure]
+  const jwtSecret = await loadWorkspaceJwtSecret();
 
   // ── Workspace stores (all open their own SQLite connections with WAL) ────
   const workspaceSessionStore = new SqliteWorkspaceSessionStore(wsDbPath);
