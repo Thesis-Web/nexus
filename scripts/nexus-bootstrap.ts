@@ -63,7 +63,11 @@ import type {
 } from '@nexus/contracts';
 
 // ── Core: crypto ─────────────────────────────────────────────────────────────
-import { loadControlPlaneKey, loadWorkspaceJwtSecret, loadDevAdminApiKey } from '../packages/core/src/crypto/key-manager.js';
+import {
+  loadControlPlaneKey,
+  loadWorkspaceJwtSecret,
+  loadDevAdminApiKey,
+} from '../packages/core/src/crypto/key-manager.js';
 import { verify } from '../packages/core/src/crypto/verifier.js';
 import { canonicalize } from '../packages/core/src/crypto/canonicalize.js';
 

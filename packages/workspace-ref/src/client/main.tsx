@@ -13,13 +13,7 @@ import { Login } from './components/login.js';
 import { Sidebar } from './components/sidebar.js';
 import { PromptPanel, type PromptSubmission } from './components/prompt-panel.js';
 import { RunDisplay } from './components/run-display.js';
-import {
-  createRun,
-  listAgents,
-  listModels,
-  uploadFile,
-  type CatalogItem,
-} from './api.js';
+import { createRun, listAgents, listModels, uploadFile, type CatalogItem } from './api.js';
 
 // ── Run entry for sidebar ─────────────────────────────────────────────────
 
@@ -59,38 +53,44 @@ function App() {
   }, [auth.authenticated]);
 
   // Handle run selection
-  const handleSelectRun = useCallback((runId: string) => {
-    setActiveRunId(runId);
-    runEvents.subscribe(runId);
-  }, [runEvents]);
+  const handleSelectRun = useCallback(
+    (runId: string) => {
+      setActiveRunId(runId);
+      runEvents.subscribe(runId);
+    },
+    [runEvents]
+  );
 
   // Handle prompt submission → POST /workspace/runs
-  const handleSubmit = useCallback(async (submission: PromptSubmission) => {
-    setSubmitting(true);
-    try {
-      const res = await createRun(submission as unknown as Record<string, unknown>);
-      if (res.ok && res.data) {
-        const { runId } = res.data;
+  const handleSubmit = useCallback(
+    async (submission: PromptSubmission) => {
+      setSubmitting(true);
+      try {
+        const res = await createRun(submission as unknown as Record<string, unknown>);
+        if (res.ok && res.data) {
+          const { runId } = res.data;
 
-        // Add to runs list
-        const newRun: RunEntry = {
-          runId,
-          title: submission.prompt.slice(0, 60) || 'Governed run',
-          status: 'open',
-          timestamp: new Date().toISOString(),
-        };
-        setRuns(prev => [newRun, ...prev]);
-        setActiveRunId(runId);
+          // Add to runs list
+          const newRun: RunEntry = {
+            runId,
+            title: submission.prompt.slice(0, 60) || 'Governed run',
+            status: 'open',
+            timestamp: new Date().toISOString(),
+          };
+          setRuns(prev => [newRun, ...prev]);
+          setActiveRunId(runId);
 
-        // Subscribe to events
-        runEvents.subscribe(runId);
+          // Subscribe to events
+          runEvents.subscribe(runId);
+        }
+      } catch (err) {
+        console.error('Run creation failed:', err);
+      } finally {
+        setSubmitting(false);
       }
-    } catch (err) {
-      console.error('Run creation failed:', err);
-    } finally {
-      setSubmitting(false);
-    }
-  }, [runEvents]);
+    },
+    [runEvents]
+  );
 
   // Handle file upload
   const handleFileUpload = useCallback(async () => {
@@ -118,7 +118,7 @@ function App() {
   useEffect(() => {
     if (runEvents.status?.status === 'closed' && activeRunId) {
       setRuns(prev =>
-        prev.map(r => r.runId === activeRunId ? { ...r, status: 'closed' as const } : r)
+        prev.map(r => (r.runId === activeRunId ? { ...r, status: 'closed' as const } : r))
       );
     }
   }, [runEvents.status, activeRunId]);
@@ -139,15 +139,23 @@ function App() {
         <div className="nx-topbar-controls">
           <select className="nx-select">
             <option>Default agent</option>
-            {agents.filter(a => a.selectable).map(a => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
+            {agents
+              .filter(a => a.selectable)
+              .map(a => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
           </select>
           <select className="nx-select">
             <option>Auto (policy)</option>
-            {models.filter(m => m.selectable).map(m => (
-              <option key={m.id} value={m.id}>{m.name}</option>
-            ))}
+            {models
+              .filter(m => m.selectable)
+              .map(m => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
           </select>
           <div
             className="nx-avatar"
@@ -171,11 +179,7 @@ function App() {
 
         <main className="nx-main">
           {/* Run display area */}
-          <RunDisplay
-            runId={activeRunId}
-            events={runEvents.events}
-            status={runEvents.status}
-          />
+          <RunDisplay runId={activeRunId} events={runEvents.events} status={runEvents.status} />
 
           {/* Prompt panel */}
           <PromptPanel
@@ -198,6 +202,6 @@ if (root) {
   createRoot(root).render(
     <StrictMode>
       <App />
-    </StrictMode>,
+    </StrictMode>
   );
 }

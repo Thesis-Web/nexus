@@ -23,9 +23,7 @@ export function Login({ onLogin, loading, error }: LoginProps) {
     <div className="nx-login-screen">
       <form className="nx-login-card" onSubmit={handleSubmit}>
         <div className="nx-login-title">Nexus Workspace</div>
-        <div className="nx-login-subtitle">
-          Governed workspace — identity-gated entry
-        </div>
+        <div className="nx-login-subtitle">Governed workspace — identity-gated entry</div>
 
         {error && <div className="nx-error">{error}</div>}
 

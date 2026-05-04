@@ -46,7 +46,9 @@ export function Sidebar({ runs, activeRunId, files, onSelectRun }: SidebarProps)
             className={`nx-run-item ${run.runId === activeRunId ? 'nx-run-item--active' : ''}`}
             onClick={() => onSelectRun(run.runId)}
           >
-            <div className={`nx-run-item-title ${run.runId === activeRunId ? 'nx-run-item-title--active' : ''}`}>
+            <div
+              className={`nx-run-item-title ${run.runId === activeRunId ? 'nx-run-item-title--active' : ''}`}
+            >
               {run.status === 'open' ? (
                 <span style={{ color: 'var(--nx-green)', fontWeight: 600 }}>Active run</span>
               ) : null}
@@ -54,7 +56,9 @@ export function Sidebar({ runs, activeRunId, files, onSelectRun }: SidebarProps)
               {run.title}
             </div>
             <div className="nx-run-item-meta">
-              {run.status === 'closed' ? `Completed — ${timeAgo(run.timestamp)}` : timeAgo(run.timestamp)}
+              {run.status === 'closed'
+                ? `Completed — ${timeAgo(run.timestamp)}`
+                : timeAgo(run.timestamp)}
             </div>
           </div>
         ))}

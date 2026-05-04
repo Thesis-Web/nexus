@@ -19,12 +19,9 @@ export function getToken(): string | null {
   return _token;
 }
 
-async function apiFetch<T>(
-  path: string,
-  opts: RequestInit = {}
-): Promise<ApiResponse<T>> {
+async function apiFetch<T>(path: string, opts: RequestInit = {}): Promise<ApiResponse<T>> {
   const headers: Record<string, string> = {
-    ...(opts.headers as Record<string, string> ?? {}),
+    ...((opts.headers as Record<string, string>) ?? {}),
   };
   if (_token) headers['Authorization'] = `Bearer ${_token}`;
   if (!headers['Content-Type'] && opts.method !== 'GET') {

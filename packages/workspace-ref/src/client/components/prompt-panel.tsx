@@ -32,7 +32,13 @@ interface PromptPanelProps {
   disabled?: boolean;
 }
 
-export function PromptPanel({ agents, models, onSubmit, onFileUpload, disabled }: PromptPanelProps) {
+export function PromptPanel({
+  agents,
+  models,
+  onSubmit,
+  onFileUpload,
+  disabled,
+}: PromptPanelProps) {
   const [tab, setTab] = useState<PromptMode>('free_text');
   const [prompt, setPrompt] = useState('');
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
@@ -79,9 +85,7 @@ export function PromptPanel({ agents, models, onSubmit, onFileUpload, disabled }
   };
 
   const toggleAgent = (id: string) => {
-    setSelectedAgents(prev =>
-      prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]
-    );
+    setSelectedAgents(prev => (prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]));
   };
 
   return (
@@ -150,9 +154,13 @@ export function PromptPanel({ agents, models, onSubmit, onFileUpload, disabled }
               }}
               style={{ minHeight: 60 }}
             >
-              {agents.filter(a => a.selectable).map(a => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
+              {agents
+                .filter(a => a.selectable)
+                .map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
             </select>
           </div>
           <div className="nx-section-field">

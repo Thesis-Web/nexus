@@ -30,7 +30,9 @@ export function useAuth() {
             error: null,
           };
         }
-      } catch { /* expired or corrupt — fall through */ }
+      } catch {
+        /* expired or corrupt — fall through */
+      }
       sessionStorage.removeItem('nexus_ws_token');
     }
     return {

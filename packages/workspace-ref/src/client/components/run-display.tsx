@@ -28,7 +28,9 @@ interface ApprovalPrompt {
 }
 
 export function RunDisplay({ runId, events, status }: RunDisplayProps) {
-  const [approvalStates, setApprovalStates] = useState<Record<string, 'pending' | 'approved' | 'denied'>>({});
+  const [approvalStates, setApprovalStates] = useState<
+    Record<string, 'pending' | 'approved' | 'denied'>
+  >({});
 
   if (!runId) {
     return (
@@ -120,7 +122,9 @@ export function RunDisplay({ runId, events, status }: RunDisplayProps) {
                     className={`nx-progress-fill ${
                       i === completedStages && !finalResponse ? 'nx-progress-fill--amber' : ''
                     }`}
-                    style={{ width: i < completedStages ? '100%' : i === completedStages ? '60%' : '0%' }}
+                    style={{
+                      width: i < completedStages ? '100%' : i === completedStages ? '60%' : '0%',
+                    }}
                   />
                 </div>
               ))}
@@ -136,12 +140,15 @@ export function RunDisplay({ runId, events, status }: RunDisplayProps) {
               <span>·</span>
               <span className="nx-agent-card-model">{result.modelTier}</span>
               {result.isPreview && (
-                <span className="nx-badge" style={{
-                  background: 'var(--nx-blue-dim)',
-                  color: 'var(--nx-blue)',
-                  fontSize: '10px',
-                  marginLeft: 'auto',
-                }}>
+                <span
+                  className="nx-badge"
+                  style={{
+                    background: 'var(--nx-blue-dim)',
+                    color: 'var(--nx-blue)',
+                    fontSize: '10px',
+                    marginLeft: 'auto',
+                  }}
+                >
                   preview
                 </span>
               )}
@@ -155,9 +162,7 @@ export function RunDisplay({ runId, events, status }: RunDisplayProps) {
           const state = approvalStates[ap.approvalId] ?? 'pending';
           return (
             <div key={ap.approvalId} className="nx-approval-card">
-              <div className="nx-approval-header">
-                Approval required — {ap.gate}
-              </div>
+              <div className="nx-approval-header">Approval required — {ap.gate}</div>
               <div className="nx-approval-body">{ap.description}</div>
               {state === 'pending' ? (
                 <div className="nx-approval-actions">
@@ -175,11 +180,13 @@ export function RunDisplay({ runId, events, status }: RunDisplayProps) {
                   </button>
                 </div>
               ) : (
-                <div style={{
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  color: state === 'approved' ? 'var(--nx-green)' : 'var(--nx-red)',
-                }}>
+                <div
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    color: state === 'approved' ? 'var(--nx-green)' : 'var(--nx-red)',
+                  }}
+                >
                   {state === 'approved' ? '✓ Approved' : '✗ Denied'}
                 </div>
               )}
@@ -192,7 +199,9 @@ export function RunDisplay({ runId, events, status }: RunDisplayProps) {
           <div className="nx-agent-card" style={{ borderColor: 'var(--nx-green-border)' }}>
             <div className="nx-agent-card-header">
               <span className="nx-badge nx-badge--governed">Governed Response</span>
-              <span style={{ marginLeft: 'auto', fontFamily: 'var(--nx-font-mono)', fontSize: '11px' }}>
+              <span
+                style={{ marginLeft: 'auto', fontFamily: 'var(--nx-font-mono)', fontSize: '11px' }}
+              >
                 {runId.slice(0, 8)}…
               </span>
             </div>
