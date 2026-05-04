@@ -1,0 +1,24 @@
+{
+  "name": "@nexus/workspace-ref",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@nexus/contracts": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "ws": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "vite": "^6.0.0"
+  }
+}

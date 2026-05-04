@@ -235,6 +235,7 @@ export interface ApprovalRequest {
   modelConfidence: number | null;
   riskNote: string | null;
   signature: Base64Url;
+  runId: Uuid; // [OD-WS-002] — from AgentAction.runId
 }
 
 // ─── §12.3.12 ApprovalResponse ───
@@ -815,6 +816,14 @@ export type RunEventType =
   | 'dag_failed'
   | 'compile_triggered'
   | 'compile_skipped'
+  // ── Workspace-Ref Run Ledger Events (AMEND-nexus-spec-workspace §8.1) ──────
+  | 'workspace_vault_session_opened'
+  | 'workspace_vault_session_closed'
+  | 'workspace_secure_rail_selected'
+  | 'workspace_secure_rail_submitted'
+  | 'workspace_file_staged'
+  | 'workspace_file_bound'
+  | 'workspace_file_quarantined'
   | 'run_cancelled';
 
 export interface RunLedgerEntry {

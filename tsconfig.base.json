@@ -25,7 +25,8 @@
       "@nexus/api": ["packages/interfaces/api/src/server.ts"],
       "@nexus/adapter-mcp": ["packages/adapters/mcp/src/index.ts"],
       "@nexus/connector-stub": ["packages/connectors/stub/stub.connector.ts"],
-      "@nexus/runtime-utils": ["packages/runtime-utils/src/index.ts"]
+      "@nexus/runtime-utils": ["packages/runtime-utils/src/index.ts"],
+      "@nexus/workspace-ref": ["packages/workspace-ref/src/index.ts"]
     }
   },
   "include": [

@@ -10,3 +10,4 @@ packages:
   - 'packages/orch-ref'
   - 'packages/interfaces/cli'
   - 'packages/interfaces/api'
+  - 'packages/workspace-ref'

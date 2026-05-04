@@ -46,6 +46,7 @@ export async function buildSignedApprovalRequest(
   const body: Omit<ApprovalRequest, 'signature'> = {
     approvalId: newUuid(),
     actionId: action.actionId,
+    runId: action.runId,
     templateId: template.templateId,
     issuedAt,
     expiresAt,

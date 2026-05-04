@@ -130,3 +130,47 @@ export type {
   NodeDelegationBinding,
   RunDagState,
 } from './execution-plan.js';
+
+// ── AMEND-nexus-spec-workspace §1.4 — workspace-governed.ts exports ──
+
+export type {
+  OutputFormat,
+  WorkspaceSession,
+  CatalogItem,
+  TemplateSectionConfig,
+  ConstrainedFieldDef,
+  TemplateSignature,
+  RailSignature,
+  ModelPreference,
+  WorkspaceFileReference,
+  FreeTextPromptInput,
+  SectionedPromptInput,
+  SecureRailsPromptInput,
+  WorkspacePromptInput,
+  WorkspaceRunEnvelope,
+  ElevatedAuthMethod,
+  ElevatedAuthChallengeRequest,
+  ElevatedAuthChallenge,
+  ElevatedAuthVerifyRequest,
+  ElevatedSession,
+  ElevatedSessionStatus,
+  ElevatedAuthProvider,
+  WorkspaceApprovalBridge,
+  WorkspaceUiEventKind,
+  WorkspaceUiEvent,
+  PromptTemplate,
+  SecureRail,
+  RunAcl,
+  WorkspaceEventTicket,
+  WorkspaceFileStorePort,
+  WorkspaceBlobStorePort,
+  WorkspaceRunAclStorePort,
+  WorkspaceEventTicketStorePort,
+  WorkspaceSessionStorePort,
+  PromptTemplateStorePort,
+  SecureRailStorePort,
+  WorkspaceCatalogReaderPort,
+  AdminSignerRegistry,
+} from './workspace-governed.js';
+
+export { OUTPUT_FORMAT_VALUES, ELEVATED_AUTH_METHOD } from './workspace-governed.js';

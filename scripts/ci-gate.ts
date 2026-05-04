@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — 60 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11).
+ * Nexus CI Gate — 62 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 2 WS (AMEND-nexus-spec-workspace §10).
  *
  * Governing law:
  *   §6.4   — 19-step ci:gate sequence (F-02a)
@@ -1100,6 +1100,54 @@ async function main(): Promise<void> {
   runCmd('pnpm exec vitest run packages/orch-ref/src/ --reporter=verbose');
   pass();
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AMEND-nexus-spec-workspace §10: Workspace gates
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Step 61: WS-01 workspace-build gate
+  // §10 gate 1: typecheck + vite build + dist verification
+  stepLog('WS-01 workspace-build gate');
+  runCmd('pnpm --filter @nexus/workspace-ref typecheck');
+  runCmd('pnpm --filter @nexus/workspace-ref build');
+  {
+    const distDir = path.join('packages', 'workspace-ref', 'dist');
+    if (!fs.existsSync(distDir)) fail('WS-01: dist/ does not exist after vite build');
+    const distFiles = fs.readdirSync(distDir, { recursive: true }) as string[];
+    if (distFiles.length === 0) fail('WS-01: dist/ is empty');
+    const hasIndexHtml = distFiles.some(
+      (f: string) => f === 'index.html' || f.endsWith('/index.html')
+    );
+    if (!hasIndexHtml) fail('WS-01: dist/ missing index.html');
+    const hasJsAsset = distFiles.some((f: string) => f.endsWith('.js'));
+    if (!hasJsAsset) fail('WS-01: dist/ missing .js asset');
+  }
+  pass('typecheck + vite build + dist verified');
+
+  // Step 62: WS-02 workspace-imports gate
+  // §10 gate 2: contracts-only monorepo imports
+  stepLog('WS-02 workspace-imports gate');
+  {
+    const wsDir = path.join('packages', 'workspace-ref', 'src');
+    if (!fs.existsSync(wsDir)) fail('WS-02: packages/workspace-ref/src/ not found');
+    const wsFiles = collectTsSourceFiles(wsDir);
+    let scanned = 0;
+    for (const fpath of wsFiles) {
+      scanned++;
+      const source = fs.readFileSync(fpath, 'utf-8');
+      const specifiers = extractImportSpecifiers(source);
+      for (const spec of specifiers) {
+        if (!isNexusScopedImport(spec)) continue;
+        const pkg = getNexusPackageName(spec);
+        if (pkg !== '@nexus/contracts') {
+          fail(
+            `WS-02: ${path.relative('.', fpath)} imports ${pkg} — only @nexus/contracts allowed`
+          );
+        }
+      }
+    }
+    pass(`${scanned} file(s) — contracts-only imports`);
+  }
+
   // POST-GATE: bin assertion — HOLE-001 Option A (owner approved)
   // Both nexus and nexus-mcp-proxy bins must be executable after pnpm build.
   // -------------------------------------------------------------------------
@@ -1119,7 +1167,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  console.log('\n=== ci:gate PASSED — all 60 steps ===\n');
+  console.log('\n=== ci:gate PASSED — all 62 steps ===\n');
 }
 
 // ===========================================================================
@@ -1656,6 +1704,12 @@ const LAYER_RULES: LayerRule[] = [
     allowedNexus: ['@nexus/contracts'],
     layerName: 'orch-ref (ORCH-18)',
     selfPackage: '@nexus/orch-ref',
+  },
+  {
+    dir: path.join('packages', 'workspace-ref', 'src'),
+    allowedNexus: ['@nexus/contracts'],
+    layerName: 'L7 workspace-ref',
+    selfPackage: '@nexus/workspace-ref',
   },
   {
     dir: path.join('packages', 'interfaces', 'cli', 'src'),
