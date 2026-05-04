@@ -522,7 +522,7 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
             await deps.workspaceBlobStore.quarantine(fileRef.storedAt);
             await deps.runLedgerWriter.writeEvent({
               runId,
-              eventType: 'workspace_file_quarantined' as any,
+              eventType: 'workspace_file_quarantined',
               timestamp: nowIso(),
               actorId: null,
               detail: {
@@ -551,7 +551,7 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
           );
           await deps.runLedgerWriter.writeEvent({
             runId,
-            eventType: 'workspace_file_bound' as any,
+            eventType: 'workspace_file_bound',
             timestamp: nowIso(),
             actorId: null,
             detail: {
@@ -573,7 +573,7 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         // workspace_secure_rail_selected — required details: railId, railVersion, principalId, elevatedSessionId
         await deps.runLedgerWriter.writeEvent({
           runId,
-          eventType: 'workspace_secure_rail_selected' as any,
+          eventType: 'workspace_secure_rail_selected',
           timestamp: nowIso(),
           actorId: null,
           detail: {
@@ -598,7 +598,7 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
 
         await deps.runLedgerWriter.writeEvent({
           runId,
-          eventType: 'workspace_secure_rail_submitted' as any,
+          eventType: 'workspace_secure_rail_submitted',
           timestamp: nowIso(),
           actorId: null,
           detail: {
@@ -736,7 +736,7 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
       const infraRunId = randomUUID() as Uuid;
       await deps.runLedgerWriter.writeEvent({
         runId: infraRunId,
-        eventType: 'workspace_file_staged' as any,
+        eventType: 'workspace_file_staged',
         timestamp: nowIso(),
         actorId: null,
         detail: {
@@ -818,7 +818,7 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         // §8.2: workspace_vault_session_opened event — required details
         await deps.runLedgerWriter.writeEvent({
           runId: randomUUID() as Uuid,
-          eventType: 'workspace_vault_session_opened' as any,
+          eventType: 'workspace_vault_session_opened',
           timestamp: nowIso(),
           actorId: null,
           detail: {
@@ -872,7 +872,7 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
       if (!status.valid && deps.runLedgerWriter) {
         await deps.runLedgerWriter.writeEvent({
           runId: randomUUID() as Uuid,
-          eventType: 'workspace_vault_session_closed' as any,
+          eventType: 'workspace_vault_session_closed',
           timestamp: nowIso(),
           actorId: null,
           detail: {
