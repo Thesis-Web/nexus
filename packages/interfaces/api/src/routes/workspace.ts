@@ -35,6 +35,13 @@ import type {
   Sha256Hex,
   IsoTimestamp,
   IdentityClaims,
+  PromptTemplateStorePort,
+  SecureRailStorePort,
+  AdminSignerRegistry,
+  WorkspaceApprovalBridge,
+  PromptTemplate,
+  SecureRail,
+  ApprovalResponse,
 } from '@nexus/contracts';
 import { nowIso, addSeconds } from '@nexus/contracts';
 import { createHmac, randomUUID } from 'node:crypto';
@@ -62,6 +69,16 @@ export interface WorkspaceRouteDeps {
   workspaceFileStore?: WorkspaceFileStorePort;
   /** Blob content store — streaming [§6.5, hard rule 21] */
   workspaceBlobStore?: WorkspaceBlobStorePort;
+  /** Prompt template store [§7.4, gate 9] */
+  promptTemplateStore?: PromptTemplateStorePort;
+  /** Secure rail store [§7.4, gate 10] */
+  secureRailStore?: SecureRailStorePort;
+  /** Admin signer registry — NOT approver keys (hard rule 32) [§7.4] */
+  adminSignerRegistry?: AdminSignerRegistry;
+  /** Workspace approval bridge [§7.5, blueprint §3.5.3] */
+  workspaceApprovalBridge?: WorkspaceApprovalBridge;
+  /** Signature verification function (injected by bootstrap) [§7.4] */
+  verifySignature?: (payload: string, signature: string, publicKey: string) => Promise<boolean>;
 }
 
 // ─── JWT Helpers (reference-only HMAC-SHA256) ────────────────────────────────
@@ -663,6 +680,25 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // §7.2 GET /workspace/templates — list active prompt templates
+  // JWT protected. Returns non-disabled templates only.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.get('/workspace/templates', async (req: Request, res: Response) => {
+    if (!deps.promptTemplateStore) {
+      res.status(501).json({ ok: false, error: 'Template store not configured' });
+      return;
+    }
+
+    try {
+      const templates = await deps.promptTemplateStore.list();
+      res.json({ ok: true, data: templates });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // §7.7 POST /workspace/runs/:runId/event-ticket — mint event ticket
   // JWT + RunAcl required. 60s TTL, single-use. Ticket IDs redacted from logs.
   // ═══════════════════════════════════════════════════════════════════════════
@@ -703,6 +739,67 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
       // §7.7: ticket IDs redacted from access logs — only return to caller
       res.json({ ok: true, data: { ticketId, expiresAt } });
     } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // §7.8 POST /workspace/runs/:runId/approval — approval decision
+  // JWT + approval authorization. Registered approver key ALWAYS required.
+  // RunAcl alone never authorizes. Routes through WorkspaceApprovalBridge.
+  // [GWS5-AUD-03, GWS6-AUD-01, GWS7-AUD-01] — 7 gate cases (a-g)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.post('/workspace/runs/:runId/approval', async (req: Request, res: Response) => {
+    if (!deps.workspaceApprovalBridge) {
+      res.status(501).json({ ok: false, error: 'Approval bridge not configured' });
+      return;
+    }
+
+    try {
+      const runId = req.params['runId'] as Uuid;
+      const principalId = res.locals['principalId'] as string;
+      const workspaceAuthSessionId = res.locals['workspaceAuthSessionId'] as Uuid;
+
+      const body = req.body as Record<string, unknown>;
+      const approvalId = body['approvalId'] as string | undefined;
+      const decision = body['decision'] as 'approved' | 'denied' | undefined;
+      const note = body['note'] as string | undefined;
+
+      if (!approvalId || !decision || !['approved', 'denied'].includes(decision)) {
+        res.status(400).json({ ok: false, error: 'approvalId and decision required' });
+        return;
+      }
+
+      // §7.8: delegate to bridge — bridge verifies runId match + approver key
+      // Gate 17 cases (a-g) validated through bridge logic
+      const response: ApprovalResponse = await deps.workspaceApprovalBridge.submitDecision({
+        approvalId: approvalId as Uuid,
+        runId,
+        principalId,
+        decision,
+        ...(note !== undefined ? { note } : {}),
+        workspaceAuthSessionId,
+      });
+
+      res.json({ ok: true, data: response });
+    } catch (err) {
+      // Bridge errors mapped to HTTP status codes
+      if (err instanceof Error) {
+        const msg = err.message;
+        if (msg.includes('not found')) {
+          res.status(404).json({ ok: false, error: msg });
+          return;
+        }
+        if (msg.includes('not belong') || msg.includes('not a registered approver')) {
+          res.status(403).json({ ok: false, error: msg });
+          return;
+        }
+        if (msg.includes('already')) {
+          res.status(409).json({ ok: false, error: msg });
+          return;
+        }
+      }
       res.status(500).json({ ok: false, error: san(err) });
     }
   });
@@ -757,5 +854,237 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
     req.on('close', () => {
       clearInterval(heartbeat);
     });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §7.2/§7.4 Admin routes — admin bearer auth (applied by routes/index.ts)
+// Templates: POST (create), PUT (disable), DELETE (disable — hard rule 25)
+// Rails: POST (create), PUT (disable), DELETE (disable — hard rule 25)
+// Signature law: canonicalize(sans signatures), verify vs AdminSignerRegistry.
+// Immutable versions. Disabled-not-deleted. Collision → 409.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface WorkspaceAdminDeps {
+  promptTemplateStore?: PromptTemplateStorePort;
+  secureRailStore?: SecureRailStorePort;
+  adminSignerRegistry?: AdminSignerRegistry;
+  /** Signature verification function (injected by bootstrap) [§7.4] */
+  verifySignature?: (payload: string, signature: string, publicKey: string) => Promise<boolean>;
+}
+
+/** Canonicalize object for signature verification — deterministic JSON [§7.4] */
+function canonicalize(obj: Record<string, unknown>): string {
+  const sortedKeys = Object.keys(obj).sort();
+  const sorted: Record<string, unknown> = {};
+  for (const k of sortedKeys) {
+    sorted[k] = obj[k];
+  }
+  return JSON.stringify(sorted);
+}
+
+export function registerWorkspaceAdminRoutes(app: Express, deps: WorkspaceAdminDeps): void {
+  // ── POST /admin/prompt-templates — create new template ──────────────────
+  app.post('/admin/prompt-templates', async (req: Request, res: Response) => {
+    if (!deps.promptTemplateStore || !deps.adminSignerRegistry || !deps.verifySignature) {
+      res.status(501).json({ ok: false, error: 'Template admin not configured' });
+      return;
+    }
+
+    try {
+      const template = req.body as PromptTemplate;
+
+      // §7.4: unsigned → reject
+      if (!template.signatures || template.signatures.length === 0) {
+        res.status(400).json({ ok: false, error: 'Template must be signed' });
+        return;
+      }
+
+      // §7.4: collision → 409 (immutable versions)
+      if (await deps.promptTemplateStore.exists(template.templateId, template.version)) {
+        res.status(409).json({ ok: false, error: 'Template version already exists' });
+        return;
+      }
+
+      // §7.4: verify each signature against AdminSignerRegistry
+      const { signatures, ...rest } = template;
+      const signaturePayload = canonicalize(rest as Record<string, unknown>);
+
+      for (const sig of signatures) {
+        // Unknown signer → reject
+        const registered = await deps.adminSignerRegistry.isRegistered(sig.signedBy);
+        if (!registered) {
+          res.status(403).json({ ok: false, error: `Unknown signer: ${sig.signedBy}` });
+          return;
+        }
+
+        // Get public key and verify signature
+        const publicKey = await deps.adminSignerRegistry.getPublicKey(sig.signedBy);
+        if (!publicKey) {
+          res.status(403).json({ ok: false, error: `No public key for signer: ${sig.signedBy}` });
+          return;
+        }
+
+        // Invalid signature → reject
+        const valid = await deps.verifySignature(signaturePayload, sig.signature, publicKey);
+        if (!valid) {
+          res.status(400).json({ ok: false, error: 'Invalid template signature' });
+          return;
+        }
+      }
+
+      await deps.promptTemplateStore.save(template);
+      res.json({ ok: true, data: { templateId: template.templateId, version: template.version } });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ── PUT /admin/prompt-templates — disable template version ──────────────
+  app.put('/admin/prompt-templates', async (req: Request, res: Response) => {
+    if (!deps.promptTemplateStore) {
+      res.status(501).json({ ok: false, error: 'Template admin not configured' });
+      return;
+    }
+
+    try {
+      const body = req.body as Record<string, unknown>;
+      const templateId = body['templateId'] as string;
+      const version = body['version'] as string;
+      if (!templateId || !version) {
+        res.status(400).json({ ok: false, error: 'templateId and version required' });
+        return;
+      }
+      // Hard rule 25: disabled, never deleted
+      await deps.promptTemplateStore.disable(templateId, version);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ── DELETE /admin/prompt-templates — disable (hard rule 25: never delete) ─
+  app.delete('/admin/prompt-templates', async (req: Request, res: Response) => {
+    if (!deps.promptTemplateStore) {
+      res.status(501).json({ ok: false, error: 'Template admin not configured' });
+      return;
+    }
+
+    try {
+      const body = req.body as Record<string, unknown>;
+      const templateId = body['templateId'] as string;
+      const version = body['version'] as string;
+      if (!templateId || !version) {
+        res.status(400).json({ ok: false, error: 'templateId and version required' });
+        return;
+      }
+      // Hard rule 25: disabled-not-deleted
+      await deps.promptTemplateStore.disable(templateId, version);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ── POST /admin/secure-rails — create new secure rail ────────────────────
+  app.post('/admin/secure-rails', async (req: Request, res: Response) => {
+    if (!deps.secureRailStore || !deps.adminSignerRegistry || !deps.verifySignature) {
+      res.status(501).json({ ok: false, error: 'Rail admin not configured' });
+      return;
+    }
+
+    try {
+      const rail = req.body as SecureRail;
+
+      // §7.4: unsigned → reject
+      if (!rail.signatures || rail.signatures.length === 0) {
+        res.status(400).json({ ok: false, error: 'Rail must be signed' });
+        return;
+      }
+
+      // §7.4: collision → 409 (immutable versions)
+      if (await deps.secureRailStore.exists(rail.railId, rail.version)) {
+        res.status(409).json({ ok: false, error: 'Rail version already exists' });
+        return;
+      }
+
+      // §7.4: verify each signature against AdminSignerRegistry
+      const { signatures, ...rest } = rail;
+      const signaturePayload = canonicalize(rest as Record<string, unknown>);
+
+      for (const sig of signatures) {
+        // Unknown signer → reject
+        const registered = await deps.adminSignerRegistry.isRegistered(sig.signedBy);
+        if (!registered) {
+          res.status(403).json({ ok: false, error: `Unknown signer: ${sig.signedBy}` });
+          return;
+        }
+
+        // Get public key and verify signature
+        const publicKey = await deps.adminSignerRegistry.getPublicKey(sig.signedBy);
+        if (!publicKey) {
+          res.status(403).json({ ok: false, error: `No public key for signer: ${sig.signedBy}` });
+          return;
+        }
+
+        // Invalid signature → reject
+        const valid = await deps.verifySignature(signaturePayload, sig.signature, publicKey);
+        if (!valid) {
+          res.status(400).json({ ok: false, error: 'Invalid rail signature' });
+          return;
+        }
+      }
+
+      await deps.secureRailStore.save(rail);
+      res.json({ ok: true, data: { railId: rail.railId, version: rail.version } });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ── PUT /admin/secure-rails — disable rail version ───────────────────────
+  app.put('/admin/secure-rails', async (req: Request, res: Response) => {
+    if (!deps.secureRailStore) {
+      res.status(501).json({ ok: false, error: 'Rail admin not configured' });
+      return;
+    }
+
+    try {
+      const body = req.body as Record<string, unknown>;
+      const railId = body['railId'] as string;
+      const version = body['version'] as string;
+      if (!railId || !version) {
+        res.status(400).json({ ok: false, error: 'railId and version required' });
+        return;
+      }
+      // Hard rule 25: disabled, never deleted
+      await deps.secureRailStore.disable(railId, version);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ── DELETE /admin/secure-rails — disable (hard rule 25: never delete) ────
+  app.delete('/admin/secure-rails', async (req: Request, res: Response) => {
+    if (!deps.secureRailStore) {
+      res.status(501).json({ ok: false, error: 'Rail admin not configured' });
+      return;
+    }
+
+    try {
+      const body = req.body as Record<string, unknown>;
+      const railId = body['railId'] as string;
+      const version = body['version'] as string;
+      if (!railId || !version) {
+        res.status(400).json({ ok: false, error: 'railId and version required' });
+        return;
+      }
+      // Hard rule 25: disabled-not-deleted
+      await deps.secureRailStore.disable(railId, version);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
   });
 }

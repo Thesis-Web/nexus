@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — 72 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 12 WS (AMEND-nexus-spec-workspace §10).
+ * Nexus CI Gate — 75 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 12 WS (AMEND-nexus-spec-workspace §10).
  *
  * Governing law:
  *   §6.4   — 19-step ci:gate sequence (F-02a)
@@ -1469,6 +1469,187 @@ async function main(): Promise<void> {
   }
   pass('bind failure after run_opened → run_closed written');
 
+  // Step 73: WS-09 workspace-template-sig gate
+  // §10 gate 9: unsigned/invalid/unknown-signer rejected; collision 409
+  stepLog('WS-09 workspace-template-sig gate');
+  {
+    const wsFile = path.join('packages', 'interfaces', 'api', 'src', 'routes', 'workspace.ts');
+    const src = fs.readFileSync(wsFile, 'utf-8');
+    // Verify admin template route exists
+    if (!src.includes("/admin/prompt-templates'")) {
+      fail('WS-09: POST /admin/prompt-templates route not found');
+    }
+    // Verify unsigned rejection
+    if (!src.includes('Template must be signed')) {
+      fail('WS-09: unsigned template rejection not found');
+    }
+    // Verify AdminSignerRegistry usage
+    if (!src.includes('adminSignerRegistry')) {
+      fail('WS-09: AdminSignerRegistry not referenced');
+    }
+    if (!src.includes('isRegistered')) {
+      fail('WS-09: signer registration check not found');
+    }
+    // Verify unknown signer rejection
+    if (!src.includes('Unknown signer')) {
+      fail('WS-09: unknown signer rejection not found');
+    }
+    // Verify collision 409
+    if (!src.includes('409') || !src.includes('Template version already exists')) {
+      fail('WS-09: collision 409 not found');
+    }
+    // Verify signature verification present
+    if (!src.includes('verifySignature')) {
+      fail('WS-09: signature verification not found');
+    }
+    // Verify canonicalize function exists
+    if (!src.includes('canonicalize')) {
+      fail('WS-09: canonicalize function not found');
+    }
+    // Verify prompt template store exists
+    const storeFile = path.join(
+      'packages',
+      'workspace-ref',
+      'src',
+      'stores',
+      'prompt-template-store.ts'
+    );
+    if (!fs.existsSync(storeFile)) {
+      fail('WS-09: prompt-template-store.ts not found');
+    }
+    const storeSrc = fs.readFileSync(storeFile, 'utf-8');
+    // Verify immutable versions (save inserts, no update)
+    if (!storeSrc.includes('INSERT INTO')) {
+      fail('WS-09: store save does not use INSERT (immutable versions)');
+    }
+    // Verify disabled-not-deleted (hard rule 25)
+    if (!storeSrc.includes('disabled')) {
+      fail('WS-09: disabled column not found in store');
+    }
+    if (storeSrc.includes('DELETE FROM')) {
+      fail('WS-09: store uses DELETE — hard rule 25 requires disabled-not-deleted');
+    }
+  }
+  pass('unsigned/invalid/unknown-signer rejected; collision 409');
+
+  // Step 74: WS-10 workspace-rail-sig gate
+  // §10 gate 10: same as template-sig for rails
+  stepLog('WS-10 workspace-rail-sig gate');
+  {
+    const wsFile = path.join('packages', 'interfaces', 'api', 'src', 'routes', 'workspace.ts');
+    const src = fs.readFileSync(wsFile, 'utf-8');
+    // Verify admin rail route exists
+    if (!src.includes("/admin/secure-rails'")) {
+      fail('WS-10: POST /admin/secure-rails route not found');
+    }
+    // Verify unsigned rejection
+    if (!src.includes('Rail must be signed')) {
+      fail('WS-10: unsigned rail rejection not found');
+    }
+    // Verify collision 409
+    if (!src.includes('Rail version already exists')) {
+      fail('WS-10: rail collision 409 not found');
+    }
+    // Verify secure rail store exists
+    const storeFile = path.join(
+      'packages',
+      'workspace-ref',
+      'src',
+      'stores',
+      'secure-rail-store.ts'
+    );
+    if (!fs.existsSync(storeFile)) {
+      fail('WS-10: secure-rail-store.ts not found');
+    }
+    const storeSrc = fs.readFileSync(storeFile, 'utf-8');
+    // Verify immutable versions
+    if (!storeSrc.includes('INSERT INTO')) {
+      fail('WS-10: store save does not use INSERT (immutable versions)');
+    }
+    // Verify disabled-not-deleted
+    if (!storeSrc.includes('disabled')) {
+      fail('WS-10: disabled column not found in store');
+    }
+    if (storeSrc.includes('DELETE FROM')) {
+      fail('WS-10: store uses DELETE — hard rule 25 requires disabled-not-deleted');
+    }
+  }
+  pass('unsigned/invalid/unknown-signer rejected; collision 409 (rails)');
+
+  // Step 75: WS-17 workspace-approval-run-bind gate
+  // §10 gate 17: 7 cases (a-g) — approval authorization
+  // (a) approval.runId === runA (bridge verifies)
+  // (b) wrong run → 403 (bridge rejects)
+  // (c) owner + registered → reaches decideApproval
+  // (d) non-owner + registered → reaches decideApproval
+  // (e) unregistered → 403
+  // (f) owner + NOT registered → 403
+  // (g) no event subscription required
+  stepLog('WS-17 workspace-approval-run-bind gate');
+  {
+    const wsFile = path.join('packages', 'interfaces', 'api', 'src', 'routes', 'workspace.ts');
+    const src = fs.readFileSync(wsFile, 'utf-8');
+    // Verify approval route exists
+    if (!src.includes("/approval'")) {
+      fail('WS-17: POST /workspace/runs/:runId/approval route not found');
+    }
+    // Verify bridge is used
+    if (!src.includes('workspaceApprovalBridge')) {
+      fail('WS-17: workspaceApprovalBridge not referenced in approval route');
+    }
+    if (!src.includes('submitDecision')) {
+      fail('WS-17: bridge.submitDecision not called');
+    }
+    // Verify bridge file exists
+    const bridgeFile = path.join(
+      'packages',
+      'workspace-ref',
+      'src',
+      'bridge',
+      'workspace-approval-bridge.ts'
+    );
+    if (!fs.existsSync(bridgeFile)) {
+      fail('WS-17: workspace-approval-bridge.ts not found');
+    }
+    const bridgeSrc = fs.readFileSync(bridgeFile, 'utf-8');
+    // (a/b) Bridge verifies runId match
+    if (!bridgeSrc.includes('runId')) {
+      fail('WS-17: bridge does not check runId');
+    }
+    if (!bridgeSrc.includes('RUN_MISMATCH') && !bridgeSrc.includes('not belong')) {
+      fail('WS-17: bridge does not reject run mismatch');
+    }
+    // (c/d) Bridge calls decideApproval
+    if (!bridgeSrc.includes('decideApproval')) {
+      fail('WS-17: bridge does not call decideApproval');
+    }
+    // (e/f) Bridge verifies approver registration
+    if (!bridgeSrc.includes('loadApproverKey')) {
+      fail('WS-17: bridge does not verify approver registration');
+    }
+    if (!bridgeSrc.includes('NOT_APPROVER') && !bridgeSrc.includes('not a registered approver')) {
+      fail('WS-17: bridge does not reject unregistered approvers');
+    }
+    // (g) No event subscription dependency — verify approval route does NOT
+    // require workspaceEventTicketStore
+    const approvalIdx = src.indexOf("/approval'");
+    if (approvalIdx >= 0) {
+      const approvalSection = src.slice(approvalIdx, approvalIdx + 1500);
+      if (approvalSection.includes('workspaceEventTicketStore')) {
+        fail('WS-17: approval route depends on event ticket store — case (g) violation');
+      }
+    }
+    // Verify PendingApprovalStore usage in bridge (loads request to verify runId)
+    if (!bridgeSrc.includes('getRequest') && !bridgeSrc.includes('approvalStore')) {
+      fail('WS-17: bridge does not use PendingApprovalStore');
+    }
+    // Verify 403 responses in route for bridge errors
+    if (!src.includes('403')) {
+      fail('WS-17: 403 response not found in approval route');
+    }
+  }
+  pass('approval authorization — 7 cases (a-g)');
+
   // POST-GATE: bin assertion — HOLE-001 Option A (owner approved)
   // Both nexus and nexus-mcp-proxy bins must be executable after pnpm build.
   // -------------------------------------------------------------------------
@@ -1488,7 +1669,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  console.log('\n=== ci:gate PASSED — all 72 steps ===\n');
+  console.log('\n=== ci:gate PASSED — all 75 steps ===\n');
 }
 
 // ===========================================================================

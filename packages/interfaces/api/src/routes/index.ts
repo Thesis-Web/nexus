@@ -36,7 +36,7 @@ import { registerPostureRoutes } from './posture.js';
 import { registerRunLedgerRoutes } from './run-ledger.js';
 import { registerModeRoutes } from './modes.js';
 import { registerNvgRoutes } from './nvg.js';
-import { registerWorkspaceRoutes } from './workspace.js';
+import { registerWorkspaceRoutes, registerWorkspaceAdminRoutes } from './workspace.js';
 import { registerOrchestratorRoutes } from './orchestrator.js';
 import { registerMailboxRoutes } from './mailbox.js';
 import { registerCompileRoutes } from './compile.js';
@@ -81,6 +81,17 @@ export function registerAllRoutes(
     ...(deps.workspaceBlobStore !== undefined
       ? { workspaceBlobStore: deps.workspaceBlobStore }
       : {}),
+    ...(deps.promptTemplateStore !== undefined
+      ? { promptTemplateStore: deps.promptTemplateStore }
+      : {}),
+    ...(deps.secureRailStore !== undefined ? { secureRailStore: deps.secureRailStore } : {}),
+    ...(deps.adminSignerRegistry !== undefined
+      ? { adminSignerRegistry: deps.adminSignerRegistry }
+      : {}),
+    ...(deps.workspaceApprovalBridge !== undefined
+      ? { workspaceApprovalBridge: deps.workspaceApprovalBridge }
+      : {}),
+    ...(deps.verifySignature !== undefined ? { verifySignature: deps.verifySignature } : {}),
   });
 
   // Compile-return routes — callback signature auth [§5.1]
@@ -199,6 +210,18 @@ export function registerAllRoutes(
     ...(deps.dispatchCompileReturn !== undefined
       ? { dispatchCompileReturn: deps.dispatchCompileReturn }
       : {}),
+  });
+
+  // Workspace admin routes — templates + rails (admin-authenticated) [§7.2, §7.4]
+  registerWorkspaceAdminRoutes(app, {
+    ...(deps.promptTemplateStore !== undefined
+      ? { promptTemplateStore: deps.promptTemplateStore }
+      : {}),
+    ...(deps.secureRailStore !== undefined ? { secureRailStore: deps.secureRailStore } : {}),
+    ...(deps.adminSignerRegistry !== undefined
+      ? { adminSignerRegistry: deps.adminSignerRegistry }
+      : {}),
+    ...(deps.verifySignature !== undefined ? { verifySignature: deps.verifySignature } : {}),
   });
 
   // Template admin route — admin-authenticated

@@ -73,6 +73,10 @@ import type {
   WorkspaceEventTicketStorePort,
   WorkspaceFileStorePort,
   WorkspaceBlobStorePort,
+  PromptTemplateStorePort,
+  SecureRailStorePort,
+  AdminSignerRegistry,
+  WorkspaceApprovalBridge,
 } from '@nexus/contracts';
 import { registerAllRoutes } from './routes/index.js';
 
@@ -205,6 +209,18 @@ export interface ApiDependencies {
   workspaceBlobStore?: WorkspaceBlobStorePort;
   /** HMAC-SHA256 secret for workspace JWTs. If missing → workspace auth fails closed (501). */
   workspaceJwtSecret?: string;
+
+  // ── AMEND-nexus-spec-workspace §7.1 / W06: Template + Rail + Approval deps ─
+  /** Prompt template store [§7.4, gate 9] */
+  promptTemplateStore?: PromptTemplateStorePort;
+  /** Secure rail store [§7.4, gate 10] */
+  secureRailStore?: SecureRailStorePort;
+  /** Admin signer registry — NOT approver keys (hard rule 32) [§7.4] */
+  adminSignerRegistry?: AdminSignerRegistry;
+  /** Workspace approval bridge [§7.5, blueprint §3.5.3, gate 17] */
+  workspaceApprovalBridge?: WorkspaceApprovalBridge;
+  /** Signature verification function (injected by bootstrap) [§7.4] */
+  verifySignature?: (payload: string, signature: string, publicKey: string) => Promise<boolean>;
 }
 
 // ── §23.1 createApiServer — DI factory ───────────────────────────────────────
