@@ -75,6 +75,12 @@ export function registerAllRoutes(
     ...(deps.workspaceEventTicketStore !== undefined
       ? { workspaceEventTicketStore: deps.workspaceEventTicketStore }
       : {}),
+    ...(deps.workspaceFileStore !== undefined
+      ? { workspaceFileStore: deps.workspaceFileStore }
+      : {}),
+    ...(deps.workspaceBlobStore !== undefined
+      ? { workspaceBlobStore: deps.workspaceBlobStore }
+      : {}),
   });
 
   // Compile-return routes — callback signature auth [§5.1]

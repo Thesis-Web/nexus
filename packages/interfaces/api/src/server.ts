@@ -71,6 +71,8 @@ import type {
   WorkspaceSessionStorePort,
   WorkspaceRunAclStorePort,
   WorkspaceEventTicketStorePort,
+  WorkspaceFileStorePort,
+  WorkspaceBlobStorePort,
 } from '@nexus/contracts';
 import { registerAllRoutes } from './routes/index.js';
 
@@ -197,6 +199,10 @@ export interface ApiDependencies {
   workspaceRunAclStore?: WorkspaceRunAclStorePort;
   /** Event ticket store for WS/SSE auth [AMEND-workspace §7.7] */
   workspaceEventTicketStore?: WorkspaceEventTicketStorePort;
+  /** File metadata store [AMEND-workspace §6.5] */
+  workspaceFileStore?: WorkspaceFileStorePort;
+  /** Blob content store — streaming [AMEND-workspace §6.5] */
+  workspaceBlobStore?: WorkspaceBlobStorePort;
   /** HMAC-SHA256 secret for workspace JWTs. If missing → workspace auth fails closed (501). */
   workspaceJwtSecret?: string;
 }

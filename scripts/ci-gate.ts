@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — 69 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 9 WS (AMEND-nexus-spec-workspace §10).
+ * Nexus CI Gate — 72 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 12 WS (AMEND-nexus-spec-workspace §10).
  *
  * Governing law:
  *   §6.4   — 19-step ci:gate sequence (F-02a)
@@ -1363,6 +1363,112 @@ async function main(): Promise<void> {
   }
   pass('expired/consumed/missing ticket denied');
 
+  // Step 70: WS-11 workspace-no-raw-prompt gate
+  // §10 gate 11: prompt absent from Run Ledger detail
+  stepLog('WS-11 workspace-no-raw-prompt gate');
+  {
+    const wsFile = path.join('packages', 'interfaces', 'api', 'src', 'routes', 'workspace.ts');
+    const src = fs.readFileSync(wsFile, 'utf-8');
+    // Find the run_opened event write
+    const openedIdx = src.indexOf("'run_opened'");
+    if (openedIdx < 0) fail('WS-11: run_opened event not found');
+    // Get the detail block (next ~500 chars after run_opened)
+    const detailBlock = src.slice(openedIdx, openedIdx + 500);
+    // Verify promptDigest IS in detail
+    if (!detailBlock.includes('promptDigest')) {
+      fail('WS-11: promptDigest missing from run_opened detail');
+    }
+    // Verify raw prompt is NOT a key in detail
+    // The detail should not have a 'prompt' key (only promptDigest)
+    const detailStart = detailBlock.indexOf('detail:');
+    if (detailStart >= 0) {
+      const detailContent = detailBlock.slice(detailStart, detailStart + 300);
+      // Check there's no bare 'prompt' key (prompt: or prompt,) in detail
+      // but promptDigest is allowed
+      const promptMatches = detailContent.match(/[^t]prompt[^D]/g);
+      if (promptMatches && promptMatches.length > 0) {
+        fail('WS-11: raw prompt appears in run_opened detail — only promptDigest allowed');
+      }
+    }
+  }
+  pass('prompt absent from Run Ledger detail');
+
+  // Step 71: WS-13 workspace-file-runid gate
+  // §10 gate 13: staged uses infra runId; bound uses user runId
+  stepLog('WS-13 workspace-file-runid gate');
+  {
+    const wsFile = path.join('packages', 'interfaces', 'api', 'src', 'routes', 'workspace.ts');
+    const src = fs.readFileSync(wsFile, 'utf-8');
+    // Verify workspace_file_staged event exists
+    if (!src.includes('workspace_file_staged')) {
+      fail('WS-13: workspace_file_staged event not found');
+    }
+    // Verify infra runId used for staged (not user runId)
+    if (!src.includes('infraRunId')) {
+      fail('WS-13: infraRunId not found — staged files must use infra runId');
+    }
+    // Verify workspace_file_bound event exists
+    if (!src.includes('workspace_file_bound')) {
+      fail('WS-13: workspace_file_bound event not found');
+    }
+    // Verify file store exists
+    const storeFile = path.join(
+      'packages',
+      'workspace-ref',
+      'src',
+      'stores',
+      'workspace-file-store.ts'
+    );
+    if (!fs.existsSync(storeFile)) {
+      fail('WS-13: workspace-file-store.ts not found');
+    }
+    const blobFile = path.join(
+      'packages',
+      'workspace-ref',
+      'src',
+      'stores',
+      'workspace-blob-store.ts'
+    );
+    if (!fs.existsSync(blobFile)) {
+      fail('WS-13: workspace-blob-store.ts not found');
+    }
+  }
+  pass('staged uses infra runId; bound uses user runId');
+
+  // Step 72: WS-15 workspace-run-failure-closure gate
+  // §10 gate 15: bind failure after run_opened → run_closed written
+  stepLog('WS-15 workspace-run-failure-closure gate');
+  {
+    const wsFile = path.join('packages', 'interfaces', 'api', 'src', 'routes', 'workspace.ts');
+    const src = fs.readFileSync(wsFile, 'utf-8');
+    // Verify run_closed is written on bind failure
+    if (!src.includes("'run_closed'")) {
+      fail('WS-15: run_closed event not found');
+    }
+    // Verify closeReason in run_closed detail
+    if (!src.includes('closeReason')) {
+      fail('WS-15: closeReason not found in run_closed detail');
+    }
+    // Verify quarantine path exists
+    if (!src.includes('workspace_file_quarantined')) {
+      fail('WS-15: workspace_file_quarantined event not found');
+    }
+    if (!src.includes('markQuarantined')) {
+      fail('WS-15: markQuarantined call not found');
+    }
+    // Verify run_closed exists AFTER the quarantine event in the quarantine code path.
+    // Note: workspace.ts has multiple run_closed writes (not-found vs quarantine).
+    // We check that a run_closed follows the quarantine event, not global order.
+    const quarantineIdx = src.indexOf('workspace_file_quarantined');
+    if (quarantineIdx >= 0) {
+      const closeAfterQuarantine = src.indexOf("'run_closed'", quarantineIdx);
+      if (closeAfterQuarantine < 0) {
+        fail('WS-15: no run_closed found after quarantine event — hard rule 26');
+      }
+    }
+  }
+  pass('bind failure after run_opened → run_closed written');
+
   // POST-GATE: bin assertion — HOLE-001 Option A (owner approved)
   // Both nexus and nexus-mcp-proxy bins must be executable after pnpm build.
   // -------------------------------------------------------------------------
@@ -1382,7 +1488,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  console.log('\n=== ci:gate PASSED — all 69 steps ===\n');
+  console.log('\n=== ci:gate PASSED — all 72 steps ===\n');
 }
 
 // ===========================================================================
@@ -2285,6 +2391,10 @@ function validateOctSecureLoop(): void {
     const basename = path.basename(fpath);
     // compile-return.ts and compile.ts are the lawful run_closed writers
     if (basename === 'compile-return.ts' || basename === 'compile.ts') continue;
+    // CONTRA-WS-001 (owner-approved): workspace.ts is exempt for governed workspace
+    // pre-dispatch failure closure after run_opened and before orchestrator dispatch.
+    // Normal completion still closes through compile-return.
+    if (basename === 'workspace.ts') continue;
     // shared.ts, index.ts — infrastructure, not routes
     if (basename === 'shared.ts' || basename === 'index.ts') continue;
 

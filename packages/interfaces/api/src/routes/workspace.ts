@@ -27,6 +27,9 @@ import type {
   WorkspaceRunAclStorePort,
   WorkspaceEventTicketStorePort,
   WorkspaceEventTicket,
+  WorkspaceFileStorePort,
+  WorkspaceBlobStorePort,
+  WorkspaceFileReference,
   Uuid,
   NonEmpty,
   Sha256Hex,
@@ -36,6 +39,7 @@ import type {
 import { nowIso, addSeconds } from '@nexus/contracts';
 import { createHmac, randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { Readable } from 'node:stream';
 import { san } from './shared.js';
 
 // ─── DI Dependencies ────────────────────────────────────────────────────────
@@ -54,6 +58,10 @@ export interface WorkspaceRouteDeps {
   workspaceRunAclStore?: WorkspaceRunAclStorePort;
   /** Event ticket store for WS/SSE stream auth [§7.7] */
   workspaceEventTicketStore?: WorkspaceEventTicketStorePort;
+  /** File metadata store [§6.5] */
+  workspaceFileStore?: WorkspaceFileStorePort;
+  /** Blob content store — streaming [§6.5, hard rule 21] */
+  workspaceBlobStore?: WorkspaceBlobStorePort;
 }
 
 // ─── JWT Helpers (reference-only HMAC-SHA256) ────────────────────────────────
@@ -428,6 +436,84 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         });
       }
 
+      // §6.1 step 7: if attachmentIds, classify → bind or quarantine [§6.4]
+      if (
+        'attachmentIds' in input &&
+        input.attachmentIds &&
+        input.attachmentIds.length > 0 &&
+        deps.workspaceFileStore &&
+        deps.workspaceBlobStore
+      ) {
+        for (const attachId of input.attachmentIds) {
+          const fileRef = await Promise.resolve(deps.workspaceFileStore.get(attachId as Uuid));
+          if (!fileRef || fileRef.status !== 'staged') {
+            // Write run_closed on bind failure (hard rule 26)
+            await deps.runLedgerWriter.writeEvent({
+              runId,
+              eventType: 'run_closed',
+              timestamp: nowIso(),
+              actorId: null,
+              detail: { closeReason: `Attachment ${attachId} not found or not staged` },
+            });
+            res.status(400).json({ ok: false, error: `Attachment ${attachId} invalid` });
+            return;
+          }
+
+          // §6.4: classify FIRST (reference stub — production: real classifier)
+          const classification = { pass: true, labels: ['unclassified'] as string[] };
+
+          if (!classification.pass) {
+            // Quarantine: markQuarantined + blobStore.quarantine + ledger + run_closed
+            deps.workspaceFileStore.markQuarantined(
+              attachId as Uuid,
+              'Classification failed',
+              classification.labels
+            );
+            await deps.workspaceBlobStore.quarantine(fileRef.storedAt);
+            await deps.runLedgerWriter.writeEvent({
+              runId,
+              eventType: 'workspace_file_quarantined' as any,
+              timestamp: nowIso(),
+              actorId: null,
+              detail: {
+                fileId: attachId,
+                sha256: fileRef.sha256,
+                reason: 'Classification failed',
+                classificationState: 'rejected',
+                auditTargetRunId: runId,
+              },
+            });
+            // Hard rule 26: run failure after run_opened → run_closed
+            await deps.runLedgerWriter.writeEvent({
+              runId,
+              eventType: 'run_closed',
+              timestamp: nowIso(),
+              actorId: null,
+              detail: { closeReason: `File ${attachId} quarantined` },
+            });
+            res.status(400).json({ ok: false, error: `File ${attachId} quarantined` });
+            return;
+          }
+
+          // §6.4: classify passed → bind
+          await Promise.resolve(
+            deps.workspaceFileStore.bindToRun(attachId as Uuid, runId, classification.labels)
+          );
+          await deps.runLedgerWriter.writeEvent({
+            runId,
+            eventType: 'workspace_file_bound' as any,
+            timestamp: nowIso(),
+            actorId: null,
+            detail: {
+              fileId: attachId,
+              runId,
+              sha256: fileRef.sha256,
+              classificationLabels: classification.labels,
+            },
+          });
+        }
+      }
+
       // §6.2: dispatch to orchestrator if wired
       let planPreview: unknown = null;
       if (deps.dispatchToOrchestrator) {
@@ -481,6 +567,97 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         },
       });
     } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // §6.5 POST /workspace/files — file staging (streaming upload)
+  // JWT protected. File bodies streaming only (hard rule 21).
+  // Logs workspace_file_staged with infra runId (NOT user runId) [§6.5, gate 13]
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.post('/workspace/files', async (req: Request, res: Response) => {
+    if (!deps.workspaceFileStore || !deps.workspaceBlobStore || !deps.runLedgerWriter) {
+      res.status(501).json({ ok: false, error: 'File staging not configured' });
+      return;
+    }
+
+    try {
+      const principalId = res.locals['principalId'] as string;
+
+      // §6.5 step 2: fileId BEFORE blob write
+      const fileId = randomUUID() as Uuid;
+
+      // Determine stream source and metadata
+      let stream: NodeJS.ReadableStream;
+      let declaredFilename: string;
+      let declaredMediaType: string;
+
+      const contentType = req.headers['content-type'] || '';
+      if (contentType.includes('application/json') && req.body) {
+        // JSON upload (reference convenience) — convert base64 to stream
+        const body = req.body as Record<string, unknown>;
+        declaredFilename = (body['filename'] as string) || 'unnamed';
+        declaredMediaType = (body['mediaType'] as string) || 'application/octet-stream';
+        const data = Buffer.from((body['data'] as string) || '', 'base64');
+        stream = Readable.from(data);
+      } else {
+        // Streaming upload (production path) — hard rule 21
+        declaredFilename = (req.headers['x-filename'] as string) || 'unnamed';
+        declaredMediaType = contentType || 'application/octet-stream';
+        stream = req;
+      }
+
+      // §6.5 step 3: stream to blobStore.write
+      const result = await deps.workspaceBlobStore.write({
+        fileId,
+        stream,
+        declaredMediaType,
+        maxSizeBytes: 50 * 1024 * 1024, // 50MB default
+      });
+
+      // §6.5 step 4: store file metadata
+      const fileRef: WorkspaceFileReference = {
+        fileId,
+        sha256: result.sha256 as Sha256Hex,
+        declaredFilename,
+        mediaType: declaredMediaType,
+        sizeBytes: result.sizeBytes,
+        classificationLabels: [],
+        provenance: 'user_upload',
+        storedAt: result.storedAt,
+        runId: null,
+        uploadedByPrincipalId: principalId,
+        uploadedAt: nowIso(),
+        status: 'staged',
+      };
+      await Promise.resolve(deps.workspaceFileStore.store(fileRef));
+
+      // §6.5 step 5: log workspace_file_staged with infra runId (NOT user runId)
+      const infraRunId = randomUUID() as Uuid;
+      await deps.runLedgerWriter.writeEvent({
+        runId: infraRunId,
+        eventType: 'workspace_file_staged' as any,
+        timestamp: nowIso(),
+        actorId: null,
+        detail: {
+          fileId,
+          sha256: result.sha256,
+          sizeBytes: result.sizeBytes,
+          mediaType: declaredMediaType,
+          uploadedByPrincipalId: principalId,
+        },
+      });
+
+      // §6.5 step 6: return
+      res.json({ ok: true, data: { fileId, sha256: result.sha256 } });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('maximum allowed size')) {
+        res.status(413).json({ ok: false, error: 'File too large' });
+        return;
+      }
       res.status(500).json({ ok: false, error: san(err) });
     }
   });
