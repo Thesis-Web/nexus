@@ -35,6 +35,7 @@ import { cmdApproverKeygen } from './commands/approver.js';
 import { cmdPosture } from './commands/posture.js';
 import { cmdReplay } from './commands/replay.js';
 import { cmdServe } from './commands/serve.js';
+import type { WorkspaceApiDeps, WorkspaceBootstrapCoreDeps } from './commands/serve.js';
 import { cmdServeMcp } from './commands/serve-mcp.js';
 import { cmdModeShow, cmdModeSet } from './commands/mode.js';
 import { cmdRunLedgerTail, cmdRunLedgerGet } from './commands/run-ledger.js';
@@ -60,6 +61,13 @@ export interface CliDeps {
    * COMPOSE-001 fix: consolidates composition to the bootstrap root.
    */
   bootstrapNvgService?: () => Promise<NvgService>;
+  /**
+   * Optional: lazy workspace bootstrap — returns workspace DI deps.
+   * Factory takes 3 core deps because bridge shares core's PendingApprovalStore.
+   * All @nexus/workspace-ref construction happens in the composition root.
+   * DIFF-WSBOOT-001: not zero-arg — core deps required for bridge wiring.
+   */
+  bootstrapWorkspaceApiDeps?: (coreDeps: WorkspaceBootstrapCoreDeps) => Promise<WorkspaceApiDeps>;
 }
 
 // ── createCli — builds the Commander program with injected dependencies ───────
@@ -211,6 +219,9 @@ export function createCli(deps: CliDeps): Command {
           createNvgService: () => nvgService,
           createTrailReader: deps.createTrailReader,
           loadNvgRoutingPolicy: deps.loadNvgRoutingPolicy,
+          ...(deps.bootstrapWorkspaceApiDeps !== undefined
+            ? { bootstrapWorkspaceApiDeps: deps.bootstrapWorkspaceApiDeps }
+            : {}),
         });
       };
       run().catch(fatal);

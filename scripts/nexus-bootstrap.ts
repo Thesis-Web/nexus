@@ -161,6 +161,44 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import Database from 'better-sqlite3';
 
+// ── WS-BOOTSTRAP: workspace-ref (Layer 7) + identity-ref (Layer 6) ──────────
+import {
+  SqliteWorkspaceSessionStore,
+  SqliteWorkspaceRunAclStore,
+  SqliteWorkspaceEventTicketStore,
+  SqliteWorkspaceFileStore,
+  FilesystemWorkspaceBlobStore,
+  SqlitePromptTemplateStore,
+  SqliteSecureRailStore,
+  ReferenceWorkspaceApprovalBridge,
+  ReferenceElevatedAuthProvider,
+  ReferenceCatalogReader,
+} from '../packages/workspace-ref/src/index.js';
+import {
+  ReferenceIdentityAdapter,
+  InMemoryActorStore,
+  InMemoryPrincipalStore,
+  ApiKeyAuthProvider,
+  JwtAuthProvider,
+} from '../packages/identity-ref/src/index.js';
+import { FileBackedAdminSignerRegistry } from './admin-signer-registry.js';
+import type {
+  PendingApprovalStore,
+  ApprovalResponse,
+  WorkspaceSessionStorePort,
+  WorkspaceRunAclStorePort,
+  WorkspaceEventTicketStorePort,
+  WorkspaceFileStorePort,
+  WorkspaceBlobStorePort,
+  PromptTemplateStorePort,
+  SecureRailStorePort,
+  AdminSignerRegistry,
+  WorkspaceApprovalBridge,
+  ElevatedAuthProvider,
+  WorkspaceCatalogReaderPort,
+  IdentityProviderInterface,
+} from '@nexus/contracts';
+
 // ── Manifest paths ───────────────────────────────────────────────────────────
 // §32a.6 — original four domains
 const MANIFEST_IDENTITY = 'config/identity/providers.v1.yaml';
@@ -773,5 +811,144 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
     routingPolicy,
     modeConfig,
     externals,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WS-BOOTSTRAP — workspace composition-root wiring
+// Governing law: WS-BOOTSTRAP micro-spec (owner-ratified)
+// DIFF-WSBOOT-001: factory takes 3 core deps (not zero-arg) because
+//   the bridge MUST share core's PendingApprovalStore instance.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Core deps that the workspace bootstrap needs from the serve command.
+ * These are contract-level types, not concrete implementations.
+ */
+export interface WorkspaceBootstrapCoreDeps {
+  /** Core PendingApprovalStore — shared with NXS pipeline */
+  approvalStore: PendingApprovalStore;
+  /** Core decideApproval — single signing/resolution path */
+  decideApproval: (
+    approvalId: string,
+    decidedBy: string,
+    decision: 'approved' | 'denied',
+    note: string | undefined,
+    store: PendingApprovalStore
+  ) => Promise<ApprovalResponse>;
+  /** Resolve principalId → approverId. Null = not a registered approver. */
+  loadApproverKey: (principalId: string) => Promise<string | null>;
+}
+
+/**
+ * Workspace API deps returned by bootstrapWorkspace.
+ * Narrow Pick — not a generic override bag.
+ */
+export interface WorkspaceApiDeps {
+  workspaceSessionStore: WorkspaceSessionStorePort;
+  workspaceRunAclStore: WorkspaceRunAclStorePort;
+  workspaceEventTicketStore: WorkspaceEventTicketStorePort;
+  workspaceFileStore: WorkspaceFileStorePort;
+  workspaceBlobStore: WorkspaceBlobStorePort;
+  promptTemplateStore: PromptTemplateStorePort;
+  secureRailStore: SecureRailStorePort;
+  workspaceApprovalBridge: WorkspaceApprovalBridge;
+  elevatedAuthProvider: ElevatedAuthProvider;
+  catalogReader: WorkspaceCatalogReaderPort;
+  adminSignerRegistry: AdminSignerRegistry;
+  verifySignature: (payload: string, signature: string, publicKey: string) => Promise<boolean>;
+  workspaceJwtSecret?: string;
+  identityProvider: IdentityProviderInterface;
+}
+
+/**
+ * Construct all workspace reference implementations.
+ * All @nexus/workspace-ref imports are here (composition root).
+ * API and CLI never import workspace-ref directly.
+ *
+ * Env vars:
+ *   NEXUS_WORKSPACE_DB_PATH    default: runs/workspace-ref.sqlite
+ *   NEXUS_WORKSPACE_BLOB_DIR   default: runs/workspace-blobs
+ *   NEXUS_WORKSPACE_JWT_SECRET no default; missing = fail-closed (501)
+ */
+export async function bootstrapWorkspace(
+  coreDeps: WorkspaceBootstrapCoreDeps
+): Promise<WorkspaceApiDeps> {
+  const wsDbPath =
+    process.env['NEXUS_WORKSPACE_DB_PATH'] ??
+    path.join(process.cwd(), 'runs', 'workspace-ref.sqlite');
+  const blobDir =
+    process.env['NEXUS_WORKSPACE_BLOB_DIR'] ?? path.join(process.cwd(), 'runs', 'workspace-blobs');
+  const jwtSecret = process.env['NEXUS_WORKSPACE_JWT_SECRET'];
+
+  // ── Workspace stores (all open their own SQLite connections with WAL) ────
+  const workspaceSessionStore = new SqliteWorkspaceSessionStore(wsDbPath);
+  const workspaceRunAclStore = new SqliteWorkspaceRunAclStore(wsDbPath);
+  const workspaceEventTicketStore = new SqliteWorkspaceEventTicketStore(wsDbPath);
+  const workspaceFileStore = new SqliteWorkspaceFileStore(wsDbPath);
+  const workspaceBlobStore = new FilesystemWorkspaceBlobStore(blobDir);
+  const promptTemplateStore = new SqlitePromptTemplateStore(wsDbPath);
+  const secureRailStore = new SqliteSecureRailStore(wsDbPath);
+
+  // ── Elevated auth + catalog (reference implementations) ─────────────────
+  const elevatedAuthProvider = new ReferenceElevatedAuthProvider({ dbPath: wsDbPath });
+  const catalogReader = new ReferenceCatalogReader();
+
+  // ── Admin signer registry (file-backed, keys/admins/<signerId>.public.json) ─
+  const adminSignerRegistry = new FileBackedAdminSignerRegistry();
+
+  // ── Signature verification — real Ed25519 via core verify() ─────────────
+  // Hard rule 32: admin signers ≠ approver keys
+  const verifySignatureFn = async (
+    payload: string,
+    signature: string,
+    publicKey: string
+  ): Promise<boolean> => {
+    return verify(payload, signature, publicKey);
+  };
+
+  // ── Approval bridge — wired with core deps (shared PendingApprovalStore) ─
+  // RunAcl alone never authorizes approval decisions.
+  const workspaceApprovalBridge = new ReferenceWorkspaceApprovalBridge({
+    approvalStore: coreDeps.approvalStore,
+    decideApproval: coreDeps.decideApproval,
+    loadApproverKey: coreDeps.loadApproverKey,
+  });
+
+  // ── Identity provider (reference adapter — empty stores, needs seeding) ──
+  // ADD-WSBOOT-001: not in micro-spec but required by workspace JWT middleware.
+  // Without it, middleware returns 501. Reference stores are empty on init —
+  // actors must be registered via management API before workspace is usable.
+  const actorStore = new InMemoryActorStore();
+  const principalStore = new InMemoryPrincipalStore();
+  const authProvider = new ApiKeyAuthProvider();
+  const jwtAuthProvider = jwtSecret ? new JwtAuthProvider(jwtSecret) : undefined;
+  const identityProvider = new ReferenceIdentityAdapter(
+    actorStore,
+    principalStore,
+    authProvider,
+    jwtAuthProvider
+  );
+
+  console.log('[workspace-bootstrap] Workspace reference stores constructed');
+  console.log(`  DB: ${wsDbPath}`);
+  console.log(`  Blobs: ${blobDir}`);
+  console.log(`  JWT secret: ${jwtSecret ? 'configured' : 'NOT SET (fail-closed)'}`);
+
+  return {
+    workspaceSessionStore,
+    workspaceRunAclStore,
+    workspaceEventTicketStore,
+    workspaceFileStore,
+    workspaceBlobStore,
+    promptTemplateStore,
+    secureRailStore,
+    workspaceApprovalBridge,
+    elevatedAuthProvider,
+    catalogReader,
+    adminSignerRegistry,
+    verifySignature: verifySignatureFn,
+    ...(jwtSecret !== undefined ? { workspaceJwtSecret: jwtSecret } : {}),
+    identityProvider,
   };
 }

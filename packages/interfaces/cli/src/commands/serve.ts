@@ -11,7 +11,7 @@
  * Invalid or missing mode config → refuse to start.
  */
 import path from 'node:path';
-import type { NvgService, NvgRoutingPolicy, RoutingTrailReader } from '@nexus/contracts';
+import type { NvgService, NvgRoutingPolicy, RoutingTrailReader, NonEmpty } from '@nexus/contracts';
 import {
   loadAdminToken,
   loadControlPlaneKey,
@@ -20,6 +20,7 @@ import {
   SqliteSessionStore,
   SqliteDelegationStore,
   SqlitePendingApprovalStore,
+  SqliteApproverRegistry,
   JsonlLedgerBackend,
   JsonlRunLedgerWriter,
   mintRootDelegation,
@@ -30,6 +31,33 @@ import {
   saveModeConfig,
 } from '@nexus/core';
 import { createApiServer, type ApiDependencies } from '@nexus/api';
+// ── WS-BOOTSTRAP type seam ──────────────────────────────────────────────────
+export type WorkspaceApiDeps = Partial<
+  Pick<
+    ApiDependencies,
+    | 'identityProvider'
+    | 'workspaceSessionStore'
+    | 'workspaceRunAclStore'
+    | 'workspaceEventTicketStore'
+    | 'workspaceFileStore'
+    | 'workspaceBlobStore'
+    | 'workspaceApprovalBridge'
+    | 'promptTemplateStore'
+    | 'secureRailStore'
+    | 'elevatedAuthProvider'
+    | 'catalogReader'
+    | 'adminSignerRegistry'
+    | 'verifySignature'
+    | 'workspaceJwtSecret'
+  >
+>;
+
+export interface WorkspaceBootstrapCoreDeps {
+  approvalStore: ApiDependencies['approvalStore'];
+  decideApproval: ApiDependencies['decideApproval'];
+  loadApproverKey: (principalId: string) => Promise<string | null>;
+}
+
 import { openDb } from '../db.js';
 
 export interface ServeOptions {
@@ -40,6 +68,12 @@ export interface ServeOptions {
   createTrailReader: (dir?: string) => RoutingTrailReader;
   /** NVG routing policy loader — injected from composition root */
   loadNvgRoutingPolicy: (filepath: string) => Promise<NvgRoutingPolicy>;
+  /**
+   * WS-BOOTSTRAP: workspace deps factory — injected from composition root.
+   * All @nexus/workspace-ref construction happens there, not here.
+   * Takes 3 core deps because bridge shares core's PendingApprovalStore.
+   */
+  bootstrapWorkspaceApiDeps?: (coreDeps: WorkspaceBootstrapCoreDeps) => Promise<WorkspaceApiDeps>;
 }
 
 export async function cmdServe(opts: ServeOptions): Promise<void> {
@@ -72,7 +106,7 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
     process.exit(1);
   }
 
-  const deps: ApiDependencies = {
+  const baseDeps: ApiDependencies = {
     actorRegistry: new SqliteActorRegistry(db),
     principalRegistry: new SqlitePrincipalRegistry(db),
     sessionStore: new SqliteSessionStore(db),
@@ -93,6 +127,26 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
       opts.loadNvgRoutingPolicy(
         path.join(process.cwd(), 'fixtures', 'nvg', 'default.routing-policy.yaml')
       ),
+  };
+
+  let workspaceApiDeps: WorkspaceApiDeps = {};
+  if (opts.bootstrapWorkspaceApiDeps) {
+    const approverRegistry = new SqliteApproverRegistry(db);
+    const loadApproverKey = async (principalId: string): Promise<string | null> => {
+      const key = await approverRegistry.getPublicKey(principalId as NonEmpty);
+      return key !== null ? principalId : null;
+    };
+    workspaceApiDeps = await opts.bootstrapWorkspaceApiDeps({
+      approvalStore: baseDeps.approvalStore,
+      decideApproval,
+      loadApproverKey,
+    });
+    console.log('[serve] Workspace deps resolved');
+  }
+
+  const deps: ApiDependencies = {
+    ...baseDeps,
+    ...workspaceApiDeps,
   };
 
   const { start } = createApiServer(deps);

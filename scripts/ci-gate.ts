@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — 77 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 12 WS (AMEND-nexus-spec-workspace §10).
+ * Nexus CI Gate — 77 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 17 WS (AMEND-nexus-spec-workspace §10).
  *
  * Governing law:
  *   §6.4   — 19-step ci:gate sequence (F-02a)

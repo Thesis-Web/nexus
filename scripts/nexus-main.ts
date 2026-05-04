@@ -33,7 +33,7 @@ import { StubConnector } from '@nexus/connector-stub';
 import { createCli } from '@nexus/cli';
 import * as path from 'node:path';
 
-import { bootstrap, type BootstrapResult } from './nexus-bootstrap.js';
+import { bootstrap, bootstrapWorkspace, type BootstrapResult } from './nexus-bootstrap.js';
 
 const DEFAULT_TRAIL_DIR = path.join(process.cwd(), 'runs');
 
@@ -68,6 +68,7 @@ const program = createCli({
     const br = await getBootstrap();
     return br.nvgService;
   },
+  bootstrapWorkspaceApiDeps: coreDeps => bootstrapWorkspace(coreDeps),
 });
 
 // Filter out bare '--' that pnpm may inject between script path and subcommands.
