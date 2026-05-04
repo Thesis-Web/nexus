@@ -3363,10 +3363,19 @@ async function runDeploymentGate(): Promise<void> {
     fail('DEPLOY-01: dist/nexus-main.js not found — build:entry did not run');
   }
 
-  // 79.1b: Generate keys if missing (CI environment)
-  const adminTokenPath = path.join(process.cwd(), 'keys', 'admin.token');
-  if (!fs.existsSync(adminTokenPath)) {
-    runCmd('node dist/nexus-main.js init');
+  // 79.1b: Generate runtime secrets if missing (CI environment)
+  // NEVER regenerate dev.keypair.json — manifests are signed with the committed key.
+  const keysDir = path.join(process.cwd(), 'keys');
+  const ciSecrets: Array<[string, number]> = [
+    ['admin.token', 64],
+    ['workspace-jwt.secret', 64],
+    ['workspace-dev-admin.apikey', 48],
+  ];
+  for (const [filename, bytes] of ciSecrets) {
+    const fp = path.join(keysDir, filename);
+    if (!fs.existsSync(fp)) {
+      fs.writeFileSync(fp, crypto.randomBytes(bytes).toString('hex'), 'utf-8');
+    }
   }
 
   // 79.2: Boot server on isolated port
