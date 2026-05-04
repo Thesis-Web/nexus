@@ -376,8 +376,37 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
     res.locals['actorId'] = payload.sub;
     res.locals['claims'] = claims;
     res.locals['workspaceAuthSessionId'] = payload.sid;
+    res.locals['expiresAt'] = new Date(payload.exp * 1000).toISOString();
 
     next();
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GET /workspace/me — workspace session reflection [GATE-DEPLOY-001]
+  // Returns current caller's identity from JWT claims. Stateless.
+  // Does NOT store, enumerate, or return tokens/secrets.
+  // This is workspace-scoped session reflection, NOT centralized IAM.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.get('/workspace/me', (_req: Request, res: Response) => {
+    const claims = res.locals['claims'] as IdentityClaims | undefined;
+    res.json({
+      ok: true,
+      data: {
+        actorId: res.locals['actorId'] ?? null,
+        principalId: res.locals['principalId'] ?? null,
+        workspaceAuthSessionId: res.locals['workspaceAuthSessionId'] ?? null,
+        expiresAt: res.locals['expiresAt'] ?? null,
+        claims: claims
+          ? {
+              roleAssignments: claims.roleAssignments,
+              capabilityCeilings: claims.capabilityCeilings,
+              environmentContext: claims.environmentContext,
+              actorClass: claims.actorClass,
+            }
+          : null,
+      },
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

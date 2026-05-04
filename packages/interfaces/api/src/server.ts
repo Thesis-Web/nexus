@@ -242,6 +242,11 @@ export function createApiServer(deps: ApiDependencies): {
   const app = express();
   app.use(express.json());
 
+  // ── Health endpoint — no auth required [GATE-DEPLOY-001] ──────────────
+  app.get('/health', (_req: Request, res: Response) => {
+    res.json({ ok: true, status: 'healthy', timestamp: new Date().toISOString() });
+  });
+
   // ── Admin auth middleware ──────────────────────────────────────────────────
   function adminAuth(req: Request, res: Response, next: NextFunction): void {
     const auth = req.headers['authorization'] ?? '';
