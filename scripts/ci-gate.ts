@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — 77 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 17 WS (AMEND-nexus-spec-workspace §10).
+ * Nexus CI Gate — 78 steps: 21 base (§6.4 + PKG-PORTABLE-001) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 17 WS (AMEND-nexus-spec-workspace §10).
  *
  * Governing law:
  *   §6.4   — 19-step ci:gate sequence (F-02a)
@@ -18,8 +18,10 @@
  *   §37.20 — Transport Adapter Conformance Gate (Step 18)
  *   §37.21 — Transport Package Boundary Gate (Step 19)
  *
+ * PKG-PORTABLE-001 (owner-approved):
+ *   Step 2 — portable package build: pnpm run build must pass from package boundaries.
+ *
  * HOLE-001 Option A (owner-approved):
- *   PRE-GATE  — pnpm build (environment setup; not a numbered gate step)
  *   POST-GATE — bin assertion: pnpm exec nexus --help exits 0
  */
 
@@ -667,8 +669,13 @@ async function main(): Promise<void> {
   runCmd('pnpm exec prettier --check .');
   pass();
 
+  // Step 2: portable package build — PKG-PORTABLE-001
+  stepLog('portable package build (pnpm run build)');
+  runCmd('pnpm run build');
+  pass();
+
   // -------------------------------------------------------------------------
-  // Step 2: typecheck — §7.4 step 2, §3.2
+  // Step 3: typecheck — §7.4 step 2, §3.2
   // -------------------------------------------------------------------------
   stepLog('typecheck (tsc --noEmit)');
   runCmd('pnpm exec tsc --noEmit -p tsconfig.base.json');
@@ -1815,7 +1822,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  console.log('\n=== ci:gate PASSED — all 77 steps ===\n');
+  console.log('\n=== ci:gate PASSED — all 78 steps ===\n');
 }
 
 // ===========================================================================

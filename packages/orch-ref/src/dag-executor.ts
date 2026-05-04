@@ -204,7 +204,13 @@ export class RefDagExecutor implements DagExecutor {
 
       // CRITICAL: process results sorted by planOrderIndex, NOT promise order [§6.2]
       const resultPairs = dispatching
-        .map((d, i) => ({ dispatch: d, settled: settledResults[i] }))
+        .map((d, i) => {
+          const settled = settledResults[i];
+          if (!settled) {
+            throw new Error(`Missing dispatch result for node '${d.node.nodeId}'`);
+          }
+          return { dispatch: d, settled };
+        })
         .sort((a, b) => a.dispatch.node.planOrderIndex - b.dispatch.node.planOrderIndex);
 
       for (const { dispatch, settled } of resultPairs) {

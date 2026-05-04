@@ -109,16 +109,29 @@ export function validateExecutionPlan(
 
   // Check 3: nodes sorted by planOrderIndex
   for (let i = 1; i < plan.nodes.length; i++) {
-    if (plan.nodes[i].planOrderIndex <= plan.nodes[i - 1].planOrderIndex) {
+    const previous = plan.nodes[i - 1];
+    const current = plan.nodes[i];
+
+    if (!previous || !current) {
+      return fail(`Check 3: missing node at index ${i}`);
+    }
+
+    if (current.planOrderIndex <= previous.planOrderIndex) {
       return fail('Check 3: nodes not sorted by planOrderIndex');
     }
   }
 
   // Check 4: planOrderIndex values unique and contiguous (0, 1, 2, ...)
   for (let i = 0; i < plan.nodes.length; i++) {
-    if (plan.nodes[i].planOrderIndex !== i) {
+    const current = plan.nodes[i];
+
+    if (!current) {
+      return fail(`Check 4: missing node at index ${i}`);
+    }
+
+    if (current.planOrderIndex !== i) {
       return fail(
-        `Check 4: planOrderIndex not contiguous — expected ${i}, got ${plan.nodes[i].planOrderIndex}`
+        `Check 4: planOrderIndex not contiguous — expected ${i}, got ${current.planOrderIndex}`
       );
     }
   }
@@ -158,7 +171,14 @@ export function validateExecutionPlan(
 
   // Check 9: edge sort order matches [sourceNodeId, targetNodeId, edgeType, edgeId]
   for (let i = 1; i < plan.edges.length; i++) {
-    if (compareEdges(plan.edges[i - 1], plan.edges[i]) > 0) {
+    const previous = plan.edges[i - 1];
+    const current = plan.edges[i];
+
+    if (!previous || !current) {
+      return fail(`Check 9: missing edge at index ${i}`);
+    }
+
+    if (compareEdges(previous, current) > 0) {
       return fail('Check 9: edges not sorted by [sourceNodeId, targetNodeId, edgeType, edgeId]');
     }
   }

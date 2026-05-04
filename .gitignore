@@ -45,3 +45,5 @@ coverage/
 
 # Archived docs (v0 superseded files)
 docs/archive-v0/
+.pnpm-store/
+pnpm-store/

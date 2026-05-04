@@ -350,6 +350,15 @@ export class RefDeterministicPlanner implements Planner {
 
         // Take first visible agent not already in the plan
         const chosen = visible.find(a => !seenAgentIds.has(a.agentId)) ?? visible[0];
+        if (!chosen) {
+          const allAlts = await this.findAlternatives([capability], context);
+          return reject(
+            'no_capable_agent',
+            `No enabled agent found for capability '${capability}'`,
+            allAlts
+          );
+        }
+
         if (!seenAgentIds.has(chosen.agentId)) {
           seenAgentIds.add(chosen.agentId);
           resolvedAgents.push(chosen);

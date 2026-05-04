@@ -372,8 +372,13 @@ export class PlanAmendmentHandler {
       -1
     );
     for (let i = 0; i < amendmentPlan.nodes.length; i++) {
+      const node = amendmentPlan.nodes[i];
+      if (!node) {
+        throw new Error(`Missing amendment plan node at index ${i}`);
+      }
+
       currentState.nodeStatuses.push({
-        nodeId: amendmentPlan.nodes[i].nodeId,
+        nodeId: node.nodeId,
         planOrderIndex: maxExistingIndex + 1 + i,
         status: 'pending',
         runSequence: 0,

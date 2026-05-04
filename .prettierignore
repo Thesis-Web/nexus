@@ -7,3 +7,5 @@ runs
 .turbo
 docs/archive-v0
 docs/**/*.md
+.pnpm-store/
+pnpm-store/
