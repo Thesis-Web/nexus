@@ -14,3 +14,6 @@ export {
   ApprovalBridgeError,
 } from './bridge/workspace-approval-bridge.js';
 export type { ApprovalBridgeDeps } from './bridge/workspace-approval-bridge.js';
+export { ReferenceElevatedAuthProvider } from './auth/elevated-auth-provider.js';
+export { SqliteElevatedSessionStore } from './auth/elevated-session-store.js';
+export { ReferenceCatalogReader } from './stores/catalog-reader.js';

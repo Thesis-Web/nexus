@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — 75 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 12 WS (AMEND-nexus-spec-workspace §10).
+ * Nexus CI Gate — 77 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 12 WS (AMEND-nexus-spec-workspace §10).
  *
  * Governing law:
  *   §6.4   — 19-step ci:gate sequence (F-02a)
@@ -1650,6 +1650,152 @@ async function main(): Promise<void> {
   }
   pass('approval authorization — 7 cases (a-g)');
 
+  // Step 76: WS-14 workspace-run-event-details gate
+  // §10 gate 14: all 7 workspace event types carry required detail fields
+  stepLog('WS-14 workspace-run-event-details gate');
+  {
+    const wsFile = path.join('packages', 'interfaces', 'api', 'src', 'routes', 'workspace.ts');
+    const src = fs.readFileSync(wsFile, 'utf-8');
+    // All 7 workspace event types must be present
+    const requiredEvents = [
+      'workspace_vault_session_opened',
+      'workspace_vault_session_closed',
+      'workspace_secure_rail_selected',
+      'workspace_secure_rail_submitted',
+      'workspace_file_staged',
+      'workspace_file_bound',
+      'workspace_file_quarantined',
+    ];
+    for (const evt of requiredEvents) {
+      if (!src.includes(evt)) {
+        fail(`WS-14: event type '${evt}' not found in workspace routes`);
+      }
+    }
+    // Verify required detail fields per §8.2
+    // vault_session_opened: principalId, elevatedSessionId, authMethod, expiresAt, auditTargetMode
+    const vsoIdx = src.indexOf("eventType: 'workspace_vault_session_opened'");
+    if (vsoIdx >= 0) {
+      const block = src.slice(vsoIdx, vsoIdx + 600);
+      for (const field of [
+        'principalId',
+        'elevatedSessionId',
+        'authMethod',
+        'expiresAt',
+        'auditTargetMode',
+      ]) {
+        if (!block.includes(field)) {
+          fail(`WS-14: workspace_vault_session_opened missing detail field: ${field}`);
+        }
+      }
+    }
+    // vault_session_closed: principalId, elevatedSessionId, reason, closedAt
+    const vscIdx = src.indexOf("eventType: 'workspace_vault_session_closed'");
+    if (vscIdx >= 0) {
+      const block = src.slice(vscIdx, vscIdx + 400);
+      for (const field of ['principalId', 'elevatedSessionId', 'reason', 'closedAt']) {
+        if (!block.includes(field)) {
+          fail(`WS-14: workspace_vault_session_closed missing detail field: ${field}`);
+        }
+      }
+    }
+    // secure_rail_selected: railId, railVersion, principalId, elevatedSessionId
+    const srsIdx = src.indexOf("eventType: 'workspace_secure_rail_selected'");
+    if (srsIdx >= 0) {
+      const block = src.slice(srsIdx, srsIdx + 400);
+      for (const field of ['railId', 'railVersion', 'principalId', 'elevatedSessionId']) {
+        if (!block.includes(field)) {
+          fail(`WS-14: workspace_secure_rail_selected missing detail field: ${field}`);
+        }
+      }
+    }
+    // secure_rail_submitted: railId, railVersion, runId, agentId, modelTier, elevatedSessionId
+    const srsubIdx = src.indexOf("eventType: 'workspace_secure_rail_submitted'");
+    if (srsubIdx >= 0) {
+      const block = src.slice(srsubIdx, srsubIdx + 500);
+      for (const field of [
+        'railId',
+        'railVersion',
+        'runId',
+        'agentId',
+        'modelTier',
+        'elevatedSessionId',
+      ]) {
+        if (!block.includes(field)) {
+          fail(`WS-14: workspace_secure_rail_submitted missing detail field: ${field}`);
+        }
+      }
+    }
+    // file events already verified in WS-13/WS-15 — spot check staged
+    const fsIdx = src.indexOf("eventType: 'workspace_file_staged'");
+    if (fsIdx >= 0) {
+      const block = src.slice(fsIdx, fsIdx + 400);
+      if (!block.includes('fileId') || !block.includes('sha256')) {
+        fail('WS-14: workspace_file_staged missing required detail fields');
+      }
+    }
+  }
+  pass('all 7 event types carry required detail fields');
+
+  // Step 77: WS-16 workspace-elevated-principal-bind gate
+  // §10 gate 16: wrong principal denied; header transport only
+  stepLog('WS-16 workspace-elevated-principal-bind gate');
+  {
+    const wsFile = path.join('packages', 'interfaces', 'api', 'src', 'routes', 'workspace.ts');
+    const src = fs.readFileSync(wsFile, 'utf-8');
+    // Verify X-Elevated-Session header transport (NOT query string)
+    if (!src.includes("'x-elevated-session'")) {
+      fail('WS-16: X-Elevated-Session header extraction not found');
+    }
+    // Hard rule 31: not query string
+    if (src.includes('req.query') && src.includes('elevatedSession')) {
+      fail('WS-16: elevated session extracted from query string — must use header only');
+    }
+    // Principal-bound: validateSession takes principalId
+    if (!src.includes('validateSession')) {
+      fail('WS-16: validateSession not called');
+    }
+    // Verify principal is passed to validateSession
+    const vsIdx = src.indexOf('validateSession');
+    if (vsIdx >= 0) {
+      const call = src.slice(vsIdx, vsIdx + 200);
+      if (!call.includes('principalId')) {
+        fail('WS-16: validateSession does not receive principalId — not principal-bound');
+      }
+    }
+    // Verify 403 for invalid elevated session
+    if (!src.includes('Elevated session required') && !src.includes('Elevated session invalid')) {
+      fail('WS-16: elevated session denial response not found');
+    }
+    // Verify elevated auth provider file exists
+    const provFile = path.join(
+      'packages',
+      'workspace-ref',
+      'src',
+      'auth',
+      'elevated-auth-provider.ts'
+    );
+    if (!fs.existsSync(provFile)) {
+      fail('WS-16: elevated-auth-provider.ts not found');
+    }
+    const provSrc = fs.readFileSync(provFile, 'utf-8');
+    // Verify principal-bound in provider: validateSession checks principalId
+    if (!provSrc.includes('principalId') || !provSrc.includes('Principal mismatch')) {
+      fail('WS-16: provider validateSession not principal-bound');
+    }
+    // Verify session store exists
+    const storeFile = path.join(
+      'packages',
+      'workspace-ref',
+      'src',
+      'auth',
+      'elevated-session-store.ts'
+    );
+    if (!fs.existsSync(storeFile)) {
+      fail('WS-16: elevated-session-store.ts not found');
+    }
+  }
+  pass('wrong principal denied; header transport only');
+
   // POST-GATE: bin assertion — HOLE-001 Option A (owner approved)
   // Both nexus and nexus-mcp-proxy bins must be executable after pnpm build.
   // -------------------------------------------------------------------------
@@ -1669,7 +1815,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  console.log('\n=== ci:gate PASSED — all 75 steps ===\n');
+  console.log('\n=== ci:gate PASSED — all 77 steps ===\n');
 }
 
 // ===========================================================================

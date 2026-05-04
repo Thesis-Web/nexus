@@ -92,6 +92,10 @@ export function registerAllRoutes(
       ? { workspaceApprovalBridge: deps.workspaceApprovalBridge }
       : {}),
     ...(deps.verifySignature !== undefined ? { verifySignature: deps.verifySignature } : {}),
+    ...(deps.elevatedAuthProvider !== undefined
+      ? { elevatedAuthProvider: deps.elevatedAuthProvider }
+      : {}),
+    ...(deps.catalogReader !== undefined ? { catalogReader: deps.catalogReader } : {}),
   });
 
   // Compile-return routes — callback signature auth [§5.1]

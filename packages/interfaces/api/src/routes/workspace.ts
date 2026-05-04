@@ -42,6 +42,14 @@ import type {
   PromptTemplate,
   SecureRail,
   ApprovalResponse,
+  ElevatedAuthProvider,
+  ElevatedAuthChallengeRequest,
+  ElevatedAuthVerifyRequest,
+  ElevatedSession,
+  ElevatedSessionStatus,
+  ElevatedAuthChallenge,
+  WorkspaceCatalogReaderPort,
+  CatalogItem,
 } from '@nexus/contracts';
 import { nowIso, addSeconds } from '@nexus/contracts';
 import { createHmac, randomUUID } from 'node:crypto';
@@ -79,6 +87,10 @@ export interface WorkspaceRouteDeps {
   workspaceApprovalBridge?: WorkspaceApprovalBridge;
   /** Signature verification function (injected by bootstrap) [§7.4] */
   verifySignature?: (payload: string, signature: string, publicKey: string) => Promise<boolean>;
+  /** Elevated auth provider [blueprint §3.9, §7.3] */
+  elevatedAuthProvider?: ElevatedAuthProvider;
+  /** Catalog reader [blueprint §4.2-4.4] */
+  catalogReader?: WorkspaceCatalogReaderPort;
 }
 
 // ─── JWT Helpers (reference-only HMAC-SHA256) ────────────────────────────────
@@ -206,6 +218,27 @@ const WorkspacePromptInputSchema = z.discriminatedUnion('promptMode', [
   SectionedSchema,
   SecureRailsSchema,
 ]);
+
+// §4: VaultAuthSchema — discriminatedUnion on 'action' [challenge, verify]
+const VaultChallengeSchema = z
+  .object({
+    action: z.literal('challenge'),
+    principalId: z.string(),
+    method: z.string(),
+  })
+  .strict();
+
+const VaultVerifySchema = z
+  .object({
+    action: z.literal('verify'),
+    challengeId: z.string(),
+    principalId: z.string(),
+    method: z.string(),
+    response: z.string(),
+  })
+  .strict();
+
+const VaultAuthSchema = z.discriminatedUnion('action', [VaultChallengeSchema, VaultVerifySchema]);
 
 export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRouteDeps>): void {
   // ═══════════════════════════════════════════════════════════════════════════
@@ -531,6 +564,54 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         }
       }
 
+      // §8.1/§8.2: secure rail events (gate 14) — write if promptMode === 'secure_rails'
+      if (input.promptMode === 'secure_rails') {
+        const railId = input.railId;
+        const railVersion = input.railVersion;
+        const elevSessionId = input.elevatedSessionId;
+
+        // workspace_secure_rail_selected — required details: railId, railVersion, principalId, elevatedSessionId
+        await deps.runLedgerWriter.writeEvent({
+          runId,
+          eventType: 'workspace_secure_rail_selected' as any,
+          timestamp: nowIso(),
+          actorId: null,
+          detail: {
+            railId,
+            railVersion,
+            principalId,
+            elevatedSessionId: elevSessionId,
+          },
+        });
+
+        // workspace_secure_rail_submitted — required details: railId, railVersion, runId, agentId, modelTier, elevatedSessionId
+        // Load rail to get agentId and modelTier
+        let railAgentId: string = 'unknown';
+        let railModelTier: string = 'unknown';
+        if (deps.secureRailStore) {
+          const rail = await deps.secureRailStore.get(railId, railVersion);
+          if (rail) {
+            railAgentId = rail.agentId;
+            railModelTier = rail.modelTier;
+          }
+        }
+
+        await deps.runLedgerWriter.writeEvent({
+          runId,
+          eventType: 'workspace_secure_rail_submitted' as any,
+          timestamp: nowIso(),
+          actorId: null,
+          detail: {
+            railId,
+            railVersion,
+            runId,
+            agentId: railAgentId,
+            modelTier: railModelTier,
+            elevatedSessionId: elevSessionId,
+          },
+        });
+      }
+
       // §6.2: dispatch to orchestrator if wired
       let planPreview: unknown = null;
       if (deps.dispatchToOrchestrator) {
@@ -693,6 +774,204 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
     try {
       const templates = await deps.promptTemplateStore.list();
       res.json({ ok: true, data: templates });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // §7.2 POST /workspace/vault/auth — elevated re-authentication
+  // JWT protected. VaultAuthSchema discriminated union (challenge | verify).
+  // Blueprint §3.9: configurable timeout, cannot be silently extended.
+  // Hard rule 6: elevated re-auth ≠ OCT change.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.post('/workspace/vault/auth', async (req: Request, res: Response) => {
+    if (!deps.elevatedAuthProvider || !deps.runLedgerWriter) {
+      res.status(501).json({ ok: false, error: 'Elevated auth not configured' });
+      return;
+    }
+
+    try {
+      const parsed = VaultAuthSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ ok: false, error: parsed.error.message });
+        return;
+      }
+      const input = parsed.data;
+
+      if (input.action === 'challenge') {
+        const challenge: ElevatedAuthChallenge = await deps.elevatedAuthProvider.challenge({
+          principalId: input.principalId,
+          method: input.method,
+        });
+        res.json({ ok: true, data: challenge });
+      } else {
+        // action === 'verify'
+        const session: ElevatedSession = await deps.elevatedAuthProvider.verify({
+          challengeId: input.challengeId as Uuid,
+          principalId: input.principalId,
+          method: input.method,
+          response: input.response,
+        });
+
+        // §8.2: workspace_vault_session_opened event — required details
+        await deps.runLedgerWriter.writeEvent({
+          runId: randomUUID() as Uuid,
+          eventType: 'workspace_vault_session_opened' as any,
+          timestamp: nowIso(),
+          actorId: null,
+          detail: {
+            principalId: input.principalId,
+            elevatedSessionId: session.elevatedSessionId,
+            authMethod: session.method,
+            expiresAt: session.expiresAt,
+            auditTargetMode: 'infra',
+          },
+        });
+
+        res.json({
+          ok: true,
+          data: { elevatedSessionId: session.elevatedSessionId, expiresAt: session.expiresAt },
+        });
+      }
+    } catch (err) {
+      res.status(400).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // §7.2 GET /workspace/vault/session — validate elevated session
+  // JWT + X-Elevated-Session header [§7.3]. Principal-bound [hard rule 30].
+  // Header transport only — NOT query string [hard rule 31].
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.get('/workspace/vault/session', async (req: Request, res: Response) => {
+    if (!deps.elevatedAuthProvider) {
+      res.status(501).json({ ok: false, error: 'Elevated auth not configured' });
+      return;
+    }
+
+    try {
+      const principalId = res.locals['principalId'] as string;
+
+      // §7.3 / hard rule 31: X-Elevated-Session header ONLY — not query string
+      const elevatedSessionId = req.headers['x-elevated-session'] as string | undefined;
+      if (!elevatedSessionId) {
+        res.status(403).json({ ok: false, error: 'X-Elevated-Session header required' });
+        return;
+      }
+
+      // Hard rule 30: principal-bound validation
+      const status: ElevatedSessionStatus = await deps.elevatedAuthProvider.validateSession(
+        elevatedSessionId as Uuid,
+        principalId
+      );
+
+      // §8.2: vault-session-closed event when session is not valid
+      if (!status.valid && deps.runLedgerWriter) {
+        await deps.runLedgerWriter.writeEvent({
+          runId: randomUUID() as Uuid,
+          eventType: 'workspace_vault_session_closed' as any,
+          timestamp: nowIso(),
+          actorId: null,
+          detail: {
+            principalId,
+            elevatedSessionId,
+            reason: status.reason ?? 'session invalid',
+            closedAt: nowIso(),
+          },
+        });
+      }
+
+      if (!status.valid) {
+        res.status(403).json({ ok: false, error: status.reason ?? 'Elevated session invalid' });
+        return;
+      }
+
+      res.json({ ok: true, data: status });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // §7.2 GET /workspace/catalogs/* — catalog routes
+  // agents, models, connectors: JWT only
+  // rails: JWT + X-Elevated-Session (elevated session required)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.get('/workspace/catalogs/agents', async (req: Request, res: Response) => {
+    if (!deps.catalogReader) {
+      res.status(501).json({ ok: false, error: 'Catalog not configured' });
+      return;
+    }
+    try {
+      const claims = res.locals['claims'] as IdentityClaims;
+      const items: CatalogItem[] = await deps.catalogReader.listAgents(claims);
+      res.json({ ok: true, data: items });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  app.get('/workspace/catalogs/models', async (req: Request, res: Response) => {
+    if (!deps.catalogReader) {
+      res.status(501).json({ ok: false, error: 'Catalog not configured' });
+      return;
+    }
+    try {
+      const claims = res.locals['claims'] as IdentityClaims;
+      const items: CatalogItem[] = await deps.catalogReader.listModels(claims);
+      res.json({ ok: true, data: items });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  app.get('/workspace/catalogs/connectors', async (req: Request, res: Response) => {
+    if (!deps.catalogReader) {
+      res.status(501).json({ ok: false, error: 'Catalog not configured' });
+      return;
+    }
+    try {
+      const claims = res.locals['claims'] as IdentityClaims;
+      const items: CatalogItem[] = await deps.catalogReader.listConnectors(claims);
+      res.json({ ok: true, data: items });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // Rails catalog: JWT + X-Elevated-Session required [§7.2]
+  app.get('/workspace/catalogs/rails', async (req: Request, res: Response) => {
+    if (!deps.secureRailStore || !deps.elevatedAuthProvider) {
+      res.status(501).json({ ok: false, error: 'Rail catalog not configured' });
+      return;
+    }
+
+    try {
+      const principalId = res.locals['principalId'] as string;
+
+      // §7.3 / hard rule 31: X-Elevated-Session header ONLY
+      const elevatedSessionId = req.headers['x-elevated-session'] as string | undefined;
+      if (!elevatedSessionId) {
+        res.status(403).json({ ok: false, error: 'X-Elevated-Session header required' });
+        return;
+      }
+
+      // Hard rule 30: principal-bound validation
+      const status = await deps.elevatedAuthProvider.validateSession(
+        elevatedSessionId as Uuid,
+        principalId
+      );
+      if (!status.valid) {
+        res.status(403).json({ ok: false, error: 'Elevated session required' });
+        return;
+      }
+
+      const rails = await deps.secureRailStore.list();
+      res.json({ ok: true, data: rails });
     } catch (err) {
       res.status(500).json({ ok: false, error: san(err) });
     }

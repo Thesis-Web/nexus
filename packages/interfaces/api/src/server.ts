@@ -77,6 +77,8 @@ import type {
   SecureRailStorePort,
   AdminSignerRegistry,
   WorkspaceApprovalBridge,
+  ElevatedAuthProvider,
+  WorkspaceCatalogReaderPort,
 } from '@nexus/contracts';
 import { registerAllRoutes } from './routes/index.js';
 
@@ -221,6 +223,12 @@ export interface ApiDependencies {
   workspaceApprovalBridge?: WorkspaceApprovalBridge;
   /** Signature verification function (injected by bootstrap) [§7.4] */
   verifySignature?: (payload: string, signature: string, publicKey: string) => Promise<boolean>;
+
+  // ── AMEND-nexus-spec-workspace §7.1 / W07: Elevated + Catalog deps ─────
+  /** Elevated auth provider [blueprint §3.9] */
+  elevatedAuthProvider?: ElevatedAuthProvider;
+  /** Catalog reader [blueprint §4.2-4.4] */
+  catalogReader?: WorkspaceCatalogReaderPort;
 }
 
 // ── §23.1 createApiServer — DI factory ───────────────────────────────────────
