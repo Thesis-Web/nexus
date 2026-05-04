@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "src/index.ts",
+  "main": "./dist/index.html",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "vite build"
@@ -22,5 +22,10 @@
     "@vitejs/plugin-react": "^4.0.0",
     "vite": "^6.0.0",
     "@types/better-sqlite3": "^7.0.0"
+  },
+  "exports": {
+    ".": {
+      "default": "./dist/index.html"
+    }
   }
 }

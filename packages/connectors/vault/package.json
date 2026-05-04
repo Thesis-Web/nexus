@@ -14,5 +14,12 @@
   "devDependencies": {
     "@types/node": "^20.17.30",
     "typescript": "^5.8.3"
+  },
+  "types": "./dist/hashicorp.connector.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/hashicorp.connector.d.ts",
+      "import": "./dist/hashicorp.connector.js"
+    }
   }
 }
