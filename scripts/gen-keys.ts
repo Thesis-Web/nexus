@@ -16,6 +16,7 @@ import {
   generateAdminToken,
   generateApproverKeypair,
   generateWorkspaceJwtSecret,
+  generateDevAdminApiKey,
 } from '../packages/core/src/crypto/key-manager.js';
 
 const args = process.argv.slice(2);
@@ -58,6 +59,13 @@ async function main(): Promise<void> {
   console.log(`  secret: ${jwtSecret.slice(0, 8)}... (truncated)`);
   console.log(`  usage:  workspace session JWT signing (HMAC-SHA256)`);
   console.log(`  note:   env var NEXUS_WORKSPACE_JWT_SECRET overrides file`);
+
+  const devAdminKey = await generateDevAdminApiKey();
+  console.log(`\nDev-admin bootstrap API key generated:`);
+  console.log(`  path:   keys/workspace-dev-admin.apikey`);
+  console.log(`  key:    ${devAdminKey}`);
+  console.log(`  actor:  dev-admin (HUMAN_OPERATOR, critical ceiling)`);
+  console.log(`  usage:  initial system configuration — replace with enterprise IAM`);
   console.log(`\nWARNING: keys/admin.token and keys/dev.keypair.json are gitignored.`);
   console.log(`         Back them up securely. Run "pnpm ci:gate" to verify the build.`);
 }

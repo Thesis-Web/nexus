@@ -63,7 +63,7 @@ import type {
 } from '@nexus/contracts';
 
 // ── Core: crypto ─────────────────────────────────────────────────────────────
-import { loadControlPlaneKey, loadWorkspaceJwtSecret } from '../packages/core/src/crypto/key-manager.js';
+import { loadControlPlaneKey, loadWorkspaceJwtSecret, loadDevAdminApiKey } from '../packages/core/src/crypto/key-manager.js';
 import { verify } from '../packages/core/src/crypto/verifier.js';
 import { canonicalize } from '../packages/core/src/crypto/canonicalize.js';
 
@@ -930,6 +930,42 @@ export async function bootstrapWorkspace(
     authProvider,
     jwtAuthProvider
   );
+
+  // ── Seed dev-admin bootstrap actor [RIA-SEED-001] ──────────────────────
+  // Reference bootstrap admin — the master key for fresh installs.
+  // Replace with enterprise IAM in production (blueprint §7.4).
+  const devAdminApiKey = await loadDevAdminApiKey();
+  if (devAdminApiKey) {
+    const DEV_ADMIN_PRINCIPAL_ID = '00000000-0000-4000-a000-000000000001' as Uuid;
+    const DEV_ADMIN_ACTOR_ID = '00000000-0000-4000-a000-000000000002' as Uuid;
+
+    await principalStore.register({
+      principalId: DEV_ADMIN_PRINCIPAL_ID,
+      displayName: 'dev-admin' as NonEmpty,
+      email: 'dev-admin@nexus.local' as NonEmpty,
+      registeredAt: new Date().toISOString(),
+      maxDelegableRiskTier: 'critical',
+      allowedSystems: ['*'],
+    });
+
+    await actorStore.register({
+      actorId: DEV_ADMIN_ACTOR_ID,
+      actorClass: 'HUMAN_OPERATOR',
+      principalId: DEV_ADMIN_PRINCIPAL_ID,
+      environment: 'reference',
+      riskCeiling: 'critical',
+      allowedSystems: ['*'],
+      allowedCapabilities: ['*'],
+      roles: ['admin'],
+      owner: 'system' as NonEmpty,
+      purpose: 'Reference bootstrap admin — replace with enterprise IAM in production' as NonEmpty,
+    });
+
+    authProvider.registerKey(devAdminApiKey, DEV_ADMIN_ACTOR_ID);
+    console.log('[workspace-bootstrap] dev-admin seeded (bootstrap admin)');
+  } else {
+    console.log('[workspace-bootstrap] dev-admin key not found — run nexus init');
+  }
 
   console.log('[workspace-bootstrap] Workspace reference stores constructed');
   console.log(`  DB: ${wsDbPath}`);

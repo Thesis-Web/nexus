@@ -113,6 +113,31 @@ export async function loadAdminToken(): Promise<string> {
  * 256-bit random, base64url encoded. Written to keys/workspace-jwt.secret.
  * Always gitignored. Same security posture as admin token.
  */
+/**
+ * Generate the dev-admin bootstrap API key.
+ * This is the master key for fresh installs — first user through the door.
+ * Written to keys/workspace-dev-admin.apikey. Always gitignored.
+ * Label: "Reference bootstrap admin — replace with enterprise IAM in production."
+ */
+export async function generateDevAdminApiKey(): Promise<string> {
+  const key = randomBytes(32).toString('base64url');
+  await fs.mkdir('keys', { recursive: true });
+  await fs.writeFile(path.join('keys', 'workspace-dev-admin.apikey'), key, 'utf-8');
+  return key;
+}
+
+/**
+ * Load the dev-admin bootstrap API key.
+ * Returns undefined if not found (workspace login will fail — run nexus init).
+ */
+export async function loadDevAdminApiKey(): Promise<string | undefined> {
+  try {
+    return (await fs.readFile(path.join('keys', 'workspace-dev-admin.apikey'), 'utf-8')).trim();
+  } catch {
+    return undefined;
+  }
+}
+
 export async function generateWorkspaceJwtSecret(): Promise<string> {
   const secret = randomBytes(32).toString('base64url');
   await fs.mkdir('keys', { recursive: true });

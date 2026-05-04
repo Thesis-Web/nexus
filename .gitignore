@@ -20,6 +20,7 @@ runs/
 # Keys — gitignore law per spec §7.1 and blueprint
 keys/admin.token
 keys/workspace-jwt.secret
+keys/workspace-dev-admin.apikey
 keys/approvers/
 keys/admins/
 
