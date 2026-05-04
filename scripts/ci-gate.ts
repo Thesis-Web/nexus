@@ -3363,6 +3363,12 @@ async function runDeploymentGate(): Promise<void> {
     fail('DEPLOY-01: dist/nexus-main.js not found — build:entry did not run');
   }
 
+  // 79.1b: Generate keys if missing (CI environment)
+  const adminTokenPath = path.join(process.cwd(), 'keys', 'admin.token');
+  if (!fs.existsSync(adminTokenPath)) {
+    runCmd('node dist/nexus-main.js init');
+  }
+
   // 79.2: Boot server on isolated port
   const serverProc = spawn('node', [ENTRY_FILE, 'serve', '--port', String(DEPLOY_PORT)], {
     stdio: ['ignore', 'pipe', 'pipe'],
