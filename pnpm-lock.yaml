@@ -253,6 +253,9 @@ importers:
       '@nexus/contracts':
         specifier: workspace:*
         version: link:../contracts
+      better-sqlite3:
+        specifier: ^11.0.0
+        version: 11.10.0
       react:
         specifier: ^19.0.0
         version: 19.2.5
@@ -263,6 +266,9 @@ importers:
         specifier: ^8.0.0
         version: 8.20.0
     devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.0.0
+        version: 7.6.13
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.14

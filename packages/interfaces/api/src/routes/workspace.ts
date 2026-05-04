@@ -1,67 +1,271 @@
 /**
- * Workspace Reference Harness Route — AMEND-spec §6.2, §11.2
+ * Workspace Governed Route — AMEND-nexus-spec-workspace-v1-1-1 §5, §6, §7
  *
  * File: packages/interfaces/api/src/routes/workspace.ts
- * Layer 7 — reference harness for workspace entry and run status.
+ * Layer 7 — governed workspace routes with JWT auth split.
  * Imports @nexus/contracts ONLY. Service instances injected by DI.
  *
- * POST /workspace/runs — reference workspace entry
- * GET  /workspace/runs/:runId — run status summary from Run Ledger
+ * Route registration order (§5.1, GWS5-AUD-01):
+ *   1. POST /workspace/auth/login — NO JWT required (issues the JWT)
+ *   2. Blanket /workspace/* JWT middleware
+ *   3. All other /workspace/* routes (protected by JWT)
  *
- * REFERENCE HARNESS — NOT INFRA LAW. This route is a test plug proving
- * the workspace socket, runId wire, prompt digest, ledger open event,
- * and orchestrator handoff. Production workspace implementations replace
- * it through the workspace manifest/factory surface.
+ * Auth split (T16-F02): workspace routes use JWT, admin routes use bearer token.
+ * Principal binding (T8-F02): principalId from server-resolved claims, never body.
+ * JWT secret fail-closed (GWS5-N02): if workspaceJwtSecret missing → 501 / reject.
  *
- * Behavior (§6.2):
- *   1. authenticate or resolve identity through configured identity provider
- *   2. generate runId = crypto.randomUUID()
- *   3. enteredAt = nowIso()
- *   4. promptDigest = sha256(canonicalize({ runId, prompt, enteredAt, workspaceSocketId }))
- *   5. build WorkspaceRunRequest
- *   6. write Run Ledger event run_opened
- *   7. forward request to orchestrator socket
- *   8. return { runId, planPreview? }
- *
- * Run Ledger run_opened detail must NOT include raw prompt by default (§6.2).
+ * OD-WS-ROUTE-001: Replaces EXT-12 reference harness workspace route.
+ * Body-supplied principalId is no longer accepted on governed routes.
  */
-import type { Express } from 'express';
+import type { Express, Request, Response, NextFunction } from 'express';
 import type {
   RunLedgerWriter,
   IdentityProviderInterface,
   WorkspaceRunRequest,
   WorkspaceManifestRecord,
+  WorkspaceSessionStorePort,
   Uuid,
   NonEmpty,
   Sha256Hex,
+  IsoTimestamp,
+  IdentityClaims,
 } from '@nexus/contracts';
-import { nowIso } from '@nexus/contracts';
-import { randomUUID } from 'node:crypto';
+import { nowIso, addSeconds } from '@nexus/contracts';
+import { createHmac, randomUUID } from 'node:crypto';
 import { san } from './shared.js';
 
-// ─── DI Dependencies ───
-// All service instances injected by bootstrap via API server.
-// Route does NOT import core/vanguard implementations — Layer 7 import law.
+// ─── DI Dependencies ────────────────────────────────────────────────────────
 
 export interface WorkspaceRouteDeps {
-  /** RunLedgerWriter for lifecycle events. */
   runLedgerWriter: RunLedgerWriter;
-  /** IdentityProviderInterface for user authentication. */
   identityProvider: IdentityProviderInterface;
-  /** Loaded workspace manifest records from bootstrap. */
   workspaceSockets: readonly WorkspaceManifestRecord[];
-  /** Digest function: sha256(canonicalize(obj)). Injected because route cannot import core crypto. */
   computeDigest: (obj: unknown) => Sha256Hex;
-  /** Optional: forward WorkspaceRunRequest to orchestrator dispatch. */
   dispatchToOrchestrator?: (request: WorkspaceRunRequest) => Promise<unknown>;
+  /** Workspace session store — required for JWT login/validation [§5.2, §5.3] */
+  workspaceSessionStore?: WorkspaceSessionStorePort;
+  /** HMAC-SHA256 shared secret for workspace JWTs [§5.7] */
+  workspaceJwtSecret?: string;
 }
 
-// ─── Route Registration ───
+// ─── JWT Helpers (reference-only HMAC-SHA256) ────────────────────────────────
+
+interface WorkspaceJwtPayload {
+  sub: string;
+  sid: string;
+  exp: number;
+  iat: number;
+}
+
+function base64urlEncode(data: Buffer | string): string {
+  const buf = typeof data === 'string' ? Buffer.from(data) : data;
+  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function base64urlDecode(input: string): Buffer {
+  const padded = input.replace(/-/g, '+').replace(/_/g, '/');
+  return Buffer.from(padded, 'base64');
+}
+
+function signJwt(payload: WorkspaceJwtPayload, secret: string): string {
+  const header = base64urlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const body = base64urlEncode(JSON.stringify(payload));
+  const sig = base64urlEncode(createHmac('sha256', secret).update(`${header}.${body}`).digest());
+  return `${header}.${body}.${sig}`;
+}
+
+function verifyJwt(token: string, secret: string): WorkspaceJwtPayload | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const headerB64 = parts[0]!;
+  const payloadB64 = parts[1]!;
+  const signatureB64 = parts[2]!;
+
+  // Verify header
+  try {
+    const header = JSON.parse(base64urlDecode(headerB64).toString('utf-8')) as {
+      alg?: string;
+    };
+    if (header.alg !== 'HS256') return null;
+  } catch {
+    return null;
+  }
+
+  // Verify HMAC signature (timing-safe)
+  const expected = createHmac('sha256', secret).update(`${headerB64}.${payloadB64}`).digest();
+  const actual = base64urlDecode(signatureB64);
+  if (expected.length !== actual.length) return null;
+  let mismatch = 0;
+  for (let i = 0; i < expected.length; i++) {
+    mismatch |= expected[i]! ^ actual[i]!;
+  }
+  if (mismatch !== 0) return null;
+
+  // Decode payload
+  try {
+    const payload = JSON.parse(
+      base64urlDecode(payloadB64).toString('utf-8')
+    ) as WorkspaceJwtPayload;
+    if (!payload.sub || !payload.sid || typeof payload.exp !== 'number') return null;
+    // Check expiry
+    if (payload.exp <= Math.floor(Date.now() / 1000)) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Route Registration ─────────────────────────────────────────────────────
+
+/** Default workspace session TTL: 8 hours */
+const SESSION_TTL_SECONDS = 8 * 60 * 60;
 
 export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRouteDeps>): void {
-  // ── POST /workspace/runs — §6.2 workspace entry ──────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // §5.2 POST /workspace/auth/login — NO JWT required [GWS5-AUD-01]
+  // Registered BEFORE the blanket /workspace/* JWT middleware.
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  app.post('/workspace/runs', async (req, res) => {
+  app.post('/workspace/auth/login', async (req: Request, res: Response) => {
+    // §5.7: JWT secret fail-closed
+    if (!deps.workspaceJwtSecret) {
+      res.status(501).json({ ok: false, error: 'Workspace JWT not configured' });
+      return;
+    }
+    if (!deps.identityProvider || !deps.workspaceSessionStore) {
+      res.status(501).json({ ok: false, error: 'Workspace auth not configured' });
+      return;
+    }
+
+    try {
+      const body = req.body as Record<string, unknown>;
+      const credType = body['type'] as string | undefined;
+      const credValue = body['value'] as string | undefined;
+
+      if (!credType || !credValue) {
+        res.status(400).json({ ok: false, error: 'type and value required' });
+        return;
+      }
+
+      // §5.2 step 1: authenticate via identityProvider
+      const actorId = await deps.identityProvider.authenticate({
+        type: credType as 'api_key' | 'jwt' | 'oauth_token',
+        value: credValue as NonEmpty,
+      });
+
+      // §5.2 step 2: resolve identity → five claims
+      const claims = await deps.identityProvider.resolveIdentity(actorId);
+      if (!claims) {
+        res.status(403).json({ ok: false, error: 'Identity resolution failed' });
+        return;
+      }
+
+      // §5.2 step 3-4: mint session
+      const workspaceAuthSessionId = randomUUID() as Uuid;
+      const issuedAt = nowIso();
+      const expiresAt = addSeconds(issuedAt, SESSION_TTL_SECONDS);
+
+      const session = {
+        workspaceAuthSessionId,
+        principalId: claims.principalIdentity,
+        actorId: actorId as Uuid,
+        issuedAt,
+        expiresAt,
+      };
+
+      // §5.2 step 5: store session
+      deps.workspaceSessionStore.create(session);
+
+      // §5.2 step 6: issue workspace JWT
+      const nowSec = Math.floor(Date.now() / 1000);
+      const token = signJwt(
+        {
+          sub: actorId,
+          sid: workspaceAuthSessionId,
+          exp: nowSec + SESSION_TTL_SECONDS,
+          iat: nowSec,
+        },
+        deps.workspaceJwtSecret
+      );
+
+      // §5.2 step 7: return
+      res.json({
+        ok: true,
+        data: { token, workspaceAuthSessionId, expiresAt },
+      });
+    } catch (err) {
+      res.status(401).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // §5.3 JWT Middleware — blanket /workspace/* [GWS3-AUD-04]
+  // Registered AFTER login route. Applies to all other /workspace/* routes.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.use('/workspace', async (req: Request, res: Response, next: NextFunction) => {
+    // §5.7: JWT secret fail-closed
+    if (!deps.workspaceJwtSecret || !deps.workspaceSessionStore || !deps.identityProvider) {
+      res.status(501).json({ ok: false, error: 'Workspace JWT not configured' });
+      return;
+    }
+
+    // Extract Bearer token
+    const auth = req.headers['authorization'] ?? '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    if (!token) {
+      res.status(401).json({ ok: false, error: 'Unauthorized' });
+      return;
+    }
+
+    // §5.3 step 1: verify JWT signature
+    const payload = verifyJwt(token, deps.workspaceJwtSecret);
+    if (!payload) {
+      res.status(401).json({ ok: false, error: 'Invalid or expired token' });
+      return;
+    }
+
+    // §5.3 step 2-3: extract sid, load session [GWS3-AUD-04]
+    const session = await deps.workspaceSessionStore.get(payload.sid as Uuid);
+    if (!session) {
+      res.status(401).json({ ok: false, error: 'Session not found or expired' });
+      return;
+    }
+
+    // §5.3 step 5: verify session.actorId === payload.sub [GWS3-AUD-04]
+    if (session.actorId !== payload.sub) {
+      res.status(401).json({ ok: false, error: 'Session actor mismatch' });
+      return;
+    }
+
+    // §5.3 step 6: re-resolve claims
+    const claims = await deps.identityProvider.resolveIdentity(payload.sub as NonEmpty);
+    if (!claims) {
+      res.status(403).json({ ok: false, error: 'Identity resolution failed' });
+      return;
+    }
+
+    // §5.3 step 7: verify claims.principalIdentity === session.principalId [GWS3-AUD-04]
+    if (claims.principalIdentity !== session.principalId) {
+      res.status(401).json({ ok: false, error: 'Principal identity mismatch' });
+      return;
+    }
+
+    // §5.3 step 8: attach to request via res.locals
+    res.locals['principalId'] = claims.principalIdentity;
+    res.locals['actorId'] = payload.sub;
+    res.locals['claims'] = claims;
+    res.locals['workspaceAuthSessionId'] = payload.sid;
+
+    next();
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // §6.1 POST /workspace/runs — governed workspace entry
+  // Principal from server-resolved claims (T8-F02), never body.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.post('/workspace/runs', async (req: Request, res: Response) => {
     if (
       !deps.runLedgerWriter ||
       !deps.identityProvider ||
@@ -74,27 +278,18 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
 
     try {
       const body = req.body as Record<string, unknown>;
-      const userId = body['userId'] as string | undefined;
-      const principalId = body['principalId'] as string | undefined;
       const prompt = body['prompt'] as string | undefined;
       const selectedAgentIds = (body['selectedAgentIds'] ?? []) as string[];
       const planCheckbackRequested = (body['planCheckbackRequested'] ?? false) as boolean;
 
-      // Validate required inputs
-      if (!userId || !principalId || !prompt) {
-        res.status(400).json({
-          ok: false,
-          error: 'userId, principalId, and prompt are required',
-        });
+      if (!prompt) {
+        res.status(400).json({ ok: false, error: 'prompt is required' });
         return;
       }
 
-      // §6.2 step 1: authenticate or resolve identity
-      const identity = await deps.identityProvider.resolveIdentity(userId as NonEmpty);
-      if (!identity) {
-        res.status(403).json({ ok: false, error: 'Identity resolution failed' });
-        return;
-      }
+      // §5.5 Principal binding (T8-F02): server-resolved, never body-supplied
+      const principalId = res.locals['principalId'] as string;
+      const actorId = res.locals['actorId'] as string;
 
       // Resolve first enabled workspace socket
       const workspace = deps.workspaceSockets.find(ws => ws.enabled);
@@ -103,12 +298,11 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         return;
       }
 
-      // §6.2 step 2-3: generate runId, enteredAt
+      // §6.1 steps 2-4
       const runId = randomUUID() as Uuid;
       const enteredAt = nowIso();
       const workspaceSocketId = workspace.workspaceSocketId;
 
-      // §6.2 step 4: promptDigest = sha256(canonicalize({ runId, prompt, enteredAt, workspaceSocketId }))
       const promptDigest = deps.computeDigest({
         runId,
         prompt,
@@ -116,10 +310,10 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         workspaceSocketId,
       });
 
-      // §6.2 step 5: build WorkspaceRunRequest
+      // §6.1 step 5: build WorkspaceRunRequest
       const request: WorkspaceRunRequest = {
         runId,
-        userId: userId as NonEmpty,
+        userId: actorId as NonEmpty,
         principalId: principalId as Uuid,
         authenticatedBy: deps.identityProvider.providerType as NonEmpty,
         enteredAt,
@@ -131,8 +325,7 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         planCheckbackRequested,
       };
 
-      // §6.2 step 6: write Run Ledger run_opened
-      // Detail must NOT include raw prompt by default (§6.2).
+      // §6.1 step 5: write run_opened — no raw prompt in detail (hard rule 19)
       await deps.runLedgerWriter.writeEvent({
         runId,
         eventType: 'run_opened',
@@ -140,7 +333,7 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         actorId: null,
         detail: {
           workspaceSocketId,
-          userId,
+          userId: actorId,
           principalId,
           authenticatedBy: deps.identityProvider.providerType,
           promptDigest,
@@ -149,22 +342,21 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         },
       });
 
-      // §6.2 step 7: forward to orchestrator if wired
+      // §6.2: dispatch to orchestrator if wired
       let planPreview: unknown = null;
       if (deps.dispatchToOrchestrator) {
         planPreview = await deps.dispatchToOrchestrator(request);
       }
 
-      // §6.2 step 8: return { runId, planPreview? }
       res.json({ ok: true, data: { runId, planPreview } });
     } catch (err) {
       res.status(500).json({ ok: false, error: san(err) });
     }
   });
 
-  // ── GET /workspace/runs/:runId — §11.2 run status summary ────────────────
+  // ── GET /workspace/runs/:runId — run status (JWT protected) ────────────────
 
-  app.get('/workspace/runs/:runId', async (req, res) => {
+  app.get('/workspace/runs/:runId', async (req: Request, res: Response) => {
     if (!deps.runLedgerWriter) {
       res.status(501).json({ ok: false, error: 'Workspace not configured' });
       return;

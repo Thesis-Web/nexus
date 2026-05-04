@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — 62 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 2 WS (AMEND-nexus-spec-workspace §10).
+ * Nexus CI Gate — 66 steps: 20 base (§6.4) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 6 WS (AMEND-nexus-spec-workspace §10).
  *
  * Governing law:
  *   §6.4   — 19-step ci:gate sequence (F-02a)
@@ -1148,6 +1148,110 @@ async function main(): Promise<void> {
     pass(`${scanned} file(s) — contracts-only imports`);
   }
 
+  // Step 63: WS-03 workspace-static-order gate
+  // §10 gate 3: static after API, SPA fallback last
+  stepLog('WS-03 workspace-static-order gate');
+  {
+    const serverFile = path.join('packages', 'interfaces', 'api', 'src', 'server.ts');
+    if (!fs.existsSync(serverFile)) fail('WS-03: server.ts not found');
+    const src = fs.readFileSync(serverFile, 'utf-8');
+    const regIdx = src.indexOf('registerAllRoutes');
+    const staticIdx = src.indexOf('express.static');
+    const spaIdx = src.indexOf("app.get('*'");
+    if (staticIdx < 0) fail('WS-03: express.static not found in server.ts');
+    if (spaIdx < 0) fail('WS-03: SPA fallback route not found in server.ts');
+    if (regIdx < 0) fail('WS-03: registerAllRoutes not found in server.ts');
+    if (staticIdx < regIdx) fail('WS-03: static serving registered BEFORE API routes');
+    if (spaIdx < staticIdx) fail('WS-03: SPA fallback before static serving');
+  }
+  pass('static after API, SPA fallback last');
+
+  // Step 64: WS-04 workspace-auth-split gate
+  // §10 gate 4: JWT for /workspace (except login), admin for /admin
+  stepLog('WS-04 workspace-auth-split gate');
+  {
+    const serverFile = path.join('packages', 'interfaces', 'api', 'src', 'server.ts');
+    const src = fs.readFileSync(serverFile, 'utf-8');
+    // Verify no global app.use(adminAuth) — must be path-scoped
+    const lines = src.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed === 'app.use(adminAuth);') {
+        fail('WS-04: global app.use(adminAuth) found — must be path-scoped (T16-F02)');
+      }
+    }
+    // Verify adminAuth passed to registerAllRoutes
+    if (!src.includes('adminAuth)')) {
+      fail('WS-04: adminAuth not passed to registerAllRoutes');
+    }
+    // Verify workspace routes file has JWT middleware
+    const wsFile = path.join('packages', 'interfaces', 'api', 'src', 'routes', 'workspace.ts');
+    const wsSrc = fs.readFileSync(wsFile, 'utf-8');
+    if (!wsSrc.includes("app.use('/workspace'")) {
+      fail('WS-04: workspace JWT middleware not found');
+    }
+    // Verify login route registered before middleware
+    const loginIdx = wsSrc.indexOf('/workspace/auth/login');
+    const mwIdx = wsSrc.indexOf("app.use('/workspace'");
+    if (loginIdx < 0) fail('WS-04: login route not found');
+    if (mwIdx < 0) fail('WS-04: workspace middleware not found');
+    if (loginIdx > mwIdx) fail('WS-04: login route registered AFTER JWT middleware');
+  }
+  pass('JWT for /workspace (except login), admin for /admin');
+
+  // Step 65: WS-05 workspace-auth-session gate
+  // §10 gate 5: login + session verification structural checks
+  stepLog('WS-05 workspace-auth-session gate');
+  {
+    const wsFile = path.join('packages', 'interfaces', 'api', 'src', 'routes', 'workspace.ts');
+    const wsSrc = fs.readFileSync(wsFile, 'utf-8');
+    // Login route exists and authenticates
+    if (!wsSrc.includes('identityProvider.authenticate')) {
+      fail('WS-05: login route does not call identityProvider.authenticate');
+    }
+    // Session creation
+    if (!wsSrc.includes('workspaceSessionStore')) {
+      fail('WS-05: workspace session store not used');
+    }
+    // JWT verification in middleware
+    if (!wsSrc.includes('verifyJwt')) {
+      fail('WS-05: JWT verification not found in middleware');
+    }
+    // Session lookup in middleware
+    if (!wsSrc.includes('sessionStore.get') || !wsSrc.includes('session.actorId !== payload.sub')) {
+      // Check for the actual pattern used
+      if (!wsSrc.includes('workspaceSessionStore.get')) {
+        fail('WS-05: session lookup not found in middleware');
+      }
+    }
+    // JWT secret fail-closed
+    if (!wsSrc.includes('501')) {
+      fail('WS-05: JWT secret fail-closed (501) not found');
+    }
+  }
+  pass('login + session + JWT verification structural checks');
+
+  // Step 66: WS-06 workspace-principal-bind gate
+  // §10 gate 6: body principalId ignored, server-resolved used
+  stepLog('WS-06 workspace-principal-bind gate');
+  {
+    const wsFile = path.join('packages', 'interfaces', 'api', 'src', 'routes', 'workspace.ts');
+    const wsSrc = fs.readFileSync(wsFile, 'utf-8');
+    // POST /workspace/runs must use res.locals for principalId
+    if (!wsSrc.includes("res.locals['principalId']")) {
+      fail('WS-06: server-resolved principalId (res.locals) not found');
+    }
+    // Must NOT read principalId from body in the runs route
+    // Find the runs route handler section
+    const runsIdx = wsSrc.indexOf("app.post('/workspace/runs'");
+    if (runsIdx < 0) fail('WS-06: POST /workspace/runs route not found');
+    const runsSection = wsSrc.slice(runsIdx, runsIdx + 1500);
+    if (runsSection.includes("body['principalId']") || runsSection.includes('body.principalId')) {
+      fail('WS-06: POST /workspace/runs reads principalId from body — must use server-resolved');
+    }
+  }
+  pass('body principalId ignored; server-resolved used');
+
   // POST-GATE: bin assertion — HOLE-001 Option A (owner approved)
   // Both nexus and nexus-mcp-proxy bins must be executable after pnpm build.
   // -------------------------------------------------------------------------
@@ -1167,7 +1271,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  console.log('\n=== ci:gate PASSED — all 62 steps ===\n');
+  console.log('\n=== ci:gate PASSED — all 66 steps ===\n');
 }
 
 // ===========================================================================

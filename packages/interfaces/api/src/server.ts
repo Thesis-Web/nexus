@@ -26,6 +26,8 @@
  *   CompileReturnDispatcher  — via bootstrap-owned type only
  */
 import express, { type Request, type Response, type NextFunction } from 'express';
+import path from 'node:path';
+import fs from 'node:fs';
 import { timingSafeEqual } from 'node:crypto';
 import type {
   ActorRegistry,
@@ -65,6 +67,7 @@ import type {
   NonEmpty,
   IsoTimestamp,
   Sha256Hex,
+  WorkspaceSessionStorePort,
 } from '@nexus/contracts';
 import { registerAllRoutes } from './routes/index.js';
 
@@ -184,6 +187,11 @@ export interface ApiDependencies {
   verifyTemplate?: (template: CompileTemplate) => Promise<void>;
   storeTemplate?: (template: CompileTemplate, ingestedBy: NonEmpty) => void;
   templateExists?: (templateId: NonEmpty, templateVersion: NonEmpty) => boolean;
+
+  // ── AMEND-nexus-spec-workspace §7.1: Workspace auth deps ─────────────────
+  workspaceSessionStore?: WorkspaceSessionStorePort;
+  /** HMAC-SHA256 secret for workspace JWTs. If missing → workspace auth fails closed (501). */
+  workspaceJwtSecret?: string;
 }
 
 // ── §23.1 createApiServer — DI factory ───────────────────────────────────────
@@ -218,10 +226,20 @@ export function createApiServer(deps: ApiDependencies): {
     }
     next();
   }
-  app.use(adminAuth);
 
   // ── Register all routes from routes/ directory (BS-D2-004, EXT-12) ──────
-  registerAllRoutes(app, deps, { currentPolicy: null });
+  registerAllRoutes(app, deps, { currentPolicy: null }, adminAuth);
+
+  // ── Static serving — after all API routes [blueprint §2.2] ────────────────
+  // Order: API routes → static assets → SPA fallback (LAST)
+  const distPath = path.join(process.cwd(), 'packages', 'workspace-ref', 'dist');
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    // SPA fallback — catches unmatched GET requests for client-side routing
+    app.get('*', (_req: Request, res: Response) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
 
   // ── Server start ──────────────────────────────────────────────────────────
   function startServer(port: number = 7701): void {

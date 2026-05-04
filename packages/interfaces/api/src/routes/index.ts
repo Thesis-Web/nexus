@@ -2,8 +2,17 @@
  * API Routes barrel — spec §6.1 (routes/ directory), §23.2
  * AMEND-spec §11.2 — registers all route modules including reference harness.
  * AMEND-spec-nexus-compile §6 — registers template admin route.
- * Registers all route modules on the Express app.
- * Layer 7 — imports @nexus/contracts ONLY.
+ * AMEND-nexus-spec-workspace §5.1 — auth split (T16-F02).
+ *
+ * Auth split:
+ *   /workspace/* → JWT auth (handled internally by workspace routes)
+ *   /compile-return/* → callback signature (handled internally)
+ *   /admin/*, legacy → admin bearer auth (via adminAuth middleware)
+ *
+ * Registration order per blueprint §2.2:
+ *   1. Workspace routes (own JWT auth — login before middleware)
+ *   2. Compile-return routes (own callback sig auth)
+ *   3. Admin-authenticated routes (via Router with adminAuth)
  *
  * NOTE: Optional deps from ApiDependencies are conditionally spread into
  * route registration calls. With exactOptionalPropertyTypes: true,
@@ -12,7 +21,7 @@
  * Conditional spread omits the key entirely when the value is undefined,
  * which satisfies the optional property contract.
  */
-import type { Express } from 'express';
+import type { Express, RequestHandler } from 'express';
 import type { ApiDependencies } from '../server.js';
 import type { ApiSharedState } from './shared.js';
 
@@ -37,8 +46,76 @@ import { registerTemplateRoutes } from './templates.js';
 export function registerAllRoutes(
   app: Express,
   deps: ApiDependencies,
-  state: ApiSharedState
+  state: ApiSharedState,
+  adminAuth: RequestHandler
 ): void {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Self-authenticating routes — registered BEFORE adminAuth
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Workspace routes — JWT auth handled internally [§5.1, GWS5-AUD-01]
+  // Login route registered first, then /workspace/* JWT middleware, then routes.
+  registerWorkspaceRoutes(app, {
+    ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
+    ...(deps.identityProvider !== undefined ? { identityProvider: deps.identityProvider } : {}),
+    ...(deps.workspaceSockets !== undefined ? { workspaceSockets: deps.workspaceSockets } : {}),
+    ...(deps.computeDigest !== undefined ? { computeDigest: deps.computeDigest } : {}),
+    ...(deps.dispatchToOrchestrator !== undefined
+      ? { dispatchToOrchestrator: deps.dispatchToOrchestrator }
+      : {}),
+    ...(deps.workspaceSessionStore !== undefined
+      ? { workspaceSessionStore: deps.workspaceSessionStore }
+      : {}),
+    ...(deps.workspaceJwtSecret !== undefined
+      ? { workspaceJwtSecret: deps.workspaceJwtSecret }
+      : {}),
+  });
+
+  // Compile-return routes — callback signature auth [§5.1]
+  registerCompileReturnRoutes(app, {
+    ...(deps.getReturnEndpoint !== undefined ? { getReturnEndpoint: deps.getReturnEndpoint } : {}),
+    ...(deps.verifyCallbackSignature !== undefined
+      ? { verifyCallbackSignature: deps.verifyCallbackSignature }
+      : {}),
+    ...(deps.verifyArtifactSignature !== undefined
+      ? { verifyArtifactSignature: deps.verifyArtifactSignature }
+      : {}),
+    ...(deps.recomputeArtifactDigest !== undefined
+      ? { recomputeArtifactDigest: deps.recomputeArtifactDigest }
+      : {}),
+    ...(deps.controlPlanePublicKey !== undefined
+      ? { controlPlanePublicKey: deps.controlPlanePublicKey }
+      : {}),
+    ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Admin-authenticated routes — path-scoped adminAuth bearer token [T16-F02]
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Path-scoped admin auth — applies only to legacy + admin paths, not workspace/static
+  const adminPaths = [
+    '/actors',
+    '/principals',
+    '/sessions',
+    '/delegations',
+    '/policies',
+    '/approvals',
+    '/ledger',
+    '/posture',
+    '/run-ledger',
+    '/modes',
+    '/nvg',
+    '/orchestrator',
+    '/mailbox',
+    '/compile',
+    '/admin',
+  ];
+  for (const p of adminPaths) {
+    app.use(p, adminAuth);
+  }
+
+  // Legacy routes
   registerPrincipalRoutes(app, { principalRegistry: deps.principalRegistry });
   registerActorRoutes(app, { actorRegistry: deps.actorRegistry });
   registerSessionRoutes(app, {
@@ -63,7 +140,6 @@ export function registerAllRoutes(
   });
   registerPostureRoutes(app, { actorRegistry: deps.actorRegistry });
 
-  // Optional deps: conditional spread to satisfy exactOptionalPropertyTypes
   registerRunLedgerRoutes(app, {
     ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
   });
@@ -81,20 +157,7 @@ export function registerAllRoutes(
       : {}),
   });
 
-  // ── EXT-12: Reference harness routes — AMEND-spec §11.2 ──────────────────
-
-  // Workspace reference harness — §6.2
-  registerWorkspaceRoutes(app, {
-    ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
-    ...(deps.identityProvider !== undefined ? { identityProvider: deps.identityProvider } : {}),
-    ...(deps.workspaceSockets !== undefined ? { workspaceSockets: deps.workspaceSockets } : {}),
-    ...(deps.computeDigest !== undefined ? { computeDigest: deps.computeDigest } : {}),
-    ...(deps.dispatchToOrchestrator !== undefined
-      ? { dispatchToOrchestrator: deps.dispatchToOrchestrator }
-      : {}),
-  });
-
-  // Orchestrator reference harness — §6.3
+  // Reference harness routes — admin-authenticated
   registerOrchestratorRoutes(app, {
     ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
     ...(deps.orchestratorSockets !== undefined
@@ -104,13 +167,11 @@ export function registerAllRoutes(
     orchestrator: deps.orchestrator ?? null,
   });
 
-  // Mailbox reference harness — §11.2
   registerMailboxRoutes(app, {
     ...(deps.mailboxService !== undefined ? { mailboxService: deps.mailboxService } : {}),
     ...(deps.primaryMailbox !== undefined ? { primaryMailbox: deps.primaryMailbox } : {}),
   });
 
-  // Compile reference harness — §6.8
   registerCompileRoutes(app, {
     ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
     ...(deps.outputCollector !== undefined ? { outputCollector: deps.outputCollector } : {}),
@@ -128,26 +189,7 @@ export function registerAllRoutes(
       : {}),
   });
 
-  // Compile-return reference harness — §6.9 (EXT-10, wired here)
-  registerCompileReturnRoutes(app, {
-    ...(deps.getReturnEndpoint !== undefined ? { getReturnEndpoint: deps.getReturnEndpoint } : {}),
-    ...(deps.verifyCallbackSignature !== undefined
-      ? { verifyCallbackSignature: deps.verifyCallbackSignature }
-      : {}),
-    ...(deps.verifyArtifactSignature !== undefined
-      ? { verifyArtifactSignature: deps.verifyArtifactSignature }
-      : {}),
-    ...(deps.recomputeArtifactDigest !== undefined
-      ? { recomputeArtifactDigest: deps.recomputeArtifactDigest }
-      : {}),
-    ...(deps.controlPlanePublicKey !== undefined
-      ? { controlPlanePublicKey: deps.controlPlanePublicKey }
-      : {}),
-    // runLedgerWriter already spread above — reuse for compile-return
-    ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
-  });
-
-  // Template admin route — AMEND-spec-nexus-compile §6
+  // Template admin route — admin-authenticated
   registerTemplateRoutes(app, {
     ...(deps.validateTemplate !== undefined ? { validateTemplate: deps.validateTemplate } : {}),
     ...(deps.verifyTemplate !== undefined ? { verifyTemplate: deps.verifyTemplate } : {}),

@@ -16,6 +16,7 @@ import type {
 import type { ReferenceActorStore } from './actor-store.js';
 import type { ReferencePrincipalStore } from './principal-store.js';
 import type { ReferenceAuthProvider } from './auth/api-key.js';
+import type { JwtAuthProvider } from './auth/jwt.js';
 
 export class ReferenceIdentityAdapter implements IdentityProviderInterface {
   readonly providerType = 'reference_adapter' as const;
@@ -24,7 +25,8 @@ export class ReferenceIdentityAdapter implements IdentityProviderInterface {
   constructor(
     private readonly actorStore: ReferenceActorStore,
     private readonly principalStore: ReferencePrincipalStore,
-    private readonly authProvider: ReferenceAuthProvider
+    private readonly authProvider: ReferenceAuthProvider,
+    private readonly jwtProvider?: JwtAuthProvider
   ) {}
 
   async resolveIdentity(actorIdentifier: NonEmpty): Promise<IdentityClaims | null> {
@@ -50,6 +52,10 @@ export class ReferenceIdentityAdapter implements IdentityProviderInterface {
   }
 
   async authenticate(credentials: AuthCredentials): Promise<NonEmpty> {
+    // §5.6 HOLE-D2-003: route by credentials.type
+    if (credentials.type === 'jwt' && this.jwtProvider) {
+      return this.jwtProvider.validate(credentials);
+    }
     return this.authProvider.validate(credentials);
   }
 }

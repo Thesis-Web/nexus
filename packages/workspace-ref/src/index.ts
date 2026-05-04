@@ -5,5 +5,5 @@
 // Concrete store implementations exported here for bootstrap DI wiring.
 // API routes import contract-level port interfaces from @nexus/contracts,
 // NOT these concrete implementations (§0.5 plug-and-play law).
-//
-// Expanded in W02–W07 as stores are built.
+
+export { SqliteWorkspaceSessionStore } from './auth/workspace-session-store.js';
