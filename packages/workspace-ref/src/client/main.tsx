@@ -41,6 +41,11 @@ function App() {
   const [agents, setAgents] = useState<CatalogItem[]>([]);
   const [models, setModels] = useState<CatalogItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState('');
+  const [planRejection, setPlanRejection] = useState<{
+    reason: string;
+    reasonDetail: string;
+  } | null>(null);
 
   // Load catalogs on auth
   useEffect(() => {
@@ -65,10 +70,25 @@ function App() {
   const handleSubmit = useCallback(
     async (submission: PromptSubmission) => {
       setSubmitting(true);
+      setPlanRejection(null);
       try {
+        // Include topbar-selected agent if submission has no explicit agents
+        if (!submission.agents?.length && selectedAgent) {
+          submission.agents = [selectedAgent];
+        }
+
         const res = await createRun(submission as unknown as Record<string, unknown>);
         if (res.ok && res.data) {
-          const { runId } = res.data;
+          const { runId, planPreview } = res.data;
+
+          // Detect plan rejection from immediate response
+          const preview = planPreview as Record<string, unknown> | null;
+          if (preview && preview['rejected'] === true) {
+            setPlanRejection({
+              reason: (preview['reason'] as string) ?? 'unknown',
+              reasonDetail: (preview['reasonDetail'] as string) ?? '',
+            });
+          }
 
           // Add to runs list
           const newRun: RunEntry = {
@@ -89,7 +109,7 @@ function App() {
         setSubmitting(false);
       }
     },
-    [runEvents]
+    [runEvents, selectedAgent]
   );
 
   // Handle file upload
@@ -137,8 +157,12 @@ function App() {
         <span className="nx-badge nx-badge--governed">Governed</span>
         <div className="nx-topbar-spacer" />
         <div className="nx-topbar-controls">
-          <select className="nx-select">
-            <option>Default agent</option>
+          <select
+            className="nx-select"
+            value={selectedAgent}
+            onChange={e => setSelectedAgent(e.target.value)}
+          >
+            <option value="">Select an agent</option>
             {agents
               .filter(a => a.selectable)
               .map(a => (
@@ -179,7 +203,12 @@ function App() {
 
         <main className="nx-main">
           {/* Run display area */}
-          <RunDisplay runId={activeRunId} events={runEvents.events} status={runEvents.status} />
+          <RunDisplay
+            runId={activeRunId}
+            events={runEvents.events}
+            status={runEvents.status}
+            planRejection={planRejection}
+          />
 
           {/* Prompt panel */}
           <PromptPanel

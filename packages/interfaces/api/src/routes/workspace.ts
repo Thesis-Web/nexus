@@ -682,6 +682,7 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
       }
 
       const isClosed = events.some(e => e.eventType === 'run_closed');
+      const rejectionEvent = events.find(e => e.eventType === 'plan_rejected');
 
       res.json({
         ok: true,
@@ -691,6 +692,16 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
           eventTypes: events.map(e => e.eventType),
           status: isClosed ? 'closed' : 'open',
           lastEvent: events[events.length - 1]?.eventType ?? null,
+          ...(rejectionEvent
+            ? {
+                rejection: {
+                  reason:
+                    (rejectionEvent.detail as Record<string, unknown>)?.['reason'] ?? 'unknown',
+                  reasonDetail:
+                    (rejectionEvent.detail as Record<string, unknown>)?.['reasonDetail'] ?? '',
+                },
+              }
+            : {}),
         },
       });
     } catch (err) {

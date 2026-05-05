@@ -1014,7 +1014,7 @@ export async function bootstrapWorkspace(
         displayName: 'nexus-default-agent-svc' as NonEmpty,
         email: 'agent@nexus.local' as NonEmpty,
         registeredAt: now,
-        maxDelegableRiskTier: 'moderate',
+        maxDelegableRiskTier: 'medium',
         allowedSystems: ['stub'],
       });
     }
@@ -1026,7 +1026,7 @@ export async function bootstrapWorkspace(
         displayName: 'nexus-default-agent' as NonEmpty,
         environment: 'reference',
         octLevel: 'OCT-OPEN',
-        riskCeiling: 'moderate',
+        riskCeiling: 'medium',
         allowedSystems: ['stub'],
         allowedCapabilities: ['read:record:single', 'search:data', 'synthesize:content'],
         enabled: true,

@@ -10,6 +10,7 @@ interface RunDisplayProps {
   runId: string | null;
   events: RunEvent[];
   status: { status: string; eventTypes: string[] } | null;
+  planRejection?: { reason: string; reasonDetail: string } | null;
 }
 
 interface AgentResult {
@@ -27,7 +28,7 @@ interface ApprovalPrompt {
   runId: string;
 }
 
-export function RunDisplay({ runId, events, status }: RunDisplayProps) {
+export function RunDisplay({ runId, events, status, planRejection }: RunDisplayProps) {
   const [approvalStates, setApprovalStates] = useState<
     Record<string, 'pending' | 'approved' | 'denied'>
   >({});
@@ -80,6 +81,16 @@ export function RunDisplay({ runId, events, status }: RunDisplayProps) {
   const isClosed = status?.status === 'closed';
   const hasDispatched = status?.eventTypes.includes('orchestrator_dispatched') ?? false;
   const isCompiling = status?.eventTypes.includes('compile_started') ?? false;
+  const isRejected =
+    planRejection != null || (status?.eventTypes.includes('plan_rejected') ?? false);
+  const rejectionDetail =
+    planRejection?.reasonDetail ??
+    (
+      (status as Record<string, unknown> | null)?.['rejection'] as
+        | Record<string, string>
+        | undefined
+    )?.reasonDetail ??
+    null;
 
   const handleApproval = async (approvalId: string, decision: 'approved' | 'denied') => {
     setApprovalStates(s => ({ ...s, [approvalId]: decision }));
@@ -102,17 +113,19 @@ export function RunDisplay({ runId, events, status }: RunDisplayProps) {
         <div className="nx-run-status">
           <div className={`nx-status-dot ${isClosed ? 'nx-status-dot--idle' : ''}`} />
           <span className="nx-status-text">
-            {isCompiling
-              ? 'Compiling final response…'
-              : finalResponse
-                ? 'Run complete'
-                : hasDispatched
-                  ? `Run active — ${agentCount || '?'} agent${agentCount !== 1 ? 's' : ''} dispatched`
-                  : isOpen
-                    ? 'Run opened — awaiting dispatch'
-                    : isClosed
-                      ? 'Run closed'
-                      : 'Initializing…'}
+            {isRejected
+              ? `Plan rejected${rejectionDetail ? ` — ${rejectionDetail}` : ''}`
+              : isCompiling
+                ? 'Compiling final response…'
+                : finalResponse
+                  ? 'Run complete'
+                  : hasDispatched
+                    ? `Run active — ${agentCount || '?'} agent${agentCount !== 1 ? 's' : ''} dispatched`
+                    : isOpen
+                      ? 'Run opened — awaiting dispatch'
+                      : isClosed
+                        ? 'Run closed'
+                        : 'Initializing…'}
           </span>
           {hasDispatched && !finalResponse && (
             <div className="nx-progress-bars">
@@ -209,8 +222,29 @@ export function RunDisplay({ runId, events, status }: RunDisplayProps) {
           </div>
         )}
 
+        {/* Plan rejection card */}
+        {isRejected && (
+          <div className="nx-agent-card" style={{ borderColor: 'var(--nx-red-border, #ef4444)' }}>
+            <div className="nx-agent-card-header">
+              <span
+                className="nx-badge"
+                style={{
+                  background: 'var(--nx-red-dim, #fef2f2)',
+                  color: 'var(--nx-red, #ef4444)',
+                }}
+              >
+                Rejected
+              </span>
+            </div>
+            <div className="nx-agent-card-body">
+              {rejectionDetail ||
+                'No agents selected. Select an agent from the toolbar and try again.'}
+            </div>
+          </div>
+        )}
+
         {/* Empty state for active run with no events yet */}
-        {events.length === 0 && isOpen && (
+        {events.length === 0 && isOpen && !isRejected && (
           <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--nx-text-muted)' }}>
             Awaiting agent dispatch…
           </div>

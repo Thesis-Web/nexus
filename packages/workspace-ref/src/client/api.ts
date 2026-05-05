@@ -60,6 +60,7 @@ export interface RunStatus {
   eventTypes: string[];
   status: 'open' | 'closed';
   lastEvent: string | null;
+  rejection?: { reason: string; reasonDetail: string } | null;
 }
 
 export async function createRun(input: Record<string, unknown>): Promise<ApiResponse<RunResult>> {
