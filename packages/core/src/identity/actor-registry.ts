@@ -23,6 +23,8 @@ interface ActorRow {
   environment: string;
   risk_ceiling: string;
   allowed_systems: string;
+  allowed_capabilities: string;
+  enabled: number;
   registered_at: string;
   owner: string | null;
   purpose: string | null;
@@ -39,6 +41,8 @@ function rowToActor(row: ActorRow): Actor {
     environment: row.environment,
     riskCeiling: row.risk_ceiling,
     allowedSystems: JSON.parse(row.allowed_systems) as string[],
+    allowedCapabilities: JSON.parse(row.allowed_capabilities) as string[],
+    enabled: row.enabled === 1,
     registeredAt: row.registered_at,
     // OCT-001 FIX: null octLevel permitted — actors start without OCT.
     // Gate 02 enforces fail-closed: null/unknown OCT = deny.
@@ -89,8 +93,9 @@ export class SqliteActorRegistry implements ActorRegistry {
       .prepare(
         `INSERT INTO actors
           (actor_id, actor_class, principal_id, display_name, environment, risk_ceiling,
-           allowed_systems, registered_at, owner, purpose, review_cadence, oct_level)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           allowed_systems, allowed_capabilities, enabled,
+           registered_at, owner, purpose, review_cadence, oct_level)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         actor.actorId,
@@ -100,6 +105,8 @@ export class SqliteActorRegistry implements ActorRegistry {
         actor.environment,
         actor.riskCeiling,
         JSON.stringify(actor.allowedSystems),
+        JSON.stringify(actor.allowedCapabilities ?? []),
+        (actor.enabled ?? true) ? 1 : 0,
         actor.registeredAt,
         actor.owner ?? null,
         actor.purpose ?? null,

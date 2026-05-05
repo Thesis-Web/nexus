@@ -29,9 +29,11 @@ export function initializeSchema(db: Database.Database): void {
       owner               TEXT,
       purpose             TEXT,
       review_cadence      TEXT,
-      oct_level           TEXT DEFAULT NULL,
-      approver_public_key TEXT,
-      approver_channels   TEXT
+      oct_level             TEXT DEFAULT NULL,
+      allowed_capabilities  TEXT NOT NULL DEFAULT '[]',
+      enabled               INTEGER NOT NULL DEFAULT 1,
+      approver_public_key   TEXT,
+      approver_channels     TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_actors_principal   ON actors(principal_id);
     CREATE INDEX IF NOT EXISTS idx_actors_environment ON actors(environment);
@@ -96,13 +98,15 @@ export function initializeSchema(db: Database.Database): void {
   `);
 }
 
-// Migration: add oct_level column for existing databases
+// Migration: add columns for existing databases
 function migrateSchema(db: Database.Database): void {
   const cols = db.prepare('PRAGMA table_info(actors)').all() as Array<{ name: string }>;
-  const hasOctLevel = cols.some(c => c.name === 'oct_level');
-  if (!hasOctLevel) {
-    db.exec('ALTER TABLE actors ADD COLUMN oct_level TEXT DEFAULT NULL');
-  }
+  const names = new Set(cols.map(c => c.name));
+  if (!names.has('oct_level')) db.exec('ALTER TABLE actors ADD COLUMN oct_level TEXT DEFAULT NULL');
+  if (!names.has('allowed_capabilities'))
+    db.exec("ALTER TABLE actors ADD COLUMN allowed_capabilities TEXT NOT NULL DEFAULT '[]'");
+  if (!names.has('enabled'))
+    db.exec('ALTER TABLE actors ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
 }
 
 export function openDatabase(dbPath: string): Database.Database {

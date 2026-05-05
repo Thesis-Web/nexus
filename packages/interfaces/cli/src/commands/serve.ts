@@ -51,6 +51,10 @@ export type WorkspaceApiDeps = Partial<
     | 'workspaceJwtSecret'
     | 'workspaceSockets'
     | 'computeDigest'
+    | 'dispatchToOrchestrator'
+    | 'orchestrator'
+    | 'orchestratorSockets'
+    | 'pipelineInterface'
   >
 >;
 
@@ -58,6 +62,13 @@ export interface WorkspaceBootstrapCoreDeps {
   approvalStore: ApiDependencies['approvalStore'];
   decideApproval: ApiDependencies['decideApproval'];
   loadApproverKey: (principalId: string) => Promise<string | null>;
+  // ORCH-WIRE-001: canonical stores for actor unification + orchestrator wiring
+  actorRegistry: ApiDependencies['actorRegistry'];
+  principalRegistry: ApiDependencies['principalRegistry'];
+  delegationStore: ApiDependencies['delegationStore'];
+  ledgerBackend: ApiDependencies['ledgerBackend'];
+  runLedgerWriter: ApiDependencies['runLedgerWriter'];
+  db: import('better-sqlite3').Database;
 }
 
 import { openDb } from '../db.js';
@@ -142,6 +153,12 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
       approvalStore: baseDeps.approvalStore,
       decideApproval,
       loadApproverKey,
+      actorRegistry: baseDeps.actorRegistry,
+      principalRegistry: baseDeps.principalRegistry,
+      delegationStore: baseDeps.delegationStore,
+      ledgerBackend: baseDeps.ledgerBackend,
+      runLedgerWriter: baseDeps.runLedgerWriter,
+      db,
     });
     console.log('[serve] Workspace deps resolved');
   }

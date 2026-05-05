@@ -32,6 +32,9 @@
  */
 
 import type {
+  Actor,
+  ActorRegistry,
+  PrincipalRegistry,
   IdentityProviderFactory,
   ConnectorFactory,
   ApprovalChannelFactory,
@@ -842,6 +845,9 @@ export interface WorkspaceBootstrapCoreDeps {
   ) => Promise<ApprovalResponse>;
   /** Resolve principalId → approverId. Null = not a registered approver. */
   loadApproverKey: (principalId: string) => Promise<string | null>;
+  // ORCH-WIRE-001: canonical stores
+  actorRegistry: ActorRegistry;
+  principalRegistry: PrincipalRegistry;
 }
 
 /**
@@ -920,53 +926,117 @@ export async function bootstrapWorkspace(
     loadApproverKey: coreDeps.loadApproverKey,
   });
 
-  // ── Identity provider (reference adapter — empty stores, needs seeding) ──
-  // ADD-WSBOOT-001: not in micro-spec but required by workspace JWT middleware.
-  // Without it, middleware returns 501. Reference stores are empty on init —
-  // actors must be registered via management API before workspace is usable.
-  const actorStore = new InMemoryActorStore();
-  const principalStore = new InMemoryPrincipalStore();
+  // ── ORCH-WIRE-001: Identity provider backed by canonical NXS ActorRegistry ──
+  const canonicalActorAdapter: import('../packages/identity-ref/src/actor-store.js').ReferenceActorStore =
+    {
+      async get(actorIdentifier) {
+        const actor = await coreDeps.actorRegistry.get(actorIdentifier as Uuid);
+        if (!actor) return null;
+        return {
+          actorId: actor.actorId,
+          actorClass: actor.actorClass,
+          principalId: actor.principalId,
+          environment: actor.environment,
+          riskCeiling: actor.riskCeiling,
+          allowedSystems: actor.allowedSystems,
+          allowedCapabilities: actor.allowedCapabilities ?? [],
+          roles: [],
+          ...(actor.owner !== undefined ? { owner: actor.owner } : {}),
+          ...(actor.purpose !== undefined ? { purpose: actor.purpose } : {}),
+          ...(actor.reviewCadence !== undefined ? { reviewCadence: actor.reviewCadence } : {}),
+        };
+      },
+      async register() {
+        throw new Error('Use actorRegistry.register() — adapter is read-only');
+      },
+    };
+  const canonicalPrincipalAdapter: import('../packages/identity-ref/src/principal-store.js').ReferencePrincipalStore =
+    {
+      async get(principalId) {
+        return coreDeps.principalRegistry.get(principalId);
+      },
+      async register() {
+        throw new Error('Use principalRegistry.register() — adapter is read-only');
+      },
+    };
+
   const authProvider = new ApiKeyAuthProvider();
   const jwtAuthProvider = jwtSecret ? new JwtAuthProvider(jwtSecret) : undefined;
   const identityProvider = new ReferenceIdentityAdapter(
-    actorStore,
-    principalStore,
+    canonicalActorAdapter,
+    canonicalPrincipalAdapter,
     authProvider,
     jwtAuthProvider
   );
 
-  // ── Seed dev-admin bootstrap actor [RIA-SEED-001] ──────────────────────
-  // Reference bootstrap admin — the master key for fresh installs.
-  // Replace with enterprise IAM in production (blueprint §7.4).
+  // ── Seed dev-admin + default agent in canonical NXS ActorRegistry ──────
   const devAdminApiKey = await loadDevAdminApiKey();
   if (devAdminApiKey) {
     const DEV_ADMIN_PRINCIPAL_ID = '00000000-0000-4000-a000-000000000001' as Uuid;
     const DEV_ADMIN_ACTOR_ID = '00000000-0000-4000-a000-000000000002' as Uuid;
+    const DEFAULT_AGENT_PRINCIPAL_ID = '00000000-0000-4000-a000-000000000003' as Uuid;
+    const DEFAULT_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000004' as Uuid;
+    const now = new Date().toISOString();
 
-    await principalStore.register({
-      principalId: DEV_ADMIN_PRINCIPAL_ID,
-      displayName: 'dev-admin' as NonEmpty,
-      email: 'dev-admin@nexus.local' as NonEmpty,
-      registeredAt: new Date().toISOString(),
-      maxDelegableRiskTier: 'critical',
-      allowedSystems: ['*'],
-    });
-
-    await actorStore.register({
-      actorId: DEV_ADMIN_ACTOR_ID,
-      actorClass: 'HUMAN_OPERATOR',
-      principalId: DEV_ADMIN_PRINCIPAL_ID,
-      environment: 'reference',
-      riskCeiling: 'critical',
-      allowedSystems: ['*'],
-      allowedCapabilities: ['*'],
-      roles: ['admin'],
-      owner: 'system' as NonEmpty,
-      purpose: 'Reference bootstrap admin — replace with enterprise IAM in production' as NonEmpty,
-    });
-
+    if (!(await coreDeps.principalRegistry.get(DEV_ADMIN_PRINCIPAL_ID))) {
+      await coreDeps.principalRegistry.register({
+        principalId: DEV_ADMIN_PRINCIPAL_ID,
+        displayName: 'dev-admin' as NonEmpty,
+        email: 'dev-admin@nexus.local' as NonEmpty,
+        registeredAt: now,
+        maxDelegableRiskTier: 'critical',
+        allowedSystems: ['*'],
+      });
+    }
+    if (!(await coreDeps.actorRegistry.get(DEV_ADMIN_ACTOR_ID))) {
+      await coreDeps.actorRegistry.register({
+        actorId: DEV_ADMIN_ACTOR_ID,
+        actorClass: 'HUMAN',
+        principalId: DEV_ADMIN_PRINCIPAL_ID,
+        displayName: 'dev-admin' as NonEmpty,
+        environment: 'reference',
+        octLevel: 'OCT-OPEN',
+        riskCeiling: 'critical',
+        allowedSystems: ['*'],
+        allowedCapabilities: ['*'],
+        enabled: true,
+        registeredAt: now,
+        owner: 'system' as NonEmpty,
+        purpose: 'Reference bootstrap admin' as NonEmpty,
+        reviewCadence: 'quarterly' as NonEmpty,
+      } as Actor);
+    }
     authProvider.registerKey(devAdminApiKey, DEV_ADMIN_ACTOR_ID);
-    console.log('[workspace-bootstrap] dev-admin seeded (bootstrap admin)');
+
+    if (!(await coreDeps.principalRegistry.get(DEFAULT_AGENT_PRINCIPAL_ID))) {
+      await coreDeps.principalRegistry.register({
+        principalId: DEFAULT_AGENT_PRINCIPAL_ID,
+        displayName: 'nexus-default-agent-svc' as NonEmpty,
+        email: 'agent@nexus.local' as NonEmpty,
+        registeredAt: now,
+        maxDelegableRiskTier: 'moderate',
+        allowedSystems: ['stub'],
+      });
+    }
+    if (!(await coreDeps.actorRegistry.get(DEFAULT_AGENT_ACTOR_ID))) {
+      await coreDeps.actorRegistry.register({
+        actorId: DEFAULT_AGENT_ACTOR_ID,
+        actorClass: 'SUPERVISED_AGENT',
+        principalId: DEFAULT_AGENT_PRINCIPAL_ID,
+        displayName: 'nexus-default-agent' as NonEmpty,
+        environment: 'reference',
+        octLevel: 'OCT-OPEN',
+        riskCeiling: 'moderate',
+        allowedSystems: ['stub'],
+        allowedCapabilities: ['read:record:single', 'search:data', 'synthesize:content'],
+        enabled: true,
+        registeredAt: now,
+        owner: 'system' as NonEmpty,
+        purpose: 'Default supervised agent for reference deployment' as NonEmpty,
+        reviewCadence: 'quarterly' as NonEmpty,
+      } as Actor);
+    }
+    console.log('[workspace-bootstrap] dev-admin + default-agent seeded (canonical NXS store)');
   } else {
     console.log('[workspace-bootstrap] dev-admin key not found — run nexus init');
   }

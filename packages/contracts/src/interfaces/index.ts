@@ -36,6 +36,7 @@ export interface Principal {
 }
 
 // ─── §12.3.2 Actor ───
+// ORCH-WIRE-001: allowedCapabilities + enabled — governed agent profile [§20.2].
 export interface Actor {
   actorId: Uuid;
   actorClass: ActorClass;
@@ -45,6 +46,8 @@ export interface Actor {
   octLevel: OctLevel | null;
   riskCeiling: RiskTier;
   allowedSystems: string[];
+  allowedCapabilities?: string[];
+  enabled?: boolean;
   registeredAt: IsoTimestamp;
   owner?: NonEmpty;
   purpose?: NonEmpty;
@@ -568,6 +571,7 @@ export interface DelegationStore {
 // ─── §12.3.30 Registry Interfaces ───
 export interface ActorRegistry {
   get(actorId: Uuid): Promise<Actor | null>;
+  getByClass(actorClass: ActorClass): Promise<Actor[]>;
   register(actor: Actor): Promise<void>;
   updateOct(actorId: Uuid, octLevel: OctLevel): Promise<void>;
   list(): Promise<Actor[]>;
