@@ -49,6 +49,8 @@ export type WorkspaceApiDeps = Partial<
     | 'adminSignerRegistry'
     | 'verifySignature'
     | 'workspaceJwtSecret'
+    | 'workspaceSockets'
+    | 'computeDigest'
   >
 >;
 

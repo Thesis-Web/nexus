@@ -32,7 +32,9 @@ import { SimpleConnectorRegistry, canonicalize, verify, loadControlPlaneKey } fr
 import { StubConnector } from '@nexus/connector-stub';
 import { createCli } from '@nexus/cli';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 
+import type { Sha256Hex } from '@nexus/contracts';
 import { bootstrap, bootstrapWorkspace, type BootstrapResult } from './nexus-bootstrap.js';
 
 const DEFAULT_TRAIL_DIR = path.join(process.cwd(), 'runs');
@@ -68,7 +70,16 @@ const program = createCli({
     const br = await getBootstrap();
     return br.nvgService;
   },
-  bootstrapWorkspaceApiDeps: coreDeps => bootstrapWorkspace(coreDeps),
+  bootstrapWorkspaceApiDeps: async coreDeps => {
+    const br = await getBootstrap();
+    const wsDeps = await bootstrapWorkspace(coreDeps);
+    return {
+      ...wsDeps,
+      workspaceSockets: br.externals.workspaceSockets,
+      computeDigest: (obj: unknown): Sha256Hex =>
+        createHash('sha256').update(canonicalize(obj)).digest('hex') as Sha256Hex,
+    };
+  },
 });
 
 // Filter out bare '--' that pnpm may inject between script path and subcommands.

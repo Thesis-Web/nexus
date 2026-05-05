@@ -2,6 +2,7 @@
   "name": "@nexus/orch-ref",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "External reference — Reference Orchestrator with pluggable deterministic planner",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
