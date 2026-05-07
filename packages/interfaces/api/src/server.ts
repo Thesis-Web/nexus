@@ -88,6 +88,31 @@ import { registerAllRoutes } from './routes/index.js';
 
 // ── §23.1 + §11.1 ApiDependencies — constructor injection contract ──────────
 
+// ── SPEC-ADMIN-WRITER §3 — ManifestWriter DI contract ──────────────────────
+// Structural interface matching ManifestWriterService from @nexus/core.
+// Defined here to avoid Layer 7 → Layer 1 import. DI structural typing bridges.
+export interface ManifestWriter {
+  addEntry(
+    manifestPath: string,
+    arrayKey: string,
+    entry: Record<string, unknown>,
+    idKey: string
+  ): Promise<Record<string, unknown>[]>;
+  updateEntry(
+    manifestPath: string,
+    arrayKey: string,
+    entryId: string,
+    updates: Record<string, unknown>,
+    idKey: string
+  ): Promise<Record<string, unknown>[]>;
+  removeEntry(
+    manifestPath: string,
+    arrayKey: string,
+    entryId: string,
+    idKey: string
+  ): Promise<Record<string, unknown>[]>;
+}
+
 export interface ApiDependencies {
   // ── Core registries and stores (Layer 2 interfaces) ──────────────────────
   actorRegistry: ActorRegistry;
@@ -250,6 +275,10 @@ export interface ApiDependencies {
   compileReturnRecords?: readonly CompileReturnEndpointRecord[];
   /** Model endpoints (NVG) for admin-setup models_nvg surface. */
   endpoints?: readonly ModelEndpoint[];
+
+  // ── SPEC-ADMIN-WRITER §3 — Manifest writer for admin dashboard mutations ──
+  /** Generic YAML manifest writer (endpoints + connectors). Injected from serve. */
+  manifestWriter?: ManifestWriter;
 }
 
 // ── §23.1 createApiServer — DI factory ───────────────────────────────────────

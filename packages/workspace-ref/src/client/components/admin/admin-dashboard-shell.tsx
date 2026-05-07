@@ -3,6 +3,8 @@
 // SPEC-addendum §2.1 — auth state machine ends at dashboardReadOnlyMounted.
 // Owner ruling SCOPE-A01 (2026-05-06): same React bundle, real /admin URL route.
 // Claude B turn 04: surface-id switch routes to per-surface panels (11).
+// Claude C: data fetch from GET /workspace/admin/setup/status.
+// Claude D: pass elevatedSessionId to panels for writer operations.
 //
 // Composition: header (with elevated session countdown + back-to-workspace) +
 // left nav (surface list) + main pane (overview, per-surface panel, or
@@ -50,8 +52,8 @@ const NAV: readonly NavItem[] = [
 
 interface Props {
   principalId: string;
-  elevatedSessionId: string;
   remainingSeconds: number;
+  elevatedSessionId: string;
   onExitToWorkspace: () => void;
   onLogoutElevated: () => void;
 }
@@ -67,37 +69,47 @@ function formatRemaining(seconds: number): string {
  * Surface-id switch — routes to per-surface panels.
  * Unknown surface ids fall through to AdminCategoryPage (placeholder).
  *
- * Claude C wire-in: `data` sourced from `getSetupStatus()` response.
- * Each panel's optional `data` prop receives its matching surface;
- * panels fall back to placeholder data when `data` is undefined.
+ * Claude D: panels for the 3 writer surfaces receive `elevatedSessionId`
+ * so they can POST/PUT/DELETE through the admin-writer routes.
  */
-function renderSurface(surfaceId: string, title: string, data: DashboardSurfaceStatus | undefined) {
-  // exactOptionalPropertyTypes: panels declare `data?: DashboardSurfaceStatus`
-  // so we must omit the prop entirely when data is undefined, not pass undefined.
-  const dataProps = data ? { data } : {};
+function renderSurface(
+  surfaceId: string,
+  title: string,
+  data: DashboardSurfaceStatus | undefined,
+  elevatedSessionId: string
+) {
   switch (surfaceId) {
     case 'identity':
-      return <IdentityProviderSetupPanel {...dataProps} />;
+      return <IdentityProviderSetupPanel {...(data ? { data } : {})} />;
     case 'actors_agents':
-      return <ActorAgentSetupPanel {...dataProps} />;
+      return (
+        <ActorAgentSetupPanel {...(data ? { data } : {})} elevatedSessionId={elevatedSessionId} />
+      );
     case 'connectors_targets':
-      return <ConnectorSetupPanel {...dataProps} />;
+      return (
+        <ConnectorSetupPanel {...(data ? { data } : {})} elevatedSessionId={elevatedSessionId} />
+      );
     case 'models_nvg':
-      return <ModelEndpointSetupPanel {...dataProps} />;
+      return (
+        <ModelEndpointSetupPanel
+          {...(data ? { data } : {})}
+          elevatedSessionId={elevatedSessionId}
+        />
+      );
     case 'channels_approval':
-      return <ChannelSetupPanel {...dataProps} />;
+      return <ChannelSetupPanel {...(data ? { data } : {})} />;
     case 'workspace':
-      return <WorkspaceSetupPanel {...dataProps} />;
+      return <WorkspaceSetupPanel {...(data ? { data } : {})} />;
     case 'orchestrator':
-      return <OrchestratorSetupPanel {...dataProps} />;
+      return <OrchestratorSetupPanel {...(data ? { data } : {})} />;
     case 'mailbox_compile_return':
-      return <CompileMailboxSetupPanel {...dataProps} />;
+      return <CompileMailboxSetupPanel {...(data ? { data } : {})} />;
     case 'modes_policy_oct':
-      return <ModePolicySetupPanel {...dataProps} />;
+      return <ModePolicySetupPanel {...(data ? { data } : {})} />;
     case 'observability':
-      return <LedgerViewerPanel {...dataProps} />;
+      return <LedgerViewerPanel {...(data ? { data } : {})} />;
     case 'toolchain':
-      return <ToolchainKeysPanel {...dataProps} />;
+      return <ToolchainKeysPanel {...(data ? { data } : {})} />;
     default:
       return <AdminCategoryPage surfaceId={surfaceId} title={title} />;
   }
@@ -105,15 +117,15 @@ function renderSurface(surfaceId: string, title: string, data: DashboardSurfaceS
 
 export function AdminDashboardShell({
   principalId,
-  elevatedSessionId,
   remainingSeconds,
+  elevatedSessionId,
   onExitToWorkspace,
   onLogoutElevated,
 }: Props) {
   const [activeSurfaceId, setActiveSurfaceId] = useState<string>('overview');
   const activeNav = NAV.find(n => n.surfaceId === activeSurfaceId) ?? NAV[0]!;
 
-  // ── Fetch setup status from Claude C projection routes ──────────────────
+  // ── Data fetch from projection API (Claude C backend) ───────────────────
   const [setupData, setSetupData] = useState<DashboardSetupStatusResponse | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupLoading, setSetupLoading] = useState(true);
@@ -122,9 +134,8 @@ export function AdminDashboardShell({
     if (!elevatedSessionId) return;
     let cancelled = false;
     setSetupLoading(true);
-    void (async () => {
-      try {
-        const res = await getSetupStatus(elevatedSessionId);
+    getSetupStatus(elevatedSessionId)
+      .then(res => {
         if (cancelled) return;
         if (res.ok && res.data) {
           setSetupData(res.data);
@@ -132,21 +143,22 @@ export function AdminDashboardShell({
         } else {
           setSetupError(res.error ?? 'Failed to load setup status');
         }
-      } catch (err) {
-        if (!cancelled) {
-          setSetupError(err instanceof Error ? err.message : 'Network error');
-        }
-      } finally {
-        if (!cancelled) setSetupLoading(false);
-      }
-    })();
+        setSetupLoading(false);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setSetupError(String(err));
+        setSetupLoading(false);
+      });
     return () => {
       cancelled = true;
     };
   }, [elevatedSessionId]);
 
+  /** Lookup a single surface by id from the fetched status data. */
   function findSurface(surfaceId: string): DashboardSurfaceStatus | undefined {
-    return setupData?.surfaces.find(s => s.surfaceId === surfaceId);
+    if (!setupData) return undefined;
+    return setupData.surfaces.find(s => s.surfaceId === surfaceId);
   }
 
   return (
@@ -157,6 +169,12 @@ export function AdminDashboardShell({
           Principal: <code>{principalId || '(unknown)'}</code>
         </span>
         <div className="nx-admin-shell__spacer" />
+        {setupLoading && <span className="nx-admin-shell__loading">Loading…</span>}
+        {setupError && (
+          <span className="nx-admin-shell__error" title={setupError}>
+            ⚠ data error
+          </span>
+        )}
         <span className="nx-admin-shell__elev" title="Elevated session remaining">
           Elevated: {formatRemaining(remainingSeconds)}
         </span>
@@ -187,25 +205,20 @@ export function AdminDashboardShell({
         </nav>
 
         <main className="nx-admin-shell__content">
-          {setupLoading && (
-            <div className="nx-admin-shell__loading" role="status">
-              Loading setup status…
-            </div>
-          )}
-          {setupError && (
-            <div className="nx-admin-shell__error" role="alert">
-              Setup status unavailable: {setupError}
-            </div>
-          )}
           {activeSurfaceId === 'overview' ? (
             <AdminSetupOverview
               onSelectSurface={setActiveSurfaceId}
-              {...(setupData?.surfaces ? { surfaces: setupData.surfaces } : {})}
-              loading={setupLoading}
-              error={setupError}
+              {...(setupData ? { surfaces: setupData.surfaces } : {})}
+              {...(setupLoading ? { loading: true } : {})}
+              {...(setupError ? { error: setupError } : {})}
             />
           ) : (
-            renderSurface(activeSurfaceId, activeNav.title, findSurface(activeSurfaceId))
+            renderSurface(
+              activeSurfaceId,
+              activeNav.title,
+              findSurface(activeSurfaceId),
+              elevatedSessionId
+            )
           )}
         </main>
       </div>

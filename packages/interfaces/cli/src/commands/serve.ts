@@ -29,6 +29,7 @@ import {
   decideApproval,
   loadModeConfig,
   saveModeConfig,
+  ManifestWriterService,
 } from '@nexus/core';
 import { createApiServer, type ApiDependencies } from '@nexus/api';
 // ── WS-BOOTSTRAP type seam ──────────────────────────────────────────────────
@@ -128,6 +129,12 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
     process.exit(1);
   }
 
+  // ── SPEC-ADMIN-WRITER §3: Manifest writer for admin dashboard mutations ──
+  const manifestWriter = new ManifestWriterService({
+    privateKey: controlPlaneKey.privateKey,
+    issuer: 'nexus-dev',
+  });
+
   const baseDeps: ApiDependencies = {
     actorRegistry: new SqliteActorRegistry(db),
     principalRegistry: new SqlitePrincipalRegistry(db),
@@ -149,6 +156,7 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
       opts.loadNvgRoutingPolicy(
         path.join(process.cwd(), 'fixtures', 'nvg', 'default.routing-policy.yaml')
       ),
+    manifestWriter,
   };
 
   let workspaceApiDeps: WorkspaceApiDeps = {};

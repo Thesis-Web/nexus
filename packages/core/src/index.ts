@@ -125,3 +125,7 @@ export { PolicyGate } from './gates/04-policy.gate.js';
 export { ApprovalGate } from './gates/05-approval.gate.js';
 export { ExecutionGate } from './gates/06-execution.gate.js';
 export { EvidenceGate } from './gates/07-evidence.gate.js';
+
+// §SPEC-ADMIN-WRITER §3 — Generic manifest YAML writer
+export { ManifestWriterService } from './manifest/manifest-writer-service.js';
+export type { ManifestWriterConfig } from './manifest/manifest-writer-service.js';

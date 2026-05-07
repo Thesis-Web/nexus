@@ -43,6 +43,7 @@ import { registerCompileRoutes } from './compile.js';
 import { registerCompileReturnRoutes } from './compile-return.js';
 import { registerTemplateRoutes } from './templates.js';
 import { registerAdminSetupRoutes } from './admin-setup.js';
+import { registerAdminWriterRoutes } from './admin-writer.js';
 
 export function registerAllRoutes(
   app: Express,
@@ -135,6 +136,20 @@ export function registerAllRoutes(
       : {}),
     ...(deps.loadModeConfig !== undefined ? { loadModeConfig: deps.loadModeConfig } : {}),
     ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SPEC-ADMIN-WRITER §4–§6 — Admin dashboard writer routes (Claude D).
+  //
+  // Same auth posture as admin-setup: /workspace/* JWT middleware already
+  // in place; admin-role + elevated-session enforced per-handler.
+  // ═══════════════════════════════════════════════════════════════════════════
+  registerAdminWriterRoutes(app, {
+    ...(deps.elevatedAuthProvider !== undefined
+      ? { elevatedAuthProvider: deps.elevatedAuthProvider }
+      : {}),
+    ...(deps.manifestWriter !== undefined ? { manifestWriter: deps.manifestWriter } : {}),
+    ...(deps.actorRegistry !== undefined ? { actorRegistry: deps.actorRegistry } : {}),
   });
 
   // Compile-return routes — callback signature auth [§5.1]

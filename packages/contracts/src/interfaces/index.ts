@@ -575,6 +575,10 @@ export interface ActorRegistry {
   register(actor: Actor): Promise<void>;
   updateOct(actorId: Uuid, octLevel: OctLevel): Promise<void>;
   list(): Promise<Actor[]>;
+  /** Update a registered actor in-place. Throws if actorId not found. */
+  update(actorId: Uuid, actor: Actor): Promise<void>;
+  /** Hard-delete an actor from the registry. Throws if actorId not found. */
+  delete(actorId: Uuid): Promise<void>;
 }
 
 export interface PrincipalRegistry {

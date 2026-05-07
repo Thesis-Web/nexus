@@ -123,4 +123,40 @@ export class SqliteActorRegistry implements ActorRegistry {
   async updateOct(actorId: Uuid, octLevel: OctLevel): Promise<void> {
     this.db.prepare('UPDATE actors SET oct_level = ? WHERE actor_id = ?').run(octLevel, actorId);
   }
+
+  async update(actorId: Uuid, actor: Actor): Promise<void> {
+    const result = this.db
+      .prepare(
+        `UPDATE actors SET
+          actor_class = ?, principal_id = ?, display_name = ?, environment = ?,
+          risk_ceiling = ?, allowed_systems = ?, allowed_capabilities = ?,
+          enabled = ?, owner = ?, purpose = ?, review_cadence = ?, oct_level = ?
+        WHERE actor_id = ?`
+      )
+      .run(
+        actor.actorClass,
+        actor.principalId,
+        actor.displayName,
+        actor.environment,
+        actor.riskCeiling,
+        JSON.stringify(actor.allowedSystems),
+        JSON.stringify(actor.allowedCapabilities ?? []),
+        (actor.enabled ?? true) ? 1 : 0,
+        actor.owner ?? null,
+        actor.purpose ?? null,
+        actor.reviewCadence ?? null,
+        actor.octLevel,
+        actorId
+      );
+    if (result.changes === 0) {
+      throw new Error(`Actor ${actorId} not found`);
+    }
+  }
+
+  async delete(actorId: Uuid): Promise<void> {
+    const result = this.db.prepare('DELETE FROM actors WHERE actor_id = ?').run(actorId);
+    if (result.changes === 0) {
+      throw new Error(`Actor ${actorId} not found`);
+    }
+  }
 }
