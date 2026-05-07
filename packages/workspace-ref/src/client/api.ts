@@ -183,3 +183,25 @@ export async function vaultSessionStatus(
     headers: { 'X-Elevated-Session': elevatedSessionId } as Record<string, string>,
   });
 }
+
+// ── User profile (added for admin dashboard) ──────────────────────────────
+// SPEC-addendum-beta1-admin-dashboard-v0-1 §2.2 — getMe is the admin gate input.
+
+export interface WorkspaceMeClaims {
+  roleAssignments: string[];
+  capabilityCeilings: unknown[];
+  environmentContext: string;
+  actorClass: string;
+}
+
+export interface WorkspaceMe {
+  actorId: string | null;
+  principalId: string | null;
+  workspaceAuthSessionId: string | null;
+  expiresAt: string | null;
+  claims: WorkspaceMeClaims | null;
+}
+
+export async function getMe(): Promise<ApiResponse<WorkspaceMe>> {
+  return apiFetch('/workspace/me');
+}

@@ -940,7 +940,7 @@ export async function bootstrapWorkspace(
           riskCeiling: actor.riskCeiling,
           allowedSystems: actor.allowedSystems,
           allowedCapabilities: actor.allowedCapabilities ?? [],
-          roles: [],
+          roles: ['admin'], // HOLE-A02 temp: master-key seed; per-actor roles pending Layer-2 ratification
           ...(actor.owner !== undefined ? { owner: actor.owner } : {}),
           ...(actor.purpose !== undefined ? { purpose: actor.purpose } : {}),
           ...(actor.reviewCadence !== undefined ? { reviewCadence: actor.reviewCadence } : {}),

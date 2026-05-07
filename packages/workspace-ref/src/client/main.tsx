@@ -1,18 +1,29 @@
 // packages/workspace-ref/src/client/main.tsx
 // AMEND-nexus-spec-workspace-v1-1-1 §1.1
+// SPEC-addendum-beta1-admin-dashboard-v0-1 §2.1 — auth state machine.
+// Owner ruling SCOPE-A01 (2026-05-06): real /admin URL route, no router dep.
+// Owner ruling OR-001/OR-002 (2026-05-06): admin gate via 'nexus-admin' role.
+//
 // OD-WS-003: Minimal Vite+React consumer of routes/events.
 // Must display FinalResponseArtifact as opaque governed artifact [GWS4-AUD-02].
 
 import { StrictMode, useState, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import './admin-styles.css';
 
 import { useAuth } from './hooks/use-auth.js';
 import { useRunEvents } from './hooks/use-run-events.js';
+import { useMe } from './hooks/use-me.js';
+import { useElevatedSession } from './hooks/use-elevated-session.js';
+import { useRoute } from './hooks/use-route.js';
 import { Login } from './components/login.js';
 import { Sidebar } from './components/sidebar.js';
 import { PromptPanel, type PromptSubmission } from './components/prompt-panel.js';
 import { RunDisplay } from './components/run-display.js';
+import { AdminEntryButton } from './components/admin/admin-entry-button.js';
+import { AdminReauthGate } from './components/admin/admin-reauth-gate.js';
+import { AdminDashboardShell } from './components/admin/admin-dashboard-shell.js';
 import { createRun, listAgents, listModels, uploadFile, type CatalogItem } from './api.js';
 
 // ── Run entry for sidebar ─────────────────────────────────────────────────
@@ -33,6 +44,9 @@ interface FileEntry {
 
 function App() {
   const auth = useAuth();
+  const me = useMe(auth.authenticated);
+  const elev = useElevatedSession();
+  const { route, navigate } = useRoute();
   const runEvents = useRunEvents();
 
   const [runs, setRuns] = useState<RunEntry[]>([]);
@@ -47,7 +61,7 @@ function App() {
     reasonDetail: string;
   } | null>(null);
 
-  // Load catalogs on auth
+  // Load catalogs on auth (workspace view).
   useEffect(() => {
     if (!auth.authenticated) return;
     void (async () => {
@@ -56,6 +70,14 @@ function App() {
       if (modelRes.ok && modelRes.data) setModels(modelRes.data);
     })();
   }, [auth.authenticated]);
+
+  // Acceptance gate #1: non-admin users may not enter /admin route.
+  // If a non-admin reaches /admin (deep link / refresh / popstate), bounce home.
+  useEffect(() => {
+    if (route === 'admin' && !me.loading && !me.isAdmin) {
+      navigate('workspace');
+    }
+  }, [route, me.loading, me.isAdmin, navigate]);
 
   // Handle run selection
   const handleSelectRun = useCallback(
@@ -72,7 +94,6 @@ function App() {
       setSubmitting(true);
       setPlanRejection(null);
       try {
-        // Include topbar-selected agent if submission has no explicit agents
         if (!submission.agents?.length && selectedAgent) {
           submission.agents = [selectedAgent];
         }
@@ -81,7 +102,6 @@ function App() {
         if (res.ok && res.data) {
           const { runId, planPreview } = res.data;
 
-          // Detect plan rejection from immediate response
           const preview = planPreview as Record<string, unknown> | null;
           if (preview && preview['rejected'] === true) {
             setPlanRejection({
@@ -90,7 +110,6 @@ function App() {
             });
           }
 
-          // Add to runs list
           const newRun: RunEntry = {
             runId,
             title: submission.prompt.slice(0, 60) || 'Governed run',
@@ -99,8 +118,6 @@ function App() {
           };
           setRuns(prev => [newRun, ...prev]);
           setActiveRunId(runId);
-
-          // Subscribe to events
           runEvents.subscribe(runId);
         }
       } catch (err) {
@@ -120,7 +137,6 @@ function App() {
       const file = input.files?.[0];
       if (!file) return;
 
-      // Read file as base64
       const reader = new FileReader();
       reader.onload = async () => {
         const base64 = (reader.result as string).split(',')[1] ?? '';
@@ -143,11 +159,39 @@ function App() {
     }
   }, [runEvents.status, activeRunId]);
 
-  // ── Render ──────────────────────────────────────────────────────────────
+  // ── Render: not authenticated ──────────────────────────────────────────
 
   if (!auth.authenticated) {
     return <Login onLogin={auth.login} loading={auth.loading} error={auth.error} />;
   }
+
+  // ── Render: admin route (gated) ────────────────────────────────────────
+  // SPEC §2.1 state machine: workspaceAuthenticated → adminEligible → reauth → shell.
+
+  if (route === 'admin' && me.isAdmin) {
+    if (!elev.elevatedSessionId || !elev.valid) {
+      return (
+        <AdminReauthGate
+          principalId={me.data?.principalId ?? ''}
+          onSuccess={sid => elev.set(sid)}
+          onCancel={() => navigate('workspace')}
+        />
+      );
+    }
+    return (
+      <AdminDashboardShell
+        principalId={me.data?.principalId ?? ''}
+        remainingSeconds={elev.remainingSeconds}
+        onExitToWorkspace={() => navigate('workspace')}
+        onLogoutElevated={() => {
+          elev.clear();
+          navigate('workspace');
+        }}
+      />
+    );
+  }
+
+  // ── Render: workspace view (default) ───────────────────────────────────
 
   return (
     <div className="nx-app">
@@ -181,6 +225,7 @@ function App() {
                 </option>
               ))}
           </select>
+          <AdminEntryButton isAdmin={me.isAdmin} onClick={() => navigate('admin')} />
           <div
             className="nx-avatar"
             title={`Session: ${auth.sessionId?.slice(0, 8) ?? ''}…`}
@@ -202,7 +247,6 @@ function App() {
         />
 
         <main className="nx-main">
-          {/* Run display area */}
           <RunDisplay
             runId={activeRunId}
             events={runEvents.events}
@@ -210,7 +254,6 @@ function App() {
             planRejection={planRejection}
           />
 
-          {/* Prompt panel */}
           <PromptPanel
             agents={agents}
             models={models}
