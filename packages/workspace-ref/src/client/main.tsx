@@ -181,6 +181,7 @@ function App() {
     return (
       <AdminDashboardShell
         principalId={me.data?.principalId ?? ''}
+        elevatedSessionId={elev.elevatedSessionId ?? ''}
         remainingSeconds={elev.remainingSeconds}
         onExitToWorkspace={() => navigate('workspace')}
         onLogoutElevated={() => {

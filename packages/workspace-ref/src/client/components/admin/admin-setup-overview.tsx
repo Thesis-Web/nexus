@@ -1,16 +1,17 @@
 // packages/workspace-ref/src/client/components/admin/admin-setup-overview.tsx
 // SPEC-addendum §6 — AdminSetupOverview.
 // Default landing page for the dashboard. Lists all setup surfaces with
-// status badges. When wired (Claude C), backed by /workspace/admin/setup/status.
+// status badges. Backed by /workspace/admin/setup/status (Claude C projection).
 //
-// SPEC §7 status truthfulness rule #2: "Missing DI dependencies returning 501
-// are not a ready state." Until Claude C ships the projection, every surface
-// shows 'partial' to indicate "structure exists but data not wired yet" —
-// not 'ready'.
+// When the API response is available, surfaces show real readiness state from
+// live manifests. Falls back to placeholder data when the API call is in
+// flight or has failed — per SPEC §7 truthfulness: show what you have,
+// mark what you don't.
 
 import { AdminSurfaceCard } from './admin-surface-card.js';
 import { AdminDisabledMutationBanner } from './admin-disabled-mutation-banner.js';
 import type { DashboardReadinessState } from './admin-status.js';
+import type { DashboardSurfaceStatus } from '@nexus/contracts';
 
 interface SurfaceListItem {
   surfaceId: string;
@@ -91,15 +92,31 @@ const PLACEHOLDER_SURFACES: readonly SurfaceListItem[] = [
 
 interface Props {
   onSelectSurface: (surfaceId: string) => void;
+  surfaces?: readonly DashboardSurfaceStatus[];
+  loading?: boolean;
+  error?: string | null;
 }
 
-export function AdminSetupOverview({ onSelectSurface }: Props) {
+export function AdminSetupOverview({ onSelectSurface, surfaces, loading, error }: Props) {
+  // Use real API data when available; fall back to placeholder otherwise.
+  const displaySurfaces: readonly SurfaceListItem[] = surfaces
+    ? surfaces.map(s => ({
+        surfaceId: s.surfaceId,
+        title: s.title,
+        state: s.state,
+      }))
+    : PLACEHOLDER_SURFACES;
+
+  const bannerReason = surfaces
+    ? 'Read-only. Save/apply on detail panels is disabled until writer endpoints are ratified.'
+    : 'Status data depends on Claude C projection at GET /workspace/admin/setup/status. Save/apply on detail panels is disabled until writer endpoints are ratified.';
+
   return (
     <div className="nx-admin-setup-overview">
       <h2>Setup overview</h2>
-      <AdminDisabledMutationBanner reason="Status data depends on Claude C projection at GET /workspace/admin/setup/status. Save/apply on detail panels is disabled until writer endpoints are ratified." />
+      <AdminDisabledMutationBanner reason={bannerReason} />
       <div className="nx-admin-setup-overview__grid">
-        {PLACEHOLDER_SURFACES.map(s => (
+        {displaySurfaces.map(s => (
           <AdminSurfaceCard
             key={s.surfaceId}
             surfaceId={s.surfaceId}
