@@ -284,3 +284,330 @@
   font-size: 13px;
   margin-top: 12px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ *   Claude B turn 04 — panel / primitive classes
+ *   ─────────────────────────────────────────────────────────────────── */
+
+/* ── panel layout ─────────────────────────────────────────────────────── */
+.nx-admin-panel {
+  padding: 16px;
+}
+.nx-admin-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.nx-admin-panel__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+.nx-admin-panel__sources,
+.nx-admin-panel__blockers,
+.nx-admin-panel__evidence,
+.nx-admin-panel__placeholder-list,
+.nx-admin-panel__secrets {
+  margin: 14px 0;
+  padding: 10px 12px;
+  background: #181818;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+}
+.nx-admin-panel__sources h4,
+.nx-admin-panel__blockers h4,
+.nx-admin-panel__evidence h4,
+.nx-admin-panel__placeholder-list h4,
+.nx-admin-panel__secrets h3 {
+  margin: 0 0 6px 0;
+  font-size: 12px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.nx-admin-panel__sources ul,
+.nx-admin-panel__blockers ul,
+.nx-admin-panel__evidence ul,
+.nx-admin-panel__placeholder-list ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: #c0c0c0;
+}
+.nx-admin-panel__sources code,
+.nx-admin-panel__evidence code,
+.nx-admin-panel__placeholder-list code {
+  color: #a0c0e0;
+  font-size: 11px;
+}
+.nx-admin-panel__blockers {
+  background: #2a1a1a;
+  border-color: #5a2a2a;
+}
+.nx-admin-panel__blockers h4 {
+  color: #f0a0a0;
+}
+.nx-admin-panel__blockers ul {
+  color: #e0c0c0;
+}
+.nx-admin-panel__table {
+  margin: 12px 0;
+}
+.nx-admin-panel__form {
+  margin: 12px 0;
+}
+.nx-admin-panel__actions {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+.nx-admin-panel__subnav {
+  display: flex;
+  gap: 4px;
+  margin: 12px 0 0 0;
+  padding: 0;
+  border-bottom: 1px solid #2a2a2a;
+}
+.nx-admin-panel__subnav-item {
+  background: transparent;
+  color: #999;
+  border: 1px solid transparent;
+  border-bottom: none;
+  padding: 6px 12px;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+}
+.nx-admin-panel__subnav-item:hover {
+  color: #fff;
+  background: #1f1f1f;
+}
+.nx-admin-panel__subnav-item--active {
+  background: #1f3a5f;
+  color: #fff;
+  border-color: #2d4d75;
+  border-bottom-color: #1f3a5f;
+}
+
+/* ── manifest table ───────────────────────────────────────────────────── */
+.nx-admin-manifest-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+}
+.nx-admin-manifest-table--empty {
+  padding: 14px;
+  color: #888;
+  font-style: italic;
+}
+.nx-admin-manifest-table th {
+  text-align: left;
+  padding: 8px 10px;
+  background: #222;
+  color: #c0c0c0;
+  border-bottom: 1px solid #333;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.nx-admin-manifest-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #232323;
+  color: #d8d8d8;
+}
+.nx-admin-manifest-table__row {
+  cursor: pointer;
+}
+.nx-admin-manifest-table__row:hover {
+  background: #1f1f1f;
+}
+.nx-admin-manifest-table__row--selected {
+  background: #1f3a5f;
+}
+.nx-admin-manifest-table__row--selected:hover {
+  background: #234870;
+}
+
+/* ── manifest read form ───────────────────────────────────────────────── */
+.nx-admin-manifest-read-form {
+  background: #181818;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 14px;
+}
+.nx-admin-manifest-read-form--empty {
+  color: #888;
+  font-style: italic;
+}
+.nx-admin-manifest-read-form__title {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #e6e6e6;
+}
+.nx-admin-manifest-read-form__list,
+.nx-admin-manifest-read-form__sublist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.nx-admin-manifest-read-form__sublist {
+  margin-left: 14px;
+  padding-left: 10px;
+  border-left: 2px solid #2a2a2a;
+}
+.nx-admin-manifest-read-form__row {
+  display: flex;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+.nx-admin-manifest-read-form__row--object {
+  flex-direction: column;
+  gap: 4px;
+}
+.nx-admin-manifest-read-form__key {
+  flex: 0 0 180px;
+  color: #8aa0bc;
+  font-weight: 500;
+}
+.nx-admin-manifest-read-form__value {
+  flex: 1;
+  color: #d8d8d8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+}
+.nx-admin-manifest-read-form__value--redacted {
+  color: #c8a020;
+  font-style: italic;
+}
+.nx-admin-manifest-read-form__secrets {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #2a2a2a;
+}
+.nx-admin-manifest-read-form__secrets-title {
+  margin: 0 0 6px 0;
+  font-size: 12px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.nx-admin-manifest-read-form__actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+.nx-admin-manifest-read-form__save {
+  background: #2a2a2a;
+  color: #888;
+  border: 1px solid #3a3a3a;
+  padding: 6px 14px;
+  border-radius: 4px;
+  font: inherit;
+  cursor: not-allowed;
+}
+
+/* ── secret field ─────────────────────────────────────────────────────── */
+.nx-admin-secret-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.nx-admin-secret-field__path {
+  flex: 1;
+  color: #b0b0b0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.nx-admin-secret-field__pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: lowercase;
+  border: 1px solid transparent;
+}
+.nx-admin-secret-field__pill--present {
+  background: #1f5f3a;
+  color: #d4f5e2;
+  border-color: #2d7a4d;
+}
+.nx-admin-secret-field__pill--missing {
+  background: #5f1f1f;
+  color: #f5d4d4;
+  border-color: #7a2d2d;
+}
+.nx-admin-secret-field__pill--unknown {
+  background: #3a3a3a;
+  color: #cccccc;
+  border-color: #555;
+}
+
+/* ── add new button ───────────────────────────────────────────────────── */
+.nx-admin-add-new-button {
+  background: #2a2a2a;
+  color: #888;
+  border: 1px dashed #444;
+  padding: 6px 14px;
+  border-radius: 4px;
+  font: inherit;
+  cursor: not-allowed;
+  font-size: 13px;
+}
+.nx-admin-add-new-button:disabled {
+  color: #666;
+}
+
+/* ── candidate badge ──────────────────────────────────────────────────── */
+.nx-admin-candidate-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #2a2a2a;
+  color: #999;
+  border: 1px solid #444;
+  font-style: italic;
+  font-size: 11px;
+}
+.nx-admin-candidate-badge__icon {
+  color: #c8a020;
+}
+
+/* ── mode radios (mode-policy panel) ──────────────────────────────────── */
+.nx-admin-mode-radios {
+  display: flex;
+  gap: 24px;
+  margin: 12px 0;
+}
+.nx-admin-mode-radios fieldset {
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 8px 14px;
+  background: #181818;
+}
+.nx-admin-mode-radios legend {
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.nx-admin-mode-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 12px;
+  font-size: 13px;
+  color: #c0c0c0;
+}
+.nx-admin-mode-radio input[disabled] {
+  cursor: not-allowed;
+}
