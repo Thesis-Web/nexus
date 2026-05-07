@@ -1,6 +1,7 @@
 // packages/contracts/src/externals/manifests.ts
 // AMEND-spec-nexus-infra-externals-v0-2-5 §3.11 — Manifest Record Types
 // AMEND-spec-nexus-orch §4.2 — OrchestratorManifestRecord Extensions
+// SPEC-addendum-beta1-admin-dashboard-v0-1 §3.2 — IdentityProvider/Connector/Channel records lifted (Claude C).
 // Layer 2 — typed outputs of manifest loaders.
 //
 // These records describe sockets and endpoints. They do not compose runtime
@@ -12,6 +13,11 @@
 //   socket shape compatibility.
 // - outputSlotPolicy is declared by the orchestrator manifest and enforced
 //   by OutputCollector when it can resolve the run plan.
+// - Identity/Connector/Channel records are lifted to contracts so that the
+//   admin-setup projection routes (Layer 7) can describe them by import
+//   without violating layer rules. The core loaders' local definitions are
+//   structurally identical and continue to work through TypeScript's
+//   structural typing.
 
 import type { Uuid, NonEmpty } from '../types/index.js';
 import type { CompileMode } from './compiler.js';
@@ -19,6 +25,35 @@ import type { CompileMode } from './compiler.js';
 // ─── OutputSlotPolicy ───
 
 export type OutputSlotPolicy = 'strict_declared_slots' | 'advisory_declared_slots' | 'open_slots';
+
+// ─── IdentityProviderManifestRecord (lifted from core) ───
+//
+// Loader-canonical shape from packages/core/src/manifest/identity/identity-manifest-loader.ts.
+// `enabled` is NOT exposed: the loader filters disabled rows and only emits
+// enabled providers. (HOLE-C01 surfaces this loader-filter behavior.)
+
+export interface IdentityProviderManifestRecord {
+  readonly providerId: NonEmpty;
+  readonly providerType: NonEmpty;
+  readonly configuration: Record<string, unknown>;
+}
+
+// ─── ConnectorManifestRecord (lifted from core) ───
+
+export interface ConnectorManifestRecord {
+  readonly connectorId: NonEmpty;
+  readonly connectorType: NonEmpty;
+  readonly allowedSystems: string[];
+  readonly configuration: Record<string, unknown>;
+}
+
+// ─── ChannelManifestRecord (lifted from core) ───
+
+export interface ChannelManifestRecord {
+  readonly channelId: NonEmpty;
+  readonly channelType: NonEmpty;
+  readonly configuration: Record<string, unknown>;
+}
 
 // ─── WorkspaceManifestRecord ───
 

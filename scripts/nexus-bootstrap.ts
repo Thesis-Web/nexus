@@ -48,6 +48,9 @@ import type {
   MailboxManifestRecord,
   CompilerManifestRecord,
   CompileReturnEndpointRecord,
+  IdentityProviderManifestRecord,
+  ConnectorManifestRecord,
+  ChannelManifestRecord,
   WorkspaceFactory,
   OrchestratorFactory,
   MailboxBackendFactory,
@@ -227,14 +230,24 @@ const COMPILE_OUTPUT_ROOT = 'runs';
 // ── ExternalsRuntime — §5.2, bootstrap-owned, NOT in @nexus/contracts ───────
 
 export interface ExternalsRuntime {
+  // ── Manifest records (Claude C, SPEC-addendum-beta1-admin-dashboard §3.2) ──
+  // Lifted into ExternalsRuntime so admin-setup routes can project them.
+  // identity/connector/channel records lack `enabled` because their loaders
+  // filter disabled rows out (HOLE-C01).
+  readonly identityRecords: readonly IdentityProviderManifestRecord[];
+  readonly connectorRecords: readonly ConnectorManifestRecord[];
+  readonly channelRecords: readonly ChannelManifestRecord[];
   readonly workspaceSockets: readonly WorkspaceManifestRecord[];
   readonly orchestratorSockets: readonly OrchestratorManifestRecord[];
+  readonly mailboxRecords: readonly MailboxManifestRecord[];
+  readonly compilerRecords: readonly CompilerManifestRecord[];
+  readonly compileReturnEndpoints: readonly CompileReturnEndpointRecord[];
+  // ── Baked services ──
   readonly mailboxService: MailboxService;
   readonly outputCollector: OutputCollector;
   readonly compileService: CompileService;
   readonly compileReturnDispatcher: CompileReturnDispatcher;
   readonly socketRegistry: ExternalSocketRegistry;
-  readonly compileReturnEndpoints: readonly CompileReturnEndpointRecord[];
   // ── Template admin route deps (AMEND-spec-nexus-compile §12) ──────────
   // Function-based — DIFF-S23-002: Layer 7 cannot import core types.
   readonly validateTemplate: (raw: unknown) => CompileTemplate;
@@ -791,14 +804,21 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
 
   // Assemble ExternalsRuntime (§5.2)
   const externals: ExternalsRuntime = {
+    // Manifest records (Claude C — admin-setup projection inputs)
+    identityRecords,
+    connectorRecords,
+    channelRecords,
     workspaceSockets: workspaceRecords,
     orchestratorSockets: orchestratorRecords,
+    mailboxRecords,
+    compilerRecords,
+    compileReturnEndpoints: compileReturnRecords,
+    // Baked services
     mailboxService,
     outputCollector,
     compileService,
     compileReturnDispatcher,
     socketRegistry,
-    compileReturnEndpoints: compileReturnRecords,
     validateTemplate: validateTemplateFn,
     verifyTemplate: verifyTemplateFn,
     storeTemplate: storeTemplateFn,
@@ -851,6 +871,17 @@ export interface WorkspaceBootstrapCoreDeps {
 }
 
 /**
+ * Optional catalog data sources for the reference catalog reader.
+ * Claude C / SPEC-addendum-beta1-admin-dashboard §3.2: when supplied, the
+ * catalog reader emits claims-filtered listings; when omitted, it returns
+ * empty arrays (preserves prior zero-arg behavior).
+ */
+export interface WorkspaceBootstrapCatalogSources {
+  readonly connectorRecords?: readonly ConnectorManifestRecord[];
+  readonly endpointRecords?: readonly ModelEndpoint[];
+}
+
+/**
  * Workspace API deps returned by bootstrapWorkspace.
  * Narrow Pick — not a generic override bag.
  */
@@ -882,7 +913,8 @@ export interface WorkspaceApiDeps {
  *   NEXUS_WORKSPACE_JWT_SECRET no default; missing = fail-closed (501)
  */
 export async function bootstrapWorkspace(
-  coreDeps: WorkspaceBootstrapCoreDeps
+  coreDeps: WorkspaceBootstrapCoreDeps,
+  catalogSources?: WorkspaceBootstrapCatalogSources
 ): Promise<WorkspaceApiDeps> {
   const wsDbPath =
     process.env['NEXUS_WORKSPACE_DB_PATH'] ??
@@ -903,7 +935,17 @@ export async function bootstrapWorkspace(
 
   // ── Elevated auth + catalog (reference implementations) ─────────────────
   const elevatedAuthProvider = new ReferenceElevatedAuthProvider({ dbPath: wsDbPath });
-  const catalogReader = new ReferenceCatalogReader();
+  // Claude C: claims-filtered catalog reader. Backward-compat — omitted
+  // catalogSources yields empty listings, matching prior zero-arg behavior.
+  const catalogReader = new ReferenceCatalogReader({
+    actorRegistry: coreDeps.actorRegistry,
+    ...(catalogSources?.connectorRecords !== undefined
+      ? { connectorRecords: catalogSources.connectorRecords }
+      : {}),
+    ...(catalogSources?.endpointRecords !== undefined
+      ? { endpointRecords: catalogSources.endpointRecords }
+      : {}),
+  });
 
   // ── Admin signer registry (file-backed, keys/admins/<signerId>.public.json) ─
   const adminSignerRegistry = new FileBackedAdminSignerRegistry();

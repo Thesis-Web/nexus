@@ -56,6 +56,10 @@ import type {
   MailboxManifestRecord,
   CompilerManifestRecord,
   CompileReturnEndpointRecord,
+  IdentityProviderManifestRecord,
+  ConnectorManifestRecord,
+  ChannelManifestRecord,
+  ModelEndpoint,
   CompileReturnRequest,
   FinalResponseArtifact,
   CompileReturnAck,
@@ -229,6 +233,23 @@ export interface ApiDependencies {
   elevatedAuthProvider?: ElevatedAuthProvider;
   /** Catalog reader [blueprint §4.2-4.4] */
   catalogReader?: WorkspaceCatalogReaderPort;
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SPEC-addendum-beta1-admin-dashboard-v0-1 §3.2 — Admin-setup projection deps
+  //
+  // Manifest records flow from bootstrap → composition root → here so that
+  // the admin-setup routes can describe configured externals truthfully.
+  // All optional — missing records produce `missing`/`partial` projections.
+  // (Claude C window 1.)
+  // ══════════════════════════════════════════════════════════════════════════
+  identityRecords?: readonly IdentityProviderManifestRecord[];
+  connectorRecords?: readonly ConnectorManifestRecord[];
+  channelRecords?: readonly ChannelManifestRecord[];
+  mailboxRecords?: readonly MailboxManifestRecord[];
+  compilerRecords?: readonly CompilerManifestRecord[];
+  compileReturnRecords?: readonly CompileReturnEndpointRecord[];
+  /** Model endpoints (NVG) for admin-setup models_nvg surface. */
+  endpoints?: readonly ModelEndpoint[];
 }
 
 // ── §23.1 createApiServer — DI factory ───────────────────────────────────────

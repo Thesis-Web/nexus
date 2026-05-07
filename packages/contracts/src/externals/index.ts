@@ -1,6 +1,7 @@
 // packages/contracts/src/externals/index.ts
 // AMEND-spec-nexus-infra-externals-v0-2-5 §3 — Externals Barrel
 // AMEND-spec-nexus-orch §4.5 — Barrel Extensions
+// SPEC-addendum-beta1-admin-dashboard-v0-1 §3.2 — dashboard-setup additions (Claude C).
 // Layer 2 — public compatibility surface for external plugin contracts.
 //
 // All plugin-facing contracts are exported here. Baked service interfaces
@@ -70,6 +71,9 @@ export type {
 
 export type {
   OutputSlotPolicy,
+  IdentityProviderManifestRecord,
+  ConnectorManifestRecord,
+  ChannelManifestRecord,
   WorkspaceManifestRecord,
   OrchestratorManifestRecord,
   MailboxManifestRecord,
@@ -174,3 +178,30 @@ export type {
 } from './workspace-governed.js';
 
 export { OUTPUT_FORMAT_VALUES, ELEVATED_AUTH_METHOD } from './workspace-governed.js';
+
+// ── SPEC-addendum-beta1-admin-dashboard-v0-1 §3.2 — dashboard projection types ──
+//
+// Pinned by Claude C so backend (admin-setup routes) and frontend
+// (admin panels + role gating) reference one source.
+
+export type {
+  DashboardReadinessState,
+  DashboardSurfaceCategory,
+  DashboardSecretFieldStatus,
+  DashboardSecretField,
+  DashboardEvidenceEntry,
+  DashboardAllowedAction,
+  DashboardSurfaceStatus,
+  DashboardModeSummary,
+  DashboardSetupStatusResponse,
+} from './dashboard-setup.js';
+
+export {
+  ALL_READINESS_STATES,
+  ALL_SURFACE_CATEGORIES,
+  ADMIN_ROLE,
+  ADMIN_ROLE_LOCAL_ALIAS,
+  ADMIN_DISPLAY_LABEL,
+  hasAdminRole,
+  hasDashboardViewCapability,
+} from './dashboard-setup.js';

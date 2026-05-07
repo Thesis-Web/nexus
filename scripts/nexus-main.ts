@@ -116,37 +116,13 @@ const program = createCli({
   },
   bootstrapWorkspaceApiDeps: async coreDeps => {
     const br = await getBootstrap();
-    const wsDeps = await bootstrapWorkspace(coreDeps);
-
-    // Wire catalog reader to canonical NXS actor registry [blueprint §3.4.3]
-    // Replaces empty ReferenceCatalogReader stub with live registry query.
-    const AGENT_CLASSES = new Set([
-      'SUPERVISED_AGENT',
-      'AUTONOMOUS_AGENT',
-      'SCHEDULED_AGENT',
-      'DELEGATED_SUBAGENT',
-      'SERVICE_AUTOMATION',
-    ]);
-    wsDeps.catalogReader = {
-      async listAgents() {
-        const actors = await coreDeps.actorRegistry.list();
-        return actors
-          .filter(a => AGENT_CLASSES.has(a.actorClass) && (a.enabled ?? true))
-          .map(a => ({
-            id: a.actorId,
-            name: a.displayName ?? a.actorId,
-            description: a.purpose ?? '',
-            visible: true,
-            selectable: true,
-          }));
-      },
-      async listModels() {
-        return [];
-      },
-      async listConnectors() {
-        return [];
-      },
-    };
+    // Claude C / SPEC-addendum-beta1-admin-dashboard §3.2:
+    // pipe connectorRecords + endpointRecords into the catalog reader so
+    // listConnectors/listModels emit claims-filtered data instead of [].
+    const wsDeps = await bootstrapWorkspace(coreDeps, {
+      connectorRecords: br.externals.connectorRecords,
+      endpointRecords: br.endpoints,
+    });
     const computeDigest = (obj: unknown): Sha256Hex =>
       createHash('sha256').update(canonicalize(obj)).digest('hex') as Sha256Hex;
 
@@ -156,7 +132,15 @@ const program = createCli({
       console.log('[orch-wire] No orchestrator manifest — dispatch disabled');
       return {
         ...wsDeps,
+        // Manifest records for admin-setup projection (Claude C)
+        identityRecords: br.externals.identityRecords,
+        connectorRecords: br.externals.connectorRecords,
+        channelRecords: br.externals.channelRecords,
         workspaceSockets: br.externals.workspaceSockets,
+        mailboxRecords: br.externals.mailboxRecords,
+        compilerRecords: br.externals.compilerRecords,
+        compileReturnRecords: br.externals.compileReturnEndpoints,
+        endpoints: br.endpoints,
         computeDigest,
       };
     }
@@ -354,8 +338,16 @@ const program = createCli({
 
     return {
       ...wsDeps,
+      // Manifest records for admin-setup projection (Claude C)
+      identityRecords: br.externals.identityRecords,
+      connectorRecords: br.externals.connectorRecords,
+      channelRecords: br.externals.channelRecords,
       workspaceSockets: br.externals.workspaceSockets,
       orchestratorSockets: br.externals.orchestratorSockets,
+      mailboxRecords: br.externals.mailboxRecords,
+      compilerRecords: br.externals.compilerRecords,
+      compileReturnRecords: br.externals.compileReturnEndpoints,
+      endpoints: br.endpoints,
       orchestrator,
       dispatchToOrchestrator,
       computeDigest,

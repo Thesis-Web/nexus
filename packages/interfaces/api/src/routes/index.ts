@@ -42,6 +42,7 @@ import { registerMailboxRoutes } from './mailbox.js';
 import { registerCompileRoutes } from './compile.js';
 import { registerCompileReturnRoutes } from './compile-return.js';
 import { registerTemplateRoutes } from './templates.js';
+import { registerAdminSetupRoutes } from './admin-setup.js';
 
 export function registerAllRoutes(
   app: Express,
@@ -96,6 +97,44 @@ export function registerAllRoutes(
       ? { elevatedAuthProvider: deps.elevatedAuthProvider }
       : {}),
     ...(deps.catalogReader !== undefined ? { catalogReader: deps.catalogReader } : {}),
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SPEC-addendum-beta1-admin-dashboard-v0-1 §3 — Admin-setup projection routes
+  //
+  // Registered AFTER registerWorkspaceRoutes so the blanket /workspace/* JWT
+  // middleware is in place. These routes (/workspace/admin/setup/*) inherit
+  // JWT auth automatically; admin-role + elevated-session checks happen
+  // inside the route handlers (per OR-DASH-001/002 + hard rule 30).
+  // (Claude C window 1.)
+  // ═══════════════════════════════════════════════════════════════════════════
+  registerAdminSetupRoutes(app, {
+    ...(deps.elevatedAuthProvider !== undefined
+      ? { elevatedAuthProvider: deps.elevatedAuthProvider }
+      : {}),
+    ...(deps.identityProvider !== undefined ? { identityProvider: deps.identityProvider } : {}),
+    ...(deps.identityRecords !== undefined ? { identityRecords: deps.identityRecords } : {}),
+    ...(deps.connectorRecords !== undefined ? { connectorRecords: deps.connectorRecords } : {}),
+    ...(deps.channelRecords !== undefined ? { channelRecords: deps.channelRecords } : {}),
+    ...(deps.endpoints !== undefined ? { endpoints: deps.endpoints } : {}),
+    ...(deps.loadNvgRoutingPolicy !== undefined
+      ? { loadNvgRoutingPolicy: deps.loadNvgRoutingPolicy }
+      : {}),
+    ...(deps.actorRegistry !== undefined ? { actorRegistry: deps.actorRegistry } : {}),
+    ...(deps.workspaceSockets !== undefined ? { workspaceSockets: deps.workspaceSockets } : {}),
+    ...(deps.workspaceJwtSecret !== undefined
+      ? { workspaceJwtSecret: deps.workspaceJwtSecret }
+      : {}),
+    ...(deps.orchestratorSockets !== undefined
+      ? { orchestratorSockets: deps.orchestratorSockets }
+      : {}),
+    ...(deps.mailboxRecords !== undefined ? { mailboxRecords: deps.mailboxRecords } : {}),
+    ...(deps.compilerRecords !== undefined ? { compilerRecords: deps.compilerRecords } : {}),
+    ...(deps.compileReturnRecords !== undefined
+      ? { compileReturnRecords: deps.compileReturnRecords }
+      : {}),
+    ...(deps.loadModeConfig !== undefined ? { loadModeConfig: deps.loadModeConfig } : {}),
+    ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
   });
 
   // Compile-return routes — callback signature auth [§5.1]

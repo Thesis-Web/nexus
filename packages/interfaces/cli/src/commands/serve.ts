@@ -55,6 +55,15 @@ export type WorkspaceApiDeps = Partial<
     | 'orchestrator'
     | 'orchestratorSockets'
     | 'pipelineInterface'
+    // ── Claude C / SPEC-addendum-beta1-admin-dashboard §3.2 ──
+    // Manifest records flow through to admin-setup projection routes.
+    | 'identityRecords'
+    | 'connectorRecords'
+    | 'channelRecords'
+    | 'mailboxRecords'
+    | 'compilerRecords'
+    | 'compileReturnRecords'
+    | 'endpoints'
   >
 >;
 

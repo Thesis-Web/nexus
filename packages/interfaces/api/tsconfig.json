@@ -17,5 +17,10 @@
     "**/*.integration.test.ts",
     "**/*.threat.test.ts",
     "**/*.replay.test.ts"
+  ],
+  "references": [
+    {
+      "path": "../../contracts"
+    }
   ]
 }
