@@ -327,6 +327,11 @@ body {
   font-size: 14px;
   line-height: 1.6;
   color: var(--nx-text);
+  /* Preserve newlines from the compiled response body — without pre-wrap
+     the renderer's \n separators collapse to spaces and a multi-paragraph
+     answer reads as one wall of text. */
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 /* ── Approval Card ─────────────────────────────────────── */

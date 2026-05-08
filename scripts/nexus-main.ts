@@ -99,6 +99,64 @@ import { verifyArtifactSignature } from '../packages/core/src/compile/final-resp
 
 const DEFAULT_TRAIL_DIR = path.join(process.cwd(), 'runs');
 
+/**
+ * CLAUDE-CODE-FIX-CONTENT-EXTRACTION — extract the assistant's text from an
+ * opaque provider response. NVG never inspects payload content (§13.7.1);
+ * extraction lives here at the composition boundary so the engine layer
+ * stays adapter-agnostic. Each adapter passes the parsed JSON body through
+ * `opaqueProviderResponse` unchanged, and each provider has a different
+ * shape:
+ *   - Ollama:    { message: { role, content: "..." } }
+ *   - OpenAI:    { choices: [{ message: { role, content: "..." } }] }
+ *   - Anthropic: { content: [{ type: "text", text: "..." }, ...] }
+ *
+ * Returns '' only when there is genuinely no text content to surface.
+ */
+function extractAssistantContent(opaqueResponse: unknown): string {
+  if (opaqueResponse === null || opaqueResponse === undefined) return '';
+  if (typeof opaqueResponse === 'string') return opaqueResponse;
+  if (typeof opaqueResponse !== 'object') return '';
+
+  const raw = opaqueResponse as Record<string, unknown>;
+
+  // Ollama: { message: { role: "assistant", content: "..." } }
+  const message = raw['message'];
+  if (message !== null && message !== undefined && typeof message === 'object') {
+    const msgContent = (message as Record<string, unknown>)['content'];
+    if (typeof msgContent === 'string') return msgContent;
+  }
+
+  // OpenAI: { choices: [{ message: { role: "assistant", content: "..." } }] }
+  const choices = raw['choices'];
+  if (Array.isArray(choices) && choices.length > 0) {
+    const first = choices[0];
+    if (first !== null && first !== undefined && typeof first === 'object') {
+      const choiceMsg = (first as Record<string, unknown>)['message'];
+      if (choiceMsg !== null && choiceMsg !== undefined && typeof choiceMsg === 'object') {
+        const choiceContent = (choiceMsg as Record<string, unknown>)['content'];
+        if (typeof choiceContent === 'string') return choiceContent;
+      }
+    }
+  }
+
+  // Anthropic: { content: [{ type: "text", text: "..." }, ...] }
+  // Concatenate all text blocks; tool-use / image blocks are skipped.
+  const content = raw['content'];
+  if (Array.isArray(content) && content.length > 0) {
+    const parts: string[] = [];
+    for (const block of content) {
+      if (block === null || block === undefined || typeof block !== 'object') continue;
+      const b = block as Record<string, unknown>;
+      if (b['type'] === 'text' && typeof b['text'] === 'string') {
+        parts.push(b['text']);
+      }
+    }
+    if (parts.length > 0) return parts.join('\n\n');
+  }
+
+  return '';
+}
+
 // ---------------------------------------------------------------------------
 // Lazy bootstrap — §32a.6.
 // Cached so the 12-step sequence runs at most once per process lifetime.
@@ -312,8 +370,10 @@ const program = createCli({
           // Extract assistant text from the opaque provider response. NVG
           // never inspects this payload (§13.7.1) — extraction happens here at
           // the composition boundary so we can persist + digest the bytes.
-          const raw = inv.opaqueProviderResponse as { message?: { content?: unknown } } | undefined;
-          const content = typeof raw?.message?.content === 'string' ? raw.message.content : '';
+          // The helper handles Ollama / OpenAI / Anthropic response shapes;
+          // adding a new provider means adding a branch there, not touching
+          // the transport adapter (which stays adapter-agnostic).
+          const content = extractAssistantContent(inv.opaqueProviderResponse);
           console.log(
             '[nvg] model response —',
             inv.responseSize ?? 0,
