@@ -63,7 +63,7 @@ export function useRunEvents(): UseRunEventsResult {
       setError(null);
 
       try {
-        // Mint event ticket (60s TTL, single-use)
+        // Mint event ticket (60s TTL, single-use) [§7.7]
         const ticketRes = await mintEventTicket(runId);
         if (!ticketRes.ok || !ticketRes.data) {
           // Fallback to polling if ticket mint fails
@@ -75,59 +75,33 @@ export function useRunEvents(): UseRunEventsResult {
 
         const { ticketId } = ticketRes.data;
 
-        // SSE connection with ticket as Bearer auth
-        const url = `/sse/runs/${runId}`;
-        const es = new EventSource(url, {
-          // Note: EventSource doesn't support custom headers natively.
-          // We fall back to query param for the reference implementation.
-        });
+        // SSE auth via `?ticket=` query string. EventSource can't set custom
+        // headers, so the ticket rides the URL — server accepts header or
+        // query param per spec §7.7 (same protocol-limit pattern as WS).
+        const url = `/sse/runs/${runId}?ticket=${encodeURIComponent(ticketId)}`;
+        const es = new EventSource(url);
+        sourceRef.current = es;
 
-        // For reference impl: use fetch-based SSE since EventSource can't set headers
-        const response = await fetch(url, {
-          headers: { Authorization: `Bearer ${ticketId}` },
-        });
-
-        if (!response.ok || !response.body) {
-          setError('SSE connection failed — using polling');
-          pollRef.current = setInterval(() => void refresh(), 3000);
-          void refresh();
-          return;
-        }
-
-        setConnected(true);
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        const readLoop = async () => {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() ?? '';
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const event = JSON.parse(line.slice(6)) as RunEvent;
-                  setEvents(prev => [...prev, event]);
-
-                  // Auto-refresh status on key events
-                  if (['run_status', 'compile_complete', 'final_response'].includes(event.type)) {
-                    void refresh();
-                  }
-                } catch {
-                  /* skip malformed */
-                }
-              }
+        es.onopen = () => setConnected(true);
+        es.onmessage = ev => {
+          try {
+            const event = JSON.parse(ev.data) as RunEvent;
+            setEvents(prev => [...prev, event]);
+            if (['run_status', 'compile_complete', 'final_response'].includes(event.type)) {
+              void refresh();
             }
+          } catch {
+            /* skip malformed */
           }
-          setConnected(false);
         };
-
-        void readLoop();
+        es.onerror = () => {
+          // EventSource auto-reconnects on transient drops, but the ticket
+          // is single-use — once the server has consumed it the reconnect
+          // will 401. Close cleanly and surface the state to the caller.
+          setConnected(false);
+          es.close();
+          if (sourceRef.current === es) sourceRef.current = null;
+        };
       } catch (err) {
         setError(err instanceof Error ? err.message : 'SSE setup failed');
         // Fallback to polling

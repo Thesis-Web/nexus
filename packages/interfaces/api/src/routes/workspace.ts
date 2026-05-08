@@ -1125,7 +1125,10 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
 
   // ═══════════════════════════════════════════════════════════════════════════
   // §3.6/§7.2 GET /sse/runs/:runId — SSE event stream
-  // Auth: event ticket via Authorization: Bearer header [§7.7]
+  // Auth: event ticket — spec §7.7 says SSE *prefers* Authorization: Bearer,
+  // but EventSource (the standard browser SSE client) cannot set custom
+  // headers, so we also accept the ticket via `?ticket=` query string. WS
+  // already uses the same query-param transport for the same protocol limit.
   // NOT under /workspace/* JWT middleware — self-authenticating.
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1137,9 +1140,13 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
 
     const runId = req.params['runId'] as Uuid;
 
-    // Extract ticket from Authorization: Bearer header [§7.7]
+    // Extract ticket — Authorization: Bearer header preferred [§7.7], with
+    // ?ticket= query-string fallback for browser EventSource compatibility.
     const auth = req.headers['authorization'] ?? '';
-    const ticketId = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    const headerTicket = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    const queryTicket =
+      typeof req.query['ticket'] === 'string' ? (req.query['ticket'] as string) : '';
+    const ticketId = headerTicket || queryTicket;
     if (!ticketId) {
       res.status(401).json({ ok: false, error: 'Event ticket required' });
       return;

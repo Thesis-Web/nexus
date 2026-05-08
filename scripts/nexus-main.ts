@@ -53,7 +53,7 @@ import type {
   PlanNode,
   Session,
 } from '@nexus/contracts';
-import { addSeconds, nowIso, riskTierExceeds } from '@nexus/contracts';
+import { addSeconds, nowIso, riskTierExceeds, CAPABILITY_IDS } from '@nexus/contracts';
 import { bootstrap, bootstrapWorkspace, type BootstrapResult } from './nexus-bootstrap.js';
 import { ActorRegistryAgentReader } from './ref-agent-registry-reader.js';
 import {
@@ -391,7 +391,12 @@ const program = createCli({
         sendPlanCheckback,
         buildPlannerRequest,
         agentRegistry,
-        capabilityCeiling: ['*'] as NonEmpty[],
+        // Orchestrator capability ceiling = the canonical capability taxonomy
+        // (§12.4). Wildcards are not accepted here — the planner's visibility
+        // check requires concrete capability strings, and a wildcard placeholder
+        // would silently filter every agent out. Adding a new capability to
+        // CAPABILITY_IDS automatically widens the ceiling on the next boot.
+        capabilityCeiling: Object.values(CAPABILITY_IDS) as NonEmpty[],
         maxSplitDepth: orchManifest.maxSplitDepth,
       },
       orchManifest.orchestratorActorId

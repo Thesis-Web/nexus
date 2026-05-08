@@ -1755,8 +1755,14 @@ async function main(): Promise<void> {
     if (!src.includes("'x-elevated-session'")) {
       fail('WS-16: X-Elevated-Session header extraction not found');
     }
-    // Hard rule 31: not query string
-    if (src.includes('req.query') && src.includes('elevatedSession')) {
+    // Hard rule 31: not query string. Scan for any pattern that pulls an
+    // elevated-session value out of `req.query`, regardless of bracket vs
+    // dot access or hyphen/camel-case key. The bare `req.query && elevated`
+    // conjunction false-positives on unrelated query-string reads in the
+    // same file (e.g. SSE ticket transport).
+    const elevatedFromQuery =
+      /req\.query\s*(\[\s*['"][^'"]*elevated[^'"]*['"]\s*\]|\.\s*elevated[A-Za-z]*)/i;
+    if (elevatedFromQuery.test(src)) {
       fail('WS-16: elevated session extracted from query string — must use header only');
     }
     // Principal-bound: validateSession takes principalId

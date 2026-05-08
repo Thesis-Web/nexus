@@ -208,6 +208,7 @@ import type {
   WorkspaceCatalogReaderPort,
   IdentityProviderInterface,
 } from '@nexus/contracts';
+import { CAPABILITY_IDS } from '@nexus/contracts';
 
 // ── Manifest paths ───────────────────────────────────────────────────────────
 // §32a.6 — original four domains
@@ -1020,6 +1021,13 @@ export async function bootstrapWorkspace(
     const DEFAULT_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000004' as Uuid;
     const now = new Date().toISOString();
 
+    // Concrete authority lists for dev-admin — no wildcards anywhere. The
+    // delegation engine and planner do strict subset/equality checks, so a
+    // literal '*' silently fails closed (system_not_in_principal_scope at mint
+    // time, capability_outside_ceiling at plan time). Enumerate explicitly.
+    const DEV_ADMIN_SYSTEMS: string[] = ['stub'];
+    const DEV_ADMIN_CAPABILITIES: string[] = Object.values(CAPABILITY_IDS);
+
     if (!(await coreDeps.principalRegistry.get(DEV_ADMIN_PRINCIPAL_ID))) {
       await coreDeps.principalRegistry.register({
         principalId: DEV_ADMIN_PRINCIPAL_ID,
@@ -1027,7 +1035,7 @@ export async function bootstrapWorkspace(
         email: 'dev-admin@nexus.local' as NonEmpty,
         registeredAt: now,
         maxDelegableRiskTier: 'critical',
-        allowedSystems: ['*'],
+        allowedSystems: DEV_ADMIN_SYSTEMS,
       });
     }
     if (!(await coreDeps.actorRegistry.get(DEV_ADMIN_ACTOR_ID))) {
@@ -1039,8 +1047,8 @@ export async function bootstrapWorkspace(
         environment: 'reference',
         octLevel: 'OCT-OPEN',
         riskCeiling: 'critical',
-        allowedSystems: ['*'],
-        allowedCapabilities: ['*'],
+        allowedSystems: DEV_ADMIN_SYSTEMS,
+        allowedCapabilities: DEV_ADMIN_CAPABILITIES,
         enabled: true,
         registeredAt: now,
         owner: 'system' as NonEmpty,
