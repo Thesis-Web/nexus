@@ -89,6 +89,17 @@ import { registerAllRoutes } from './routes/index.js';
 // RunLedgerWriter without reaching past @nexus/api's public surface.
 export { subscribeToRun, broadcastRunEvent, wrapWriterWithFanout } from './routes/run-event-bus.js';
 
+// ── DI port re-exports ─────────────────────────────────────────────────────
+// SecretWriter is defined in admin-writer.ts (the route handler that enforces
+// the contract). We re-export it here so external callers wiring deps into
+// ApiDependencies can import a single name from @nexus/api.
+//
+// Tests and the composition root may import this type from either location;
+// they are the same symbol. Keeping the definition adjacent to the route
+// handler prevents the two from drifting under TypeScript strict.
+export type { SecretWriter } from './routes/admin-writer.js';
+import type { SecretWriter } from './routes/admin-writer.js';
+
 // ── §23.1 + §11.1 ApiDependencies — constructor injection contract ──────────
 
 // ── SPEC-ADMIN-WRITER §3 — ManifestWriter DI contract ──────────────────────
@@ -304,22 +315,6 @@ export interface ApiDependencies {
   // ── CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — admin secret onboarding ─────────
   /** File-backed secret store. Bootstrap supplies a FileSecretSource adapter. */
   secretWriter?: SecretWriter;
-}
-
-/**
- * SecretWriter — admin secret onboarding port.
- *
- * Layer 7 cannot import the FileSecretSource directly (Layer 3). Bootstrap
- * adapts a FileSecretSource into this minimal write+presence surface.
- *
- * NEVER add a "readSecret" method here — the status route returns presence
- * and source, never the value (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC).
- */
-export interface SecretWriter {
-  writeSecret(keyName: string, keyValue: string): Promise<void>;
-  deleteSecret(keyName: string): Promise<boolean>;
-  listKeyNames(): Promise<readonly string[]>;
-  readonly storageLabel: string;
 }
 
 // ── §23.1 createApiServer — DI factory ───────────────────────────────────────
