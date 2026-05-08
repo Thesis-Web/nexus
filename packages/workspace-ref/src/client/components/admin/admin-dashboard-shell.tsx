@@ -119,7 +119,9 @@ function renderSurface(
     case 'modes_policy_oct':
       return <ModePolicySetupPanel {...(data ? { data } : {})} />;
     case 'observability':
-      return <LedgerViewerPanel {...(data ? { data } : {})} />;
+      return (
+        <LedgerViewerPanel {...(data ? { data } : {})} elevatedSessionId={elevatedSessionId} />
+      );
     case 'toolchain':
       return <ToolchainKeysPanel {...(data ? { data } : {})} />;
     default:

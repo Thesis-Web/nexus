@@ -23,7 +23,6 @@ import type { Express, Request, Response } from 'express';
 import type {
   ActorRegistry,
   ElevatedAuthProvider,
-  IdentityClaims,
   PrincipalRegistry,
   RunLedgerWriter,
   Uuid,
@@ -36,10 +35,10 @@ import {
   OCT_LEVEL,
   RISK_TIER,
   RISK_TIER_ORDER,
-  hasAdminRole,
   nowIso,
 } from '@nexus/contracts';
 import { san } from './shared.js';
+import { checkAdminAuth } from './admin-auth.js';
 
 // ── ManifestWriter interface (Layer 7 contract for DI) ──────────────────────
 
@@ -155,47 +154,6 @@ export interface AdminWriterRouteDeps {
    * treat that as a misconfiguration. Same shape as templates.ts wiring.
    */
   readonly runLedgerWriter?: RunLedgerWriter;
-}
-
-interface AuthOk {
-  readonly ok: true;
-  readonly claims: IdentityClaims;
-  readonly actorId: string;
-  readonly principalId: string;
-}
-interface AuthFail {
-  readonly ok: false;
-  readonly status: number;
-  readonly error: string;
-}
-
-async function checkAdminAuth(
-  req: Request,
-  res: Response,
-  deps: AdminWriterRouteDeps
-): Promise<AuthOk | AuthFail> {
-  const claims = res.locals['claims'] as IdentityClaims | undefined;
-  const actorId = res.locals['actorId'] as string | undefined;
-  const principalId = res.locals['principalId'] as string | undefined;
-  if (!claims || !actorId || !principalId) return { ok: false, status: 401, error: 'Unauthorized' };
-  if (!hasAdminRole(claims.roleAssignments))
-    return { ok: false, status: 403, error: 'Admin role required' };
-  if (!deps.elevatedAuthProvider)
-    return { ok: false, status: 403, error: 'Elevated session validator not configured' };
-  const elevatedSessionId = req.headers['x-elevated-session'] as string | undefined;
-  if (!elevatedSessionId)
-    return { ok: false, status: 403, error: 'X-Elevated-Session header required' };
-  try {
-    const status = await deps.elevatedAuthProvider.validateSession(
-      elevatedSessionId as Uuid,
-      principalId
-    );
-    if (!status.valid)
-      return { ok: false, status: 403, error: 'Elevated session invalid or expired' };
-  } catch {
-    return { ok: false, status: 403, error: 'Elevated session validation failed' };
-  }
-  return { ok: true, claims, actorId, principalId };
 }
 
 async function probeEndpointHealth(url: string): Promise<boolean> {

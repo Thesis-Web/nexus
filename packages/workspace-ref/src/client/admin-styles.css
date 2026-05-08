@@ -968,3 +968,274 @@
 .nx-admin-endpoint-form__key-status--missing {
   color: #f0b76c;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * CLAUDE-CODE-LEDGER-VIEWER-SPEC §3 — observability panel styles.
+ * Run list, tabbed details, event/evidence/trail rendering, chain verify.
+ * ─────────────────────────────────────────────────────────────────── */
+
+.nx-ledger-toolbar {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.nx-ledger-section {
+  margin: 16px 0;
+  padding: 12px;
+  background: #181818;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+}
+.nx-ledger-section h3 {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+  color: #c0c0c0;
+  font-weight: 600;
+}
+.nx-ledger-section-meta {
+  color: #888;
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.nx-ledger-error {
+  margin: 8px 0;
+  padding: 8px 10px;
+  background: #2a1a1a;
+  border: 1px solid #5a2a2a;
+  border-radius: 4px;
+  color: #f0a0a0;
+  font-size: 12px;
+}
+.nx-ledger-warning {
+  margin: 8px 0;
+  padding: 8px 10px;
+  background: #2a2616;
+  border: 1px solid #5a4d22;
+  border-radius: 4px;
+  color: #f0d09c;
+  font-size: 12px;
+}
+.nx-ledger-empty-pane {
+  padding: 14px 10px;
+  color: #888;
+  font-size: 12px;
+  font-style: italic;
+}
+.nx-ledger-empty {
+  color: #555;
+  font-style: italic;
+  font-size: 11px;
+}
+.nx-ledger-hint {
+  font-size: 11px;
+  color: #888;
+}
+.nx-ledger-redacted {
+  color: #f0a0a0;
+  font-family: monospace;
+  font-size: 11px;
+}
+
+/* ── runs table ───────────────────────────────────────────────────────── */
+.nx-ledger-runs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.nx-ledger-runs thead th {
+  text-align: left;
+  padding: 6px 8px;
+  color: #888;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #2a2a2a;
+}
+.nx-ledger-runs tbody td {
+  padding: 8px;
+  border-bottom: 1px solid #1f1f1f;
+  vertical-align: middle;
+}
+.nx-ledger-run-row {
+  cursor: pointer;
+}
+.nx-ledger-run-row:hover {
+  background: #1f1f1f;
+}
+.nx-ledger-run-row--selected {
+  background: #1a2a2a;
+}
+.nx-ledger-run-row--selected:hover {
+  background: #1c3030;
+}
+
+/* ── status pill ──────────────────────────────────────────────────────── */
+.nx-ledger-status {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.nx-ledger-status--open {
+  background: #1c3030;
+  color: #6cf0e0;
+}
+.nx-ledger-status--completed {
+  background: #1c3a25;
+  color: #6cf09d;
+}
+.nx-ledger-status--denied,
+.nx-ledger-status--error {
+  background: #3a1c1c;
+  color: #f0a0a0;
+}
+.nx-ledger-status--cancelled {
+  background: #2a2616;
+  color: #f0d09c;
+}
+
+/* ── tabs ─────────────────────────────────────────────────────────────── */
+.nx-ledger-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 12px 0;
+  border-bottom: 1px solid #2a2a2a;
+}
+.nx-ledger-tab {
+  background: transparent;
+  color: #999;
+  border: 1px solid transparent;
+  border-bottom: none;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+}
+.nx-ledger-tab:hover {
+  color: #fff;
+  background: #1f1f1f;
+}
+.nx-ledger-tab--active {
+  color: #fff;
+  background: #1a2a2a;
+  border-color: #2a4a4a;
+}
+
+/* ── event list ──────────────────────────────────────────────────────── */
+.nx-ledger-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nx-ledger-event {
+  padding: 8px 10px;
+  border-left: 3px solid #2a2a2a;
+  background: #141414;
+  border-radius: 0 4px 4px 0;
+  font-size: 12px;
+}
+.nx-ledger-event--success {
+  border-left-color: #6cf09d;
+}
+.nx-ledger-event--error {
+  border-left-color: #f0a0a0;
+}
+.nx-ledger-event--pending {
+  border-left-color: #f0d09c;
+}
+.nx-ledger-event--info {
+  border-left-color: #6cb0f0;
+}
+.nx-ledger-event-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.nx-ledger-event-type {
+  color: #fff;
+  font-weight: 600;
+  font-family: monospace;
+}
+.nx-ledger-event-actor {
+  color: #888;
+  font-size: 11px;
+}
+.nx-ledger-event-detail {
+  margin-top: 4px;
+  padding-left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nx-ledger-detail-row {
+  font-size: 11px;
+  color: #c0c0c0;
+}
+.nx-ledger-detail-key {
+  color: #888;
+  font-family: monospace;
+}
+.nx-ledger-detail-value {
+  color: #c0c0c0;
+  word-break: break-word;
+}
+
+/* ── shared inline elements ───────────────────────────────────────────── */
+.nx-ledger-id {
+  color: #a0c0e0;
+  font-family: monospace;
+  font-size: 11px;
+  cursor: pointer;
+  user-select: all;
+}
+.nx-ledger-id:hover {
+  color: #c8e0ff;
+  text-decoration: underline;
+}
+.nx-ledger-ts {
+  color: #6cb0f0;
+  font-family: monospace;
+  font-size: 11px;
+}
+.nx-ledger-seq {
+  color: #888;
+  font-family: monospace;
+  font-size: 11px;
+}
+
+/* ── chain verify ─────────────────────────────────────────────────────── */
+.nx-ledger-verify {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.nx-ledger-verify--ok {
+  background: #1c3a25;
+  color: #c0e8c8;
+  border: 1px solid #2a5a35;
+}
+.nx-ledger-verify--fail {
+  background: #2a1a1a;
+  color: #f0c0c0;
+  border: 1px solid #5a2a2a;
+}
+.nx-ledger-verify-errors {
+  margin: 6px 0 0 0;
+  padding-left: 18px;
+  font-size: 11px;
+}
+.nx-ledger-verify-errors code {
+  color: #f0a0a0;
+}

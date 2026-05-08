@@ -44,6 +44,7 @@ import { registerCompileReturnRoutes } from './compile-return.js';
 import { registerTemplateRoutes } from './templates.js';
 import { registerAdminSetupRoutes } from './admin-setup.js';
 import { registerAdminWriterRoutes } from './admin-writer.js';
+import { registerAdminLedgerRoutes } from './admin-ledger.js';
 
 export function registerAllRoutes(
   app: Express,
@@ -156,6 +157,21 @@ export function registerAllRoutes(
     ...(deps.principalRegistry !== undefined ? { principalRegistry: deps.principalRegistry } : {}),
     ...(deps.secretWriter !== undefined ? { secretWriter: deps.secretWriter } : {}),
     ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CLAUDE-CODE-LEDGER-VIEWER-SPEC — browser-callable read views over the
+  // three governance ledgers. Same auth posture as admin-writer; sits under
+  // /workspace/admin/ledger/* so the existing JWT middleware applies.
+  // ═══════════════════════════════════════════════════════════════════════════
+  registerAdminLedgerRoutes(app, {
+    ...(deps.elevatedAuthProvider !== undefined
+      ? { elevatedAuthProvider: deps.elevatedAuthProvider }
+      : {}),
+    ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
+    ledgerBackend: deps.ledgerBackend,
+    ...(deps.trailReader !== undefined ? { trailReader: deps.trailReader } : {}),
+    verifyChain: deps.verifyChain,
   });
 
   // Compile-return routes — callback signature auth [§5.1]
