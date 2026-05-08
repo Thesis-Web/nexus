@@ -1,14 +1,14 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-01T02:10:33.311Z'
-signature: SRWmWLrI2t_s_Ibi6-4Msh2ZuD_IkqVdSmfbfpswo6X3a03XTUECibGTxsgjT9UdCojz9caVgXixnFqkT7JCAA
+issuedAt: '2026-05-08T07:40:16.576Z'
+signature: UxDte1LXFWp0Y3oNNqColVbszxk2wCE46bkBy5RUYyMR1lqDvlSmoIErestQBR0aW8p2_gH4Yf0Nz59LVHkLDQ
 body:
   returnEndpoints:
     - returnEndpointId: reference-workspace-return
       endpointType: http_callback
       enabled: true
       targetWorkspaceSocketId: reference-workspace
-      url: http://localhost:4100/nexus/compile-return
+      url: http://127.0.0.1:7701/compile-return/reference-workspace-return
       auth:
         kind: signed_callback
         keyId: dev-compile-return-key

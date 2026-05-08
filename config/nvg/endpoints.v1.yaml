@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-08T01:17:29.925Z'
-signature: 7mmsH4b7a1AXQ4cSWR6OdcDQo36-nX005qlwXXC6W-ndAJWsmpsIsTqoK0a64YbUnZj-lEn09d1bzjGmB4mdCw
+issuedAt: '2026-05-08T07:51:56.488Z'
+signature: vLxP89ID1wyZbIdJEwA-Cn8YtwjWvIvJkkrxJyDGqJOfQc4yhgZuK052pN7ZGBlBC3-ufjpv5tV0_rCtcqX5Bw
 body:
   endpoints:
     - endpointId: local-ollama
@@ -11,7 +11,7 @@ body:
       modelName: llama3.2
       auth:
         kind: none
-      enabled: true
+      enabled: false
     - endpointId: anthropic-claude
       tier: frontier_general
       url: https://api.anthropic.com/v1/messages
@@ -36,15 +36,15 @@ body:
         prefix: 'Bearer '
       enabled: false
     - endpointId: ollama-blackmac
-      url: http://10.31.1.137:11434
+      url: http://10.31.1.137:11434/api/chat
       adapterId: ollama-chat-v1
       modelName: qwen3.5:0.8b
       tier: on_prem_general
-      enabled: true
+      enabled: false
       auth:
         kind: none
     - endpointId: ollama-jameshp
-      url: http://10.31.1.105:11434
+      url: http://10.31.1.105:11434/api/chat
       adapterId: ollama-chat-v1
       modelName: granite3-dense:latest
       tier: on_prem_general
@@ -52,7 +52,7 @@ body:
       auth:
         kind: none
     - endpointId: ollama-jameshp2
-      url: http://10.31.1.125:11434
+      url: http://10.31.1.125:11434/api/chat
       adapterId: ollama-chat-v1
       modelName: gemma2:2b
       tier: on_prem_sensitive
@@ -60,7 +60,7 @@ body:
       auth:
         kind: none
     - endpointId: ollama-jamesImac
-      url: http://10.31.1.109:11434
+      url: http://10.31.1.109:11434/api/chat
       adapterId: ollama-chat-v1
       modelName: qwen2.5:1.5b
       tier: on_prem_general

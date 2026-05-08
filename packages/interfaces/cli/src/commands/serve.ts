@@ -65,6 +65,23 @@ export type WorkspaceApiDeps = Partial<
     | 'compilerRecords'
     | 'compileReturnRecords'
     | 'endpoints'
+    // ── E2E wiring: prompt → NVG → mailbox → compile → return ──
+    // Composition root threads bootstrap-owned services through so the
+    // workspace `dispatch` and `triggerCompile` paths can call the real
+    // engines and the compile-return route can verify signed callbacks.
+    | 'nvgService'
+    | 'mailboxService'
+    | 'outputCollector'
+    | 'compileService'
+    | 'getDefaultCompiler'
+    | 'getPrimaryMailbox'
+    | 'resolveReturnEndpointForRun'
+    | 'dispatchCompileReturn'
+    | 'getReturnEndpoint'
+    | 'verifyCallbackSignature'
+    | 'verifyArtifactSignature'
+    | 'recomputeArtifactDigest'
+    | 'controlPlanePublicKey'
   >
 >;
 

@@ -213,6 +213,27 @@ export class RefRunCoordinator implements RunCoordinator {
 
     await this.writeLedger(request.runId, 'plan_confirmed', { planId: plan.planId });
 
+    // 3.5. Emit orchestrator_dispatched so downstream slot validation has a
+    //      Run Ledger entry naming each task's expected output slots. The
+    //      OutputCollector reads this event when outputSlotPolicy is
+    //      strict_declared_slots; without it, every mailbox write would fail
+    //      closed with UNDECLARED_OUTPUT_SLOT regardless of the plan content.
+    //      Detail shape matches DeclaredOutputSlotReader: selectedAgents[] of
+    //      { taskId, agentId, expectedOutputSlots }.
+    await this.writeLedger(request.runId, 'orchestrator_dispatched', {
+      orchestratorSocketId: manifest.orchestratorSocketId,
+      orchestratorActorId: this.orchestratorActorId,
+      planId: plan.planId,
+      planDigest: plan.planDigest,
+      selectedAgentCount: plan.nodes.length,
+      selectedAgents: plan.nodes.map(n => ({
+        taskId: n.nodeId,
+        agentId: n.agentId,
+        expectedOutputSlots: n.expectedOutputSlots,
+      })),
+      outputSlotPolicy: manifest.outputSlotPolicy,
+    });
+
     // 4. Issue delegations [blueprint §11.3]
     const nodeDelegations: NodeDelegationBinding[] = [];
     for (const node of plan.nodes) {

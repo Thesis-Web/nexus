@@ -29,17 +29,17 @@ import {
   loadNvgRoutingPolicy as loadNvgPolicyYaml,
 } from '@nexus/vanguard';
 import {
-  SimpleConnectorRegistry,
-  SimpleChannelRegistry,
   canonicalize,
   verify,
   loadControlPlaneKey,
   mintRootDelegation,
   RegistryBackedIdentityProvider,
+  SimpleConnectorRegistry,
 } from '@nexus/core';
 import { StubConnector } from '@nexus/connector-stub';
 import { createCli } from '@nexus/cli';
 import * as path from 'node:path';
+import * as fs from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 
 import type {
@@ -51,9 +51,14 @@ import type {
   WorkspaceRunRequest,
   PlannerRequest,
   PlanNode,
-  Session,
+  NvgOutboundRequest,
+  CompileRequest,
+  CompileReturnEndpointRecord,
+  CompileReturnAck,
+  FinalResponseArtifact,
+  CompileReturnRequest,
 } from '@nexus/contracts';
-import { addSeconds, nowIso, riskTierExceeds, CAPABILITY_IDS } from '@nexus/contracts';
+import { nowIso, riskTierExceeds, CAPABILITY_IDS } from '@nexus/contracts';
 import { bootstrap, bootstrapWorkspace, type BootstrapResult } from './nexus-bootstrap.js';
 import { ActorRegistryAgentReader } from './ref-agent-registry-reader.js';
 import {
@@ -63,7 +68,9 @@ import {
   RefDagExecutor,
 } from '@nexus/orch-ref';
 import type { NodeDispatchResult, DelegationScope } from '@nexus/orch-ref';
-// NXS Pipeline — relative imports (composition root cross-layer)
+// NXS Pipeline gates + classification — relative imports (composition root cross-layer).
+// The full pipeline stays constructed so admin tooling can route AgentActions
+// through it; the workspace prompt path now goes through NVG instead.
 import { Pipeline } from '../packages/core/src/engine/pipeline.js';
 import { IdentityGate } from '../packages/core/src/gates/01-identity.gate.js';
 import { ClassificationGate } from '../packages/core/src/gates/02-classification.gate.js';
@@ -81,6 +88,14 @@ import { CapabilityRegistry } from '../packages/core/src/classification/capabili
 import { ReplayDetector } from '../packages/core/src/security/replay-detector.js';
 import { RateLimiter } from '../packages/core/src/security/rate-limiter.js';
 import { loadModeConfig } from '../packages/core/src/modes/mode-manager.js';
+// E2E wiring: NVG outbound result → mailbox; compile-return verification helpers.
+import { sha256Hex } from '../packages/core/src/output/output-digest.js';
+import { createNvgOutputReference } from '../packages/core/src/output/output-reference-adapter.js';
+import {
+  verifyCallbackAuth,
+  recomputeArtifactDigest,
+} from '../packages/core/src/compile/compile-return-dispatcher.js';
+import { verifyArtifactSignature } from '../packages/core/src/compile/final-response-signer.js';
 
 const DEFAULT_TRAIL_DIR = path.join(process.cwd(), 'runs');
 
@@ -193,84 +208,159 @@ const program = createCli({
     const planner = new RefDeterministicPlanner(computeDigest, orchManifest.orchestratorActorId);
     const dagExecutor = new RefDagExecutor(orchManifest.partialCompletion);
 
-    // 22d. Factory: makeDispatchToGovernance — closes over the requesting
-    // user's principalId and creates real per-run sessions.
-    // SPEC-DELEGATION-RUNTIME-PRINCIPAL-FIX §2.2.
-    const makeDispatchToGovernance = (requestingPrincipalId: Uuid) => {
-      return async (node: PlanNode, delegationId: Uuid): Promise<NodeDispatchResult> => {
+    // 22d. Factory: makeDispatchToGovernance — closes over the originating
+    // WorkspaceRunRequest so the per-node dispatch can hand the user's prompt
+    // to NVG and persist the model response into the mailbox.
+    //
+    // Flow per blueprint §11.4 + AMEND-spec §6.4:
+    //   1. Look up agent in the canonical registry.
+    //   2. Build an NvgOutboundRequest from the prompt + plan node + agent
+    //      claims. Ollama's chat schema expects messages: [{role,content}], so
+    //      the payload mirrors that shape (transport adapter passes through).
+    //   3. Call nvgService.classifyAndRoute — classify, route, ceiling, invoke,
+    //      RPT. In nvgMode='enforce' this actually invokes the model.
+    //   4. On allow + invocation success: persist response bytes to disk, build
+    //      an NvgOutputReference, hand it to OutputCollector. The collector
+    //      verifies the digest via the file:// resolver, writes the mailbox
+    //      item, and emits partial_result on the run ledger.
+    //   5. Return NodeDispatchResult so the DAG executor records node_completed.
+    const makeDispatchToGovernance = (request: WorkspaceRunRequest) => {
+      return async (node: PlanNode, _delegationId: Uuid): Promise<NodeDispatchResult> => {
         try {
-          // Real session bound to the requesting user's principal + this
-          // agent + this delegation, so Gate 01 tuple-binding checks pass.
-          const createdAt = nowIso();
-          const session: Session = {
-            sessionId: crypto.randomUUID() as Uuid,
-            actorId: node.agentId,
-            principalId: requestingPrincipalId,
-            delegationId,
-            createdAt,
-            expiresAt: addSeconds(createdAt, 3600),
-          };
-          await coreDeps.sessionStore.create(session);
+          const agent = await coreDeps.actorRegistry.get(node.agentId);
+          if (!agent) throw new Error('Agent not found in registry: ' + node.agentId);
 
-          const action = {
-            actionId: crypto.randomUUID() as Uuid,
-            runId: node.nodeId,
-            receivedAt: nowIso(),
-            protocol: 'nexus-orch/v1.0.0' as NonEmpty,
-            adapterVersion: '1.0.0' as NonEmpty,
+          const nvgRequest: NvgOutboundRequest = {
+            requestId: crypto.randomUUID() as Uuid,
+            runId: request.runId,
             actorId: node.agentId,
-            // FIXED: requesting user's principal, not the orchestrator actor
-            principalId: requestingPrincipalId,
-            // FIXED: real session that exists in the store
-            sessionId: session.sessionId,
-            delegationId,
-            delegationSequence: 0,
-            tool: node.taskSummary,
-            rawVerb: node.taskSummary,
-            rawTarget: node.taskSummary,
-            rawPayload: null,
-            intent: {
-              objectiveSummary: node.taskSummary,
-              triggeringSource: 'orchestrator' as NonEmpty,
-              toolchainContext: 'nexus-orch' as NonEmpty,
-              modelId: null,
-              modelConfidence: null,
-              riskNote: null,
-              extractedAt: nowIso(),
-            },
-            resolvedVerb: null,
-            resolvedCapability: null,
-            resolvedTarget: null,
-            resolvedDataClasses: [] as string[],
-            resolvedRiskTier: null,
+            octLevel: agent.octLevel ?? 'OCT-OPEN',
+            environmentContext: agent.environment,
+            taskIntent: node.taskSummary,
+            // Ollama chat schema: messages[]. The transport adapter passes
+            // request.payload through to the provider unmodified.
+            payload: [{ role: 'user', content: request.prompt }],
+            dataLabels: [],
+            costPreference: 'standard',
+            latencyPreference: 'standard',
           };
-          const ctx = {
-            actor: null,
-            principal: null,
-            session: null,
-            delegationContext: null,
-            effectiveCeiling: null,
-            identityClaims: null,
-            gateResults: [],
-            threatLog: [],
-            connectorRegistry: new SimpleConnectorRegistry(),
-            channelRegistry: new SimpleChannelRegistry(),
-            policyFile: null,
-          };
-          const result = await nxsPipeline.process(action as any, ctx as any);
-          const finalOutcome = result.evidenceRecord.finalOutcome;
-          const denied = finalOutcome === 'deny';
+
+          console.log(
+            '[orch-wire] NVG dispatch — run:',
+            request.runId,
+            'agent:',
+            node.agentId,
+            'task:',
+            node.taskSummary
+          );
+          const result = await br.nvgService.classifyAndRoute(nvgRequest);
+          console.log(
+            '[nvg] classification:',
+            result.classification.effectiveDataClass,
+            'route:',
+            result.modelTierSelected ?? '<none>',
+            'disposition:',
+            result.disposition
+          );
+
+          if (!result.allowed) {
+            console.warn(
+              '[nvg] denied —',
+              result.denialCode ?? 'unknown',
+              ':',
+              result.denialReason ?? ''
+            );
+            return {
+              success: false,
+              completionMetadata: null,
+              failureReason: ((result.denialCode ?? 'nvg_denied') +
+                ': ' +
+                (result.denialReason ?? '')) as NonEmpty,
+              governanceDenied: true,
+            };
+          }
+
+          const inv = result.invocation;
+          if (!inv || !inv.success) {
+            const reason = inv?.reason ?? 'invocation_unavailable';
+            const code = inv?.denialCode ?? 'invocation_failed';
+            console.warn('[nvg] invocation failed —', code, ':', reason);
+            return {
+              success: false,
+              completionMetadata: null,
+              failureReason: (code + ': ' + reason) as NonEmpty,
+              governanceDenied: false,
+            };
+          }
+
+          // Extract assistant text from the opaque provider response. NVG
+          // never inspects this payload (§13.7.1) — extraction happens here at
+          // the composition boundary so we can persist + digest the bytes.
+          const raw = inv.opaqueProviderResponse as { message?: { content?: unknown } } | undefined;
+          const content = typeof raw?.message?.content === 'string' ? raw.message.content : '';
+          console.log(
+            '[nvg] model response —',
+            inv.responseSize ?? 0,
+            'bytes,',
+            inv.latencyMs ?? 0,
+            'ms, tier:',
+            result.modelTierInvoked ?? '<unknown>'
+          );
+
+          // Persist response bytes to disk so the registered file:// payload
+          // resolver can read them back to verify the digest before mailbox
+          // write. The same resolver is used by DeterministicRenderer.
+          const payloadDir = path.join(process.cwd(), 'runs', 'payloads', request.runId);
+          await fs.mkdir(payloadDir, { recursive: true });
+          const payloadPath = path.join(payloadDir, nvgRequest.requestId + '.txt');
+          const payloadBytes = new TextEncoder().encode(content);
+          await fs.writeFile(payloadPath, payloadBytes);
+          const resultRef = ('file://' + path.resolve(payloadPath)) as NonEmpty;
+          const resultDigest = sha256Hex(payloadBytes);
+
+          const slotId = (node.expectedOutputSlots[0] ?? 'default') as NonEmpty;
+          const outputRef = createNvgOutputReference({
+            runId: request.runId,
+            taskId: node.nodeId,
+            agentId: node.agentId,
+            slotId,
+            resultRef,
+            resultDigest,
+            resultClassifications: [result.classification.effectiveDataClass],
+            octLevel: agent.octLevel ?? 'OCT-OPEN',
+            redactionState: 'not_required',
+            // Trail correlation: NVG already wrote outbound + inbound entries
+            // under this id; reuse it for cross-linking with the mailbox item.
+            routingTrailRecordId: result.trailCorrelationId,
+            trailCorrelationId: result.trailCorrelationId,
+            modelTierInvoked: result.modelTierInvoked,
+            responseSize: inv.responseSize ?? null,
+          });
+
+          const item = await br.externals.outputCollector.writeMailboxItemFromNvgResult(outputRef);
+          console.log(
+            '[output] mailbox item',
+            item.mailboxItemId,
+            'written for run:',
+            request.runId
+          );
+
           return {
-            success: !denied,
-            completionMetadata: denied ? null : { pipelineOutcome: finalOutcome },
-            failureReason: denied ? ('governance_denied' as NonEmpty) : null,
-            governanceDenied: denied,
+            success: true,
+            completionMetadata: {
+              mailboxItemId: item.mailboxItemId,
+              modelTierInvoked: result.modelTierInvoked,
+              responseSize: inv.responseSize ?? null,
+            },
+            failureReason: null,
+            governanceDenied: false,
           };
         } catch (err) {
+          console.error('[orch-wire] dispatchToGovernance error:', err);
           return {
             success: false,
             completionMetadata: null,
-            failureReason: ('pipeline_error: ' + (err as Error).message) as NonEmpty,
+            failureReason: ('dispatch_error: ' + (err as Error).message) as NonEmpty,
             governanceDenied: false,
           };
         }
@@ -291,14 +381,17 @@ const program = createCli({
           const principal = await coreDeps.principalRegistry.get(requestingPrincipalId);
           if (!principal) throw new Error('Principal not found: ' + requestingPrincipalId);
 
-          // Systems: intersection of agent's and principal's allowed systems.
-          const effectiveSystems = agent.allowedSystems.filter(
-            s => principal.allowedSystems.includes('*') || principal.allowedSystems.includes(s)
+          // Systems: strict intersection of agent's and principal's allowed
+          // systems. No wildcards — both sides must list concrete connector IDs.
+          // mintRootDelegation will reject any system not in principal scope, so
+          // a bare '*' here would fail closed at signing time anyway.
+          const effectiveSystems = agent.allowedSystems.filter(s =>
+            principal.allowedSystems.includes(s)
           );
 
-          // Capabilities: agent's capabilities pass through. Principal has no
-          // capability field; capability scope is enforced at Gate 03 + via
-          // OCT ceiling and risk-tier comparison.
+          // Capabilities: agent's capabilities pass through. The Principal type
+          // has no allowedCapabilities field — capability scope is enforced at
+          // Gate 03 (delegation) plus the OCT ceiling and risk-tier comparison.
           const effectiveCapabilities = agent.allowedCapabilities ?? [];
 
           // Risk: lesser of agent's ceiling and principal's max delegable tier.
@@ -339,8 +432,80 @@ const program = createCli({
     };
 
     // 22f. Glue: triggerCompile, sendPlanCheckback, buildPlannerRequest
+    //
+    // triggerCompile drives the §6.8 compile chain: build the OutputContract
+    // from the run's mailbox state, call CompileService (selects mode, signs
+    // FinalResponseArtifact), resolve the compile-return endpoint for the run,
+    // dispatch via the signed-callback transport, and only mark mailbox items
+    // consumed once the workspace has acknowledged acceptance.
     const triggerCompile = async (runId: Uuid): Promise<void> => {
-      console.log('[orch-wire] compile triggered for run:', runId);
+      console.log('[compile] triggered for run:', runId);
+      try {
+        const contract = await br.externals.outputCollector.buildOutputContract(runId);
+        const compiler = br.externals.socketRegistry.getDefaultCompiler();
+        const mailbox = br.externals.socketRegistry.getPrimaryMailbox();
+        const items = await br.externals.mailboxService.listEligibleForCompile(
+          mailbox.mailboxId,
+          runId
+        );
+        console.log(
+          '[compile] mode-eligible items:',
+          items.length,
+          'compiler:',
+          compiler.compilerSocketId
+        );
+
+        const compileRequest: CompileRequest = {
+          runId,
+          compilerSocketId: compiler.compilerSocketId,
+          mailboxId: mailbox.mailboxId,
+          outputContractId: contract.outputContractId,
+          requestedAt: nowIso(),
+        };
+        const artifact = await br.externals.compileService.compile(compileRequest, contract, items);
+        console.log(
+          '[compile] artifact',
+          artifact.artifactId,
+          'signed (' + artifact.compileMode + '), dispatching return'
+        );
+
+        const endpoint = await br.externals.socketRegistry.resolveReturnEndpointForRun(runId);
+        const sentAt = nowIso();
+        const ack = await br.externals.compileReturnDispatcher.dispatch({
+          runId,
+          endpoint,
+          artifact,
+          sentAt,
+        });
+
+        if (ack.accepted) {
+          await br.externals.mailboxService.markConsumed(
+            mailbox.mailboxId,
+            runId,
+            items.map(i => i.mailboxItemId)
+          );
+          console.log('[compile] return accepted at', ack.acceptedAt, '— mailbox items consumed');
+        } else {
+          console.warn('[compile] return NOT accepted —', ack.reason ?? '<no reason>');
+        }
+      } catch (err) {
+        console.error('[compile] triggerCompile error:', err);
+        // Best-effort run_closed on compile failure (T7-F03 pattern).
+        try {
+          await coreDeps.runLedgerWriter!.writeEvent({
+            runId,
+            eventType: 'run_closed',
+            timestamp: nowIso(),
+            actorId: null,
+            detail: {
+              closeReason: 'error',
+              error: (err as Error).message,
+            },
+          });
+        } catch {
+          // swallow — original error already logged
+        }
+      }
     };
     const sendPlanCheckback = async (_p: OrchestratorPlanPreview): Promise<boolean> => {
       console.log('[orch-wire] plan checkback auto-approved (V1)');
@@ -413,13 +578,36 @@ const program = createCli({
         'principal:',
         request.principalId
       );
-      // Build per-request issuer + dispatcher closing over the requesting
-      // user's principalId, then call the coordinator directly so cancellation
-      // (which keys off coordinator.activeRuns) keeps working.
+      // Build per-request issuer + dispatcher closing over the requesting user's
+      // principalId AND the originating prompt — handleRun threads them into
+      // every plan-node dispatch.
       const issueDelegation = makeIssueDelegation(request.principalId);
-      const dispatchToGovernance = makeDispatchToGovernance(request.principalId);
+      const dispatchToGovernance = makeDispatchToGovernance(request);
       return coordinator.handleRun(request, { issueDelegation, dispatchToGovernance });
     };
+
+    // Compile-return helpers — bound here so the route can dispatch through the
+    // same signed-callback transport that the engine uses, and the receiving
+    // /compile-return/:returnEndpointId verifier can verify with the same key.
+    const dispatchCompileReturn = async (input: {
+      runId: Uuid;
+      endpoint: CompileReturnEndpointRecord;
+      artifact: FinalResponseArtifact;
+      sentAt: IsoTimestamp;
+    }): Promise<CompileReturnAck> => {
+      return br.externals.compileReturnDispatcher.dispatch(input);
+    };
+
+    const verifyCallbackSignature = (
+      request: CompileReturnRequest,
+      publicKey: string
+    ): Promise<boolean> => verifyCallbackAuth(request, publicKey);
+
+    const verifyArtifactSignatureFn = (
+      artifact: FinalResponseArtifact,
+      publicKey: string
+    ): Promise<boolean> => verifyArtifactSignature(artifact, publicKey);
+
     console.log('[orch-wire] Step 22 complete: orchestrator assembled');
 
     return {
@@ -438,6 +626,27 @@ const program = createCli({
       dispatchToOrchestrator,
       computeDigest,
       pipelineInterface: nxsPipeline,
+      // E2E wiring — services threaded so reference harness routes can call
+      // the real engines, and the workspace flow can roundtrip a prompt
+      // through NVG → mailbox → compile → return.
+      nvgService: br.nvgService,
+      mailboxService: br.externals.mailboxService,
+      outputCollector: br.externals.outputCollector,
+      compileService: br.externals.compileService,
+      getDefaultCompiler: () => br.externals.socketRegistry.getDefaultCompiler(),
+      getPrimaryMailbox: () => br.externals.socketRegistry.getPrimaryMailbox(),
+      resolveReturnEndpointForRun: (runId: Uuid) =>
+        br.externals.socketRegistry.resolveReturnEndpointForRun(runId),
+      dispatchCompileReturn,
+      // Compile-return route verification helpers — used by the receiving
+      // /compile-return/:returnEndpointId handler to validate the signed
+      // callback and the artifact before writing run_closed.
+      getReturnEndpoint: (returnEndpointId: string) =>
+        br.externals.socketRegistry.getReturnEndpoint(returnEndpointId as NonEmpty),
+      verifyCallbackSignature,
+      verifyArtifactSignature: verifyArtifactSignatureFn,
+      recomputeArtifactDigest,
+      controlPlanePublicKey: br.controlPlanePublicKey,
     };
   },
 });

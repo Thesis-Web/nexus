@@ -225,7 +225,14 @@ const MANIFEST_MAILBOX = 'config/mailbox/mailboxes.v1.yaml';
 const MANIFEST_COMPILERS = 'config/compile/compilers.v1.yaml';
 const MANIFEST_COMPILE_RETURN = 'config/output/compile-return.v1.yaml';
 // Run ledger + output paths
-const RUN_LEDGER_FILE = 'runs/run-ledger.jsonl';
+//
+// The run ledger is shared with the management-API serve command so that
+// every writer (workspace dispatch, orchestrator coordinator, OutputCollector)
+// appends to the same file. Without this, the OutputCollector's slot reader
+// queries an empty ledger and rejects every mailbox write with
+// UNDECLARED_OUTPUT_SLOT under strict_declared_slots policy.
+const RUN_LEDGER_FILE =
+  process.env['NEXUS_RUN_LEDGER_PATH'] ?? path.join('runs', 'infra.run-ledger.jsonl');
 const COMPILE_OUTPUT_ROOT = 'runs';
 
 // ── ExternalsRuntime — §5.2, bootstrap-owned, NOT in @nexus/contracts ───────

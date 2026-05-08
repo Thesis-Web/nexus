@@ -389,7 +389,12 @@ export class RefDeterministicPlanner implements Planner {
         nodeType: 'nxs_dispatch' as const,
         declaredRiskHint: EVIDENCE_SENTINEL,
         expectedOutputSlots: ['default' as NonEmpty],
-        timeoutMs: 30000,
+        // Aligns with the orchestrator manifest's `timeouts.modelCallMs`
+        // default (60s). Reference on-prem ollama endpoints can take 25s+
+        // on cold load; the prior 30s bound left no headroom and tripped
+        // the DAG executor's per-node timeout race before the model
+        // returned.
+        timeoutMs: 60000,
       };
     });
 
