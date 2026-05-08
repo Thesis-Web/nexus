@@ -18,12 +18,14 @@
  *
  * Owner rulings: WRITER-001 through WRITER-004.
  */
+import { randomUUID } from 'node:crypto';
 import type { Express, Request, Response } from 'express';
 import type {
   ActorRegistry,
   ElevatedAuthProvider,
   IdentityClaims,
   PrincipalRegistry,
+  RunLedgerWriter,
   Uuid,
 } from '@nexus/contracts';
 import {
@@ -146,6 +148,13 @@ export interface AdminWriterRouteDeps {
    * 501 — the rest of the writer surface keeps working.
    */
   readonly secretWriter?: SecretWriter;
+  /**
+   * Run ledger writer for credential-lifecycle audit events
+   * (`secret_stored` / `secret_removed`). When omitted, secret writes still
+   * succeed but no audit entry is emitted — operators in production should
+   * treat that as a misconfiguration. Same shape as templates.ts wiring.
+   */
+  readonly runLedgerWriter?: RunLedgerWriter;
 }
 
 interface AuthOk {
@@ -198,6 +207,60 @@ async function probeEndpointHealth(url: string): Promise<boolean> {
     return res.status < 500;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Emit a credential-lifecycle audit entry to the run ledger.
+ *
+ * CLAUDE-CODE-SECRET-MANAGEMENT-SPEC §"WHAT'S FORBIDDEN":
+ *   - detail.keyName is the ONLY identity field — never the value, never a
+ *     hash, never a length, never a prefix.
+ *   - actorId + principalId capture WHO took the action (admin auth chain).
+ *   - storageLabel captures WHICH backend (file vs vault in production).
+ *   - adminOperation: true matches the templates.ts convention so audit
+ *     consumers can filter admin-lifecycle entries from run-scoped activity.
+ *
+ * Best-effort: a ledger backend failure must not roll back a successful
+ * key write/delete (the credential state on disk has already changed).
+ * We log a warning so missing audit entries are visible to operators, who
+ * can detect them via gap-detection on the secret_stored / secret_removed
+ * counters.
+ *
+ * No runLedgerWriter wired → silent no-op. Production should treat that
+ * as a misconfiguration; reference deployments may legitimately omit it.
+ */
+async function emitSecretAuditEvent(
+  deps: AdminWriterRouteDeps,
+  eventType: 'secret_stored' | 'secret_removed',
+  detail: {
+    keyName: string;
+    actorId: string;
+    principalId: string;
+    storageLabel: string;
+  }
+): Promise<void> {
+  if (!deps.runLedgerWriter) return;
+  try {
+    await deps.runLedgerWriter.writeEvent({
+      runId: randomUUID() as Uuid,
+      eventType,
+      timestamp: nowIso(),
+      actorId: detail.actorId as Uuid,
+      detail: {
+        adminOperation: true,
+        keyName: detail.keyName,
+        principalId: detail.principalId,
+        storageLabel: detail.storageLabel,
+      },
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[admin-writer] failed to emit ${eventType} audit event for key ${detail.keyName}: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
   }
 }
 
@@ -707,6 +770,18 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
     }
     try {
       await deps.secretWriter.writeSecret(keyName, keyValue);
+      // Audit: credential-lifecycle event. Detail carries keyName + actor +
+      // storageLabel ONLY — never the value, never a hash, never a length.
+      // Synthetic per-operation runId mirrors templates.ts adminOperation.
+      // Best-effort: a ledger failure must not roll back a stored key, so
+      // we log and continue. Operators can detect missing audit entries via
+      // the gap-detection gate (CMP-12 style).
+      await emitSecretAuditEvent(deps, 'secret_stored', {
+        keyName,
+        actorId: auth.actorId,
+        principalId: auth.principalId,
+        storageLabel: deps.secretWriter.storageLabel,
+      });
       // Response is intentionally write-only — keyName + stored=true. No value echo.
       res.json({
         ok: true,
@@ -744,6 +819,17 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
     }
     try {
       const removed = await deps.secretWriter.deleteSecret(keyName);
+      // Audit only on actual removal — a no-op delete (key already absent)
+      // doesn't change credential state, so we don't pollute the ledger
+      // with non-events. Same keyName-only detail as secret_stored.
+      if (removed) {
+        await emitSecretAuditEvent(deps, 'secret_removed', {
+          keyName,
+          actorId: auth.actorId,
+          principalId: auth.principalId,
+          storageLabel: deps.secretWriter.storageLabel,
+        });
+      }
       res.json({ ok: true, data: { keyName, removed } });
     } catch (err) {
       res.status(500).json({ ok: false, error: san(err) });

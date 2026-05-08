@@ -836,7 +836,14 @@ export type RunEventType =
   | 'workspace_file_staged'
   | 'workspace_file_bound'
   | 'workspace_file_quarantined'
-  | 'run_cancelled';
+  | 'run_cancelled'
+  // ── Admin secret onboarding (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC) ──────────
+  // Credential-lifecycle audit: emitted on successful POST/DELETE against
+  // /workspace/admin/setup/secrets. Detail carries keyName + admin actor
+  // + storageLabel only — NEVER the value or any derivative (length, hash,
+  // prefix). Same adminOperation: true convention as template_ingested.
+  | 'secret_stored'
+  | 'secret_removed';
 
 export interface RunLedgerEntry {
   entryId: Uuid;

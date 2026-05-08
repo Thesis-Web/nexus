@@ -18,7 +18,7 @@
  * No supertest dependency. We use app.listen(0) + fetch().
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import express from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
@@ -41,6 +41,8 @@ import type {
   OctLevel,
   Principal,
   PrincipalRegistry,
+  RunLedgerEntry,
+  RunLedgerWriter,
   Uuid,
   NonEmpty,
 } from '@nexus/contracts';
@@ -268,6 +270,31 @@ function createMockSecretWriter(): SecretWriter & { _values: Map<string, string>
   };
 }
 
+// ─── Mock RunLedgerWriter (in-memory) ───────────────────────────────────────
+// Captures audit events so secret_stored / secret_removed assertions can
+// verify both presence and detail shape (no value leakage).
+
+function createMockRunLedgerWriter(): RunLedgerWriter & {
+  _entries: Array<Omit<RunLedgerEntry, 'entryId'>>;
+} {
+  const entries: Array<Omit<RunLedgerEntry, 'entryId'>> = [];
+  return {
+    _entries: entries,
+    async writeEvent(entry: Omit<RunLedgerEntry, 'entryId'>): Promise<void> {
+      entries.push(entry);
+    },
+    async getByRunId(): Promise<RunLedgerEntry[]> {
+      return [];
+    },
+    async tail(): Promise<RunLedgerEntry[]> {
+      return [];
+    },
+    async getLatestRunId(): Promise<Uuid | null> {
+      return null;
+    },
+  };
+}
+
 // ─── App fixture ────────────────────────────────────────────────────────────
 
 function buildApp(opts: {
@@ -276,6 +303,7 @@ function buildApp(opts: {
   includeActorRegistry?: boolean;
   includePrincipalRegistry?: boolean;
   includeSecretWriter?: boolean;
+  includeRunLedgerWriter?: boolean;
 }): {
   app: express.Express;
   start: () => Promise<{ port: number; server: Server }>;
@@ -283,6 +311,7 @@ function buildApp(opts: {
   actorRegistry: ReturnType<typeof createMockActorRegistry>;
   principalRegistry: ReturnType<typeof createMockPrincipalRegistry>;
   secretWriter: ReturnType<typeof createMockSecretWriter>;
+  runLedgerWriter: ReturnType<typeof createMockRunLedgerWriter>;
 } {
   const app = express();
   app.use(express.json());
@@ -292,6 +321,7 @@ function buildApp(opts: {
   const actorRegistry = createMockActorRegistry();
   const principalRegistry = createMockPrincipalRegistry();
   const secretWriter = createMockSecretWriter();
+  const runLedgerWriter = createMockRunLedgerWriter();
 
   registerAdminWriterRoutes(app, {
     ...(opts.includeElevatedAuth !== false ? { elevatedAuthProvider: mockElevatedAuth } : {}),
@@ -299,6 +329,7 @@ function buildApp(opts: {
     ...(opts.includeActorRegistry !== false ? { actorRegistry } : {}),
     ...(opts.includePrincipalRegistry !== false ? { principalRegistry } : {}),
     ...(opts.includeSecretWriter !== false ? { secretWriter } : {}),
+    ...(opts.includeRunLedgerWriter !== false ? { runLedgerWriter } : {}),
   });
 
   const start = async (): Promise<{ port: number; server: Server }> =>
@@ -309,7 +340,15 @@ function buildApp(opts: {
       });
     });
 
-  return { app, start, manifestWriter, actorRegistry, principalRegistry, secretWriter };
+  return {
+    app,
+    start,
+    manifestWriter,
+    actorRegistry,
+    principalRegistry,
+    secretWriter,
+    runLedgerWriter,
+  };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -931,6 +970,7 @@ describe('admin-writer secret routes', () => {
   let server: Server;
   let port: number;
   let secretWriter: ReturnType<typeof createMockSecretWriter>;
+  let runLedgerWriter: ReturnType<typeof createMockRunLedgerWriter>;
 
   beforeAll(async () => {
     const fixture = buildApp({});
@@ -938,6 +978,7 @@ describe('admin-writer secret routes', () => {
     port = r.port;
     server = r.server;
     secretWriter = fixture.secretWriter;
+    runLedgerWriter = fixture.runLedgerWriter;
   });
 
   afterAll(async () => {
@@ -946,6 +987,7 @@ describe('admin-writer secret routes', () => {
 
   beforeEach(() => {
     secretWriter._values.clear();
+    runLedgerWriter._entries.length = 0;
     delete process.env['ADMIN_WRITER_TEST_ENV_KEY'];
   });
 
@@ -1083,6 +1125,129 @@ describe('admin-writer secret routes', () => {
       { method: 'DELETE', headers: adminHeaders() }
     );
     expect(res.status).toBe(400);
+  });
+
+  // ── Audit events (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC FLAG-2) ─────────────
+
+  it('POST /secrets emits a secret_stored audit event with no value leakage', async () => {
+    const TEST_VAL = 'sk-audit-do-not-leak-9k4e';
+    const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets`, {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify({ keyName: 'OPENAI_API_KEY', keyValue: TEST_VAL }),
+    });
+    expect(res.status).toBe(200);
+    expect(runLedgerWriter._entries).toHaveLength(1);
+    const entry = runLedgerWriter._entries[0]!;
+    expect(entry.eventType).toBe('secret_stored');
+    expect(entry.actorId).toBe(ADMIN_AID);
+    expect(entry.detail['adminOperation']).toBe(true);
+    expect(entry.detail['keyName']).toBe('OPENAI_API_KEY');
+    expect(entry.detail['principalId']).toBe(ADMIN_PID);
+    expect(entry.detail['storageLabel']).toBe('mock://secrets');
+    // The value MUST NOT appear anywhere in the audit entry.
+    expect(JSON.stringify(entry)).not.toContain(TEST_VAL);
+  });
+
+  it('POST /secrets does NOT emit an audit event on validation failure', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets`, {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify({ keyName: 'lowercase-bad', keyValue: 'v' }),
+    });
+    expect(res.status).toBe(400);
+    expect(runLedgerWriter._entries).toHaveLength(0);
+  });
+
+  it('POST /secrets does NOT emit an audit event on auth failure', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets`, {
+      method: 'POST',
+      headers: plainHeaders(),
+      body: JSON.stringify({ keyName: 'OPENAI_API_KEY', keyValue: 'v' }),
+    });
+    expect(res.status).toBe(403);
+    expect(runLedgerWriter._entries).toHaveLength(0);
+  });
+
+  it('DELETE /secrets/:keyName emits a secret_removed audit event', async () => {
+    secretWriter._values.set('OPENAI_API_KEY', 'sk-x');
+    const res = await fetch(
+      `http://127.0.0.1:${port}/workspace/admin/setup/secrets/OPENAI_API_KEY`,
+      { method: 'DELETE', headers: adminHeaders() }
+    );
+    expect(res.status).toBe(200);
+    expect(runLedgerWriter._entries).toHaveLength(1);
+    const entry = runLedgerWriter._entries[0]!;
+    expect(entry.eventType).toBe('secret_removed');
+    expect(entry.actorId).toBe(ADMIN_AID);
+    expect(entry.detail['adminOperation']).toBe(true);
+    expect(entry.detail['keyName']).toBe('OPENAI_API_KEY');
+    expect(entry.detail['principalId']).toBe(ADMIN_PID);
+  });
+
+  it('DELETE /secrets/:keyName does NOT emit audit when no key was removed', async () => {
+    // Key absent — delete is a no-op — no credential state changed, so no audit.
+    const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets/MISSING_KEY`, {
+      method: 'DELETE',
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.removed).toBe(false);
+    expect(runLedgerWriter._entries).toHaveLength(0);
+  });
+
+  it('audit ledger failure does NOT roll back a successful key write', async () => {
+    // Local fixture so we can swap in a writer that throws — we want the
+    // request to still succeed (best-effort audit) and the key to be stored.
+    const localSecret = createMockSecretWriter();
+    const throwingLedger: RunLedgerWriter = {
+      async writeEvent(): Promise<void> {
+        throw new Error('ledger backend down');
+      },
+      async getByRunId(): Promise<RunLedgerEntry[]> {
+        return [];
+      },
+      async tail(): Promise<RunLedgerEntry[]> {
+        return [];
+      },
+      async getLatestRunId(): Promise<Uuid | null> {
+        return null;
+      },
+    };
+    const localApp = express();
+    localApp.use(express.json());
+    localApp.use('/workspace', fakeJwtMiddleware);
+    registerAdminWriterRoutes(localApp, {
+      elevatedAuthProvider: mockElevatedAuth,
+      secretWriter: localSecret,
+      runLedgerWriter: throwingLedger,
+    });
+    const localServer = await new Promise<{ port: number; server: Server }>(resolve => {
+      const s = localApp.listen(0, '127.0.0.1', () => {
+        const a = s.address() as AddressInfo;
+        resolve({ port: a.port, server: s });
+      });
+    });
+    try {
+      // Silence the warn() emitted by the audit helper for this single case.
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const res = await fetch(
+        `http://127.0.0.1:${localServer.port}/workspace/admin/setup/secrets`,
+        {
+          method: 'POST',
+          headers: adminHeaders(),
+          body: JSON.stringify({ keyName: 'OPENAI_API_KEY', keyValue: 'sk-still-stored' }),
+        }
+      );
+      expect(res.status).toBe(200);
+      expect(localSecret._values.get('OPENAI_API_KEY')).toBe('sk-still-stored');
+      // A warning must have been logged so operators can detect the gap.
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
+    } finally {
+      await new Promise<void>(resolve => localServer.server.close(() => resolve()));
+    }
   });
 });
 
