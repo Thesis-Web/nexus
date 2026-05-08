@@ -153,6 +153,8 @@ import {
   AnthropicMessagesV1Adapter,
   OpenAiChatV1Adapter,
   EnvSecretSource,
+  FileSecretSource,
+  ChainedSecretSource,
   loadEndpointManifest,
   loadNvgRoutingPolicy,
   TierRegistry,
@@ -219,6 +221,9 @@ const MANIFEST_CHANNELS = 'config/channels/channels.v1.yaml';
 const MANIFEST_ENDPOINTS = 'config/nvg/endpoints.v1.yaml';
 const NVG_ROUTING_POLICY = 'fixtures/nvg/default.routing-policy.yaml';
 const MODE_CONFIG = 'keys/mode-config.json';
+// CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — admin-managed API keys.
+// Gitignored; created on first POST /workspace/admin/setup/secrets.
+const SECRETS_FILE = 'keys/secrets.json';
 // §5.1 — externals five domains
 const MANIFEST_WORKSPACE = 'config/workspace/workspaces.v1.yaml';
 const MANIFEST_ORCHESTRATORS = 'config/orchestrators/orchestrators.v1.yaml';
@@ -277,6 +282,15 @@ export interface BootstrapResult {
   readonly routingPolicy: NvgRoutingPolicy;
   readonly modeConfig: ModeConfiguration;
   readonly externals: ExternalsRuntime;
+  /**
+   * File-backed secret store for admin-managed API keys
+   * (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC). Composition root adapts this into
+   * the SecretWriter port for the admin secret routes; the read side is
+   * already wired into transportContext.secretSource via ChainedSecretSource.
+   */
+  readonly fileSecretSource: FileSecretSource;
+  /** Backing path of the secrets file — for evidence labels in the dashboard. */
+  readonly secretsStorageLabel: string;
 }
 
 /**
@@ -463,8 +477,14 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   console.log(`[bootstrap] Step 6 complete: ${channelRecords.length} enabled channel(s)`);
 
   // ─── Step 7: Load endpoint manifest ──────────────────────────────────────
+  // CLAUDE-CODE-SECRET-MANAGEMENT-SPEC: chained resolver — `file:` refs
+  // resolve from keys/secrets.json (admin-managed at runtime via the
+  // dashboard); bare KEY refs fall back to process.env so existing
+  // env-driven deployments keep working.
   console.log(`[bootstrap] Step 7: loading endpoint manifest (${MANIFEST_ENDPOINTS})`);
-  const secretSource = new EnvSecretSource();
+  const fileSecretSource = new FileSecretSource(path.join(process.cwd(), SECRETS_FILE));
+  const envSecretSource = new EnvSecretSource();
+  const secretSource = new ChainedSecretSource([fileSecretSource, envSecretSource]);
   const endpoints = await loadEndpointManifest({
     manifestPath: MANIFEST_ENDPOINTS,
     controlPlanePublicKey: pubKey,
@@ -852,6 +872,8 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
     routingPolicy,
     modeConfig,
     externals,
+    fileSecretSource,
+    secretsStorageLabel: SECRETS_FILE,
   };
 }
 

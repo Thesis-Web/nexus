@@ -142,6 +142,17 @@ const program = createCli({
     const computeDigest = (obj: unknown): Sha256Hex =>
       createHash('sha256').update(canonicalize(obj)).digest('hex') as Sha256Hex;
 
+    // CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — adapter from FileSecretSource (Layer 3)
+    // to the SecretWriter port consumed by admin-writer.ts (Layer 7). Layer 7
+    // never sees the read side (no readSecret method) — values stay in the
+    // ChainedSecretSource that Vanguard's transport adapters call.
+    const secretWriter = {
+      writeSecret: (k: string, v: string) => br.fileSecretSource.writeSecret(k, v),
+      deleteSecret: (k: string) => br.fileSecretSource.deleteSecret(k),
+      listKeyNames: () => br.fileSecretSource.listKeyNames(),
+      storageLabel: br.secretsStorageLabel,
+    };
+
     // ── ORCH-WIRE-001: Step 22 — Orchestrator assembly ──────────────────
     const orchManifest = br.externals.orchestratorSockets[0];
     if (!orchManifest) {
@@ -158,6 +169,7 @@ const program = createCli({
         compileReturnRecords: br.externals.compileReturnEndpoints,
         endpoints: br.endpoints,
         computeDigest,
+        secretWriter,
       };
     }
     console.log('[orch-wire] Step 22: assembling orchestrator...');
@@ -821,6 +833,8 @@ const program = createCli({
         const filePath = raw.slice('file://'.length);
         return fs.readFile(path.resolve(filePath), 'utf-8');
       },
+      // CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — admin secret onboarding (write-only port).
+      secretWriter,
     };
   },
 });

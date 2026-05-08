@@ -300,6 +300,26 @@ export interface ApiDependencies {
   // ── SPEC-ADMIN-WRITER §3 — Manifest writer for admin dashboard mutations ──
   /** Generic YAML manifest writer (endpoints + connectors). Injected from serve. */
   manifestWriter?: ManifestWriter;
+
+  // ── CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — admin secret onboarding ─────────
+  /** File-backed secret store. Bootstrap supplies a FileSecretSource adapter. */
+  secretWriter?: SecretWriter;
+}
+
+/**
+ * SecretWriter — admin secret onboarding port.
+ *
+ * Layer 7 cannot import the FileSecretSource directly (Layer 3). Bootstrap
+ * adapts a FileSecretSource into this minimal write+presence surface.
+ *
+ * NEVER add a "readSecret" method here — the status route returns presence
+ * and source, never the value (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC).
+ */
+export interface SecretWriter {
+  writeSecret(keyName: string, keyValue: string): Promise<void>;
+  deleteSecret(keyName: string): Promise<boolean>;
+  listKeyNames(): Promise<readonly string[]>;
+  readonly storageLabel: string;
 }
 
 // ── §23.1 createApiServer — DI factory ───────────────────────────────────────

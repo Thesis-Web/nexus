@@ -23,7 +23,10 @@ import express from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { registerAdminWriterRoutes } from '../../packages/interfaces/api/src/routes/admin-writer.js';
-import type { ManifestWriter } from '../../packages/interfaces/api/src/routes/admin-writer.js';
+import type {
+  ManifestWriter,
+  SecretWriter,
+} from '../../packages/interfaces/api/src/routes/admin-writer.js';
 import type {
   IdentityClaims,
   ElevatedAuthProvider,
@@ -244,6 +247,27 @@ function createMockPrincipalRegistry(): PrincipalRegistry & {
   };
 }
 
+// ─── Mock SecretWriter (in-memory) ──────────────────────────────────────────
+// CLAUDE-CODE-SECRET-MANAGEMENT-SPEC test seam — mirrors FileSecretSource's
+// admin write surface without touching disk.
+
+function createMockSecretWriter(): SecretWriter & { _values: Map<string, string> } {
+  const values = new Map<string, string>();
+  return {
+    _values: values,
+    storageLabel: 'mock://secrets',
+    async writeSecret(keyName: string, keyValue: string): Promise<void> {
+      values.set(keyName, keyValue);
+    },
+    async deleteSecret(keyName: string): Promise<boolean> {
+      return values.delete(keyName);
+    },
+    async listKeyNames(): Promise<readonly string[]> {
+      return [...values.keys()];
+    },
+  };
+}
+
 // ─── App fixture ────────────────────────────────────────────────────────────
 
 function buildApp(opts: {
@@ -251,12 +275,14 @@ function buildApp(opts: {
   includeManifestWriter?: boolean;
   includeActorRegistry?: boolean;
   includePrincipalRegistry?: boolean;
+  includeSecretWriter?: boolean;
 }): {
   app: express.Express;
   start: () => Promise<{ port: number; server: Server }>;
   manifestWriter: ReturnType<typeof createMockManifestWriter>;
   actorRegistry: ReturnType<typeof createMockActorRegistry>;
   principalRegistry: ReturnType<typeof createMockPrincipalRegistry>;
+  secretWriter: ReturnType<typeof createMockSecretWriter>;
 } {
   const app = express();
   app.use(express.json());
@@ -265,12 +291,14 @@ function buildApp(opts: {
   const manifestWriter = createMockManifestWriter();
   const actorRegistry = createMockActorRegistry();
   const principalRegistry = createMockPrincipalRegistry();
+  const secretWriter = createMockSecretWriter();
 
   registerAdminWriterRoutes(app, {
     ...(opts.includeElevatedAuth !== false ? { elevatedAuthProvider: mockElevatedAuth } : {}),
     ...(opts.includeManifestWriter !== false ? { manifestWriter } : {}),
     ...(opts.includeActorRegistry !== false ? { actorRegistry } : {}),
     ...(opts.includePrincipalRegistry !== false ? { principalRegistry } : {}),
+    ...(opts.includeSecretWriter !== false ? { secretWriter } : {}),
   });
 
   const start = async (): Promise<{ port: number; server: Server }> =>
@@ -281,7 +309,7 @@ function buildApp(opts: {
       });
     });
 
-  return { app, start, manifestWriter, actorRegistry, principalRegistry };
+  return { app, start, manifestWriter, actorRegistry, principalRegistry, secretWriter };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -894,5 +922,201 @@ describe('admin-writer without actorRegistry', () => {
       }),
     });
     expect(res.status).toBe(501);
+  });
+});
+
+// ─── Secret routes (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC) ────────────────────
+
+describe('admin-writer secret routes', () => {
+  let server: Server;
+  let port: number;
+  let secretWriter: ReturnType<typeof createMockSecretWriter>;
+
+  beforeAll(async () => {
+    const fixture = buildApp({});
+    const r = await fixture.start();
+    port = r.port;
+    server = r.server;
+    secretWriter = fixture.secretWriter;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  });
+
+  beforeEach(() => {
+    secretWriter._values.clear();
+    delete process.env['ADMIN_WRITER_TEST_ENV_KEY'];
+  });
+
+  it('POST /secrets stores a key and never echoes the value', async () => {
+    const TEST_VAL = 'sk-do-not-echo-me-7f3c-9a';
+    const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets`, {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify({ keyName: 'OPENAI_API_KEY', keyValue: TEST_VAL }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.data.keyName).toBe('OPENAI_API_KEY');
+    expect(body.data.stored).toBe(true);
+    expect(body.data.source).toBe('file');
+    // Crucially — value is NOT echoed back anywhere.
+    expect(JSON.stringify(body)).not.toContain(TEST_VAL);
+    // Underlying writer received the value.
+    expect(secretWriter._values.get('OPENAI_API_KEY')).toBe(TEST_VAL);
+  });
+
+  it('POST /secrets rejects keyName with disallowed characters (400)', async () => {
+    for (const bad of ['lowercase', 'has space', 'with-dash', '../escape', 'colon:nope']) {
+      const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets`, {
+        method: 'POST',
+        headers: adminHeaders(),
+        body: JSON.stringify({ keyName: bad, keyValue: 'v' }),
+      });
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it('POST /secrets rejects empty keyValue (400)', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets`, {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify({ keyName: 'OPENAI_API_KEY', keyValue: '' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /secrets requires admin role (403 for plain user)', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets`, {
+      method: 'POST',
+      headers: plainHeaders(),
+      body: JSON.stringify({ keyName: 'OPENAI_API_KEY', keyValue: 'v' }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /secrets requires elevated session header (403 when missing)', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Test-Identity': JSON.stringify({
+          kind: 'admin',
+          principalId: ADMIN_PID,
+          actorId: ADMIN_AID,
+        }),
+      },
+      body: JSON.stringify({ keyName: 'OPENAI_API_KEY', keyValue: 'v' }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /secrets/status reports presence + source, never values', async () => {
+    const TEST_VAL = 'sk-secret-7f3c-9a';
+    secretWriter._values.set('OPENAI_API_KEY', TEST_VAL);
+    process.env['ADMIN_WRITER_TEST_ENV_KEY'] = 'env-leaks-here';
+
+    const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets/status`, {
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(JSON.stringify(body)).not.toContain(TEST_VAL);
+    expect(JSON.stringify(body)).not.toContain('env-leaks-here');
+    const openai = body.data.keys.find((k: { keyName: string }) => k.keyName === 'OPENAI_API_KEY');
+    expect(openai).toBeDefined();
+    expect(openai.present).toBe(true);
+    expect(openai.source).toBe('file');
+    const anthropic = body.data.keys.find(
+      (k: { keyName: string }) => k.keyName === 'ANTHROPIC_API_KEY'
+    );
+    expect(anthropic).toBeDefined();
+    expect(anthropic.present).toBe(false);
+    expect(anthropic.source).toBeNull();
+  });
+
+  it('GET /secrets/status reports env-side keys when file-side is missing', async () => {
+    process.env['OPENAI_API_KEY'] = 'env-managed-value';
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets/status`, {
+        headers: adminHeaders(),
+      });
+      const body = await res.json();
+      const openai = body.data.keys.find(
+        (k: { keyName: string }) => k.keyName === 'OPENAI_API_KEY'
+      );
+      expect(openai.present).toBe(true);
+      expect(openai.source).toBe('env');
+    } finally {
+      delete process.env['OPENAI_API_KEY'];
+    }
+  });
+
+  it('DELETE /secrets/:keyName removes the key', async () => {
+    secretWriter._values.set('OPENAI_API_KEY', 'sk-x');
+    const res = await fetch(
+      `http://127.0.0.1:${port}/workspace/admin/setup/secrets/OPENAI_API_KEY`,
+      { method: 'DELETE', headers: adminHeaders() }
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.removed).toBe(true);
+    expect(secretWriter._values.has('OPENAI_API_KEY')).toBe(false);
+  });
+
+  it('DELETE /secrets/:keyName returns removed=false for unknown key', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets/MISSING_KEY`, {
+      method: 'DELETE',
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.removed).toBe(false);
+  });
+
+  it('DELETE /secrets/:keyName rejects bad key names (400)', async () => {
+    const res = await fetch(
+      `http://127.0.0.1:${port}/workspace/admin/setup/secrets/lowercase-bad`,
+      { method: 'DELETE', headers: adminHeaders() }
+    );
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('admin-writer without secretWriter', () => {
+  let server: Server;
+  let port: number;
+
+  beforeAll(async () => {
+    const fixture = buildApp({ includeSecretWriter: false });
+    const r = await fixture.start();
+    port = r.port;
+    server = r.server;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  });
+
+  it('POST /secrets returns 501 when secretWriter not configured', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets`, {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify({ keyName: 'OPENAI_API_KEY', keyValue: 'v' }),
+    });
+    expect(res.status).toBe(501);
+  });
+
+  it('GET /secrets/status still works (env-only) without a secretWriter', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets/status`, {
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.data.storageLabel).toBeNull();
   });
 });

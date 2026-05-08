@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-08T07:51:56.488Z'
-signature: vLxP89ID1wyZbIdJEwA-Cn8YtwjWvIvJkkrxJyDGqJOfQc4yhgZuK052pN7ZGBlBC3-ufjpv5tV0_rCtcqX5Bw
+issuedAt: '2026-05-08T17:13:40.440Z'
+signature: aExskAE3NI__ygcZS9NC8ddweIj5cJzGThTYwFhSeQem1YCVE5bzOnnGC1cIjiC17mH_4WQjknnVLDt49zwdCA
 body:
   endpoints:
     - endpointId: local-ollama
@@ -19,7 +19,7 @@ body:
       modelName: claude-sonnet-4-20250514
       auth:
         kind: api_key
-        secretRef: FIXTURE_SYNTHETIC_SECRET:ANTHROPIC_API_KEY
+        secretRef: file:ANTHROPIC_API_KEY
         headerName: x-api-key
       adapterConfig:
         max_tokens: 4096
@@ -31,7 +31,7 @@ body:
       modelName: gpt-4o
       auth:
         kind: bearer
-        secretRef: FIXTURE_SYNTHETIC_SECRET:OPENAI_API_KEY
+        secretRef: file:OPENAI_API_KEY
         headerName: Authorization
         prefix: 'Bearer '
       enabled: false

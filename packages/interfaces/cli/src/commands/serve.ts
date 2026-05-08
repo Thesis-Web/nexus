@@ -84,6 +84,11 @@ export type WorkspaceApiDeps = Partial<
     | 'controlPlanePublicKey'
     | 'resolveArtifactBody'
     | 'resolvePendingCheckback'
+    // ── CLAUDE-CODE-SECRET-MANAGEMENT-SPEC ──
+    // Admin secret onboarding port. Bootstrap supplies a FileSecretSource
+    // adapter so admin-writer routes can persist API keys without giving
+    // Layer 7 a read-side handle on the values.
+    | 'secretWriter'
   >
 >;
 

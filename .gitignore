@@ -23,6 +23,9 @@ keys/workspace-jwt.secret
 keys/workspace-dev-admin.apikey
 keys/approvers/
 keys/admins/
+# Admin-managed API keys (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC)
+keys/secrets.json
+keys/secrets.json.tmp-*
 
 # Environment files
 .env

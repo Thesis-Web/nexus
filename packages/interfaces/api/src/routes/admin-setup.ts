@@ -117,17 +117,37 @@ export interface AdminSetupRouteDeps {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /**
- * Return process.env-based secret status without ever returning the value.
- * Returns 'present' if env var resolves to a non-empty string,
- * 'missing' if undefined/empty, 'unknown' if the secretRef looks
- * non-env-shaped (e.g., a vault URI that we can't introspect server-side).
+ * Return secret presence status WITHOUT ever returning the value.
+ *
+ * Recognizes the prefix-routed scheme used by ChainedSecretSource:
+ *   - 'file:KEY'  → keys/secrets.json (admin-managed at runtime)
+ *   - 'env:KEY'   → process.env (env-driven deployments)
+ *   - bare 'KEY'  → process.env (legacy / explicit-env)
+ *   - 'FIXTURE_SYNTHETIC_SECRET:*' → always 'missing' by convention
+ *
+ * Returns 'present' if the corresponding source has a non-empty value,
+ * 'missing' otherwise, 'unknown' for shapes we cannot introspect (vault
+ * URIs, non-conforming refs).
+ *
+ * Note: the file branch returns 'unknown' here because admin-setup is the
+ * read-only projection layer (no backing-store handle). The
+ * /workspace/admin/setup/secrets/status route is the authoritative
+ * presence check for file: refs.
  */
 function secretStatusForRef(secretRef: string): DashboardSecretField['status'] {
-  // Fixture/synthetic prefix used in repo (per fixtures/nvg/* naming):
-  // these never resolve to a real env var by convention.
+  // Fixture/synthetic prefix — never resolves to a real key by convention.
   if (secretRef.startsWith('FIXTURE_SYNTHETIC_SECRET:')) return 'missing';
-  // Heuristic: env-style secretRefs are upper-snake-case; vault-style refs
-  // contain '/', '://', or other non-env characters — treat as 'unknown'.
+  // file:KEY — defer to /workspace/admin/setup/secrets/status for authoritative
+  // presence (admin-setup has no FileSecretSource handle).
+  if (secretRef.startsWith('file:')) return 'unknown';
+  // env:KEY — explicit env-prefix.
+  if (secretRef.startsWith('env:')) {
+    const key = secretRef.slice('env:'.length);
+    if (!/^[A-Z][A-Z0-9_]*$/.test(key)) return 'unknown';
+    const v = process.env[key];
+    return v && v.length > 0 ? 'present' : 'missing';
+  }
+  // Bare KEY — legacy upper-snake-case env reference.
   if (/^[A-Z][A-Z0-9_]*$/.test(secretRef)) {
     const v = process.env[secretRef];
     return v && v.length > 0 ? 'present' : 'missing';

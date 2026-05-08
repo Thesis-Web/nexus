@@ -160,3 +160,54 @@ export async function removeConnector(
     'DELETE'
   );
 }
+
+// ── Surface 4: Admin Secret Onboarding ─────────────────────────────────────
+// CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — operator pastes API keys directly
+// into the dashboard; backing store is keys/secrets.json (gitignored).
+// Status returns presence + source per key, NEVER values.
+
+export interface SecretStatusEntry {
+  keyName: string;
+  present: boolean;
+  source: 'file' | 'env' | null;
+}
+
+export interface SecretStatusResponse {
+  keys: readonly SecretStatusEntry[];
+  storageLabel: string | null;
+}
+
+export interface SecretWriteResult {
+  keyName: string;
+  stored: true;
+  source: 'file';
+  storageLabel: string;
+}
+
+export async function getSecretStatus(
+  elevatedSessionId: string
+): Promise<WriterResponse<SecretStatusResponse>> {
+  return writerFetch('/workspace/admin/setup/secrets/status', elevatedSessionId, 'GET');
+}
+
+export async function storeSecret(
+  elevatedSessionId: string,
+  keyName: string,
+  keyValue: string
+): Promise<WriterResponse<SecretWriteResult>> {
+  return writerFetch('/workspace/admin/setup/secrets', elevatedSessionId, 'POST', {
+    keyName,
+    keyValue,
+  });
+}
+
+export async function deleteSecret(
+  elevatedSessionId: string,
+  keyName: string
+): Promise<WriterResponse<{ keyName: string; removed: boolean }>> {
+  return writerFetch(
+    `/workspace/admin/setup/secrets/${encodeURIComponent(keyName)}`,
+    elevatedSessionId,
+    'DELETE'
+  );
+}

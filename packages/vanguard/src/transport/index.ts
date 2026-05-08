@@ -10,6 +10,8 @@ export { ModelTransportAdapterRegistry } from './registry.js';
 
 // ── Secret Sources ──────────────────────────────────────────────────────────
 export { EnvSecretSource } from './secrets/env-secret-source.js';
+export { FileSecretSource, FILE_SECRET_PREFIX } from './secrets/file-secret-source.js';
+export { ChainedSecretSource } from './secrets/chained-secret-source.js';
 
 // ── Reference Adapters ──────────────────────────────────────────────────────
 export {

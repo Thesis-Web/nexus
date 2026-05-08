@@ -65,6 +65,26 @@ export interface ManifestWriter {
   ): Promise<Record<string, unknown>[]>;
 }
 
+// ── SecretWriter interface — admin secret onboarding ──────────────────────
+//
+// Layer 7 cannot import the FileSecretSource directly (Layer 3). Bootstrap
+// constructs a FileSecretSource and adapts it to this minimal write+presence
+// surface so the admin secret routes never touch values they don't own.
+//
+// NEVER add a "readSecret" method here. Status routes return presence, not
+// value (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC §"WHAT'S FORBIDDEN").
+
+export interface SecretWriter {
+  /** Write a key. Throws on invalid input or unrecoverable backend errors. */
+  writeSecret(keyName: string, keyValue: string): Promise<void>;
+  /** Delete a key. Returns true if a key was removed. */
+  deleteSecret(keyName: string): Promise<boolean>;
+  /** List stored key names — names ONLY, never values. */
+  listKeyNames(): Promise<readonly string[]>;
+  /** Backing storage label for evidence display (e.g. "keys/secrets.json"). */
+  readonly storageLabel: string;
+}
+
 // ── File lock (WRITER-004) — in-memory, single-process ──────────────────────
 
 interface FileLock {
@@ -121,6 +141,11 @@ export interface AdminWriterRouteDeps {
   readonly actorRegistry?: ActorRegistry;
   /** Registered principals — used by the catalog route for the principalId dropdown. */
   readonly principalRegistry?: PrincipalRegistry;
+  /**
+   * Admin secret store (file-backed). When omitted, the secret routes return
+   * 501 — the rest of the writer surface keeps working.
+   */
+  readonly secretWriter?: SecretWriter;
 }
 
 interface AuthOk {
@@ -631,6 +656,142 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
     res.json({
       ok: true,
       data: { locked: lock !== null, surface, ...(lock ? { heldBy: lock.adminUserId } : {}) },
+    });
+  });
+
+  // ═══ SURFACE 4: Admin secret onboarding ═══
+  // CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — operators paste API keys directly
+  // from the dashboard. Keys are persisted to keys/secrets.json (gitignored)
+  // and then resolved at invoke-time via the chained SecretSource. Status
+  // returns presence + source per key, NEVER values.
+  //
+  // Auth posture matches the rest of admin-writer (JWT + nexus-admin role +
+  // X-Elevated-Session). Forbidden surfaces (per spec):
+  //   - never echo the key back in any response
+  //   - never log the key
+  //   - never persist it in SQLite, the manifest YAML, or git
+  //
+  // KEY_NAME validation: upper-snake-case, max 128 chars. Anything else is
+  // rejected so a stray colon or path separator can't smuggle a foreign
+  // identifier into the file map.
+  const KEY_NAME_RE = /^[A-Z][A-Z0-9_]*$/;
+  const MAX_KEY_NAME_LEN = 128;
+  const MAX_KEY_VALUE_LEN = 8 * 1024; // 8 KiB — well above any provider key
+
+  app.post('/workspace/admin/setup/secrets', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    if (!deps.secretWriter) {
+      res.status(501).json({ ok: false, error: 'Secret writer not configured' });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const keyName = typeof body['keyName'] === 'string' ? body['keyName'] : '';
+    const keyValue = typeof body['keyValue'] === 'string' ? body['keyValue'] : '';
+    if (!keyName || keyName.length > MAX_KEY_NAME_LEN || !KEY_NAME_RE.test(keyName)) {
+      res.status(400).json({
+        ok: false,
+        error: 'keyName must be upper-snake-case ([A-Z][A-Z0-9_]*) and ≤128 chars',
+      });
+      return;
+    }
+    if (!keyValue || keyValue.length > MAX_KEY_VALUE_LEN) {
+      res.status(400).json({
+        ok: false,
+        error: `keyValue required (non-empty, ≤${MAX_KEY_VALUE_LEN} chars)`,
+      });
+      return;
+    }
+    try {
+      await deps.secretWriter.writeSecret(keyName, keyValue);
+      // Response is intentionally write-only — keyName + stored=true. No value echo.
+      res.json({
+        ok: true,
+        data: {
+          keyName,
+          stored: true,
+          source: 'file',
+          storageLabel: deps.secretWriter.storageLabel,
+        },
+      });
+    } catch (err) {
+      // Don't leak the key value via the error message either — sanitizer
+      // already handles strings, but keyValue isn't in the error path.
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  app.delete('/workspace/admin/setup/secrets/:keyName', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    if (!deps.secretWriter) {
+      res.status(501).json({ ok: false, error: 'Secret writer not configured' });
+      return;
+    }
+    const keyName = String(req.params['keyName'] ?? '');
+    if (!keyName || keyName.length > MAX_KEY_NAME_LEN || !KEY_NAME_RE.test(keyName)) {
+      res.status(400).json({
+        ok: false,
+        error: 'keyName must be upper-snake-case ([A-Z][A-Z0-9_]*) and ≤128 chars',
+      });
+      return;
+    }
+    try {
+      const removed = await deps.secretWriter.deleteSecret(keyName);
+      res.json({ ok: true, data: { keyName, removed } });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  app.get('/workspace/admin/setup/secrets/status', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    // Always returns presence + source; NEVER values. Works without
+    // secretWriter, in which case we report only the env-side picture.
+    const fileNames = deps.secretWriter ? await deps.secretWriter.listKeyNames() : [];
+    const fileSet = new Set(fileNames);
+
+    // The well-known provider keys are the ones the form pre-suggests.
+    // We surface their status even when the operator hasn't stored a key yet,
+    // so the dashboard can render the amber "Key required" indicator.
+    const KNOWN_KEYS = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY'] as const;
+    const seen = new Set<string>([...KNOWN_KEYS, ...fileSet]);
+
+    const keys: Array<{
+      keyName: string;
+      present: boolean;
+      source: 'file' | 'env' | null;
+    }> = [];
+    for (const name of seen) {
+      if (fileSet.has(name)) {
+        keys.push({ keyName: name, present: true, source: 'file' });
+        continue;
+      }
+      const envValue = process.env[name];
+      if (typeof envValue === 'string' && envValue.length > 0) {
+        keys.push({ keyName: name, present: true, source: 'env' });
+        continue;
+      }
+      keys.push({ keyName: name, present: false, source: null });
+    }
+    keys.sort((a, b) => a.keyName.localeCompare(b.keyName));
+
+    res.json({
+      ok: true,
+      data: {
+        keys,
+        storageLabel: deps.secretWriter?.storageLabel ?? null,
+      },
     });
   });
 }

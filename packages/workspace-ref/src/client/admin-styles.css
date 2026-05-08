@@ -900,3 +900,71 @@
 .nx-admin-endpoint-form__chip input[type='checkbox'] {
   margin: 0;
 }
+
+/* CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — admin secret onboarding pills + key input */
+.nx-admin-secret-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.nx-admin-secret-pill--present {
+  background: #0d2c19;
+  color: #6cf09d;
+  border: 1px solid #1d5a32;
+}
+.nx-admin-secret-pill--missing {
+  background: #2c1f0d;
+  color: #f0b76c;
+  border: 1px solid #5a3e1d;
+}
+.nx-admin-secret-pill--unknown {
+  background: #1a1a1a;
+  color: #888;
+  border: 1px solid #333;
+}
+
+.nx-admin-endpoint-form__key-block {
+  background: #0c0c0c;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nx-admin-endpoint-form__key-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.nx-admin-endpoint-form__key-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.nx-admin-endpoint-form__key-row .nx-admin-endpoint-form__input {
+  flex: 1;
+  font-family: monospace;
+  letter-spacing: 0.05em;
+}
+.nx-admin-endpoint-form__key-hint {
+  font-size: 11px;
+  color: #888;
+  font-family: monospace;
+}
+.nx-admin-endpoint-form__key-status {
+  font-size: 12px;
+  color: #6cf09d;
+  font-family: monospace;
+}
+.nx-admin-endpoint-form__key-status--missing {
+  color: #f0b76c;
+}
