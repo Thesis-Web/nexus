@@ -61,6 +61,7 @@ function App() {
   const [models, setModels] = useState<CatalogItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState('');
+  const [selectedModel, setSelectedModel] = useState('');
   const [planRejection, setPlanRejection] = useState<{
     reason: string;
     reasonDetail: string;
@@ -102,6 +103,12 @@ function App() {
         if (!submission.agents?.length && selectedAgent) {
           submission.agents = [selectedAgent];
         }
+        // Topbar model dropdown — endpointId selected by the user. Empty string
+        // means "Auto (policy)"; in that case we omit preferredEndpointId so
+        // the orchestrator and NVG run their normal policy-driven routing.
+        if (selectedModel && !submission.preferredEndpointId) {
+          submission.preferredEndpointId = selectedModel;
+        }
 
         const res = await createRun(submission as unknown as Record<string, unknown>);
         if (res.ok && res.data) {
@@ -131,7 +138,7 @@ function App() {
         setSubmitting(false);
       }
     },
-    [runEvents, selectedAgent]
+    [runEvents, selectedAgent, selectedModel]
   );
 
   // Handle file upload
@@ -229,8 +236,12 @@ function App() {
                 </option>
               ))}
           </select>
-          <select className="nx-select">
-            <option>Auto (policy)</option>
+          <select
+            className="nx-select"
+            value={selectedModel}
+            onChange={e => setSelectedModel(e.target.value)}
+          >
+            <option value="">Auto (policy)</option>
             {models
               .filter(m => m.selectable)
               .map(m => (
@@ -270,7 +281,7 @@ function App() {
 
           <PromptPanel
             agents={agents}
-            models={models}
+            preferredEndpointId={selectedModel}
             onSubmit={submission => void handleSubmit(submission)}
             onFileUpload={() => void handleFileUpload()}
             disabled={submitting}

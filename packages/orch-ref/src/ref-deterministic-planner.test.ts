@@ -93,6 +93,7 @@ function normalRequest(overrides: Partial<NormalPlannerRequest> = {}): NormalPla
     workspaceSocketId: 'ws-001' as NonEmpty,
     planCheckbackRequested: false,
     enteredAt: nowIso(),
+    preferredEndpointId: null,
     ...overrides,
   };
 }
@@ -430,6 +431,7 @@ describe('ORCH-11: Visibility tiers', () => {
       workspaceSocketId: 'ws-001' as NonEmpty,
       planCheckbackRequested: false,
       enteredAt: nowIso(),
+      preferredEndpointId: null,
     };
     expect('prompt' in request).toBe(false);
   });

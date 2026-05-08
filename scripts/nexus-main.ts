@@ -255,6 +255,10 @@ const program = createCli({
             dataLabels: [],
             costPreference: 'standard',
             latencyPreference: 'standard',
+            // CLAUDE-CODE-MODEL-SELECTION-SPEC §2b — surface the user's
+            // dropdown preference. NVG treats it as a weighted suggestion
+            // within the governed tier set; null = Auto (policy).
+            preferredEndpointId: request.preferredEndpointId,
           };
 
           console.log(
@@ -357,12 +361,27 @@ const program = createCli({
             request.runId
           );
 
+          // CLAUDE-CODE-MODEL-SELECTION-SPEC §5 — record the preference vs.
+          // the actually-used endpoint so the audit trail reveals when the
+          // user's selection was honored, when a sibling on the same tier
+          // ran instead, and when policy fallback fired. preferenceHonored
+          // is null (rather than false) when the user supplied no preference
+          // — that distinguishes "not asked" from "asked but unhonored".
+          const actualEndpointId = inv.endpointUsed?.endpointId ?? null;
+          const preferenceHonored: boolean | null =
+            request.preferredEndpointId === null
+              ? null
+              : actualEndpointId === request.preferredEndpointId;
+
           return {
             success: true,
             completionMetadata: {
               mailboxItemId: item.mailboxItemId,
               modelTierInvoked: result.modelTierInvoked,
               responseSize: inv.responseSize ?? null,
+              preferredEndpointId: request.preferredEndpointId,
+              actualEndpointId,
+              preferenceHonored,
             },
             failureReason: null,
             governanceDenied: false,
@@ -540,6 +559,35 @@ const program = createCli({
     const pendingCheckbacks = new Map<Uuid, PendingCheckback>();
     const CHECKBACK_TIMEOUT_MS = 5 * 60_000;
 
+    /**
+     * Suspend the run on a Deferred keyed by runId; the workspace UI's
+     * POST /workspace/runs/:runId/checkback wakes it via resolvePendingCheckback.
+     * Times out after CHECKBACK_TIMEOUT_MS — auto-deny + plan_checkback_resolved.
+     */
+    const waitForCheckback = (runId: Uuid): Promise<boolean> =>
+      new Promise<boolean>(resolve => {
+        const timer = setTimeout(() => {
+          const stillPending = pendingCheckbacks.get(runId);
+          if (stillPending && stillPending.timer === timer) {
+            pendingCheckbacks.delete(runId);
+            void coreDeps.runLedgerWriter!.writeEvent({
+              runId,
+              eventType: 'plan_checkback_resolved',
+              timestamp: nowIso(),
+              actorId: null,
+              detail: { decision: 'deny', reason: 'checkback_timeout' },
+            });
+            resolve(false);
+          }
+        }, CHECKBACK_TIMEOUT_MS);
+
+        pendingCheckbacks.set(runId, {
+          resolve,
+          timer,
+          expiresAt: Date.now() + CHECKBACK_TIMEOUT_MS,
+        });
+      });
+
     const makeSendPlanCheckback = (request: WorkspaceRunRequest) => {
       return async (preview: OrchestratorPlanPreview): Promise<boolean> => {
         try {
@@ -562,20 +610,154 @@ const program = createCli({
             dataLabels: [],
             costPreference: 'standard',
             latencyPreference: 'standard',
+            // CLAUDE-CODE-MODEL-SELECTION-SPEC §4 — pre-flight inspects the
+            // user's preferred endpoint health alongside the policy tier so
+            // the checkback message can name a concrete unavailable model.
+            preferredEndpointId: request.preferredEndpointId,
           };
 
           const routing = await br.nvgService.previewRouting(probe);
+          const prefName = routing.preferredEndpoint
+            ? routing.preferredEndpoint.modelName + ' (' + routing.preferredEndpoint.tier + ')'
+            : '<none>';
           console.log(
             '[orch-wire] pre-flight — primary:',
             routing.primaryTier ?? '<none>',
             routing.primaryHealthy ? '(healthy)' : '(unhealthy)',
             '| fallback:',
             routing.fallbackTier ?? '<none>',
-            routing.fallbackHealthy ? '(healthy)' : '(unhealthy)'
+            routing.fallbackHealthy ? '(healthy)' : '(unhealthy)',
+            '| preferred:',
+            prefName,
+            routing.preferredEndpoint
+              ? routing.preferredEndpointHealthy
+                ? '(healthy)'
+                : '(unhealthy)'
+              : ''
           );
 
-          // Auto-approve when there's a healthy path — NVG's invocation chain
-          // will resolve same-tier retry / fallback transparently.
+          // CLAUDE-CODE-MODEL-SELECTION-SPEC §4 — preference-aware pre-flight.
+          // When the user picked a specific endpoint:
+          //   - healthy + within ceiling → auto-approve (router will use it)
+          //   - unhealthy but a sibling on same tier is healthy → auto-approve
+          //     (router falls through to sibling silently per §3 case 1d).
+          //     plan_checkback_resolved logs this as 'preference_unhealthy_sibling'
+          //     so the audit trail captures the implicit substitution.
+          //   - whole tier unhealthy → checkback with preference-named message.
+          //   - outside-ceiling preferences are denied at NVG dispatch
+          //     terminally; pre-flight surfaces them as a checkback so the
+          //     user can pick a different model rather than discover the
+          //     denial mid-run.
+          if (routing.preferredEndpoint) {
+            const pref = routing.preferredEndpoint;
+            // Outside ceiling → unsalvageable, but the user should know why
+            // — surface as checkback so they can pick within-ceiling.
+            if (!routing.preferredCeilingAllowed) {
+              const message =
+                `Your selected model (${pref.modelName} on ${pref.tier}) is outside the ` +
+                `tier ceiling allowed by your role. ` +
+                (routing.alternativeEndpoint
+                  ? `A within-ceiling alternative is available: ${routing.alternativeEndpoint.modelName} on ${routing.alternativeEndpoint.tier}.`
+                  : 'No within-ceiling alternative is currently available.');
+              console.log(
+                '[orch-wire] checkback required (preference outside ceiling) — run:',
+                preview.runId,
+                '—',
+                message
+              );
+              await coreDeps.runLedgerWriter!.writeEvent({
+                runId: preview.runId,
+                eventType: 'plan_checkback_required',
+                timestamp: nowIso(),
+                actorId: null,
+                detail: {
+                  planDigest: preview.planDigest,
+                  primaryTier: routing.primaryTier,
+                  primaryHealthy: routing.primaryHealthy,
+                  fallbackTier: routing.fallbackTier,
+                  fallbackHealthy: routing.fallbackHealthy,
+                  alternativeTier: routing.alternativeTier,
+                  alternativeEndpoint: routing.alternativeEndpoint,
+                  preferredEndpoint: pref,
+                  preferredEndpointHealthy: routing.preferredEndpointHealthy,
+                  preferredCeilingAllowed: false,
+                  reason: 'preference_outside_ceiling',
+                  message,
+                  requiresUserApproval: true,
+                  expiresAtMs: Date.now() + CHECKBACK_TIMEOUT_MS,
+                },
+              });
+              return await waitForCheckback(preview.runId);
+            }
+
+            // Healthy preference → use it directly.
+            if (routing.preferredEndpointHealthy) {
+              return true;
+            }
+
+            // Unhealthy preference but healthy sibling on same tier exists →
+            // silent fallback to sibling (no user prompt, just record it).
+            if (routing.preferredTierHasHealthySibling) {
+              await coreDeps.runLedgerWriter!.writeEvent({
+                runId: preview.runId,
+                eventType: 'plan_created',
+                timestamp: nowIso(),
+                actorId: null,
+                detail: {
+                  planDigest: preview.planDigest,
+                  preferenceSubstitution: 'preference_unhealthy_sibling',
+                  preferredEndpoint: pref,
+                  note: `Preferred endpoint ${pref.endpointId} is unhealthy; a healthy sibling on tier ${pref.tier} will be used.`,
+                },
+              });
+              return true;
+            }
+
+            // Whole preferred tier dead → checkback with preference message.
+            const altName = routing.alternativeEndpoint
+              ? routing.alternativeEndpoint.modelName +
+                ' on ' +
+                routing.alternativeEndpoint.endpointId
+              : null;
+            const message =
+              `Your preferred model (${pref.modelName} on ${pref.tier}) is unavailable. ` +
+              (altName
+                ? `Alternative available: ${altName}.`
+                : 'No alternative within your tier ceiling is currently available.');
+            console.log(
+              '[orch-wire] checkback required (preference unavailable) — run:',
+              preview.runId,
+              '—',
+              message
+            );
+            await coreDeps.runLedgerWriter!.writeEvent({
+              runId: preview.runId,
+              eventType: 'plan_checkback_required',
+              timestamp: nowIso(),
+              actorId: null,
+              detail: {
+                planDigest: preview.planDigest,
+                primaryTier: routing.primaryTier,
+                primaryHealthy: routing.primaryHealthy,
+                fallbackTier: routing.fallbackTier,
+                fallbackHealthy: routing.fallbackHealthy,
+                alternativeTier: routing.alternativeTier,
+                alternativeEndpoint: routing.alternativeEndpoint,
+                preferredEndpoint: pref,
+                preferredEndpointHealthy: false,
+                preferredCeilingAllowed: true,
+                reason: 'preference_unavailable',
+                message,
+                requiresUserApproval: true,
+                expiresAtMs: Date.now() + CHECKBACK_TIMEOUT_MS,
+              },
+            });
+            return await waitForCheckback(preview.runId);
+          }
+
+          // No preference → existing policy-tier behavior. Auto-approve when
+          // there's a healthy path; NVG's invocation chain resolves same-tier
+          // retry / fallback transparently.
           if (routing.primaryHealthy || routing.fallbackHealthy) {
             return true;
           }
@@ -619,28 +801,7 @@ const program = createCli({
             },
           });
 
-          return await new Promise<boolean>(resolve => {
-            const timer = setTimeout(() => {
-              const stillPending = pendingCheckbacks.get(preview.runId);
-              if (stillPending && stillPending.timer === timer) {
-                pendingCheckbacks.delete(preview.runId);
-                void coreDeps.runLedgerWriter!.writeEvent({
-                  runId: preview.runId,
-                  eventType: 'plan_checkback_resolved',
-                  timestamp: nowIso(),
-                  actorId: null,
-                  detail: { decision: 'deny', reason: 'checkback_timeout' },
-                });
-                resolve(false);
-              }
-            }, CHECKBACK_TIMEOUT_MS);
-
-            pendingCheckbacks.set(preview.runId, {
-              resolve,
-              timer,
-              expiresAt: Date.now() + CHECKBACK_TIMEOUT_MS,
-            });
-          });
+          return await waitForCheckback(preview.runId);
         } catch (err) {
           console.error('[orch-wire] sendPlanCheckback error:', err);
           return false; // fail closed
@@ -689,6 +850,10 @@ const program = createCli({
       workspaceSocketId: request.workspaceSocketId,
       planCheckbackRequested: request.planCheckbackRequested,
       enteredAt: nowIso(),
+      // CLAUDE-CODE-MODEL-SELECTION-SPEC §2a — carry the user's preference
+      // through the planner request so downstream node dispatch can pass it
+      // on to NVG for biased endpoint selection.
+      preferredEndpointId: request.preferredEndpointId,
     });
 
     // 22g. Assemble coordinator + orchestrator.

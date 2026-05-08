@@ -921,6 +921,17 @@ export interface NvgOutboundRequest {
   dataLabels: DataLabel[];
   costPreference: 'low' | 'standard' | 'high';
   latencyPreference: 'low' | 'standard' | 'high';
+  /**
+   * CLAUDE-CODE-MODEL-SELECTION-SPEC §2b. User's preferred endpoint surfaced
+   * from the workspace dropdown. Routing treats this as a weighted suggestion
+   * within the governed tier set:
+   * - Healthy + within ceiling → invoke directly (skip primary-tier first pick)
+   * - Outside OCT model-tier ceiling → DENY (terminal, like primary-tier denial)
+   * - Unhealthy → fall through to policy-selected tier (which may itself
+   *   trigger same-tier retry / fallback / pre-flight checkback)
+   * `null` or undefined = Auto (policy) — original routing behavior.
+   */
+  preferredEndpointId?: NonEmpty | null;
 }
 
 export interface NvgClassificationResult {
@@ -1115,6 +1126,24 @@ export interface NvgRoutingPreview {
   denialCode: DenialCode | null;
   /** Human-readable denial reason (paired with denialCode). */
   denialReason: string | null;
+  /**
+   * CLAUDE-CODE-MODEL-SELECTION-SPEC §4 — user-preference visibility for the
+   * checkback card. All three fields are null/false when the request had no
+   * preferredEndpointId or the id wasn't found in the registry.
+   */
+  /** The user's preferred endpoint — resolved against the registry. */
+  preferredEndpoint: NvgRoutingPreviewEndpoint | null;
+  /** True iff the preferred endpoint is currently invocable (healthy/probationary). */
+  preferredEndpointHealthy: boolean;
+  /** True iff the preferred endpoint's tier passes the OCT ceiling check. */
+  preferredCeilingAllowed: boolean;
+  /**
+   * True iff the preferred endpoint's tier has at least one OTHER healthy
+   * endpoint when the preferred itself is unhealthy. When this is true, the
+   * router will silently fall through to a sibling on the same tier — no
+   * checkback needed (spec §4 case 1c).
+   */
+  preferredTierHasHealthySibling: boolean;
 }
 
 // ─── §7.5 NvgClassifyAndRouteResult — composition surface return type ───

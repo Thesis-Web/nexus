@@ -53,6 +53,15 @@ export interface NormalPlannerRequest {
   workspaceSocketId: NonEmpty;
   planCheckbackRequested: boolean;
   enteredAt: IsoTimestamp;
+  /**
+   * CLAUDE-CODE-MODEL-SELECTION-SPEC §2a. EndpointId surfaced from the
+   * workspace model dropdown. Carried through PlannerRequest so the
+   * downstream node-dispatch pipeline can hand it to NVG for biased
+   * endpoint selection. Planner itself does NOT use this field for
+   * scheduling — endpoint selection is NVG's responsibility, not the
+   * planner's. `null` = Auto (policy).
+   */
+  preferredEndpointId: NonEmpty | null;
 }
 
 export interface MetadataPlannerRequest {
@@ -70,6 +79,12 @@ export interface MetadataPlannerRequest {
   workspaceSocketId: NonEmpty;
   planCheckbackRequested: boolean;
   enteredAt: IsoTimestamp;
+  /**
+   * CLAUDE-CODE-MODEL-SELECTION-SPEC §2a. EndpointId surfaced from the
+   * workspace dropdown — visibility-safe (metadata only, no prompt content).
+   * `null` = Auto (policy).
+   */
+  preferredEndpointId: NonEmpty | null;
 }
 
 export interface OctSecurePlannerRequest {

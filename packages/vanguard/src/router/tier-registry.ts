@@ -109,6 +109,29 @@ export class TierRegistry {
   }
 
   /**
+   * CLAUDE-CODE-MODEL-SELECTION-SPEC §3 — find an endpoint by id across all
+   * tiers. Returns null when the id is unknown (e.g. stale catalog reference).
+   * Callers must perform their own ceiling/health checks; this method only
+   * resolves the registration.
+   */
+  findEndpointById(endpointId: NonEmpty): ModelEndpoint | null {
+    for (const [, eps] of this.endpoints) {
+      const ep = eps.find(e => e.endpointId === endpointId);
+      if (ep) return ep;
+    }
+    return null;
+  }
+
+  /**
+   * Eligibility check used to decide whether a specific endpoint may be
+   * invoked right now: healthy → yes; unhealthy → only if the cooldown has
+   * elapsed (probationary). Mirrors `getHealthyEndpoints` per-endpoint logic.
+   */
+  isEndpointEligible(endpoint: ModelEndpoint): boolean {
+    return this.isEligible(endpoint, this.now());
+  }
+
+  /**
    * Look up endpoints eligible for invocation: either currently healthy, or
    * unhealthy but past the cooldown (probationary). Probationary endpoints
    * give the model-router one shot to recover them — success flips healthy

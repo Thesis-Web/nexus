@@ -190,6 +190,14 @@ const FreeTextSchema = z
     promptMode: z.literal('free_text'),
     prompt: z.string().min(1),
     agents: z.array(z.string()).optional(),
+    /**
+     * V1 model selection: a single endpointId (CatalogItem.id from
+     * /workspace/catalogs/models). Optional — absence means "Auto (policy)".
+     * The modelPreferences[] field is kept as a back-compat shim; the route
+     * builder extracts the first entry's modelTier as preferredEndpointId
+     * when this direct field is omitted.
+     */
+    preferredEndpointId: z.string().optional(),
     modelPreferences: z.array(ModelPreferenceSchema).optional(),
     attachmentIds: z.array(z.string()).optional(),
   })
@@ -205,6 +213,7 @@ const SectionedSchema = z
     connectors: z.array(z.string()).optional(),
     executionMode: z.enum(['human_in_the_loop', 'autonomous']).optional(),
     agents: z.array(z.string()).optional(),
+    preferredEndpointId: z.string().optional(),
     modelPreferences: z.array(ModelPreferenceSchema).optional(),
     attachmentIds: z.array(z.string()).optional(),
   })
@@ -445,6 +454,7 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
       // Extract prompt: free_text/sectioned have .prompt, secure_rails uses constrainedInputs
       let prompt: string;
       let selectedAgentIds: string[] = [];
+      let preferredEndpointId: string | null = null;
       const planCheckbackRequested = false;
 
       switch (input.promptMode) {
@@ -452,6 +462,19 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         case 'sectioned':
           prompt = input.prompt;
           selectedAgentIds = (input.agents ?? []) as string[];
+          // CLAUDE-CODE-MODEL-SELECTION-SPEC §1c — accept the direct
+          // preferredEndpointId. For back-compat: if the legacy
+          // modelPreferences[] array is provided without preferredEndpointId,
+          // extract the first entry's modelTier (which is in fact an
+          // endpointId, despite the misleading field name in older clients).
+          if (input.preferredEndpointId !== undefined && input.preferredEndpointId !== '') {
+            preferredEndpointId = input.preferredEndpointId;
+          } else if (input.modelPreferences && input.modelPreferences.length > 0) {
+            const firstPref = input.modelPreferences[0];
+            if (firstPref && firstPref.modelTier !== '') {
+              preferredEndpointId = firstPref.modelTier;
+            }
+          }
           break;
         case 'secure_rails':
           prompt = JSON.stringify(input.constrainedInputs ?? {});
@@ -494,9 +517,13 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         selectedAgentIds: selectedAgentIds as Uuid[],
         workspaceSocketId,
         planCheckbackRequested,
+        preferredEndpointId: preferredEndpointId as NonEmpty | null,
       };
 
       // §6.1 step 5: write run_opened — no raw prompt in detail (hard rule 19)
+      // CLAUDE-CODE-MODEL-SELECTION-SPEC §5 — preferredEndpointId in audit
+      // trail records what the user asked for; the dispatch event later
+      // records what was actually used and whether the preference was honored.
       await deps.runLedgerWriter.writeEvent({
         runId,
         eventType: 'run_opened',
@@ -510,6 +537,7 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
           promptDigest,
           selectedAgentIds: request.selectedAgentIds,
           planCheckbackRequested: request.planCheckbackRequested,
+          preferredEndpointId: request.preferredEndpointId,
         },
       });
 

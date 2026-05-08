@@ -310,6 +310,13 @@ export class RefRunCoordinator implements RunCoordinator {
               ...(status.status === 'skipped' && status.failureReason
                 ? { reason: status.failureReason }
                 : {}),
+              // CLAUDE-CODE-MODEL-SELECTION-SPEC §5: thread the dispatch
+              // completionMetadata into the node-level ledger event so the
+              // audit trail exposes preferredEndpointId / actualEndpointId /
+              // preferenceHonored alongside the rest of the dispatch detail.
+              ...(status.status === 'completed' && status.completionMetadata
+                ? { completionMetadata: status.completionMetadata }
+                : {}),
             });
           }
         },

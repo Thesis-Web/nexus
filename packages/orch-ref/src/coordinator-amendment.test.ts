@@ -157,6 +157,7 @@ function makeRequest(runId?: Uuid): WorkspaceRunRequest {
     selectedAgentIds: [],
     workspaceSocketId: 'ref-workspace-v1' as NonEmpty,
     planCheckbackRequested: false,
+    preferredEndpointId: null,
   };
 }
 

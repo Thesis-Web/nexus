@@ -11,7 +11,11 @@ export interface PromptSubmission {
   promptMode: PromptMode;
   prompt: string;
   agents?: string[];
-  modelPreferences?: Array<{ agentId: string; modelTier: string; mode: string }>;
+  /**
+   * EndpointId selected from the model dropdown (CatalogItem.id).
+   * Omitted when the user chose "Auto (policy)".
+   */
+  preferredEndpointId?: string;
   attachmentIds?: string[];
   templateId?: string;
   templateVersion?: string;
@@ -26,7 +30,11 @@ export interface PromptSubmission {
 
 interface PromptPanelProps {
   agents: CatalogItem[];
-  models: CatalogItem[];
+  /**
+   * EndpointId selected from the topbar model dropdown ("" → Auto/policy).
+   * Threaded through PromptSubmission.preferredEndpointId on submit.
+   */
+  preferredEndpointId?: string;
   onSubmit: (submission: PromptSubmission) => void;
   onFileUpload?: () => void;
   disabled?: boolean;
@@ -34,7 +42,7 @@ interface PromptPanelProps {
 
 export function PromptPanel({
   agents,
-  models,
+  preferredEndpointId,
   onSubmit,
   onFileUpload,
   disabled,
@@ -42,7 +50,6 @@ export function PromptPanel({
   const [tab, setTab] = useState<PromptMode>('free_text');
   const [prompt, setPrompt] = useState('');
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
-  const [selectedModel, setSelectedModel] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Sectioned state
@@ -56,12 +63,8 @@ export function PromptPanel({
     const submission: PromptSubmission = { promptMode: tab, prompt: prompt.trim() };
 
     if (selectedAgents.length > 0) submission.agents = selectedAgents;
-    if (selectedModel) {
-      submission.modelPreferences = selectedAgents.map(aId => ({
-        agentId: aId,
-        modelTier: selectedModel,
-        mode: 'preferred',
-      }));
+    if (preferredEndpointId) {
+      submission.preferredEndpointId = preferredEndpointId;
     }
 
     if (tab === 'sectioned') {

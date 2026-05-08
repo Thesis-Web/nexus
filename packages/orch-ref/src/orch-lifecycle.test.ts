@@ -99,6 +99,7 @@ function makeRequest(agentIds: Uuid[]): WorkspaceRunRequest {
     selectedAgentIds: agentIds,
     workspaceSocketId: 'ref-workspace-v1' as NonEmpty,
     planCheckbackRequested: false,
+    preferredEndpointId: null,
   };
 }
 
@@ -180,6 +181,7 @@ function buildCoordinatorDeps(
         workspaceSocketId: request.workspaceSocketId,
         planCheckbackRequested: request.planCheckbackRequested,
         enteredAt: request.enteredAt,
+        preferredEndpointId: request.preferredEndpointId,
       })),
     agentRegistry: overrides.agentRegistry ?? registry,
     capabilityCeiling: overrides.capabilityCeiling ?? [],

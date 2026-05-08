@@ -31,6 +31,7 @@ import {
   type DataLabel,
   type OctLevel,
   type ModelTier,
+  type ModelEndpoint,
   type DenialCode,
   type Uuid,
   type NonEmpty,
@@ -190,7 +191,7 @@ export class NvgServiceImpl implements NvgService {
     // T6-F05 FIX: Primary OCT ceiling denial is TERMINAL per blueprint §13.5.
     // Fallback is for availability/health only (inside invokeModel), never for
     // escaping an OCT ceiling denial. If primary tier exceeds ceiling, deny.
-    let approvedTier: ModelTier = routingDecision.routeTo;
+    const approvedTier: ModelTier = routingDecision.routeTo;
     const fallbackTier: ModelTier | null = routingDecision.fallbackTier;
 
     const ceilingPrimary = enforceOctModelCeiling(request.octLevel, approvedTier, classification);
@@ -211,6 +212,42 @@ export class NvgServiceImpl implements NvgService {
         disposition,
         invocation: null,
       });
+    }
+
+    // ── Step 2c: User preference resolution (CLAUDE-CODE-MODEL-SELECTION §3) ─
+    // Look up the preferred endpoint, if any. The user's selection is a
+    // weighted suggestion within the governed tier set:
+    //   - found + tier within OCT ceiling → bias model-router toward it
+    //   - found + tier OUTSIDE ceiling → terminal denial (mirror primary path)
+    //   - found + tier within ceiling but unhealthy → fall through to policy
+    //     (model-router handles the silent fallback per §3 case 1d)
+    //   - not found in registry → ignore (treat as Auto)
+    let preferredEndpoint: ModelEndpoint | null = null;
+    if (request.preferredEndpointId) {
+      const ep = tierRegistry.findEndpointById(request.preferredEndpointId);
+      if (ep) {
+        const ceilingPreferred = enforceOctModelCeiling(request.octLevel, ep.tier, classification);
+        if (!ceilingPreferred.allowed) {
+          // Outside-ceiling preference is terminal — never silently fall
+          // through, so the user knows the dropdown choice was rejected.
+          const code = ceilingPreferred.denialCode ?? DENIAL_CODE.NVG_OCT_CEILING_DENIED;
+          const reason =
+            ceilingPreferred.reason ?? `OCT ceiling denied preferred endpoint ${ep.endpointId}`;
+          await handleNvgDenial(request, code, reason, trailWriter, policyVersion, correlationId);
+          return this.buildResult({
+            allowed: false,
+            classification,
+            modelTierSelected: routingDecision.routeTo,
+            modelTierInvoked: null,
+            denialCode: code as DenialCode,
+            denialReason: reason,
+            trailCorrelationId: correlationId,
+            disposition,
+            invocation: null,
+          });
+        }
+        preferredEndpoint = ep;
+      }
     }
 
     // ── Step 4: Outbound RPT entry (§27) — approved routing decision ───────
@@ -261,13 +298,17 @@ export class NvgServiceImpl implements NvgService {
     }
 
     // ── Step 6: Model Invocation (§24.5) — same-tier retry + fallback ──────
+    // Pass the resolved preferred endpoint (or null) so the router biases
+    // toward the user's dropdown choice when healthy. Outside-ceiling cases
+    // were already returned terminally above.
     const invocation = await invokeModel(
       approvedTier,
       fallbackTier,
       request,
       classification,
       tierRegistry,
-      transportContext
+      transportContext,
+      preferredEndpoint
     );
 
     // ── Step 7: Inbound Return Path Logging (§24.6) ────────────────────────
@@ -317,6 +358,11 @@ export class NvgServiceImpl implements NvgService {
     const labelResult = readLabels(request.dataLabels);
     const classification = classifyOutboundData(labelResult.validLabels);
 
+    // Resolve preference state up-front — used in both the matched and
+    // default-deny branches so the checkback card always knows whether
+    // the user picked a model and what its health is.
+    const preferenceState = this.resolvePreferenceState(request, classification, tierRegistry);
+
     const decision = evaluateRoutingPolicy(routingPolicy, request, classification);
 
     if (!decision.matched || decision.routeTo === null) {
@@ -331,6 +377,7 @@ export class NvgServiceImpl implements NvgService {
         ceilingAllowed: false,
         denialCode: DENIAL_CODE.NVG_ROUTING_POLICY_DENIED as DenialCode,
         denialReason: 'no matching routing rule — default deny',
+        ...preferenceState,
       };
     }
 
@@ -371,6 +418,57 @@ export class NvgServiceImpl implements NvgService {
       ceilingAllowed,
       denialCode: ceilingAllowed ? null : ((ceiling.denialCode as DenialCode) ?? null),
       denialReason: ceilingAllowed ? null : (ceiling.reason ?? null),
+      ...preferenceState,
+    };
+  }
+
+  /**
+   * CLAUDE-CODE-MODEL-SELECTION-SPEC §4 — derive the preference-side fields
+   * the checkback card needs. Bundled into one helper so the matched and
+   * default-deny branches of `previewRouting` produce a consistent shape.
+   *
+   * Returns the four preference fields from `NvgRoutingPreview` only. The
+   * caller is responsible for deciding what to surface — this method does
+   * not gate any decision (no early returns / no denials).
+   */
+  private resolvePreferenceState(
+    request: NvgOutboundRequest,
+    classification: NvgClassificationResult,
+    tierRegistry: NvgServiceDeps['tierRegistry']
+  ): Pick<
+    NvgRoutingPreview,
+    | 'preferredEndpoint'
+    | 'preferredEndpointHealthy'
+    | 'preferredCeilingAllowed'
+    | 'preferredTierHasHealthySibling'
+  > {
+    const empty = {
+      preferredEndpoint: null,
+      preferredEndpointHealthy: false,
+      preferredCeilingAllowed: false,
+      preferredTierHasHealthySibling: false,
+    } as const;
+
+    if (!request.preferredEndpointId) return empty;
+
+    const ep = tierRegistry.findEndpointById(request.preferredEndpointId);
+    if (!ep) return empty;
+
+    const ceilingPreferred = enforceOctModelCeiling(request.octLevel, ep.tier, classification);
+    const preferredHealthy = tierRegistry.isEndpointEligible(ep);
+    const sameTierHealthy = tierRegistry
+      .getHealthyEndpoints(ep.tier)
+      .some(other => other.endpointId !== ep.endpointId);
+
+    return {
+      preferredEndpoint: {
+        endpointId: ep.endpointId,
+        modelName: ep.modelName,
+        tier: ep.tier,
+      },
+      preferredEndpointHealthy: preferredHealthy,
+      preferredCeilingAllowed: ceilingPreferred.allowed,
+      preferredTierHasHealthySibling: sameTierHealthy,
     };
   }
 

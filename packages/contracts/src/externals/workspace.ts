@@ -34,6 +34,18 @@ export interface WorkspaceRunRequest {
   selectedAgentIds: Uuid[];
   workspaceSocketId: NonEmpty;
   planCheckbackRequested: boolean;
+  /**
+   * User's model preference from the workspace dropdown — the endpointId the
+   * user selected (e.g., "ollama-jameshp"). null when the user chose the
+   * "Auto (policy)" option or omitted a preference.
+   *
+   * Treated downstream as a weighted suggestion, not an override. Governance
+   * (data classification, OCT model-tier ceiling, routing policy) still
+   * applies — the preference biases endpoint selection within the governed
+   * tier set. Outside-ceiling → DENY. Unhealthy → fall through to policy
+   * routing (which may trigger a checkback).
+   */
+  preferredEndpointId: NonEmpty | null;
 }
 
 // ─── CompileReturnAck ───

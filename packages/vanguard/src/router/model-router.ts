@@ -124,6 +124,17 @@ function buildInvocationResult(
  * WIRE-003: After every callEndpoint result, registry.updateEndpointHealth()
  * is called. Success → marks healthy. Failure → marks unhealthy. This feeds
  * back into getHealthyEndpoints() for subsequent invocation selection.
+ *
+ * CLAUDE-CODE-MODEL-SELECTION-SPEC §3 — when the request carries a
+ * `preferredEndpointId`, the caller (nvg-service) has already resolved it to
+ * `preferredEndpoint` and verified its tier sits within the OCT model-tier
+ * ceiling. Here we honor it as the first attempt:
+ *   - healthy/probationary + within ceiling → invoke; success returns directly
+ *   - failed-retriable invocation → record the attempt and continue with the
+ *     policy-selected primary tier (silent fallback is permitted on health
+ *     issues per spec §3 case 1d)
+ *   - non-retriable failure → return immediately (matches existing behavior)
+ * `preferredEndpoint == null` is the Auto (policy) path — original behavior.
  */
 export async function invokeModel(
   tier: ModelTier,
@@ -131,12 +142,53 @@ export async function invokeModel(
   request: NvgOutboundRequest,
   classification: NvgClassificationResult,
   registry: TierRegistry,
-  transportContext: NvgTransportContext
+  transportContext: NvgTransportContext,
+  preferredEndpoint: ModelEndpoint | null = null
 ): Promise<NvgInvocationResult> {
   const priorAttempts: InvocationAttempt[] = [];
 
+  // ── Preference-first attempt (§3 case 1c) ──
+  // Caller has already verified ceiling allows the preferred tier; we only
+  // need to gate on liveness (healthy or probationary).
+  if (preferredEndpoint !== null && registry.isEndpointEligible(preferredEndpoint)) {
+    const result = await callEndpoint(preferredEndpoint, request, transportContext);
+    registry.updateEndpointHealth(
+      preferredEndpoint.endpointId,
+      result.success,
+      new Date().toISOString() as IsoTimestamp
+    );
+
+    if (result.success) {
+      return buildInvocationResult(result, preferredEndpoint, false, null, priorAttempts);
+    }
+
+    // Non-retriable failure on the preferred endpoint terminates here —
+    // bumping into the policy-selected tier would mask config/auth errors.
+    const denialCode = result.denialCode ?? DENIAL_CODE.NVG_FALLBACK_DENIED;
+    if (!FALLBACK_TRIGGERING_CODES.has(denialCode)) {
+      return buildInvocationResult(result, preferredEndpoint, false, null, priorAttempts);
+    }
+
+    // Retriable failure → record the attempt and silently fall through to
+    // the policy-selected tier path (spec §3 case 1d).
+    priorAttempts.push({
+      endpointUsed: preferredEndpoint.endpointId,
+      tier: preferredEndpoint.tier,
+      adapterId: preferredEndpoint.adapterId,
+      modelName: preferredEndpoint.modelName,
+      denialCode,
+      reason: result.reason ?? 'preferred_endpoint_failed',
+      latencyMs: result.latencyMs ?? 0,
+      attemptedAt: new Date().toISOString() as IsoTimestamp,
+    });
+  }
+
   // ── Same-tier retry: try ALL healthy primary endpoints in manifest order ──
-  const primaryEndpoints = registry.getHealthyEndpoints(tier);
+  const primaryEndpoints = registry.getHealthyEndpoints(tier).filter(
+    // Already attempted above — skip to avoid double-call when policy tier
+    // happens to contain the preference.
+    e => preferredEndpoint === null || e.endpointId !== preferredEndpoint.endpointId
+  );
   for (const primary of primaryEndpoints) {
     const result = await callEndpoint(primary, request, transportContext);
 
