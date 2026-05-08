@@ -144,6 +144,7 @@ import type { ExternalSocketRegistry } from '../packages/core/src/externals/exte
 
 // ── Core: run ledger (§30) ──────────────────────────────────────────────────
 import { JsonlRunLedgerWriter } from '../packages/core/src/ledger/run-ledger.js';
+import { wrapWriterWithFanout } from '../packages/interfaces/api/src/routes/run-event-bus.js';
 
 // ── Vanguard: transport layer (NISP-001.A) ───────────────────────────────────
 import {
@@ -618,8 +619,13 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
     );
   }
 
-  // Run ledger writer for ExternalSocketRegistry
-  const runLedgerWriter = new JsonlRunLedgerWriter(RUN_LEDGER_FILE);
+  // Run ledger writer for ExternalSocketRegistry. Wrapped with the SSE
+  // event bus so OutputCollector + reference compile chain events
+  // (partial_result, compile_started, compile_mode_selected, etc.) reach
+  // any subscribed SSE client for the run. Without this, only events
+  // written via the serve-owned writer (workspace + orchestrator) would
+  // fan out, leaving the browser missing the post-dispatch lifecycle.
+  const runLedgerWriter = wrapWriterWithFanout(new JsonlRunLedgerWriter(RUN_LEDGER_FILE));
 
   // Build ExternalSocketRegistry early for cross-reference validation
   const socketRegistry = new ExternalSocketRegistryImpl({

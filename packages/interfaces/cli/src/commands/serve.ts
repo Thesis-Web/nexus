@@ -31,7 +31,7 @@ import {
   saveModeConfig,
   ManifestWriterService,
 } from '@nexus/core';
-import { createApiServer, type ApiDependencies } from '@nexus/api';
+import { createApiServer, wrapWriterWithFanout, type ApiDependencies } from '@nexus/api';
 // ── WS-BOOTSTRAP type seam ──────────────────────────────────────────────────
 export type WorkspaceApiDeps = Partial<
   Pick<
@@ -167,7 +167,9 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
     verifyChain: (backend, from, to) => verifyChain(backend, from, to, controlPlaneKey.publicKey),
     decideApproval,
     adminToken,
-    runLedgerWriter: new JsonlRunLedgerWriter(runLedgerPath),
+    // Wrap so every workspace + orchestrator-coordinator writeEvent fans
+    // out to any open SSE subscriber for that runId.
+    runLedgerWriter: wrapWriterWithFanout(new JsonlRunLedgerWriter(runLedgerPath)),
     loadModeConfig: () => loadModeConfig(modeConfigPath),
     saveModeConfig: config => saveModeConfig(config, modeConfigPath),
     nvgService: opts.createNvgService(),

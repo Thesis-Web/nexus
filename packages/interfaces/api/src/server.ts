@@ -85,6 +85,9 @@ import type {
   WorkspaceCatalogReaderPort,
 } from '@nexus/contracts';
 import { registerAllRoutes } from './routes/index.js';
+// Re-export the SSE fanout helpers so the composition root can wrap its
+// RunLedgerWriter without reaching past @nexus/api's public surface.
+export { subscribeToRun, broadcastRunEvent, wrapWriterWithFanout } from './routes/run-event-bus.js';
 
 // ── §23.1 + §11.1 ApiDependencies — constructor injection contract ──────────
 

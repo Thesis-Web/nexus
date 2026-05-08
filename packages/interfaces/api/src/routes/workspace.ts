@@ -56,6 +56,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { Readable } from 'node:stream';
 import { san } from './shared.js';
+import { subscribeToRun } from './run-event-bus.js';
 
 // ─── DI Dependencies ────────────────────────────────────────────────────────
 
@@ -1172,12 +1173,38 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
     // Send initial connection event
     res.write(`data: ${JSON.stringify({ type: 'connected', runId })}\n\n`);
 
+    // Replay any ledger events that already landed for this run before the
+    // browser opened the stream — without this the client misses events
+    // emitted between run dispatch and ticket-mint/connect (commonly the
+    // entire happy-path lifecycle for fast runs).
+    if (deps.runLedgerWriter) {
+      try {
+        const existing = await deps.runLedgerWriter.getByRunId(runId);
+        for (const entry of existing) {
+          const payload = JSON.stringify({
+            type: entry.eventType,
+            runId: entry.runId,
+            timestamp: entry.timestamp,
+            detail: entry.detail,
+          });
+          res.write('data: ' + payload + '\n\n');
+        }
+      } catch {
+        // best-effort replay — live fanout still delivers fresh events
+      }
+    }
+
+    // Live fanout — every subsequent runLedgerWriter.writeEvent for this
+    // runId pushes a `data:` line through the bus to this response.
+    const unsubscribe = subscribeToRun(runId, res);
+
     // Keep-alive heartbeat (every 30s)
     const heartbeat = setInterval(() => {
       res.write(': heartbeat\n\n');
     }, 30_000);
 
     req.on('close', () => {
+      unsubscribe();
       clearInterval(heartbeat);
     });
   });
