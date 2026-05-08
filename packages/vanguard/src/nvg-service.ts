@@ -14,6 +14,7 @@
 import {
   DENIAL_CODE,
   OPERATING_MODE,
+  OCT_CEILINGS,
   type NvgService,
   type NvgClassifyAndRouteResult,
   type NvgClassificationResult,
@@ -22,6 +23,8 @@ import {
   type NvgRoutingPolicy,
   type NvgOutboundRequest,
   type NvgInvocationResult,
+  type NvgRoutingPreview,
+  type NvgRoutingPreviewEndpoint,
   type RoutingTrailWriter,
   type NvgTransportContext,
   type ModeConfiguration,
@@ -283,7 +286,135 @@ export class NvgServiceImpl implements NvgService {
     });
   }
 
+  // ── §CHECKBACK Pre-flight surface — previewRouting ──────────────────────
+
+  /**
+   * CHECKBACK-spec Part 1 — non-invoking routing preview.
+   *
+   * Runs classify → route → ceiling exactly as `classifyAndRoute` would,
+   * then probes `tierRegistry` for endpoint health. Stops before invocation;
+   * NEVER calls the model. Used by the orchestrator's pre-flight checkback
+   * (sendPlanCheckback) so the user can be asked before the DAG executor
+   * dispatches a request that will fail at the NVG wall.
+   *
+   * Returns enough information for the workspace to render a "Plan Review
+   * Required" card that names the unhealthy primary tier and points at a
+   * within-ceiling alternative tier (and the concrete endpoint that would
+   * serve it).
+   *
+   * Determinism note: the alternative is the first within-OCT-ceiling tier
+   * (in the order declared by `OCT_CEILINGS[octLevel].modelTierCeiling`)
+   * that is not the primary tier and currently has a healthy or
+   * probationary endpoint. No re-routing happens here — NVG itself runs
+   * the real routing/fallback chain at dispatch time.
+   */
+  async previewRouting(request: NvgOutboundRequest): Promise<NvgRoutingPreview> {
+    if (!this.deps) {
+      throw new Error('NvgServiceImpl: previewRouting requires constructor deps');
+    }
+    const { routingPolicy, tierRegistry } = this.deps;
+
+    const labelResult = readLabels(request.dataLabels);
+    const classification = classifyOutboundData(labelResult.validLabels);
+
+    const decision = evaluateRoutingPolicy(routingPolicy, request, classification);
+
+    if (!decision.matched || decision.routeTo === null) {
+      return {
+        primaryTier: null,
+        primaryHealthy: false,
+        fallbackTier: null,
+        fallbackHealthy: false,
+        alternativeTier: this.findAlternativeTier(request.octLevel, null, tierRegistry),
+        alternativeEndpoint: null,
+        classification,
+        ceilingAllowed: false,
+        denialCode: DENIAL_CODE.NVG_ROUTING_POLICY_DENIED as DenialCode,
+        denialReason: 'no matching routing rule — default deny',
+      };
+    }
+
+    const primaryTier: ModelTier = decision.routeTo;
+    const fallbackTier: ModelTier | null = decision.fallbackTier;
+
+    const ceiling = enforceOctModelCeiling(request.octLevel, primaryTier, classification);
+    const ceilingAllowed = ceiling.allowed;
+
+    const primaryHealthy = ceilingAllowed && tierRegistry.isTierAvailable(primaryTier);
+    const fallbackHealthy =
+      fallbackTier !== null && tierRegistry.isTierAvailable(fallbackTier)
+        ? this.fallbackPermitted(primaryTier, fallbackTier, classification, request.octLevel)
+        : false;
+
+    const alternativeTier = this.findAlternativeTier(request.octLevel, primaryTier, tierRegistry);
+    let alternativeEndpoint: NvgRoutingPreviewEndpoint | null = null;
+    if (alternativeTier !== null) {
+      const candidates = tierRegistry.getHealthyEndpoints(alternativeTier);
+      const ep = candidates[0];
+      if (ep) {
+        alternativeEndpoint = {
+          endpointId: ep.endpointId,
+          modelName: ep.modelName,
+          tier: ep.tier,
+        };
+      }
+    }
+
+    return {
+      primaryTier,
+      primaryHealthy,
+      fallbackTier,
+      fallbackHealthy,
+      alternativeTier,
+      alternativeEndpoint,
+      classification,
+      ceilingAllowed,
+      denialCode: ceilingAllowed ? null : ((ceiling.denialCode as DenialCode) ?? null),
+      denialReason: ceilingAllowed ? null : (ceiling.reason ?? null),
+    };
+  }
+
   // ── Private helpers ──────────────────────────────────────────────────────
+
+  /**
+   * Find the first within-ceiling tier (other than `excludeTier`) that has at
+   * least one healthy or probationary endpoint. Returns null if no such tier
+   * exists. Order follows OCT_CEILINGS[octLevel].modelTierCeiling so the
+   * preview is deterministic across runs.
+   */
+  private findAlternativeTier(
+    octLevel: OctLevel,
+    excludeTier: ModelTier | null,
+    tierRegistry: NvgServiceDeps['tierRegistry']
+  ): ModelTier | null {
+    const ceiling = OCT_CEILINGS[octLevel];
+    if (!ceiling) return null;
+    for (const tier of ceiling.modelTierCeiling) {
+      if (tier === excludeTier) continue;
+      if (tierRegistry.isTierAvailable(tier)) return tier;
+    }
+    return null;
+  }
+
+  /**
+   * Preview-time fallback eligibility check — mirrors the constraint logic
+   * inside `model-router.invokeModel` so the preview's fallbackHealthy flag
+   * matches what NVG would actually do at dispatch time.
+   */
+  private fallbackPermitted(
+    primaryTier: ModelTier,
+    fallbackTier: ModelTier,
+    classification: NvgClassificationResult,
+    octLevel: OctLevel
+  ): boolean {
+    const constraint = this.deps!.tierRegistry.checkFallbackConstraint(
+      primaryTier,
+      fallbackTier,
+      classification.effectiveDataClass,
+      octLevel
+    );
+    return constraint.allowed;
+  }
 
   /**
    * Resolve nvgMode → RuntimeDisposition.

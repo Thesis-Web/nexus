@@ -152,6 +152,18 @@ export async function submitApproval(
   });
 }
 
+// ── Plan Checkback (CHECKBACK-spec) ───────────────────────────────────────
+
+export async function submitCheckback(
+  runId: string,
+  decision: 'allow' | 'deny'
+): Promise<ApiResponse<{ runId: string; decision: 'allow' | 'deny' }>> {
+  return apiFetch(`/workspace/runs/${runId}/checkback`, {
+    method: 'POST',
+    body: JSON.stringify({ decision }),
+  });
+}
+
 // ── Vault ─────────────────────────────────────────────────────────────────
 
 export async function vaultChallenge(

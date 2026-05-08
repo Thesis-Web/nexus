@@ -13,6 +13,7 @@ import { submitApproval } from '../api.js';
 import type { RunEvent } from '../hooks/use-run-events.js';
 import { RunTimeline } from './run-timeline.js';
 import { RunDenialCard } from './run-denial-card.js';
+import { RunCheckbackCard } from './run-checkback-card.js';
 import { computeRunTimeline, type RunTimelineState } from './run-stage-reducer.js';
 
 interface RunDisplayProps {
@@ -147,6 +148,12 @@ export function RunDisplay({ runId, events, status, planRejection }: RunDisplayP
             </div>
           );
         })}
+
+        {/* CHECKBACK-spec — pending checkback. Renders while the
+            orchestrator is awaiting the user's allow/deny decision. */}
+        {timeline.pendingCheckback && (
+          <RunCheckbackCard runId={runId} checkback={timeline.pendingCheckback} />
+        )}
 
         {/* Denial card — shown when the timeline detected a failure stage.
             Suppresses the Governed Response card below. */}

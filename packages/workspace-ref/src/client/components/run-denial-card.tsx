@@ -16,6 +16,7 @@ interface RunDenialCardProps {
 const STAGE_LABELS: Record<StageId, string> = {
   prompt_received: 'Prompt intake',
   planning: 'Planning',
+  plan_review: 'Plan review',
   delegation: 'Delegation',
   nvg_wall: 'NVG Wall',
   agent_response: 'Agent response',

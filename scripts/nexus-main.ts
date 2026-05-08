@@ -507,9 +507,163 @@ const program = createCli({
         }
       }
     };
-    const sendPlanCheckback = async (_p: OrchestratorPlanPreview): Promise<boolean> => {
-      console.log('[orch-wire] plan checkback auto-approved (V1)');
+    // ── CHECKBACK-spec — Pre-flight + plan checkback ─────────────────────
+    //
+    // The orchestrator calls `sendPlanCheckback` for every dispatchable run
+    // (planCheckbackDefault=true on the default reference orchestrator). This
+    // closure runs a non-invoking routing preview against the user's selected
+    // agent. If a healthy invocation path exists (primary OR fallback tier
+    // healthy), it auto-approves. Otherwise it emits a `plan_checkback_required`
+    // event onto the run's SSE stream, suspends the run on a Deferred keyed by
+    // runId, and waits for the workspace UI to POST a decision through
+    // /workspace/runs/:runId/checkback.
+    //
+    // Timeout: V1 default = 5 minutes. After that the run auto-denies and is
+    // closed by the orchestrator's user-cancelled path (run-coordinator.ts).
+    interface PendingCheckback {
+      readonly resolve: (decision: boolean) => void;
+      readonly timer: ReturnType<typeof setTimeout>;
+      readonly expiresAt: number;
+    }
+    const pendingCheckbacks = new Map<Uuid, PendingCheckback>();
+    const CHECKBACK_TIMEOUT_MS = 5 * 60_000;
+
+    const makeSendPlanCheckback = (request: WorkspaceRunRequest) => {
+      return async (preview: OrchestratorPlanPreview): Promise<boolean> => {
+        try {
+          const firstAgent = preview.selectedAgents[0];
+          if (!firstAgent) {
+            // No agent in plan — orchestrator's downstream path handles this.
+            return true;
+          }
+          const agent = await coreDeps.actorRegistry.get(firstAgent.agentId);
+          if (!agent) return true;
+
+          const probe: NvgOutboundRequest = {
+            requestId: crypto.randomUUID() as Uuid,
+            runId: request.runId,
+            actorId: firstAgent.agentId,
+            octLevel: agent.octLevel ?? 'OCT-OPEN',
+            environmentContext: agent.environment,
+            taskIntent: firstAgent.taskSummary,
+            payload: [{ role: 'user', content: request.prompt }],
+            dataLabels: [],
+            costPreference: 'standard',
+            latencyPreference: 'standard',
+          };
+
+          const routing = await br.nvgService.previewRouting(probe);
+          console.log(
+            '[orch-wire] pre-flight — primary:',
+            routing.primaryTier ?? '<none>',
+            routing.primaryHealthy ? '(healthy)' : '(unhealthy)',
+            '| fallback:',
+            routing.fallbackTier ?? '<none>',
+            routing.fallbackHealthy ? '(healthy)' : '(unhealthy)'
+          );
+
+          // Auto-approve when there's a healthy path — NVG's invocation chain
+          // will resolve same-tier retry / fallback transparently.
+          if (routing.primaryHealthy || routing.fallbackHealthy) {
+            return true;
+          }
+
+          // No healthy path on the policy-selected tiers. Surface the
+          // alternative (if any) and ask the user.
+          const alternativeName = routing.alternativeEndpoint
+            ? routing.alternativeEndpoint.modelName +
+              ' on ' +
+              routing.alternativeEndpoint.endpointId
+            : null;
+          const message = routing.alternativeTier
+            ? `Selected tier ${routing.primaryTier ?? 'unknown'} has no healthy endpoints. ` +
+              `An alternative on tier ${routing.alternativeTier} is available` +
+              (alternativeName ? ` (${alternativeName}).` : '.')
+            : `No healthy endpoints available within your model-tier ceiling. ` +
+              `(Selected tier: ${routing.primaryTier ?? 'unknown'}` +
+              (routing.denialReason ? `, ${routing.denialReason}` : '') +
+              ').';
+
+          console.log('[orch-wire] checkback required — run:', preview.runId, '—', message);
+
+          await coreDeps.runLedgerWriter!.writeEvent({
+            runId: preview.runId,
+            eventType: 'plan_checkback_required',
+            timestamp: nowIso(),
+            actorId: null,
+            detail: {
+              planDigest: preview.planDigest,
+              primaryTier: routing.primaryTier,
+              primaryHealthy: routing.primaryHealthy,
+              fallbackTier: routing.fallbackTier,
+              fallbackHealthy: routing.fallbackHealthy,
+              alternativeTier: routing.alternativeTier,
+              alternativeEndpoint: routing.alternativeEndpoint,
+              denialCode: routing.denialCode,
+              denialReason: routing.denialReason,
+              message,
+              requiresUserApproval: true,
+              expiresAtMs: Date.now() + CHECKBACK_TIMEOUT_MS,
+            },
+          });
+
+          return await new Promise<boolean>(resolve => {
+            const timer = setTimeout(() => {
+              const stillPending = pendingCheckbacks.get(preview.runId);
+              if (stillPending && stillPending.timer === timer) {
+                pendingCheckbacks.delete(preview.runId);
+                void coreDeps.runLedgerWriter!.writeEvent({
+                  runId: preview.runId,
+                  eventType: 'plan_checkback_resolved',
+                  timestamp: nowIso(),
+                  actorId: null,
+                  detail: { decision: 'deny', reason: 'checkback_timeout' },
+                });
+                resolve(false);
+              }
+            }, CHECKBACK_TIMEOUT_MS);
+
+            pendingCheckbacks.set(preview.runId, {
+              resolve,
+              timer,
+              expiresAt: Date.now() + CHECKBACK_TIMEOUT_MS,
+            });
+          });
+        } catch (err) {
+          console.error('[orch-wire] sendPlanCheckback error:', err);
+          return false; // fail closed
+        }
+      };
+    };
+
+    /**
+     * Resolver invoked by /workspace/runs/:runId/checkback. Returns true iff
+     * a pending Deferred existed for this runId — used by the route to
+     * differentiate 200 (resolved) from 404 (no pending checkback).
+     */
+    const resolvePendingCheckback = async (runId: Uuid, allow: boolean): Promise<boolean> => {
+      const pending = pendingCheckbacks.get(runId);
+      if (!pending) return false;
+      pendingCheckbacks.delete(runId);
+      clearTimeout(pending.timer);
+      await coreDeps.runLedgerWriter!.writeEvent({
+        runId,
+        eventType: 'plan_checkback_resolved',
+        timestamp: nowIso(),
+        actorId: null,
+        detail: { decision: allow ? 'allow' : 'deny' },
+      });
+      pending.resolve(allow);
       return true;
+    };
+
+    // Construction-time fallback so the RunCoordinatorDeps contract is
+    // satisfied. The real per-run checkback is bound via perRunDeps below
+    // (so the closure has the originating WorkspaceRunRequest).
+    const sendPlanCheckback = async (_p: OrchestratorPlanPreview): Promise<boolean> => {
+      throw new Error(
+        '[orch-wire] handleRun called without per-run sendPlanCheckback — request prompt unknown'
+      );
     };
     const buildPlannerRequest = (request: WorkspaceRunRequest): PlannerRequest => ({
       tier: 'normal' as const,
@@ -578,12 +732,17 @@ const program = createCli({
         'principal:',
         request.principalId
       );
-      // Build per-request issuer + dispatcher closing over the requesting user's
-      // principalId AND the originating prompt — handleRun threads them into
-      // every plan-node dispatch.
+      // Build per-request issuer + dispatcher + checkback closing over the
+      // requesting user's principalId AND the originating prompt — handleRun
+      // threads them into every plan-node dispatch and the pre-flight probe.
       const issueDelegation = makeIssueDelegation(request.principalId);
       const dispatchToGovernance = makeDispatchToGovernance(request);
-      return coordinator.handleRun(request, { issueDelegation, dispatchToGovernance });
+      const sendPlanCheckback = makeSendPlanCheckback(request);
+      return coordinator.handleRun(request, {
+        issueDelegation,
+        dispatchToGovernance,
+        sendPlanCheckback,
+      });
     };
 
     // Compile-return helpers — bound here so the route can dispatch through the
@@ -626,6 +785,9 @@ const program = createCli({
       dispatchToOrchestrator,
       computeDigest,
       pipelineInterface: nxsPipeline,
+      // CHECKBACK-spec — exposes the resolver so the workspace POST route can
+      // wake the pending Deferred in sendPlanCheckback when the user replies.
+      resolvePendingCheckback,
       // E2E wiring — services threaded so reference harness routes can call
       // the real engines, and the workspace flow can roundtrip a prompt
       // through NVG → mailbox → compile → return.

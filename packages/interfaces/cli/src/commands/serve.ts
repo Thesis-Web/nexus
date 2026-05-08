@@ -83,6 +83,7 @@ export type WorkspaceApiDeps = Partial<
     | 'recomputeArtifactDigest'
     | 'controlPlanePublicKey'
     | 'resolveArtifactBody'
+    | 'resolvePendingCheckback'
   >
 >;
 

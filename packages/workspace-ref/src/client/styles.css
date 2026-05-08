@@ -864,3 +864,93 @@ body {
   padding-top: 8px;
   margin-top: 8px;
 }
+
+/* ── Plan Review badge + Checkback card (CHECKBACK-spec) ───────────────── */
+
+.nx-badge--review {
+  background: var(--nx-amber-dim);
+  color: var(--nx-amber);
+  border: 1px solid var(--nx-amber-border);
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+
+.nx-checkback-card {
+  background: var(--nx-surface-raised);
+  border: 1px solid var(--nx-amber-border);
+  border-left: 3px solid var(--nx-amber);
+  border-radius: var(--nx-radius-lg);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.nx-checkback-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.nx-checkback-message {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--nx-text);
+  margin-bottom: 12px;
+}
+
+.nx-checkback-details {
+  margin: 0 0 12px;
+  display: grid;
+  gap: 6px 12px;
+  grid-template-columns: max-content 1fr;
+  font-size: 12.5px;
+}
+
+.nx-checkback-detail-row {
+  display: contents;
+}
+
+.nx-checkback-detail-row dt {
+  color: var(--nx-text-muted);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.nx-checkback-detail-row dd {
+  color: var(--nx-text);
+  margin: 0;
+}
+
+.nx-checkback-mono {
+  font-family: var(--nx-font-mono);
+  font-size: 12px;
+}
+
+.nx-checkback-status {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-left: 6px;
+}
+
+.nx-checkback-status--unhealthy {
+  background: var(--nx-red-dim);
+  color: var(--nx-red);
+  border: 1px solid var(--nx-red-border);
+}
+
+.nx-checkback-error {
+  font-size: 12px;
+  color: var(--nx-red);
+  background: var(--nx-red-dim);
+  border-left: 2px solid var(--nx-red);
+  padding: 6px 10px;
+  border-radius: 0 4px 4px 0;
+  margin-bottom: 10px;
+}
+
+.nx-checkback-actions {
+  display: flex;
+  gap: 8px;
+}

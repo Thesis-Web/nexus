@@ -37,6 +37,7 @@ export type StageStatus = 'pending' | 'active' | 'complete' | 'denied' | 'error'
 export type StageId =
   | 'prompt_received'
   | 'planning'
+  | 'plan_review'
   | 'delegation'
   | 'nvg_wall'
   | 'agent_response'
@@ -82,6 +83,23 @@ export interface RunTimelineState {
   finalResponseBody: string | null;
   /** Final-response artifact id (when present). */
   finalArtifactId: string | null;
+  /**
+   * CHECKBACK-spec — when a plan_checkback_required event has landed and no
+   * matching plan_checkback_resolved has yet, this carries the detail the
+   * checkback card needs to render. Null otherwise.
+   */
+  pendingCheckback: PendingCheckback | null;
+}
+
+export interface PendingCheckback {
+  primaryTier: string | null;
+  primaryHealthy: boolean;
+  fallbackTier: string | null;
+  fallbackHealthy: boolean;
+  alternativeTier: string | null;
+  alternativeEndpoint: { endpointId: string; modelName: string; tier: string } | null;
+  message: string;
+  denialReason: string | null;
 }
 
 // ─── Stage definitions — strict event → stage map ──────────────────────────
@@ -106,6 +124,14 @@ const STAGE_DEFS: ReadonlyArray<StageDef> = [
     id: 'planning',
     label: 'Planning execution',
     events: new Set(['plan_created', 'plan_checkback_sent', 'plan_confirmed', 'plan_rejected']),
+  },
+  {
+    id: 'plan_review',
+    label: 'Plan Review Required',
+    // Stage stays 'pending' (and visually skipped) when no checkback fires.
+    // Becomes 'active' on plan_checkback_required and resolves on
+    // plan_checkback_resolved (decision: allow|deny).
+    events: new Set(['plan_checkback_required', 'plan_checkback_resolved']),
   },
   {
     id: 'delegation',
@@ -243,6 +269,60 @@ function describePlanning(events: RunEvent[]): string[] {
     if (nodeCount !== null) lines.push(`Nodes: ${nodeCount}`);
   }
   return lines;
+}
+
+function describePlanReview(events: RunEvent[]): string[] {
+  const required = events.find(e => e.type === 'plan_checkback_required');
+  const resolved = events.find(e => e.type === 'plan_checkback_resolved');
+  const lines: string[] = [];
+  if (required?.detail) {
+    const primary = str(required.detail['primaryTier']);
+    const alt = str(required.detail['alternativeTier']);
+    if (primary) lines.push(`Selected: ${primary}`);
+    if (alt) lines.push(`Alternative: ${alt}`);
+  }
+  if (resolved?.detail) {
+    const decision = str(resolved.detail['decision']);
+    if (decision) lines.push(`Decision: ${decision}`);
+    const reason = str(resolved.detail['reason']);
+    if (reason) lines.push(`Reason: ${reason}`);
+  }
+  return lines;
+}
+
+function extractPendingCheckback(events: RunEvent[]): PendingCheckback | null {
+  // The "pending" checkback is the most recent plan_checkback_required that
+  // does NOT have a corresponding plan_checkback_resolved after it. Multiple
+  // checkbacks per run are not expected today, but the resolver-after-marker
+  // logic is correct for any sequence.
+  let lastRequired: RunEvent | null = null;
+  for (const ev of events) {
+    if (ev.type === 'plan_checkback_required') lastRequired = ev;
+    else if (ev.type === 'plan_checkback_resolved') lastRequired = null;
+  }
+  if (!lastRequired || !lastRequired.detail) return null;
+  const detail = lastRequired.detail;
+  const altEp = detail['alternativeEndpoint'] as
+    | { endpointId?: unknown; modelName?: unknown; tier?: unknown }
+    | null
+    | undefined;
+  return {
+    primaryTier: str(detail['primaryTier']),
+    primaryHealthy: detail['primaryHealthy'] === true,
+    fallbackTier: str(detail['fallbackTier']),
+    fallbackHealthy: detail['fallbackHealthy'] === true,
+    alternativeTier: str(detail['alternativeTier']),
+    alternativeEndpoint:
+      altEp && typeof altEp === 'object'
+        ? {
+            endpointId: str(altEp.endpointId) ?? '',
+            modelName: str(altEp.modelName) ?? '',
+            tier: str(altEp.tier) ?? '',
+          }
+        : null,
+    message: str(detail['message']) ?? 'Plan review required.',
+    denialReason: str(detail['denialReason']),
+  };
 }
 
 function describeDelegation(events: RunEvent[]): string[] {
@@ -402,6 +482,17 @@ function statusForStage(stageId: StageId, ctx: StageStatusContext): StageStatus 
       if (own.some(e => e.type === 'plan_rejected')) return 'denied';
       break;
     }
+    case 'plan_review': {
+      const resolved = own.find(e => e.type === 'plan_checkback_resolved');
+      if (resolved) {
+        const decision = str(resolved.detail?.['decision']);
+        if (decision === 'allow') return 'complete';
+        if (decision === 'deny') return 'denied';
+      }
+      // plan_checkback_required without a resolution = active (waiting on user)
+      if (own.some(e => e.type === 'plan_checkback_required')) return 'active';
+      break;
+    }
     case 'nvg_wall': {
       const failed = own.find(e => e.type === 'node_failed');
       if (failed) {
@@ -424,6 +515,13 @@ function statusForStage(stageId: StageId, ctx: StageStatusContext): StageStatus 
     }
     default:
       break;
+  }
+
+  // plan_review is opt-in: if no own events ever land for it, the stage is
+  // 'skipped' (the orchestrator auto-approved without asking). Don't promote
+  // it to 'complete' just because later stages have events.
+  if (stageId === 'plan_review' && own.length === 0) {
+    return hasLaterEvents ? 'skipped' : runClosed ? 'skipped' : 'pending';
   }
 
   // Implicit completion: any later stage having events means we passed
@@ -488,6 +586,13 @@ export function computeRunTimeline(events: RunEvent[]): RunTimelineState {
       if (!closeReason && reason && reason !== 'completed' && reason !== 'success') return true;
     }
     if ((buckets.get('planning') ?? []).some(e => e.type === 'plan_rejected')) return true;
+    // Plan-review denial = user clicked Deny on the checkback card.
+    if (
+      (buckets.get('plan_review') ?? []).some(
+        e => e.type === 'plan_checkback_resolved' && str(e.detail?.['decision']) === 'deny'
+      )
+    )
+      return true;
     if (
       (buckets.get('nvg_wall') ?? []).some(
         e => e.type === 'node_failed' || e.type === 'node_timed_out'
@@ -532,6 +637,16 @@ export function computeRunTimeline(events: RunEvent[]): RunTimelineState {
           const reasonDetail = str(rejected?.detail?.['reasonDetail']);
           failureCode = reason ?? 'plan_rejected';
           failureMessage = reasonDetail ?? '';
+        }
+        break;
+      }
+      case 'plan_review': {
+        detailLines = describePlanReview(own);
+        if (status === 'denied') {
+          const resolved = own.find(e => e.type === 'plan_checkback_resolved');
+          failureCode = str(resolved?.detail?.['reason']) ?? 'user_denied';
+          const required = own.find(e => e.type === 'plan_checkback_required');
+          failureMessage = str(required?.detail?.['message']) ?? '';
         }
         break;
       }
@@ -643,6 +758,7 @@ export function computeRunTimeline(events: RunEvent[]): RunTimelineState {
     failure: firstFailure,
     finalResponseBody: finalDescribe.body,
     finalArtifactId: finalDescribe.artifactId,
+    pendingCheckback: extractPendingCheckback(events),
   };
 }
 

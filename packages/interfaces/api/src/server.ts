@@ -232,6 +232,15 @@ export interface ApiDependencies {
    */
   resolveArtifactBody?: (ref: NonEmpty) => Promise<string>;
 
+  /**
+   * CHECKBACK-spec — wakes a pending plan_checkback Deferred. Returns true
+   * iff a checkback was actually pending for this runId. Bootstrap supplies
+   * the implementation; the POST /workspace/runs/:runId/checkback route
+   * uses it to translate the user's allow/deny click back into the
+   * sendPlanCheckback Promise the orchestrator is awaiting.
+   */
+  resolvePendingCheckback?: (runId: Uuid, allow: boolean) => Promise<boolean>;
+
   // ── AMEND-spec-nexus-compile §6: Template admin route deps ───────────────
   // Function-based — Layer 7 cannot import core types (DIFF-S23-002).
   // Bootstrap wires concrete implementations from core.

@@ -92,6 +92,13 @@ export interface WorkspaceRouteDeps {
   elevatedAuthProvider?: ElevatedAuthProvider;
   /** Catalog reader [blueprint §4.2-4.4] */
   catalogReader?: WorkspaceCatalogReaderPort;
+  /**
+   * CHECKBACK-spec — resolves a pending plan_checkback Deferred. Bound by
+   * the composition root; the POST /workspace/runs/:runId/checkback route
+   * delegates here so the orchestrator's awaiting promise wakes with the
+   * user's allow/deny decision. Returns true iff a checkback was pending.
+   */
+  resolvePendingCheckback?: (runId: Uuid, allow: boolean) => Promise<boolean>;
 }
 
 // ─── JWT Helpers (reference-only HMAC-SHA256) ────────────────────────────────
@@ -1120,6 +1127,50 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
           return;
         }
       }
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CHECKBACK-spec — POST /workspace/runs/:runId/checkback
+  // JWT + RunAcl protected. Wakes a pending plan_checkback Deferred so the
+  // orchestrator's sendPlanCheckback can return with the user's decision.
+  // Returns 404 if no checkback is pending for this runId.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.post('/workspace/runs/:runId/checkback', async (req: Request, res: Response) => {
+    if (!deps.resolvePendingCheckback) {
+      res.status(501).json({ ok: false, error: 'Checkback resolver not configured' });
+      return;
+    }
+    try {
+      const runId = req.params['runId'] as Uuid;
+
+      // RunAcl: only the run's principal may resolve its checkback.
+      if (deps.workspaceRunAclStore) {
+        const principalId = res.locals['principalId'] as string;
+        const authorized = await deps.workspaceRunAclStore.isAuthorized(runId, principalId);
+        if (!authorized) {
+          res.status(403).json({ ok: false, error: 'Not authorized for this run' });
+          return;
+        }
+      }
+
+      const body = req.body as Record<string, unknown>;
+      const decision = body['decision'];
+      if (decision !== 'allow' && decision !== 'deny') {
+        res.status(400).json({ ok: false, error: "decision must be 'allow' or 'deny'" });
+        return;
+      }
+
+      const resolved = await deps.resolvePendingCheckback(runId, decision === 'allow');
+      if (!resolved) {
+        res.status(404).json({ ok: false, error: 'No pending checkback for this run' });
+        return;
+      }
+
+      res.json({ ok: true, data: { runId, decision } });
+    } catch (err) {
       res.status(500).json({ ok: false, error: san(err) });
     }
   });

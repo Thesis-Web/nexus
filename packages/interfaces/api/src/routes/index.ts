@@ -98,6 +98,9 @@ export function registerAllRoutes(
       ? { elevatedAuthProvider: deps.elevatedAuthProvider }
       : {}),
     ...(deps.catalogReader !== undefined ? { catalogReader: deps.catalogReader } : {}),
+    ...(deps.resolvePendingCheckback !== undefined
+      ? { resolvePendingCheckback: deps.resolvePendingCheckback }
+      : {}),
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

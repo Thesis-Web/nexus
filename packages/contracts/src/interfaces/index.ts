@@ -811,6 +811,8 @@ export type RunEventType =
   // ── Orch-Ref Run Ledger Events (AMEND-spec-nexus-orch §4.6) ──────
   | 'plan_created'
   | 'plan_checkback_sent'
+  | 'plan_checkback_required'
+  | 'plan_checkback_resolved'
   | 'plan_confirmed'
   | 'plan_rejected'
   | 'node_dispatched'
@@ -1064,6 +1066,48 @@ export interface NvgService {
   validatePolicy(policy: NvgRoutingPolicy): void;
   /** §7.5 composition surface — full NVG wall: classify → route → ceiling → invoke → RPT */
   classifyAndRoute(request: NvgOutboundRequest): Promise<NvgClassifyAndRouteResult>;
+  /**
+   * CHECKBACK-spec Part 1 — non-invoking routing preview. Runs
+   * classify → route → ceiling but stops before invocation, then probes
+   * tier-registry health so the orchestrator can pre-flight a plan and
+   * surface a checkback to the user when the selected tier has no healthy
+   * endpoints. NEVER invokes the model — pre-flight is metadata-only.
+   */
+  previewRouting(request: NvgOutboundRequest): Promise<NvgRoutingPreview>;
+}
+
+// ─── CHECKBACK-spec — Routing preview (non-invoking) ───
+export interface NvgRoutingPreviewEndpoint {
+  endpointId: NonEmpty;
+  modelName: NonEmpty;
+  tier: ModelTier;
+}
+
+export interface NvgRoutingPreview {
+  /** Tier the routing policy selected for this request, or null on default-deny. */
+  primaryTier: ModelTier | null;
+  /** True iff the primary tier has at least one healthy or probationary endpoint. */
+  primaryHealthy: boolean;
+  /** Routing-policy-declared fallback tier, or null. */
+  fallbackTier: ModelTier | null;
+  /** True iff fallback tier exists and has a healthy/probationary endpoint. */
+  fallbackHealthy: boolean;
+  /**
+   * First healthy/probationary tier within the request's OCT ceiling that is
+   * NOT the primary tier — used as the user-facing alternative in the
+   * checkback card. Null when no within-ceiling alternative exists.
+   */
+  alternativeTier: ModelTier | null;
+  /** Concrete endpoint surfaced as the alternative, or null. */
+  alternativeEndpoint: NvgRoutingPreviewEndpoint | null;
+  /** Classification result derived from the request's data labels. */
+  classification: NvgClassificationResult;
+  /** True iff primary tier passed the OCT ceiling check. */
+  ceilingAllowed: boolean;
+  /** Denial code when ceilingAllowed=false or routing default-deny fires. */
+  denialCode: DenialCode | null;
+  /** Human-readable denial reason (paired with denialCode). */
+  denialReason: string | null;
 }
 
 // ─── §7.5 NvgClassifyAndRouteResult — composition surface return type ───

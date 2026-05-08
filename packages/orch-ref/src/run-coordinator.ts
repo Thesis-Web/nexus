@@ -79,6 +79,13 @@ export interface RunCoordinatorDeps {
 export interface RunCoordinatorPerRunDeps {
   readonly issueDelegation?: RunCoordinatorDeps['issueDelegation'];
   readonly dispatchToGovernance?: RunCoordinatorDeps['dispatchToGovernance'];
+  /**
+   * CHECKBACK-spec — the composition root needs to bind sendPlanCheckback to
+   * the originating WorkspaceRunRequest so the pre-flight probe can use the
+   * actual agent claims (and so a per-run resolver can wake the right
+   * pending Deferred when the user replies).
+   */
+  readonly sendPlanCheckback?: RunCoordinatorDeps['sendPlanCheckback'];
 }
 
 export interface RunCoordinator {
@@ -144,6 +151,7 @@ export class RefRunCoordinator implements RunCoordinator {
     // construction-time fallbacks. SPEC-DELEGATION-RUNTIME-PRINCIPAL-FIX §6.
     const issueDelegation = perRunDeps?.issueDelegation ?? deps.issueDelegation;
     const dispatchToGovernance = perRunDeps?.dispatchToGovernance ?? deps.dispatchToGovernance;
+    const sendPlanCheckback = perRunDeps?.sendPlanCheckback ?? deps.sendPlanCheckback;
 
     // 1. Build visibility-safe planner request
     const plannerRequest = deps.buildPlannerRequest(request);
@@ -202,10 +210,19 @@ export class RefRunCoordinator implements RunCoordinator {
     if (request.planCheckbackRequested || manifest.planCheckbackDefault) {
       const preview = this.buildPlanPreview(request, plan);
       await this.writeLedger(request.runId, 'plan_checkback_sent', { planId: plan.planId });
-      const confirmed = await deps.sendPlanCheckback(preview);
+      const confirmed = await sendPlanCheckback(preview);
       if (!confirmed) {
         await this.writeLedger(request.runId, 'plan_rejected', {
           reason: 'user_rejected_plan',
+        });
+        // CHECKBACK-spec Part 4: a user-rejected checkback must close the run
+        // cleanly. Without this the workspace's status endpoint never flips
+        // to 'closed' and the timeline hangs on the rejected planning stage.
+        await this.writeLedger(request.runId, 'run_closed', {
+          planId: plan.planId,
+          runId: request.runId,
+          closedBy: 'orch-ref',
+          closeReason: 'user_cancelled',
         });
         return preview;
       }
