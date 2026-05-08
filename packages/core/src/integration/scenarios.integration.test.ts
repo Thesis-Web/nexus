@@ -119,6 +119,16 @@ const INTEGRATION_RUN_LEDGER_PATH = path.join(
 );
 let integrationRunLedger: JsonlRunLedgerWriter | null = null;
 
+// ─── Shared RPT path (ci:gate Step 15 cross-link input) ────────────────────
+// ci:gate derives the RPT path from path.dirname(evidenceLedgerPath), so the
+// gate inspects runs/13-routing-provenance-trail.jsonl. The dev server writes
+// to that same file at the trail-dir default. Any prior dev session leaves
+// runIds the integration run-ledger doesn't own, breaking Step 15's runId
+// set-equality check. Truncate it here so the gate sees only entries the test
+// suite produces (none, since these scenarios are NXS-only and don't invoke
+// NVG). Symmetric with the other two ledger truncations above.
+const INTEGRATION_RPT_PATH = path.join(process.cwd(), 'runs', '13-routing-provenance-trail.jsonl');
+
 beforeAll(async () => {
   controlPlanePair = await loadControlPlaneKey();
   // Initialize shared ledger — delete any prior run's file for a clean chain
@@ -128,6 +138,8 @@ beforeAll(async () => {
   // Initialize shared run ledger — delete any prior run's file
   await fs.unlink(INTEGRATION_RUN_LEDGER_PATH).catch(() => {});
   integrationRunLedger = new JsonlRunLedgerWriter(INTEGRATION_RUN_LEDGER_PATH);
+  // Reset the RPT cross-link input so dev-server entries don't leak into Step 15.
+  await fs.unlink(INTEGRATION_RPT_PATH).catch(() => {});
 });
 
 // ─── FixtureSetup type (HOLE-404 schema) ─────────────────────────────────────

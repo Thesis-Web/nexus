@@ -25,14 +25,19 @@ import { AdminEntryButton } from './components/admin/admin-entry-button.js';
 import { AdminReauthGate } from './components/admin/admin-reauth-gate.js';
 import { AdminDashboardShell } from './components/admin/admin-dashboard-shell.js';
 import { createRun, listAgents, listModels, uploadFile, type CatalogItem } from './api.js';
+import { computeRunTimeline } from './components/run-stage-reducer.js';
 
 // ── Run entry for sidebar ─────────────────────────────────────────────────
+
+type RunOutcome = 'success' | 'denied' | 'error';
 
 interface RunEntry {
   runId: string;
   title: string;
   status: 'open' | 'closed';
   timestamp: string;
+  /** Final outcome — only set once the run has closed. */
+  outcome?: RunOutcome;
 }
 
 interface FileEntry {
@@ -150,14 +155,22 @@ function App() {
     input.click();
   }, []);
 
-  // Update run status when events indicate closure
+  // Update run status / outcome when events indicate closure. We re-run the
+  // play-by-play reducer here so the sidebar reflects the same denial state
+  // the timeline shows in the main pane.
   useEffect(() => {
-    if (runEvents.status?.status === 'closed' && activeRunId) {
-      setRuns(prev =>
-        prev.map(r => (r.runId === activeRunId ? { ...r, status: 'closed' as const } : r))
-      );
-    }
-  }, [runEvents.status, activeRunId]);
+    if (!activeRunId) return;
+    const timeline = computeRunTimeline(runEvents.events);
+    if (!timeline.closed) return;
+    const outcome: RunOutcome = timeline.failure
+      ? timeline.failure.governanceDenied
+        ? 'denied'
+        : 'error'
+      : 'success';
+    setRuns(prev =>
+      prev.map(r => (r.runId === activeRunId ? { ...r, status: 'closed' as const, outcome } : r))
+    );
+  }, [runEvents.events, runEvents.status, activeRunId]);
 
   // ── Render: not authenticated ──────────────────────────────────────────
 

@@ -129,6 +129,12 @@ body {
   border: 1px solid var(--nx-green-border);
 }
 
+.nx-badge--denied {
+  background: var(--nx-red-dim);
+  color: var(--nx-red);
+  border: 1px solid var(--nx-red-border);
+}
+
 .nx-topbar-spacer {
   flex: 1;
 }
@@ -635,4 +641,226 @@ body {
   font-size: 13px;
   font-weight: 700;
   flex-shrink: 0;
+}
+
+/* ── Run Timeline (play-by-play) ───────────────────────────────────────── */
+/* Vertical list of governance checkpoints — driven by SSE events.        */
+
+.nx-timeline {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 16px;
+  padding: 16px 14px 4px;
+  background: var(--nx-surface-raised);
+  border-radius: var(--nx-radius-lg);
+  border: 1px solid var(--nx-border-subtle);
+}
+
+.nx-timeline-stage {
+  display: flex;
+  gap: 12px;
+  position: relative;
+  padding-bottom: 4px;
+  min-height: 36px;
+}
+
+.nx-timeline-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 20px;
+}
+
+.nx-timeline-glyph {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 50%;
+  background: var(--nx-surface);
+  border: 1px solid var(--nx-border);
+  color: var(--nx-text-muted);
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+  z-index: 1;
+}
+
+.nx-timeline-connector {
+  width: 1px;
+  flex: 1;
+  background: var(--nx-border);
+  margin: 2px 0;
+  min-height: 14px;
+}
+
+.nx-timeline-body {
+  flex: 1;
+  padding-bottom: 14px;
+  min-width: 0;
+}
+
+.nx-timeline-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.nx-timeline-label {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--nx-text);
+}
+
+.nx-timeline-offset {
+  margin-left: auto;
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  color: var(--nx-text-muted);
+  flex-shrink: 0;
+}
+
+.nx-timeline-detail {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  font-size: 12px;
+  color: var(--nx-text-dim);
+  line-height: 1.55;
+}
+
+.nx-timeline-detail li {
+  font-family: var(--nx-font-mono);
+}
+
+.nx-timeline-elapsed {
+  margin-top: 4px;
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  color: var(--nx-amber);
+}
+
+.nx-timeline-failure {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--nx-red);
+  border-left: 2px solid var(--nx-red);
+  padding: 4px 0 4px 8px;
+  background: var(--nx-red-dim);
+  border-radius: 0 4px 4px 0;
+}
+
+.nx-timeline-failure-code {
+  font-family: var(--nx-font-mono);
+  font-weight: 600;
+}
+
+/* ── Stage status colors ───────────────────────────────────────────────── */
+
+.nx-timeline-stage--pending .nx-timeline-glyph {
+  color: var(--nx-text-muted);
+  border-color: var(--nx-border);
+}
+.nx-timeline-stage--pending .nx-timeline-label {
+  color: var(--nx-text-muted);
+}
+
+.nx-timeline-stage--active .nx-timeline-glyph {
+  color: var(--nx-amber);
+  border-color: var(--nx-amber);
+  background: var(--nx-amber-dim);
+  animation: nx-timeline-pulse 1.4s ease-in-out infinite;
+}
+.nx-timeline-stage--active .nx-timeline-label {
+  color: var(--nx-text);
+  font-weight: 600;
+}
+
+.nx-timeline-stage--complete .nx-timeline-glyph {
+  color: var(--nx-green);
+  border-color: var(--nx-green-border);
+  background: var(--nx-green-dim);
+}
+
+.nx-timeline-stage--denied .nx-timeline-glyph,
+.nx-timeline-stage--error .nx-timeline-glyph {
+  color: var(--nx-red);
+  border-color: var(--nx-red-border);
+  background: var(--nx-red-dim);
+}
+.nx-timeline-stage--denied .nx-timeline-label,
+.nx-timeline-stage--error .nx-timeline-label {
+  color: var(--nx-red);
+  font-weight: 600;
+}
+
+.nx-timeline-stage--skipped .nx-timeline-glyph {
+  color: var(--nx-text-muted);
+  border-style: dashed;
+}
+.nx-timeline-stage--skipped .nx-timeline-label {
+  color: var(--nx-text-muted);
+  font-style: italic;
+}
+
+@keyframes nx-timeline-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--nx-amber-dim);
+  }
+  50% {
+    box-shadow: 0 0 0 4px var(--nx-amber-dim);
+  }
+}
+
+/* ── Denial card ───────────────────────────────────────────────────────── */
+
+.nx-denial-card {
+  background: var(--nx-surface-raised);
+  border: 1px solid var(--nx-red-border);
+  border-left: 3px solid var(--nx-red);
+  border-radius: var(--nx-radius-lg);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.nx-denial-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.nx-denial-where {
+  font-size: 12px;
+  color: var(--nx-text-muted);
+}
+
+.nx-denial-code {
+  font-family: var(--nx-font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--nx-red);
+  margin-bottom: 4px;
+}
+
+.nx-denial-message {
+  font-size: 13px;
+  color: var(--nx-text);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.nx-denial-footnote {
+  font-size: 12px;
+  color: var(--nx-text-dim);
+  line-height: 1.5;
+  border-top: 1px solid var(--nx-border-subtle);
+  padding-top: 8px;
+  margin-top: 8px;
 }
