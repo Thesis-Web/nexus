@@ -75,6 +75,9 @@ export interface WorkspaceBootstrapCoreDeps {
   // ORCH-WIRE-001: canonical stores for actor unification + orchestrator wiring
   actorRegistry: ApiDependencies['actorRegistry'];
   principalRegistry: ApiDependencies['principalRegistry'];
+  // SPEC-DELEGATION-RUNTIME-PRINCIPAL-FIX: real session store for IdentityGate +
+  // dispatchToGovernance to create real per-run sessions (was a stub returning null).
+  sessionStore: ApiDependencies['sessionStore'];
   delegationStore: ApiDependencies['delegationStore'];
   ledgerBackend: ApiDependencies['ledgerBackend'];
   runLedgerWriter: ApiDependencies['runLedgerWriter'];
@@ -172,6 +175,7 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
       loadApproverKey,
       actorRegistry: baseDeps.actorRegistry,
       principalRegistry: baseDeps.principalRegistry,
+      sessionStore: baseDeps.sessionStore,
       delegationStore: baseDeps.delegationStore,
       ledgerBackend: baseDeps.ledgerBackend,
       runLedgerWriter: baseDeps.runLedgerWriter,

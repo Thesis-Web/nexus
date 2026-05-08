@@ -1079,6 +1079,75 @@ export async function bootstrapWorkspace(
       } as Actor);
     }
     console.log('[workspace-bootstrap] dev-admin + default-agent seeded (canonical NXS store)');
+
+    // ── SPEC-DELEGATION-RUNTIME-PRINCIPAL-FIX §7.1: bounded test users ──
+    // Seed two non-admin principals + matching HUMAN actors so the runtime
+    // delegation fix can be exercised end-to-end (ceiling intersection,
+    // lesser-of risk tier).
+    const TEST_PRINCIPAL_1 = '00000000-0000-4000-a000-000000000010' as Uuid;
+    const TEST_ACTOR_1 = '00000000-0000-4000-a000-000000000011' as Uuid;
+    if (!(await coreDeps.principalRegistry.get(TEST_PRINCIPAL_1))) {
+      await coreDeps.principalRegistry.register({
+        principalId: TEST_PRINCIPAL_1,
+        displayName: 'test-analyst' as NonEmpty,
+        email: 'analyst@nexus.local' as NonEmpty,
+        registeredAt: now,
+        maxDelegableRiskTier: 'medium',
+        allowedSystems: ['stub'],
+      });
+    }
+    if (!(await coreDeps.actorRegistry.get(TEST_ACTOR_1))) {
+      await coreDeps.actorRegistry.register({
+        actorId: TEST_ACTOR_1,
+        actorClass: 'HUMAN',
+        principalId: TEST_PRINCIPAL_1,
+        displayName: 'test-analyst' as NonEmpty,
+        environment: 'reference',
+        octLevel: 'OCT-OPEN',
+        riskCeiling: 'medium',
+        allowedSystems: ['stub'],
+        allowedCapabilities: ['read:record:single', 'search:data', 'synthesize:content'],
+        enabled: true,
+        registeredAt: now,
+        owner: 'system' as NonEmpty,
+        purpose: 'Bounded test user for delegation testing' as NonEmpty,
+        reviewCadence: 'quarterly' as NonEmpty,
+      } as Actor);
+    }
+
+    const TEST_PRINCIPAL_2 = '00000000-0000-4000-a000-000000000020' as Uuid;
+    const TEST_ACTOR_2 = '00000000-0000-4000-a000-000000000021' as Uuid;
+    if (!(await coreDeps.principalRegistry.get(TEST_PRINCIPAL_2))) {
+      await coreDeps.principalRegistry.register({
+        principalId: TEST_PRINCIPAL_2,
+        displayName: 'test-intern' as NonEmpty,
+        email: 'intern@nexus.local' as NonEmpty,
+        registeredAt: now,
+        maxDelegableRiskTier: 'low',
+        allowedSystems: ['stub'],
+      });
+    }
+    if (!(await coreDeps.actorRegistry.get(TEST_ACTOR_2))) {
+      await coreDeps.actorRegistry.register({
+        actorId: TEST_ACTOR_2,
+        actorClass: 'HUMAN',
+        principalId: TEST_PRINCIPAL_2,
+        displayName: 'test-intern' as NonEmpty,
+        environment: 'reference',
+        octLevel: 'OCT-OPEN',
+        riskCeiling: 'low',
+        allowedSystems: ['stub'],
+        allowedCapabilities: ['read:record:single'],
+        enabled: true,
+        registeredAt: now,
+        owner: 'system' as NonEmpty,
+        purpose: 'Low-privilege test user for ceiling intersection testing' as NonEmpty,
+        reviewCadence: 'quarterly' as NonEmpty,
+      } as Actor);
+    }
+    console.log(
+      '[workspace-bootstrap] test-analyst (medium) + test-intern (low) seeded for delegation tests'
+    );
   } else {
     console.log('[workspace-bootstrap] dev-admin key not found — run nexus init');
   }

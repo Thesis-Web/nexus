@@ -856,3 +856,47 @@
   gap: 8px;
   margin-top: 6px;
 }
+
+/* ── multifield group (capabilities, systems) ─────────────────────────── */
+.nx-admin-endpoint-form__multifield {
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  background: #0e0e0e;
+  padding: 10px 12px 12px;
+  margin: 0;
+}
+.nx-admin-endpoint-form__legend {
+  font-size: 11px;
+  color: #8aa0bc;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-weight: 600;
+  padding: 0 6px;
+}
+.nx-admin-endpoint-form__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 6px;
+}
+.nx-admin-endpoint-form__chips--two-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 4px 14px;
+}
+.nx-admin-endpoint-form__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #d0d0d0;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.nx-admin-endpoint-form__chip:hover {
+  background: #1a1a1a;
+}
+.nx-admin-endpoint-form__chip input[type='checkbox'] {
+  margin: 0;
+}

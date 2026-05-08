@@ -36,6 +36,8 @@ import type {
   ActorRegistry,
   ActorClass,
   OctLevel,
+  Principal,
+  PrincipalRegistry,
   Uuid,
   NonEmpty,
 } from '@nexus/contracts';
@@ -221,17 +223,40 @@ function createMockActorRegistry(): ActorRegistry & { _actors: Map<string, Actor
   };
 }
 
+// ─── Mock PrincipalRegistry (in-memory) ─────────────────────────────────────
+
+function createMockPrincipalRegistry(): PrincipalRegistry & {
+  _principals: Map<string, Principal>;
+} {
+  const principals = new Map<string, Principal>();
+
+  return {
+    _principals: principals,
+    async get(principalId: Uuid): Promise<Principal | null> {
+      return principals.get(principalId) ?? null;
+    },
+    async register(principal: Principal): Promise<void> {
+      principals.set(principal.principalId, principal);
+    },
+    async list(): Promise<Principal[]> {
+      return [...principals.values()];
+    },
+  };
+}
+
 // ─── App fixture ────────────────────────────────────────────────────────────
 
 function buildApp(opts: {
   includeElevatedAuth?: boolean;
   includeManifestWriter?: boolean;
   includeActorRegistry?: boolean;
+  includePrincipalRegistry?: boolean;
 }): {
   app: express.Express;
   start: () => Promise<{ port: number; server: Server }>;
   manifestWriter: ReturnType<typeof createMockManifestWriter>;
   actorRegistry: ReturnType<typeof createMockActorRegistry>;
+  principalRegistry: ReturnType<typeof createMockPrincipalRegistry>;
 } {
   const app = express();
   app.use(express.json());
@@ -239,11 +264,13 @@ function buildApp(opts: {
 
   const manifestWriter = createMockManifestWriter();
   const actorRegistry = createMockActorRegistry();
+  const principalRegistry = createMockPrincipalRegistry();
 
   registerAdminWriterRoutes(app, {
     ...(opts.includeElevatedAuth !== false ? { elevatedAuthProvider: mockElevatedAuth } : {}),
     ...(opts.includeManifestWriter !== false ? { manifestWriter } : {}),
     ...(opts.includeActorRegistry !== false ? { actorRegistry } : {}),
+    ...(opts.includePrincipalRegistry !== false ? { principalRegistry } : {}),
   });
 
   const start = async (): Promise<{ port: number; server: Server }> =>
@@ -254,7 +281,7 @@ function buildApp(opts: {
       });
     });
 
-  return { app, start, manifestWriter, actorRegistry };
+  return { app, start, manifestWriter, actorRegistry, principalRegistry };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -290,6 +317,7 @@ describe('admin-writer routes', () => {
   let port: number;
   let manifestWriter: ReturnType<typeof createMockManifestWriter>;
   let actorRegistry: ReturnType<typeof createMockActorRegistry>;
+  let principalRegistry: ReturnType<typeof createMockPrincipalRegistry>;
 
   beforeAll(async () => {
     const fixture = buildApp({});
@@ -298,6 +326,7 @@ describe('admin-writer routes', () => {
     server = r.server;
     manifestWriter = fixture.manifestWriter;
     actorRegistry = fixture.actorRegistry;
+    principalRegistry = fixture.principalRegistry;
   });
 
   afterAll(async () => {
@@ -307,6 +336,7 @@ describe('admin-writer routes', () => {
   beforeEach(() => {
     manifestWriter._store.clear();
     actorRegistry._actors.clear();
+    principalRegistry._principals.clear();
   });
 
   const url = (p: string): string => `http://127.0.0.1:${port}${p}`;
@@ -596,6 +626,33 @@ describe('admin-writer routes', () => {
     manifestWriter._store.set('config/connectors/connectors.v1.yaml:connectors', [
       { connectorId: 'stub-conn', connectorType: 'stub', enabled: true },
     ]);
+    // Seed an actor + a principal so allActors and principals come back populated.
+    const seedActorId = '99999999-9999-4999-a999-999999999999' as Uuid;
+    const seedPrincipalId = '00000000-0000-4000-a000-000000000001' as Uuid;
+    actorRegistry._actors.set(seedActorId, {
+      actorId: seedActorId,
+      actorClass: 'SUPERVISED_AGENT',
+      principalId: seedPrincipalId,
+      displayName: 'seed-agent' as NonEmpty,
+      environment: 'reference',
+      octLevel: 'OCT-OPEN',
+      riskCeiling: 'medium',
+      allowedSystems: ['stub'],
+      allowedCapabilities: ['read:record:single'],
+      enabled: true,
+      registeredAt: new Date().toISOString(),
+      owner: 'tester' as NonEmpty,
+      purpose: 'seed' as NonEmpty,
+      reviewCadence: 'quarterly' as NonEmpty,
+    } as Actor);
+    principalRegistry._principals.set(seedPrincipalId, {
+      principalId: seedPrincipalId,
+      displayName: 'dev-admin' as NonEmpty,
+      email: 'admin@example.com' as NonEmpty,
+      registeredAt: new Date().toISOString(),
+      maxDelegableRiskTier: 'critical',
+      allowedSystems: ['*'],
+    });
 
     const res = await fetch(url('/workspace/admin/setup/catalog'), { headers: adminHeaders() });
     expect(res.status).toBe(200);
@@ -610,6 +667,8 @@ describe('admin-writer routes', () => {
         authKinds: { id: string; requiresSecret: boolean }[];
         allEndpoints: Record<string, unknown>[];
         allConnectors: Record<string, unknown>[];
+        allActors: Record<string, unknown>[];
+        principals: Record<string, unknown>[];
       };
     };
     expect(body.ok).toBe(true);
@@ -627,6 +686,11 @@ describe('admin-writer routes', () => {
     expect(body.data.allEndpoints).toHaveLength(2);
     expect(body.data.allEndpoints.map(e => e['endpointId'])).toEqual(['enabled-ep', 'disabled-ep']);
     expect(body.data.allConnectors).toHaveLength(1);
+    // Actors + principals come back populated.
+    expect(body.data.allActors).toHaveLength(1);
+    expect(body.data.allActors[0]?.['displayName']).toBe('seed-agent');
+    expect(body.data.principals).toHaveLength(1);
+    expect(body.data.principals[0]?.['principalId']).toBe(seedPrincipalId);
   });
 
   it('GET /catalog — 401 without claims', async () => {

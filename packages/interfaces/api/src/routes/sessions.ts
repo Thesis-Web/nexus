@@ -10,7 +10,7 @@ import type {
   DelegationStore,
   Session,
 } from '@nexus/contracts';
-import { nowIso, newUuid, addSeconds } from '@nexus/contracts';
+import { ACTOR_CLASS, nowIso, newUuid, addSeconds } from '@nexus/contracts';
 import { san } from './shared.js';
 
 export function registerSessionRoutes(
@@ -40,7 +40,15 @@ export function registerSessionRoutes(
         res.status(400).json({ ok: false, error: 'delegation not found' });
         return;
       }
-      if (actor.principalId !== delegation.principalId) {
+      // SPEC-DELEGATION-RUNTIME-PRINCIPAL-FIX §2.4.
+      // Human actors create sessions under their own principal — strict match.
+      // Agents act under the requesting USER's principal, which won't equal
+      // the agent's registrar principal. The delegation already binds the
+      // runtime principal; checking actor.principalId here would block agents.
+      const isHumanActor =
+        actor.actorClass === ACTOR_CLASS.HUMAN ||
+        actor.actorClass === ACTOR_CLASS.HUMAN_WITH_COPILOT;
+      if (isHumanActor && actor.principalId !== delegation.principalId) {
         res
           .status(400)
           .json({ ok: false, error: 'actor.principalId does not match delegation.principalId' });
@@ -56,7 +64,9 @@ export function registerSessionRoutes(
       const session: Session = {
         sessionId: newUuid(),
         actorId: actor.actorId,
-        principalId: actor.principalId,
+        // Use the delegation's principal — the runtime authority for this
+        // session — not the actor's registrar principal.
+        principalId: delegation.principalId,
         delegationId: delegation.delegationId,
         createdAt: nowIso(),
         expiresAt: addSeconds(nowIso(), ttlSeconds),

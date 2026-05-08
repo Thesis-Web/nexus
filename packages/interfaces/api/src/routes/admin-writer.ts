@@ -19,7 +19,13 @@
  * Owner rulings: WRITER-001 through WRITER-004.
  */
 import type { Express, Request, Response } from 'express';
-import type { ActorRegistry, ElevatedAuthProvider, IdentityClaims, Uuid } from '@nexus/contracts';
+import type {
+  ActorRegistry,
+  ElevatedAuthProvider,
+  IdentityClaims,
+  PrincipalRegistry,
+  Uuid,
+} from '@nexus/contracts';
 import {
   ACTOR_CLASS,
   CAPABILITY_IDS,
@@ -113,6 +119,8 @@ export interface AdminWriterRouteDeps {
   readonly elevatedAuthProvider?: ElevatedAuthProvider;
   readonly manifestWriter?: ManifestWriter;
   readonly actorRegistry?: ActorRegistry;
+  /** Registered principals — used by the catalog route for the principalId dropdown. */
+  readonly principalRegistry?: PrincipalRegistry;
 }
 
 interface AuthOk {
@@ -505,11 +513,13 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
         { id: 'api_key', label: 'api_key', requiresSecret: true },
         { id: 'bearer', label: 'bearer', requiresSecret: true },
       ];
-      const [allEndpoints, allConnectors] = await Promise.all([
+      const [allEndpoints, allConnectors, allActors, principals] = await Promise.all([
         deps.manifestWriter.readEntries(MANIFEST_ENDPOINTS, 'endpoints'),
         deps.manifestWriter
           .readEntries(MANIFEST_CONNECTORS, 'connectors')
           .catch(() => [] as Record<string, unknown>[]),
+        deps.actorRegistry ? deps.actorRegistry.list() : Promise.resolve([]),
+        deps.principalRegistry ? deps.principalRegistry.list() : Promise.resolve([]),
       ]);
       res.json({
         ok: true,
@@ -522,6 +532,8 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
           authKinds,
           allEndpoints,
           allConnectors,
+          allActors,
+          principals,
         },
       });
     } catch (err) {

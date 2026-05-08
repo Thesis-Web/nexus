@@ -78,6 +78,7 @@ function renderSurface(
   title: string,
   data: DashboardSurfaceStatus | undefined,
   elevatedSessionId: string,
+  adminPrincipalId: string,
   catalog: AdminCatalog | null,
   onCatalogReload: () => void
 ) {
@@ -86,7 +87,13 @@ function renderSurface(
       return <IdentityProviderSetupPanel {...(data ? { data } : {})} />;
     case 'actors_agents':
       return (
-        <ActorAgentSetupPanel {...(data ? { data } : {})} elevatedSessionId={elevatedSessionId} />
+        <ActorAgentSetupPanel
+          {...(data ? { data } : {})}
+          elevatedSessionId={elevatedSessionId}
+          adminPrincipalId={adminPrincipalId}
+          {...(catalog ? { catalog } : {})}
+          onCatalogReload={onCatalogReload}
+        />
       );
     case 'connectors_targets':
       return (
@@ -259,6 +266,7 @@ export function AdminDashboardShell({
               activeNav.title,
               findSurface(activeSurfaceId),
               elevatedSessionId,
+              principalId,
               catalog,
               reloadCatalog
             )

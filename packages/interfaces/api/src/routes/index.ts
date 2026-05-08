@@ -150,6 +150,7 @@ export function registerAllRoutes(
       : {}),
     ...(deps.manifestWriter !== undefined ? { manifestWriter: deps.manifestWriter } : {}),
     ...(deps.actorRegistry !== undefined ? { actorRegistry: deps.actorRegistry } : {}),
+    ...(deps.principalRegistry !== undefined ? { principalRegistry: deps.principalRegistry } : {}),
   });
 
   // Compile-return routes — callback signature auth [§5.1]

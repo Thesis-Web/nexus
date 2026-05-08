@@ -69,8 +69,23 @@ export interface RunCoordinatorDeps {
 
 // ─── RunCoordinator interface [§7.1] ───
 
+/**
+ * Per-run dep overrides. Lets the composition root close over the requesting
+ * user's principalId without recreating the coordinator on every run, so the
+ * activeRuns/cancellation map stays intact across requests.
+ *
+ * SPEC-DELEGATION-RUNTIME-PRINCIPAL-FIX §6 (Option B).
+ */
+export interface RunCoordinatorPerRunDeps {
+  readonly issueDelegation?: RunCoordinatorDeps['issueDelegation'];
+  readonly dispatchToGovernance?: RunCoordinatorDeps['dispatchToGovernance'];
+}
+
 export interface RunCoordinator {
-  handleRun(request: WorkspaceRunRequest): Promise<OrchestratorPlanPreview>;
+  handleRun(
+    request: WorkspaceRunRequest,
+    perRunDeps?: RunCoordinatorPerRunDeps
+  ): Promise<OrchestratorPlanPreview>;
   cancelRun(runId: Uuid): Promise<void>;
 }
 
@@ -120,8 +135,15 @@ export class RefRunCoordinator implements RunCoordinator {
 
   // ─── handleRun [§7.2] ───
 
-  async handleRun(request: WorkspaceRunRequest): Promise<OrchestratorPlanPreview> {
+  async handleRun(
+    request: WorkspaceRunRequest,
+    perRunDeps?: RunCoordinatorPerRunDeps
+  ): Promise<OrchestratorPlanPreview> {
     const { deps, manifest } = this;
+    // Per-request principal-bound functions take precedence over the
+    // construction-time fallbacks. SPEC-DELEGATION-RUNTIME-PRINCIPAL-FIX §6.
+    const issueDelegation = perRunDeps?.issueDelegation ?? deps.issueDelegation;
+    const dispatchToGovernance = perRunDeps?.dispatchToGovernance ?? deps.dispatchToGovernance;
 
     // 1. Build visibility-safe planner request
     const plannerRequest = deps.buildPlannerRequest(request);
@@ -195,7 +217,7 @@ export class RefRunCoordinator implements RunCoordinator {
     const nodeDelegations: NodeDelegationBinding[] = [];
     for (const node of plan.nodes) {
       if (node.nodeType !== 'local_control') {
-        const delegationId = await deps.issueDelegation(node.agentId, scopeFromPlanNode(node));
+        const delegationId = await issueDelegation(node.agentId, scopeFromPlanNode(node));
         nodeDelegations.push({
           nodeId: node.nodeId,
           agentId: node.agentId,
@@ -219,7 +241,7 @@ export class RefRunCoordinator implements RunCoordinator {
     let dagResult: DagExecutionResult;
     try {
       dagResult = await deps.dagExecutor.execute(dagState, {
-        dispatchNode: deps.dispatchToGovernance,
+        dispatchNode: dispatchToGovernance,
         resolveCondition: (condition, metadata) => evaluateCondition(condition, metadata).result,
         onNodeEvent: async (nodeId, status) => {
           const eventType: RunEventType | null =

@@ -34,6 +34,11 @@ export type { AmendmentDeps, AmendmentResult, MergeValidationResult } from './pl
 
 export { RefRunCoordinator } from './run-coordinator.js';
 
-export type { DelegationScope, RunCoordinatorDeps, RunCoordinator } from './run-coordinator.js';
+export type {
+  DelegationScope,
+  RunCoordinatorDeps,
+  RunCoordinator,
+  RunCoordinatorPerRunDeps,
+} from './run-coordinator.js';
 
 export { RefOrchestrator } from './ref-orchestrator.js';

@@ -584,6 +584,8 @@ export interface ActorRegistry {
 export interface PrincipalRegistry {
   get(principalId: Uuid): Promise<Principal | null>;
   register(principal: Principal): Promise<void>;
+  /** List all registered principals (admin/dashboard surfaces). */
+  list(): Promise<Principal[]>;
 }
 
 export interface Approver {

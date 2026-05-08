@@ -2,6 +2,7 @@ import {
   SqliteActorRegistry,
   SqliteSessionStore,
   SqliteDelegationStore,
+  ACTOR_CLASS,
   addSeconds,
   newUuid,
   nowIso,
@@ -27,12 +28,17 @@ export async function cmdSessionStart(opts: {
     console.error(`✗ Delegation not found: ${opts.delegation}`);
     process.exit(1);
   }
-  // GATE01-002 FIX: delegation must be bound to this actor and principal
+  // GATE01-002 FIX: delegation must be bound to this actor.
   if (delegation.actorId !== actor.actorId) {
     console.error(`✗ delegation.actorId does not match actor.actorId`);
     process.exit(1);
   }
-  if (delegation.principalId !== actor.principalId) {
+  // SPEC-DELEGATION-RUNTIME-PRINCIPAL-FIX §2.5.
+  // Human actors must match their own principal. Agents may act under any
+  // principal granted via delegation — the delegation carries the authority.
+  const isHumanActor =
+    actor.actorClass === ACTOR_CLASS.HUMAN || actor.actorClass === ACTOR_CLASS.HUMAN_WITH_COPILOT;
+  if (isHumanActor && delegation.principalId !== actor.principalId) {
     console.error(`✗ delegation.principalId does not match actor.principalId`);
     process.exit(1);
   }
@@ -41,7 +47,8 @@ export async function cmdSessionStart(opts: {
   const session: Session = {
     sessionId: newUuid(),
     actorId: actor.actorId,
-    principalId: actor.principalId,
+    // Runtime authority comes from the delegation, not the actor record.
+    principalId: delegation.principalId,
     delegationId: delegation.delegationId,
     createdAt,
     expiresAt: addSeconds(createdAt, ttlSeconds),

@@ -88,7 +88,16 @@ export class IdentityGate implements Gate {
     const principal = await this.principalRegistry.get(action.principalId);
     if (!principal)
       return gateDeny(DENIAL_CODE.PRINCIPAL_NOT_RESOLVABLE, 'principal not resolvable', startMs);
-    if (actor.principalId !== principal.principalId) {
+
+    // SPEC-DELEGATION-RUNTIME-PRINCIPAL-FIX §2.3.
+    // For HUMAN / HUMAN_WITH_COPILOT: actor IS the principal — strict match.
+    // For agent actors: actor.principalId is the registering admin (audit trail
+    // only). The runtime principal is the requesting user, validated below at
+    // line 148 (delegation.principalId === action.principalId). Delegation
+    // minting enforces scope ceilings, so no authority escalation is possible.
+    const isHumanActor =
+      actor.actorClass === ACTOR_CLASS.HUMAN || actor.actorClass === ACTOR_CLASS.HUMAN_WITH_COPILOT;
+    if (isHumanActor && actor.principalId !== principal.principalId) {
       return gateDeny(DENIAL_CODE.ACTOR_PRINCIPAL_MISMATCH, 'actor/principal mismatch', startMs);
     }
 

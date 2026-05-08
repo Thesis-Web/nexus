@@ -51,8 +51,9 @@ import type {
   WorkspaceRunRequest,
   PlannerRequest,
   PlanNode,
+  Session,
 } from '@nexus/contracts';
-import { nowIso } from '@nexus/contracts';
+import { addSeconds, nowIso, riskTierExceeds } from '@nexus/contracts';
 import { bootstrap, bootstrapWorkspace, type BootstrapResult } from './nexus-bootstrap.js';
 import { ActorRegistryAgentReader } from './ref-agent-registry-reader.js';
 import {
@@ -158,7 +159,10 @@ const program = createCli({
       {
         identity: new IdentityGate(
           coreDeps.actorRegistry,
-          { get: async () => null, create: async () => {} } as any,
+          // SPEC-DELEGATION-RUNTIME-PRINCIPAL-FIX §2.2 step A — real session
+          // store so dispatchToGovernance can create per-run sessions that
+          // Gate 01 actually finds (was a stub returning null).
+          coreDeps.sessionStore,
           coreDeps.principalRegistry,
           coreDeps.delegationStore,
           pipelineIdp
@@ -189,97 +193,149 @@ const program = createCli({
     const planner = new RefDeterministicPlanner(computeDigest, orchManifest.orchestratorActorId);
     const dagExecutor = new RefDagExecutor(orchManifest.partialCompletion);
 
-    // 22d. Glue: dispatchToGovernance — real NXS pipeline
-    const dispatchToGovernance = async (
-      node: PlanNode,
-      delegationId: Uuid
-    ): Promise<NodeDispatchResult> => {
-      try {
-        const action = {
-          actionId: crypto.randomUUID() as Uuid,
-          runId: node.nodeId,
-          receivedAt: nowIso(),
-          protocol: 'nexus-orch/v1.0.0' as NonEmpty,
-          adapterVersion: '1.0.0' as NonEmpty,
-          actorId: node.agentId,
-          principalId: orchManifest.orchestratorActorId,
-          sessionId: crypto.randomUUID() as Uuid,
-          delegationId,
-          tool: node.taskSummary,
-          rawVerb: node.taskSummary,
-          rawTarget: node.taskSummary,
-          rawPayload: null,
-          intent: {
-            summary: node.taskSummary,
-            extractedAt: nowIso(),
-          } as any,
-          resolvedVerb: null,
-          resolvedCapability: null,
-          resolvedTarget: null,
-          resolvedDataClasses: [] as string[],
-          resolvedRiskTier: null,
-        };
-        const ctx = {
-          actor: null,
-          principal: null,
-          session: null,
-          delegationContext: null,
-          effectiveCeiling: null,
-          gateResults: [],
-          threatLog: [],
-          connectorRegistry: new SimpleConnectorRegistry(),
-          channelRegistry: new SimpleChannelRegistry(),
-          policyFile: null,
-        };
-        const result = await nxsPipeline.process(action as any, ctx as any);
-        const finalOutcome = result.evidenceRecord.finalOutcome;
-        const denied = finalOutcome === 'deny';
-        return {
-          success: !denied,
-          completionMetadata: denied ? null : { pipelineOutcome: finalOutcome },
-          failureReason: denied ? ('governance_denied' as NonEmpty) : null,
-          governanceDenied: denied,
-        };
-      } catch (err) {
-        return {
-          success: false,
-          completionMetadata: null,
-          failureReason: ('pipeline_error: ' + (err as Error).message) as NonEmpty,
-          governanceDenied: false,
-        };
-      }
+    // 22d. Factory: makeDispatchToGovernance — closes over the requesting
+    // user's principalId and creates real per-run sessions.
+    // SPEC-DELEGATION-RUNTIME-PRINCIPAL-FIX §2.2.
+    const makeDispatchToGovernance = (requestingPrincipalId: Uuid) => {
+      return async (node: PlanNode, delegationId: Uuid): Promise<NodeDispatchResult> => {
+        try {
+          // Real session bound to the requesting user's principal + this
+          // agent + this delegation, so Gate 01 tuple-binding checks pass.
+          const createdAt = nowIso();
+          const session: Session = {
+            sessionId: crypto.randomUUID() as Uuid,
+            actorId: node.agentId,
+            principalId: requestingPrincipalId,
+            delegationId,
+            createdAt,
+            expiresAt: addSeconds(createdAt, 3600),
+          };
+          await coreDeps.sessionStore.create(session);
+
+          const action = {
+            actionId: crypto.randomUUID() as Uuid,
+            runId: node.nodeId,
+            receivedAt: nowIso(),
+            protocol: 'nexus-orch/v1.0.0' as NonEmpty,
+            adapterVersion: '1.0.0' as NonEmpty,
+            actorId: node.agentId,
+            // FIXED: requesting user's principal, not the orchestrator actor
+            principalId: requestingPrincipalId,
+            // FIXED: real session that exists in the store
+            sessionId: session.sessionId,
+            delegationId,
+            delegationSequence: 0,
+            tool: node.taskSummary,
+            rawVerb: node.taskSummary,
+            rawTarget: node.taskSummary,
+            rawPayload: null,
+            intent: {
+              objectiveSummary: node.taskSummary,
+              triggeringSource: 'orchestrator' as NonEmpty,
+              toolchainContext: 'nexus-orch' as NonEmpty,
+              modelId: null,
+              modelConfidence: null,
+              riskNote: null,
+              extractedAt: nowIso(),
+            },
+            resolvedVerb: null,
+            resolvedCapability: null,
+            resolvedTarget: null,
+            resolvedDataClasses: [] as string[],
+            resolvedRiskTier: null,
+          };
+          const ctx = {
+            actor: null,
+            principal: null,
+            session: null,
+            delegationContext: null,
+            effectiveCeiling: null,
+            identityClaims: null,
+            gateResults: [],
+            threatLog: [],
+            connectorRegistry: new SimpleConnectorRegistry(),
+            channelRegistry: new SimpleChannelRegistry(),
+            policyFile: null,
+          };
+          const result = await nxsPipeline.process(action as any, ctx as any);
+          const finalOutcome = result.evidenceRecord.finalOutcome;
+          const denied = finalOutcome === 'deny';
+          return {
+            success: !denied,
+            completionMetadata: denied ? null : { pipelineOutcome: finalOutcome },
+            failureReason: denied ? ('governance_denied' as NonEmpty) : null,
+            governanceDenied: denied,
+          };
+        } catch (err) {
+          return {
+            success: false,
+            completionMetadata: null,
+            failureReason: ('pipeline_error: ' + (err as Error).message) as NonEmpty,
+            governanceDenied: false,
+          };
+        }
+      };
     };
 
-    // 22e. Glue: issueDelegation — ceiling intersection + mintRootDelegation
-    const issueDelegation = async (agentId: Uuid, _scope: DelegationScope): Promise<Uuid> => {
-      try {
-        const agent = await coreDeps.actorRegistry.get(agentId);
-        if (!agent) throw new Error('Agent not found: ' + agentId);
-        const principal = await coreDeps.principalRegistry.get(agent.principalId);
-        if (!principal) throw new Error('Principal not found: ' + agent.principalId);
-        const dc = await mintRootDelegation(principal, agent, {
-          principalId: agent.principalId,
-          actorId: agentId,
-          allowedSystems: agent.allowedSystems.filter(
+    // 22e. Factory: makeIssueDelegation — closes over the requesting user's
+    // principalId. Delegation scope = lesser of agent's ceiling and principal's
+    // ceiling. Blueprint §12.1, §17.3.
+    // SPEC-DELEGATION-RUNTIME-PRINCIPAL-FIX §2.1.
+    const makeIssueDelegation = (requestingPrincipalId: Uuid) => {
+      return async (agentId: Uuid, _scope: DelegationScope): Promise<Uuid> => {
+        try {
+          const agent = await coreDeps.actorRegistry.get(agentId);
+          if (!agent) throw new Error('Agent not found: ' + agentId);
+
+          // Look up the REQUESTING USER's principal — not the agent's registrar.
+          const principal = await coreDeps.principalRegistry.get(requestingPrincipalId);
+          if (!principal) throw new Error('Principal not found: ' + requestingPrincipalId);
+
+          // Systems: intersection of agent's and principal's allowed systems.
+          const effectiveSystems = agent.allowedSystems.filter(
             s => principal.allowedSystems.includes('*') || principal.allowedSystems.includes(s)
-          ),
-          allowedCapabilities: (agent.allowedCapabilities ?? []).filter(
-            c => principal.allowedSystems.includes('*') || principal.allowedSystems.includes(c)
-          ),
-          forbiddenCapabilities: [],
-          maxRiskTier: agent.riskCeiling,
-          allowDownstreamPropagation: false,
-          environment: agent.environment,
-          expiresAt: new Date(Date.now() + 3600_000).toISOString() as IsoTimestamp,
-          maxChainDepth: orchManifest.maxSplitDepth,
-        });
-        await coreDeps.delegationStore.save(dc);
-        console.log('[orch-wire] delegation issued:', dc.delegationId);
-        return dc.delegationId;
-      } catch (err) {
-        console.error('[orch-wire] delegation failed:', (err as Error).message);
-        return crypto.randomUUID() as Uuid;
-      }
+          );
+
+          // Capabilities: agent's capabilities pass through. Principal has no
+          // capability field; capability scope is enforced at Gate 03 + via
+          // OCT ceiling and risk-tier comparison.
+          const effectiveCapabilities = agent.allowedCapabilities ?? [];
+
+          // Risk: lesser of agent's ceiling and principal's max delegable tier.
+          const effectiveRiskTier = riskTierExceeds(
+            agent.riskCeiling,
+            principal.maxDelegableRiskTier
+          )
+            ? principal.maxDelegableRiskTier
+            : agent.riskCeiling;
+
+          const dc = await mintRootDelegation(principal, agent, {
+            principalId: requestingPrincipalId,
+            actorId: agentId,
+            allowedSystems: effectiveSystems,
+            allowedCapabilities: effectiveCapabilities,
+            forbiddenCapabilities: [],
+            maxRiskTier: effectiveRiskTier,
+            allowDownstreamPropagation: false,
+            environment: agent.environment,
+            expiresAt: new Date(Date.now() + 3600_000).toISOString() as IsoTimestamp,
+            maxChainDepth: orchManifest.maxSplitDepth,
+          });
+          await coreDeps.delegationStore.save(dc);
+          console.log(
+            '[orch-wire] delegation issued:',
+            dc.delegationId,
+            'principal:',
+            requestingPrincipalId,
+            'agent:',
+            agentId
+          );
+          return dc.delegationId;
+        } catch (err) {
+          console.error('[orch-wire] delegation failed:', (err as Error).message);
+          return crypto.randomUUID() as Uuid;
+        }
+      };
     };
 
     // 22f. Glue: triggerCompile, sendPlanCheckback, buildPlannerRequest
@@ -304,7 +360,22 @@ const program = createCli({
       enteredAt: nowIso(),
     });
 
-    // 22g. Assemble coordinator + orchestrator
+    // 22g. Assemble coordinator + orchestrator.
+    //
+    // SPEC-DELEGATION-RUNTIME-PRINCIPAL-FIX §6 (Option B): the coordinator is
+    // stateful (activeRuns map for cancellation), so we keep ONE instance and
+    // pass per-request principal-bound functions to handleRun() instead of
+    // recreating the coordinator on every run.
+    //
+    // Construction-time issueDelegation / dispatchToGovernance are fail-loud
+    // stubs — every production code path should pass per-run overrides. They
+    // exist only to satisfy the RunCoordinatorDeps contract (the orch-ref tests
+    // exercise the construction-time path with their own mocks).
+    const requirePerRunDeps = (): never => {
+      throw new Error(
+        '[orch-wire] handleRun called without per-run deps — requesting principalId unknown'
+      );
+    };
     const coordinator = new RefRunCoordinator(
       orchManifest,
       {
@@ -314,8 +385,8 @@ const program = createCli({
         mailboxService: br.externals.mailboxService,
         outputCollector: br.externals.outputCollector,
         computeDigest,
-        dispatchToGovernance,
-        issueDelegation,
+        dispatchToGovernance: requirePerRunDeps,
+        issueDelegation: requirePerRunDeps,
         triggerCompile,
         sendPlanCheckback,
         buildPlannerRequest,
@@ -331,8 +402,18 @@ const program = createCli({
       coordinator
     );
     const dispatchToOrchestrator = async (request: WorkspaceRunRequest): Promise<unknown> => {
-      console.log('[orch-wire] dispatching for run:', request.runId);
-      return orchestrator.dispatch(request);
+      console.log(
+        '[orch-wire] dispatching for run:',
+        request.runId,
+        'principal:',
+        request.principalId
+      );
+      // Build per-request issuer + dispatcher closing over the requesting
+      // user's principalId, then call the coordinator directly so cancellation
+      // (which keys off coordinator.activeRuns) keeps working.
+      const issueDelegation = makeIssueDelegation(request.principalId);
+      const dispatchToGovernance = makeDispatchToGovernance(request.principalId);
+      return coordinator.handleRun(request, { issueDelegation, dispatchToGovernance });
     };
     console.log('[orch-wire] Step 22 complete: orchestrator assembled');
 

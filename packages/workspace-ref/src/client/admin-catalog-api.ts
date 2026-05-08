@@ -31,6 +31,31 @@ export interface AdminCatalogAuthKind {
   requiresSecret: boolean;
 }
 
+export interface AdminCatalogActorEntry extends Record<string, unknown> {
+  actorId: string;
+  actorClass: string;
+  principalId: string;
+  displayName: string;
+  environment: string;
+  octLevel: string | null;
+  riskCeiling: string;
+  allowedSystems: readonly string[];
+  allowedCapabilities?: readonly string[];
+  enabled?: boolean;
+  registeredAt: string;
+  owner?: string;
+  purpose?: string;
+  reviewCadence?: string;
+}
+export interface AdminCatalogPrincipal extends Record<string, unknown> {
+  principalId: string;
+  displayName: string;
+  email: string;
+  registeredAt: string;
+  maxDelegableRiskTier: string;
+  allowedSystems: readonly string[];
+}
+
 export interface AdminCatalog {
   actorClasses: readonly AdminCatalogActorClass[];
   octLevels: readonly AdminCatalogOctLevel[];
@@ -40,6 +65,8 @@ export interface AdminCatalog {
   authKinds: readonly AdminCatalogAuthKind[];
   allEndpoints: ReadonlyArray<Record<string, unknown>>;
   allConnectors: ReadonlyArray<Record<string, unknown>>;
+  allActors: readonly AdminCatalogActorEntry[];
+  principals: readonly AdminCatalogPrincipal[];
 }
 
 export interface DiscoveredModel {
