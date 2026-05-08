@@ -15,6 +15,7 @@ import { AdminSetupOverview } from './admin-setup-overview.js';
 import { AdminCategoryPage } from './admin-category-page.js';
 import { ADMIN_DISPLAY_LABEL } from '../../admin-role.js';
 import { getSetupStatus } from '../../admin-setup-api.js';
+import { getCatalog, type AdminCatalog } from '../../admin-catalog-api.js';
 import type { DashboardSetupStatusResponse, DashboardSurfaceStatus } from '@nexus/contracts';
 
 // Per-surface panels (Claude B turn 04)
@@ -76,7 +77,9 @@ function renderSurface(
   surfaceId: string,
   title: string,
   data: DashboardSurfaceStatus | undefined,
-  elevatedSessionId: string
+  elevatedSessionId: string,
+  catalog: AdminCatalog | null,
+  onCatalogReload: () => void
 ) {
   switch (surfaceId) {
     case 'identity':
@@ -94,6 +97,8 @@ function renderSurface(
         <ModelEndpointSetupPanel
           {...(data ? { data } : {})}
           elevatedSessionId={elevatedSessionId}
+          {...(catalog ? { catalog } : {})}
+          onCatalogReload={onCatalogReload}
         />
       );
     case 'channels_approval':
@@ -155,6 +160,37 @@ export function AdminDashboardShell({
     };
   }, [elevatedSessionId]);
 
+  // ── Catalog fetch (governed constants + raw manifest entries) ───────────
+  // Reused by every dynamic-dropdown panel; refreshed after writer mutations
+  // via the onCatalogReload callback so newly added/edited entries appear.
+  const [catalog, setCatalog] = useState<AdminCatalog | null>(null);
+  const [catalogReloadCounter, setCatalogReloadCounter] = useState(0);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!elevatedSessionId) return;
+    let cancelled = false;
+    getCatalog(elevatedSessionId)
+      .then(res => {
+        if (cancelled) return;
+        if (res.ok && res.data) {
+          setCatalog(res.data);
+          setCatalogError(null);
+        } else {
+          setCatalogError(res.error ?? 'Failed to load catalog');
+        }
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setCatalogError(String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [elevatedSessionId, catalogReloadCounter]);
+
+  const reloadCatalog = (): void => setCatalogReloadCounter(c => c + 1);
+
   /** Lookup a single surface by id from the fetched status data. */
   function findSurface(surfaceId: string): DashboardSurfaceStatus | undefined {
     if (!setupData) return undefined;
@@ -173,6 +209,11 @@ export function AdminDashboardShell({
         {setupError && (
           <span className="nx-admin-shell__error" title={setupError}>
             ⚠ data error
+          </span>
+        )}
+        {catalogError && (
+          <span className="nx-admin-shell__error" title={catalogError}>
+            ⚠ catalog error
           </span>
         )}
         <span className="nx-admin-shell__elev" title="Elevated session remaining">
@@ -217,7 +258,9 @@ export function AdminDashboardShell({
               activeSurfaceId,
               activeNav.title,
               findSurface(activeSurfaceId),
-              elevatedSessionId
+              elevatedSessionId,
+              catalog,
+              reloadCatalog
             )
           )}
         </main>

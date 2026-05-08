@@ -20,12 +20,24 @@
  */
 import type { Express, Request, Response } from 'express';
 import type { ActorRegistry, ElevatedAuthProvider, IdentityClaims, Uuid } from '@nexus/contracts';
-import { hasAdminRole, nowIso } from '@nexus/contracts';
+import {
+  ACTOR_CLASS,
+  CAPABILITY_IDS,
+  MODEL_TIER,
+  OCT_CEILINGS,
+  OCT_LEVEL,
+  RISK_TIER,
+  RISK_TIER_ORDER,
+  hasAdminRole,
+  nowIso,
+} from '@nexus/contracts';
 import { san } from './shared.js';
 
 // ── ManifestWriter interface (Layer 7 contract for DI) ──────────────────────
 
 export interface ManifestWriter {
+  /** Read raw manifest entries (ALL entries, including disabled). */
+  readEntries(manifestPath: string, arrayKey: string): Promise<Record<string, unknown>[]>;
   addEntry(
     manifestPath: string,
     arrayKey: string,
@@ -454,6 +466,136 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       }
     }
   );
+
+  // ═══ CATALOG (governed constants + raw manifest entries) ═══
+  // SPEC-ADMIN-CATALOG-EDITABLE-FORMS §3 — drives every dynamic dropdown in the
+  // admin dashboard. Reads constants from @nexus/contracts (Layer 2) and raw
+  // manifest entries via the injected ManifestWriter (already on disk).
+  app.get('/workspace/admin/setup/catalog', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    if (!deps.manifestWriter) {
+      res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
+      return;
+    }
+    try {
+      const actorClasses = Object.values(ACTOR_CLASS).map(id => ({ id, label: id }));
+      const octLevels = Object.values(OCT_LEVEL).map(id => {
+        const ceiling = OCT_CEILINGS[id];
+        return {
+          id,
+          label: id,
+          actionRiskCeiling: ceiling?.actionRiskCeiling ?? '',
+          modelTierCeiling: ceiling?.modelTierCeiling ?? [],
+          dataClassCeiling: ceiling?.dataClassCeiling ?? [],
+        };
+      });
+      const riskTiers = Object.values(RISK_TIER).map(id => ({
+        id,
+        label: id,
+        order: RISK_TIER_ORDER.indexOf(id),
+      }));
+      const modelTiers = Object.values(MODEL_TIER).map(id => ({ id, label: id }));
+      const capabilityIds = Object.values(CAPABILITY_IDS);
+      const authKinds = [
+        { id: 'none', label: 'none', requiresSecret: false },
+        { id: 'api_key', label: 'api_key', requiresSecret: true },
+        { id: 'bearer', label: 'bearer', requiresSecret: true },
+      ];
+      const [allEndpoints, allConnectors] = await Promise.all([
+        deps.manifestWriter.readEntries(MANIFEST_ENDPOINTS, 'endpoints'),
+        deps.manifestWriter
+          .readEntries(MANIFEST_CONNECTORS, 'connectors')
+          .catch(() => [] as Record<string, unknown>[]),
+      ]);
+      res.json({
+        ok: true,
+        data: {
+          actorClasses,
+          octLevels,
+          riskTiers,
+          modelTiers,
+          capabilityIds,
+          authKinds,
+          allEndpoints,
+          allConnectors,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ═══ DISCOVER (probe ollama node for available models) ═══
+  // POST { baseUrl, adapterId? } → GET {baseUrl}/api/tags → return models[].
+  // Used by the admin "Add endpoint" form to populate a model dropdown after
+  // the admin enters a node URL.
+  app.post('/workspace/admin/setup/discover', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    const baseUrlRaw = req.body?.baseUrl;
+    if (typeof baseUrlRaw !== 'string' || baseUrlRaw.length === 0) {
+      res.status(400).json({ ok: false, error: 'baseUrl required' });
+      return;
+    }
+    let probeUrl: URL;
+    try {
+      probeUrl = new URL(baseUrlRaw);
+    } catch {
+      res.status(400).json({ ok: false, error: 'baseUrl must be a valid URL' });
+      return;
+    }
+    if (probeUrl.protocol !== 'http:' && probeUrl.protocol !== 'https:') {
+      res.status(400).json({ ok: false, error: 'baseUrl must be http or https' });
+      return;
+    }
+    // Strip trailing path components — admin may paste either the bare host or
+    // the full /api/chat URL. We always probe /api/tags on the origin.
+    const tagsUrl = new URL('/api/tags', probeUrl.origin).toString();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    try {
+      const probe = await fetch(tagsUrl, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!probe.ok) {
+        res.status(502).json({
+          ok: false,
+          error: `Probe failed: HTTP ${probe.status} from ${tagsUrl}`,
+        });
+        return;
+      }
+      const body = (await probe.json()) as { models?: Array<Record<string, unknown>> };
+      const models = Array.isArray(body?.models) ? body.models : [];
+      res.json({
+        ok: true,
+        data: {
+          probedUrl: tagsUrl,
+          models: models.map(m => ({
+            name: typeof m['name'] === 'string' ? m['name'] : String(m['name'] ?? ''),
+            model: typeof m['model'] === 'string' ? m['model'] : undefined,
+            size: typeof m['size'] === 'number' ? m['size'] : undefined,
+            modifiedAt: typeof m['modified_at'] === 'string' ? m['modified_at'] : undefined,
+          })),
+        },
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      const msg =
+        (err as { name?: string }).name === 'AbortError'
+          ? `Probe timed out after 5s: ${tagsUrl}`
+          : san(err);
+      res.status(502).json({ ok: false, error: msg });
+    }
+  });
 
   // ═══ LOCK STATUS ═══
   app.get('/workspace/admin/setup/lock/:surface', async (req: Request, res: Response) => {

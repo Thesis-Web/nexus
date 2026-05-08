@@ -92,6 +92,8 @@ import { registerAllRoutes } from './routes/index.js';
 // Structural interface matching ManifestWriterService from @nexus/core.
 // Defined here to avoid Layer 7 → Layer 1 import. DI structural typing bridges.
 export interface ManifestWriter {
+  /** Read raw manifest entries (ALL entries, including disabled). */
+  readEntries(manifestPath: string, arrayKey: string): Promise<Record<string, unknown>[]>;
   addEntry(
     manifestPath: string,
     arrayKey: string,

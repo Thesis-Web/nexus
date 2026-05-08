@@ -119,6 +119,11 @@ function createMockManifestWriter(): ManifestWriter & {
   return {
     _store: store,
 
+    async readEntries(manifestPath: string, arrayKey: string): Promise<Record<string, unknown>[]> {
+      const key = `${manifestPath}:${arrayKey}`;
+      return store.get(key) ?? [];
+    },
+
     async addEntry(
       manifestPath: string,
       arrayKey: string,
@@ -562,6 +567,172 @@ describe('admin-writer routes', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; data: { removed: boolean } };
     expect(body.data.removed).toBe(true);
+  });
+
+  // ── Catalog ─────────────────────────────────────────────────────────────
+
+  it('GET /catalog — returns governed constants and raw manifest entries', async () => {
+    // Seed disabled + enabled entries to prove catalog includes both.
+    manifestWriter._store.set('config/nvg/endpoints.v1.yaml:endpoints', [
+      {
+        endpointId: 'enabled-ep',
+        url: 'http://x',
+        adapterId: 'ollama-chat-v1',
+        modelName: 'llama3.2',
+        tier: 'on_prem_general',
+        enabled: true,
+        auth: { kind: 'none' },
+      },
+      {
+        endpointId: 'disabled-ep',
+        url: 'http://y',
+        adapterId: 'openai-chat-v1',
+        modelName: 'gpt-4o',
+        tier: 'frontier_general',
+        enabled: false,
+        auth: { kind: 'bearer' },
+      },
+    ]);
+    manifestWriter._store.set('config/connectors/connectors.v1.yaml:connectors', [
+      { connectorId: 'stub-conn', connectorType: 'stub', enabled: true },
+    ]);
+
+    const res = await fetch(url('/workspace/admin/setup/catalog'), { headers: adminHeaders() });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      data: {
+        actorClasses: { id: string }[];
+        octLevels: { id: string }[];
+        riskTiers: { id: string; order: number }[];
+        modelTiers: { id: string }[];
+        capabilityIds: string[];
+        authKinds: { id: string; requiresSecret: boolean }[];
+        allEndpoints: Record<string, unknown>[];
+        allConnectors: Record<string, unknown>[];
+      };
+    };
+    expect(body.ok).toBe(true);
+    expect(body.data.actorClasses.map(a => a.id)).toContain('HUMAN');
+    expect(body.data.actorClasses.map(a => a.id)).toContain('AUTONOMOUS_AGENT');
+    expect(body.data.octLevels.map(o => o.id)).toContain('OCT-SECURE');
+    expect(body.data.riskTiers.find(r => r.id === 'critical')?.order).toBe(3);
+    expect(body.data.modelTiers.map(m => m.id)).toContain('on_prem_general');
+    expect(body.data.modelTiers.map(m => m.id)).toContain('frontier_general');
+    expect(body.data.capabilityIds).toContain('read:record:single');
+    expect(body.data.capabilityIds).toContain('execute:automation');
+    expect(body.data.authKinds.find(a => a.id === 'api_key')?.requiresSecret).toBe(true);
+    expect(body.data.authKinds.find(a => a.id === 'none')?.requiresSecret).toBe(false);
+    // Both enabled and disabled entries returned.
+    expect(body.data.allEndpoints).toHaveLength(2);
+    expect(body.data.allEndpoints.map(e => e['endpointId'])).toEqual(['enabled-ep', 'disabled-ep']);
+    expect(body.data.allConnectors).toHaveLength(1);
+  });
+
+  it('GET /catalog — 401 without claims', async () => {
+    const res = await fetch(url('/workspace/admin/setup/catalog'));
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /catalog — 403 without admin role', async () => {
+    const res = await fetch(url('/workspace/admin/setup/catalog'), {
+      headers: plainHeaders(),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  // ── Discover ────────────────────────────────────────────────────────────
+
+  it('POST /discover — 400 on missing baseUrl', async () => {
+    const res = await fetch(url('/workspace/admin/setup/discover'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /discover — 400 on invalid URL', async () => {
+    const res = await fetch(url('/workspace/admin/setup/discover'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify({ baseUrl: 'not a url' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /discover — 400 on non-http protocol', async () => {
+    const res = await fetch(url('/workspace/admin/setup/discover'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify({ baseUrl: 'file:///etc/passwd' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /discover — probes /api/tags and returns models on success', async () => {
+    // Stand up a tiny ollama-shaped server for the probe to hit.
+    const fakeOllama = express();
+    fakeOllama.get('/api/tags', (_req, res) =>
+      res.json({
+        models: [
+          {
+            name: 'llama3.2:latest',
+            model: 'llama3.2:latest',
+            size: 1234567,
+            modified_at: '2026-01-02T03:04:05Z',
+          },
+          { name: 'qwen3:8b' },
+        ],
+      })
+    );
+    const ollamaServer = await new Promise<Server>(resolve => {
+      const s = fakeOllama.listen(0, '127.0.0.1', () => resolve(s));
+    });
+    const ollamaPort = (ollamaServer.address() as AddressInfo).port;
+
+    try {
+      const res = await fetch(url('/workspace/admin/setup/discover'), {
+        method: 'POST',
+        headers: adminHeaders(),
+        body: JSON.stringify({
+          baseUrl: `http://127.0.0.1:${ollamaPort}/api/chat`,
+          adapterId: 'ollama-chat-v1',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        ok: boolean;
+        data: { probedUrl: string; models: { name: string; size?: number }[] };
+      };
+      expect(body.ok).toBe(true);
+      expect(body.data.probedUrl).toBe(`http://127.0.0.1:${ollamaPort}/api/tags`);
+      expect(body.data.models).toHaveLength(2);
+      expect(body.data.models[0]?.name).toBe('llama3.2:latest');
+      expect(body.data.models[0]?.size).toBe(1234567);
+      expect(body.data.models[1]?.name).toBe('qwen3:8b');
+    } finally {
+      await new Promise<void>(resolve => ollamaServer.close(() => resolve()));
+    }
+  });
+
+  it('POST /discover — 502 on probe target HTTP error', async () => {
+    const fakeOllama = express();
+    fakeOllama.get('/api/tags', (_req, res) => res.status(500).json({ error: 'down' }));
+    const errServer = await new Promise<Server>(resolve => {
+      const s = fakeOllama.listen(0, '127.0.0.1', () => resolve(s));
+    });
+    const errPort = (errServer.address() as AddressInfo).port;
+    try {
+      const res = await fetch(url('/workspace/admin/setup/discover'), {
+        method: 'POST',
+        headers: adminHeaders(),
+        body: JSON.stringify({ baseUrl: `http://127.0.0.1:${errPort}` }),
+      });
+      expect(res.status).toBe(502);
+    } finally {
+      await new Promise<void>(resolve => errServer.close(() => resolve()));
+    }
   });
 
   // ── Lock status ─────────────────────────────────────────────────────────
