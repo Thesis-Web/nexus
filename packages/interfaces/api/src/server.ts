@@ -224,6 +224,13 @@ export interface ApiDependencies {
   ) => Promise<boolean>;
   recomputeArtifactDigest?: (artifact: FinalResponseArtifact) => Sha256Hex;
   controlPlanePublicKey?: string;
+  /**
+   * Resolve a FinalResponseArtifact bodyRef to its rendered text. Bootstrap
+   * supplies the implementation (file:// reads via the registered payload
+   * resolver); the compile-return route uses it to inline `body` into the
+   * `final_response` ledger event so the SSE fanout reaches the browser.
+   */
+  resolveArtifactBody?: (ref: NonEmpty) => Promise<string>;
 
   // ── AMEND-spec-nexus-compile §6: Template admin route deps ───────────────
   // Function-based — Layer 7 cannot import core types (DIFF-S23-002).

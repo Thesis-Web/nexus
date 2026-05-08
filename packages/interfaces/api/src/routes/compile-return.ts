@@ -53,6 +53,14 @@ export interface CompileReturnRouteDeps {
   controlPlanePublicKey: string;
   /** Run Ledger writer for recording lifecycle events. */
   runLedgerWriter: RunLedgerWriter;
+  /**
+   * Resolve a bodyRef (e.g. `file://runs/compile/<runId>/<artifactId>.txt`) to
+   * its UTF-8 string contents so the `final_response` ledger event can carry
+   * the rendered body inline. Lets the workspace SSE stream surface the
+   * compiled response without an extra round-trip from the browser.
+   * Bootstrap supplies the implementation; missing → final_response.body omitted.
+   */
+  resolveArtifactBody?: (ref: NonEmpty) => Promise<string>;
 }
 
 // ─── Route Registration ───
@@ -171,6 +179,19 @@ export function registerCompileReturnRoutes(
       const hasFinalResponse = existingEvents.some(e => e.eventType === 'final_response');
 
       if (!hasFinalResponse) {
+        // Resolve the rendered body so the SSE fanout can deliver the
+        // assistant's text directly to the browser. Best-effort — a failed
+        // resolve still writes the event (the artifact is already verified
+        // signed + digest-matched on disk, the body is recoverable later).
+        let body: string | null = null;
+        if (deps.resolveArtifactBody) {
+          try {
+            body = await deps.resolveArtifactBody(request.artifact.bodyRef);
+          } catch {
+            body = null;
+          }
+        }
+
         await deps.runLedgerWriter.writeEvent({
           runId,
           eventType: 'final_response',
@@ -185,6 +206,7 @@ export function registerCompileReturnRoutes(
             artifactDigest: request.artifactDigest,
             returnEndpointId: request.returnEndpointId,
             sourceMailboxItemCount: request.artifact.sourceMailboxItems.length,
+            ...(body !== null ? { body } : {}),
           },
         });
       }

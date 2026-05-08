@@ -169,6 +169,9 @@ export function registerAllRoutes(
       ? { controlPlanePublicKey: deps.controlPlanePublicKey }
       : {}),
     ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
+    ...(deps.resolveArtifactBody !== undefined
+      ? { resolveArtifactBody: deps.resolveArtifactBody }
+      : {}),
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

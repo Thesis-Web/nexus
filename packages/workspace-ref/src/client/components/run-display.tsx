@@ -45,42 +45,60 @@ export function RunDisplay({ runId, events, status, planRejection }: RunDisplayP
     );
   }
 
-  // Parse events into display items
+  // Parse events into display items. Field name is `detail` to match the
+  // server-side `RunLedgerEntry.detail` shape that the SSE bus broadcasts.
   const agentResults: AgentResult[] = [];
   const approvalPrompts: ApprovalPrompt[] = [];
   let finalResponse: string | null = null;
   let agentCount = 0;
 
   for (const event of events) {
-    if (event.type === 'agent_preview' && event.data) {
+    const detail = event.detail;
+    if (event.type === 'agent_preview' && detail) {
       agentResults.push({
-        agentId: (event.data['agentId'] as string) ?? 'unknown',
-        agentName: (event.data['agentName'] as string) ?? 'Agent',
-        modelTier: (event.data['modelTier'] as string) ?? '',
-        content: (event.data['content'] as string) ?? '',
+        agentId: (detail['agentId'] as string) ?? 'unknown',
+        agentName: (detail['agentName'] as string) ?? 'Agent',
+        modelTier: (detail['modelTier'] as string) ?? '',
+        content: (detail['content'] as string) ?? '',
         isPreview: true,
       });
     }
-    if (event.type === 'approval_prompt' && event.data) {
+    if (event.type === 'approval_prompt' && detail) {
       approvalPrompts.push({
-        approvalId: (event.data['approvalId'] as string) ?? '',
-        gate: (event.data['gate'] as string) ?? 'Gate 05',
-        description: (event.data['description'] as string) ?? '',
+        approvalId: (detail['approvalId'] as string) ?? '',
+        gate: (detail['gate'] as string) ?? 'Gate 05',
+        description: (detail['description'] as string) ?? '',
         runId: event.runId,
       });
     }
-    if (event.type === 'compile_complete' && event.data) {
-      finalResponse = (event.data['content'] as string) ?? null;
+    // final_response is the canonical signed-artifact event from the
+    // compile-return route. The composition root inlines the rendered body
+    // into detail.body so the SSE fanout delivers it without a follow-up
+    // fetch. compile_complete is kept as a back-compat fallback if some
+    // future producer emits it directly.
+    if (event.type === 'final_response' && detail) {
+      const body = (detail['body'] as string) ?? null;
+      if (typeof body === 'string') finalResponse = body;
     }
-    if (event.type === 'run_status' && event.data?.['agentCount']) {
-      agentCount = event.data['agentCount'] as number;
+    if (event.type === 'compile_complete' && detail && finalResponse === null) {
+      finalResponse = (detail['content'] as string) ?? null;
+    }
+    if (event.type === 'run_status' && detail?.['agentCount']) {
+      agentCount = detail['agentCount'] as number;
     }
   }
 
   const isOpen = status?.status === 'open';
   const isClosed = status?.status === 'closed';
   const hasDispatched = status?.eventTypes.includes('orchestrator_dispatched') ?? false;
-  const isCompiling = status?.eventTypes.includes('compile_started') ?? false;
+  const hasFinalResponse =
+    finalResponse !== null || (status?.eventTypes.includes('final_response') ?? false);
+  // `isCompiling` is now the strict "in flight" state: compile_started fired
+  // and final_response has not landed yet. Without the second guard the main
+  // pane would stay on "Compiling final response…" forever once compile
+  // started, even after the artifact arrived and the run closed.
+  const isCompiling =
+    (status?.eventTypes.includes('compile_started') ?? false) && !hasFinalResponse;
   const isRejected =
     planRejection != null || (status?.eventTypes.includes('plan_rejected') ?? false);
   const rejectionDetail =
@@ -115,10 +133,10 @@ export function RunDisplay({ runId, events, status, planRejection }: RunDisplayP
           <span className="nx-status-text">
             {isRejected
               ? `Plan rejected${rejectionDetail ? ` — ${rejectionDetail}` : ''}`
-              : isCompiling
-                ? 'Compiling final response…'
-                : finalResponse
-                  ? 'Run complete'
+              : hasFinalResponse
+                ? 'Run complete'
+                : isCompiling
+                  ? 'Compiling final response…'
                   : hasDispatched
                     ? `Run active — ${agentCount || '?'} agent${agentCount !== 1 ? 's' : ''} dispatched`
                     : isOpen

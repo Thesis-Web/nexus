@@ -647,6 +647,18 @@ const program = createCli({
       verifyArtifactSignature: verifyArtifactSignatureFn,
       recomputeArtifactDigest,
       controlPlanePublicKey: br.controlPlanePublicKey,
+      // Body resolver for the compile-return route — reads the file:// URI
+      // produced by DeterministicRenderer so `final_response` can carry the
+      // rendered text inline. Strips the URI scheme; the path is whatever
+      // the renderer wrote relative to cwd.
+      resolveArtifactBody: async (ref: NonEmpty): Promise<string> => {
+        const raw = String(ref);
+        if (!raw.startsWith('file://')) {
+          throw new Error('resolveArtifactBody: only file:// refs supported, got ' + raw);
+        }
+        const filePath = raw.slice('file://'.length);
+        return fs.readFile(path.resolve(filePath), 'utf-8');
+      },
     };
   },
 });

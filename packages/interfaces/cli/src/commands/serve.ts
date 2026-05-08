@@ -82,6 +82,7 @@ export type WorkspaceApiDeps = Partial<
     | 'verifyArtifactSignature'
     | 'recomputeArtifactDigest'
     | 'controlPlanePublicKey'
+    | 'resolveArtifactBody'
   >
 >;
 

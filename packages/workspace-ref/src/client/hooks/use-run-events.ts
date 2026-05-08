@@ -9,7 +9,13 @@ import { mintEventTicket, getRunStatus, type RunStatus } from '../api.js';
 export interface RunEvent {
   type: string;
   runId: string;
-  data?: Record<string, unknown>;
+  /**
+   * Run-ledger event payload. Matches the server-side `RunLedgerEntry.detail`
+   * shape as broadcast by `/sse/runs/:runId` (run-event-bus.ts). Field name
+   * was historically `data`; aligned to `detail` so the SSE wire and the
+   * ledger schema use the same key.
+   */
+  detail?: Record<string, unknown>;
   timestamp?: string;
 }
 

@@ -213,12 +213,19 @@ export class DeterministicRenderer implements Compiler {
     }
 
     // ── Step 6: Write body, emit compile_assembly_complete ──
+    // bodyRef MUST match the actual on-disk path so the registered
+    // file:// payload resolver can read the bytes back. The earlier
+    // form had bodyPath = `${outputRoot}/runs/compile/...` while
+    // bodyRef dropped the outputRoot prefix, so the two diverged once
+    // outputRoot was anything other than '' (in dev it is 'runs', so
+    // disk had `runs/runs/compile/...` while the URI pointed at
+    // `runs/compile/...`).
     const artifactId = randomUUID() as Uuid;
     const bodyBytes = new TextEncoder().encode(result.body);
-    const bodyPath = join(this.outputRoot, 'runs', 'compile', request.runId, `${artifactId}.txt`);
+    const bodyPath = join(this.outputRoot, 'compile', request.runId, `${artifactId}.txt`);
     await fs.mkdir(dirname(bodyPath), { recursive: true });
     await fs.writeFile(bodyPath, bodyBytes);
-    const bodyRef = `file://runs/compile/${request.runId}/${artifactId}.txt` as NonEmpty;
+    const bodyRef = `file://${bodyPath}` as NonEmpty;
 
     await this.runLedgerWriter.writeEvent({
       runId: request.runId,
