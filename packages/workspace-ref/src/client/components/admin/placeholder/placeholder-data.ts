@@ -16,7 +16,7 @@
 // surfaces whose runtime proof or projection route isn't yet present show
 // `partial`, `blocked`, `candidate`, or `future` per SPEC §3.2 vocabulary.
 
-import type { DashboardSurfaceStatus, DashboardSetupStatusResponse } from './placeholder-types.js';
+import type { DashboardSurfaceStatus, DashboardSetupStatusResponse } from '@nexus/contracts';
 
 // ─── identity ──────────────────────────────────────────────────────────────
 export const IDENTITY_PLACEHOLDER: DashboardSurfaceStatus = {

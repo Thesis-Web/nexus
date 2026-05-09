@@ -14,7 +14,7 @@ import {
   type ManifestTableColumn,
 } from '../primitives/admin-manifest-table.js';
 import { MODELS_NVG_PLACEHOLDER } from '../placeholder/placeholder-data.js';
-import type { DashboardSurfaceStatus } from '../placeholder/placeholder-types.js';
+import type { DashboardSurfaceStatus } from '@nexus/contracts';
 import { PanelChrome } from './_panel-chrome.js';
 import {
   addEndpoint,

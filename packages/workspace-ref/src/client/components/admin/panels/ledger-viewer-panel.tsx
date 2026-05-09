@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { OBSERVABILITY_PLACEHOLDER } from '../placeholder/placeholder-data.js';
-import type { DashboardSurfaceStatus } from '../placeholder/placeholder-types.js';
+import type { DashboardSurfaceStatus } from '@nexus/contracts';
 import { PanelChrome } from './_panel-chrome.js';
 import {
   getRecentRuns,

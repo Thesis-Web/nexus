@@ -3,7 +3,7 @@
 // SPEC-addendum §3.2 — 9-state DashboardReadinessState vocabulary.
 // Owner ruling DRIFT-A01 (2026-05-06): lowercase always.
 
-import type { DashboardReadinessState } from './admin-status.js';
+import type { DashboardReadinessState } from '@nexus/contracts';
 
 interface Props {
   state: DashboardReadinessState;

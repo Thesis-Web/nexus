@@ -6,8 +6,7 @@
 
 import { AdminSurfaceCard } from './admin-surface-card.js';
 import { AdminDisabledMutationBanner } from './admin-disabled-mutation-banner.js';
-import type { DashboardReadinessState } from './admin-status.js';
-import type { DashboardSurfaceStatus } from './placeholder/placeholder-types.js';
+import type { DashboardReadinessState, DashboardSurfaceStatus } from '@nexus/contracts';
 
 interface SurfaceListItem {
   surfaceId: string;

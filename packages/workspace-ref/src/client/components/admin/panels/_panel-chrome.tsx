@@ -11,7 +11,7 @@
 
 import type { ReactNode } from 'react';
 import { AdminStatusBadge } from '../admin-status-badge.js';
-import type { DashboardSurfaceStatus } from '../placeholder/placeholder-types.js';
+import type { DashboardSurfaceStatus } from '@nexus/contracts';
 
 interface Props {
   surface: DashboardSurfaceStatus;

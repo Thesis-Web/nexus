@@ -37,8 +37,176 @@ import {
   RISK_TIER_ORDER,
   nowIso,
 } from '@nexus/contracts';
+import { z } from 'zod';
 import { san } from './shared.js';
 import { checkAdminAuth } from './admin-auth.js';
+
+// ── CLAUDE-CODE-AUDIT-TIGHTEN-PHASE-AB §2 — Zod boundary validation ─────────
+//
+// Every mutation route below validates `req.body` through one of these schemas
+// BEFORE handing data to the manifest writer or registry. The previous
+// hand-rolled `if (!entry?.x)` checks let through anything not explicitly
+// listed; Zod gives us:
+//   - Strict shape enforcement (`.strict()` rejects unknown fields).
+//   - Explicit wildcard rejection (allowedSystems must be concrete IDs).
+//   - Structured error responses (`details: [{path, message}]`) so admins
+//     see exactly which field failed instead of "endpointId required".
+//
+// Schemas describe what the route ACCEPTS at the boundary — not the full
+// downstream contract. The manifest schemas + registry update logic still
+// validate the persisted shape; this layer is the first line.
+
+/** Reject the literal '*' as a member of an allowedSystems list. */
+const concreteSystem = z
+  .string()
+  .min(1)
+  .refine(s => s !== '*', {
+    message: 'Wildcard (*) not permitted in allowedSystems — use concrete system identifiers',
+  });
+
+/** Auth shape per ModelEndpointAuth (kind discriminator + per-kind fields). */
+const EndpointAuthSchema = z
+  .object({
+    kind: z.enum(['none', 'bearer', 'api_key']),
+    secretRef: z.string().min(1).optional(),
+    headerName: z.string().min(1).optional(),
+    prefix: z.string().optional(),
+  })
+  .strict();
+
+const EndpointCreateSchema = z
+  .object({
+    endpointId: z.string().min(1),
+    tier: z.string().min(1).optional(),
+    url: z.string().url(),
+    adapterId: z.string().min(1),
+    modelName: z.string().min(1),
+    auth: EndpointAuthSchema.optional(),
+    healthy: z.boolean().optional(),
+    enabled: z.boolean().optional(),
+    adapterConfig: z.record(z.unknown()).optional(),
+    timeoutMs: z.number().int().positive().optional(),
+  })
+  .strict();
+
+/**
+ * PUT update schema — every field optional EXCEPT the path-segment id
+ * (asserted by the route handler from req.params). Passing extra unknown
+ * fields rejects via .strict() so a typo doesn't silently no-op.
+ */
+const EndpointUpdateSchema = z
+  .object({
+    tier: z.string().min(1).optional(),
+    url: z.string().url().optional(),
+    adapterId: z.string().min(1).optional(),
+    modelName: z.string().min(1).optional(),
+    auth: EndpointAuthSchema.optional(),
+    healthy: z.boolean().optional(),
+    enabled: z.boolean().optional(),
+    adapterConfig: z.record(z.unknown()).optional(),
+    timeoutMs: z.number().int().positive().optional(),
+  })
+  .strict();
+
+const ActorCreateSchema = z
+  .object({
+    actorId: z.string().uuid(),
+    actorClass: z.string().min(1),
+    displayName: z.string().min(1),
+    principalId: z.string().uuid(),
+    environment: z.string().min(1),
+    riskCeiling: z.string().min(1),
+    octLevel: z.string().min(1).optional(),
+    allowedSystems: z.array(concreteSystem).min(1),
+    allowedCapabilities: z.array(z.string().min(1)).optional(),
+    enabled: z.boolean().optional(),
+    registeredAt: z.string().min(1).optional(),
+    owner: z.string().min(1).optional(),
+    purpose: z.string().min(1).optional(),
+    reviewCadence: z.string().min(1).optional(),
+  })
+  .strict();
+
+const ActorUpdateSchema = z
+  .object({
+    actorClass: z.string().min(1).optional(),
+    displayName: z.string().min(1).optional(),
+    principalId: z.string().uuid().optional(),
+    environment: z.string().min(1).optional(),
+    riskCeiling: z.string().min(1).optional(),
+    octLevel: z.string().min(1).optional(),
+    allowedSystems: z.array(concreteSystem).min(1).optional(),
+    allowedCapabilities: z.array(z.string().min(1)).optional(),
+    enabled: z.boolean().optional(),
+    owner: z.string().min(1).optional(),
+    purpose: z.string().min(1).optional(),
+    reviewCadence: z.string().min(1).optional(),
+  })
+  .strict();
+
+const ConnectorCreateSchema = z
+  .object({
+    connectorId: z.string().min(1),
+    connectorType: z.string().min(1),
+    allowedSystems: z.array(concreteSystem).min(1),
+    configuration: z.record(z.unknown()).optional(),
+    enabled: z.boolean().optional(),
+  })
+  .strict();
+
+const ConnectorUpdateSchema = z
+  .object({
+    connectorType: z.string().min(1).optional(),
+    allowedSystems: z.array(concreteSystem).min(1).optional(),
+    configuration: z.record(z.unknown()).optional(),
+    enabled: z.boolean().optional(),
+  })
+  .strict();
+
+const DiscoverSchema = z
+  .object({
+    baseUrl: z.string().url(),
+    adapterId: z.string().min(1).optional(),
+  })
+  .strict();
+
+/**
+ * Secret schemas. Hand-rolled checks for keyName format (UPPER_SNAKE_CASE,
+ * length, regex) and keyValue length stay below — Zod handles type/shape;
+ * the route handler enforces value-shape rules that aren't pure structural.
+ */
+const SecretCreateSchema = z
+  .object({
+    keyName: z.string().min(1),
+    keyValue: z.string().min(1),
+  })
+  .strict();
+
+/**
+ * Format a ZodError as a `{ ok: false, error, details }` response and
+ * write it. Centralized so every route uses the same wire shape.
+ */
+function sendValidationError(res: Response, err: z.ZodError): void {
+  res.status(400).json({
+    ok: false,
+    error: 'Validation failed',
+    details: err.issues.map(i => ({ path: i.path.join('.'), message: i.message })),
+  });
+}
+
+/**
+ * Drop `undefined`-valued keys from an object so spreading the result
+ * onto a typed target doesn't violate `exactOptionalPropertyTypes`.
+ * Zod's `.optional()` produces `T | undefined` types whose `undefined`
+ * values can't be explicitly assigned to a strict target.
+ */
+function omitUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out as Partial<T>;
+}
 
 // ── ManifestWriter interface (Layer 7 contract for DI) ──────────────────────
 
@@ -234,32 +402,31 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
       return;
     }
+    // CLAUDE-CODE-AUDIT-TIGHTEN-PHASE-AB §2 — validate body BEFORE
+    // acquiring the manifest lock so a malformed POST doesn't even
+    // reserve the file.
+    const parsed = EndpointCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
     const lock = acquireLock(MANIFEST_ENDPOINTS, auth.principalId);
     if (!lock.ok) {
       res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
       return;
     }
     try {
-      const entry = req.body;
-      if (!entry?.endpointId || !entry?.url || !entry?.adapterId || !entry?.modelName) {
-        res
-          .status(400)
-          .json({ ok: false, error: 'endpointId, url, adapterId, and modelName required' });
-        return;
-      }
-      if (entry.enabled === undefined) entry.enabled = true;
-      if (!entry.auth) entry.auth = { kind: 'none' };
-      const entries = await deps.manifestWriter.addEntry(
-        MANIFEST_ENDPOINTS,
-        'endpoints',
-        entry,
-        'endpointId'
-      );
-      const healthy = await probeEndpointHealth(entry.url);
+      const entry: Record<string, unknown> = {
+        ...parsed.data,
+        enabled: parsed.data.enabled ?? true,
+        auth: parsed.data.auth ?? { kind: 'none' },
+      };
+      await deps.manifestWriter.addEntry(MANIFEST_ENDPOINTS, 'endpoints', entry, 'endpointId');
+      const healthy = await probeEndpointHealth(parsed.data.url);
       releaseLock(MANIFEST_ENDPOINTS, auth.principalId);
       res.json({
         ok: true,
-        data: { endpointId: entry.endpointId, healthy, requiresRestart: true },
+        data: { endpointId: parsed.data.endpointId, healthy, requiresRestart: true },
       });
     } catch (err) {
       releaseLock(MANIFEST_ENDPOINTS, auth.principalId);
@@ -278,6 +445,11 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
       return;
     }
+    const parsed = EndpointUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
     const lock = acquireLock(MANIFEST_ENDPOINTS, auth.principalId);
     if (!lock.ok) {
       res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
@@ -289,7 +461,7 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
         MANIFEST_ENDPOINTS,
         'endpoints',
         eid,
-        req.body,
+        parsed.data,
         'endpointId'
       );
       const updated = entries.find(e => e['endpointId'] === eid);
@@ -346,16 +518,26 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       res.status(501).json({ ok: false, error: 'Actor registry not configured' });
       return;
     }
+    const parsed = ActorCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
     try {
-      const actor = req.body;
-      if (!actor?.actorId || !actor?.actorClass || !actor?.displayName) {
-        res.status(400).json({ ok: false, error: 'actorId, actorClass, and displayName required' });
-        return;
-      }
-      if (actor.enabled === undefined) actor.enabled = true;
-      if (!actor.registeredAt) actor.registeredAt = nowIso();
-      await deps.actorRegistry.register(actor);
-      res.json({ ok: true, data: { actorId: actor.actorId, requiresRestart: false } });
+      // Strip undefined optional fields before handing to the registry —
+      // it shapes its own typed Actor record from the input. The cast
+      // through `unknown` is the documented bridge between the schema's
+      // structural type and the registry's nominal Actor type; runtime
+      // validation in `register` is the authoritative gate.
+      const actor: Record<string, unknown> = {
+        ...omitUndefined(parsed.data),
+        enabled: parsed.data.enabled ?? true,
+        registeredAt: parsed.data.registeredAt ?? nowIso(),
+      };
+      await deps.actorRegistry.register(
+        actor as unknown as Parameters<typeof deps.actorRegistry.register>[0]
+      );
+      res.json({ ok: true, data: { actorId: parsed.data.actorId, requiresRestart: false } });
     } catch (err) {
       res.status(500).json({ ok: false, error: san(err) });
     }
@@ -371,6 +553,11 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       res.status(501).json({ ok: false, error: 'Actor registry not configured' });
       return;
     }
+    const parsed = ActorUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
     try {
       const actorId = String(req.params['actorId']);
       const existing = await deps.actorRegistry.get(actorId as Uuid);
@@ -378,11 +565,15 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
         res.status(404).json({ ok: false, error: 'Actor ' + actorId + ' not found' });
         return;
       }
-      await deps.actorRegistry.update(actorId as Uuid, {
+      const updated = {
         ...existing,
-        ...req.body,
+        ...omitUndefined(parsed.data),
         actorId: existing.actorId,
-      });
+      };
+      await deps.actorRegistry.update(
+        actorId as Uuid,
+        updated as unknown as Parameters<typeof deps.actorRegistry.update>[1]
+      );
       res.json({ ok: true, data: { actorId, requiresRestart: false } });
     } catch (err) {
       res.status(500).json({ ok: false, error: san(err) });
@@ -424,28 +615,32 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
       return;
     }
+    // CLAUDE-CODE-AUDIT-TIGHTEN-PHASE-AB §2 — Zod boundary. Schema rejects
+    // wildcards in allowedSystems via the `concreteSystem` refinement, so
+    // the previous `if (!entry.allowedSystems) entry.allowedSystems = ['*']`
+    // server-side default is gone — wildcards never enter the manifest.
+    const parsed = ConnectorCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
     const lock = acquireLock(MANIFEST_CONNECTORS, auth.principalId);
     if (!lock.ok) {
       res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
       return;
     }
     try {
-      const entry = req.body;
-      if (!entry?.connectorId || !entry?.connectorType) {
-        res.status(400).json({ ok: false, error: 'connectorId and connectorType required' });
-        return;
-      }
-      if (entry.enabled === undefined) entry.enabled = true;
-      if (!entry.allowedSystems) entry.allowedSystems = ['*'];
-      if (!entry.configuration) entry.configuration = {};
-      const entries = await deps.manifestWriter.addEntry(
-        MANIFEST_CONNECTORS,
-        'connectors',
-        entry,
-        'connectorId'
-      );
+      const entry: Record<string, unknown> = {
+        ...parsed.data,
+        enabled: parsed.data.enabled ?? true,
+        configuration: parsed.data.configuration ?? {},
+      };
+      await deps.manifestWriter.addEntry(MANIFEST_CONNECTORS, 'connectors', entry, 'connectorId');
       releaseLock(MANIFEST_CONNECTORS, auth.principalId);
-      res.json({ ok: true, data: { connectorId: entry.connectorId, requiresRestart: true } });
+      res.json({
+        ok: true,
+        data: { connectorId: parsed.data.connectorId, requiresRestart: true },
+      });
     } catch (err) {
       releaseLock(MANIFEST_CONNECTORS, auth.principalId);
       const sc = (err as { statusCode?: number }).statusCode ?? 500;
@@ -463,6 +658,11 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
       return;
     }
+    const parsed = ConnectorUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
     const lock = acquireLock(MANIFEST_CONNECTORS, auth.principalId);
     if (!lock.ok) {
       res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
@@ -474,7 +674,7 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
         MANIFEST_CONNECTORS,
         'connectors',
         cid,
-        req.body,
+        parsed.data,
         'connectorId'
       );
       releaseLock(MANIFEST_CONNECTORS, auth.principalId);
@@ -597,15 +797,17 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       res.status(auth.status).json({ ok: false, error: auth.error });
       return;
     }
-    const baseUrlRaw = req.body?.baseUrl;
-    if (typeof baseUrlRaw !== 'string' || baseUrlRaw.length === 0) {
-      res.status(400).json({ ok: false, error: 'baseUrl required' });
+    const parsed = DiscoverSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
       return;
     }
     let probeUrl: URL;
     try {
-      probeUrl = new URL(baseUrlRaw);
+      probeUrl = new URL(parsed.data.baseUrl);
     } catch {
+      // Zod's z.string().url() catches most bad URLs, but defense-in-depth:
+      // node's URL parser is the authoritative validator before we use it.
       res.status(400).json({ ok: false, error: 'baseUrl must be a valid URL' });
       return;
     }
@@ -709,17 +911,23 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       res.status(501).json({ ok: false, error: 'Secret writer not configured' });
       return;
     }
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const keyName = typeof body['keyName'] === 'string' ? body['keyName'] : '';
-    const keyValue = typeof body['keyValue'] === 'string' ? body['keyValue'] : '';
-    if (!keyName || keyName.length > MAX_KEY_NAME_LEN || !KEY_NAME_RE.test(keyName)) {
+    // CLAUDE-CODE-AUDIT-TIGHTEN-PHASE-AB §2 — Zod handles type/shape;
+    // value-shape rules (UPPER_SNAKE_CASE keyName, length caps) stay
+    // explicit so error messages remain operator-friendly.
+    const parsed = SecretCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+    const { keyName, keyValue } = parsed.data;
+    if (keyName.length > MAX_KEY_NAME_LEN || !KEY_NAME_RE.test(keyName)) {
       res.status(400).json({
         ok: false,
         error: 'keyName must be upper-snake-case ([A-Z][A-Z0-9_]*) and ≤128 chars',
       });
       return;
     }
-    if (!keyValue || keyValue.length > MAX_KEY_VALUE_LEN) {
+    if (keyValue.length > MAX_KEY_VALUE_LEN) {
       res.status(400).json({
         ok: false,
         error: `keyValue required (non-empty, ≤${MAX_KEY_VALUE_LEN} chars)`,

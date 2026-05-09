@@ -7,7 +7,7 @@
 import { AdminSecretField } from '../primitives/admin-secret-field.js';
 import { AdminDisabledMutationBanner } from '../admin-disabled-mutation-banner.js';
 import { TOOLCHAIN_PLACEHOLDER } from '../placeholder/placeholder-data.js';
-import type { DashboardSurfaceStatus } from '../placeholder/placeholder-types.js';
+import type { DashboardSurfaceStatus } from '@nexus/contracts';
 import { PanelChrome } from './_panel-chrome.js';
 
 interface Props {

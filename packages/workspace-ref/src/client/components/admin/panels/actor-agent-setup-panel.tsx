@@ -13,7 +13,7 @@ import {
   type ManifestTableColumn,
 } from '../primitives/admin-manifest-table.js';
 import { ACTORS_AGENTS_PLACEHOLDER } from '../placeholder/placeholder-data.js';
-import type { DashboardSurfaceStatus } from '../placeholder/placeholder-types.js';
+import type { DashboardSurfaceStatus } from '@nexus/contracts';
 import { PanelChrome } from './_panel-chrome.js';
 import { addActor, deleteActor, updateActor } from '../../../admin-writer-api.js';
 import type { AdminCatalog, AdminCatalogActorEntry } from '../../../admin-catalog-api.js';

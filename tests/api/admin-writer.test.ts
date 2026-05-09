@@ -633,12 +633,17 @@ describe('admin-writer routes', () => {
   // ── Surface 3: Connectors ──────────────────────────────────────────────
 
   it('POST /connectors — adds connector, requiresRestart: true', async () => {
+    // CLAUDE-CODE-AUDIT-TIGHTEN-PHASE-AB §2 — allowedSystems is now
+    // required (Zod) with concrete-identifier validation. The previous
+    // route default of `['*']` was a wildcard violation removed in
+    // Phase B; tests have to send explicit systems to match the boundary.
     const res = await fetch(url('/workspace/admin/setup/connectors'), {
       method: 'POST',
       headers: adminHeaders(),
       body: JSON.stringify({
         connectorId: 'test-pg',
         connectorType: 'stub',
+        allowedSystems: ['stub'],
       }),
     });
     expect(res.status).toBe(200);
@@ -655,7 +660,11 @@ describe('admin-writer routes', () => {
     await fetch(url('/workspace/admin/setup/connectors'), {
       method: 'POST',
       headers: adminHeaders(),
-      body: JSON.stringify({ connectorId: 'to-rm', connectorType: 'stub' }),
+      body: JSON.stringify({
+        connectorId: 'to-rm',
+        connectorType: 'stub',
+        allowedSystems: ['stub'],
+      }),
     });
     const res = await fetch(url('/workspace/admin/setup/connectors/to-rm'), {
       method: 'DELETE',
@@ -664,6 +673,31 @@ describe('admin-writer routes', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; data: { removed: boolean } };
     expect(body.data.removed).toBe(true);
+  });
+
+  it('POST /connectors — rejects wildcard (*) in allowedSystems with 400 + details', async () => {
+    // CLAUDE-CODE-AUDIT-TIGHTEN-PHASE-AB §2c — wildcard rejection at
+    // schema level. The route MUST never write `*` into the manifest;
+    // the old server-side `if (!entry.allowedSystems) entry.allowedSystems = ['*']`
+    // default has been replaced by an explicit Zod refinement.
+    const res = await fetch(url('/workspace/admin/setup/connectors'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify({
+        connectorId: 'wildcard-rejected',
+        connectorType: 'stub',
+        allowedSystems: ['*'],
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as {
+      ok: boolean;
+      error: string;
+      details: ReadonlyArray<{ path: string; message: string }>;
+    };
+    expect(body.ok).toBe(false);
+    expect(body.error).toBe('Validation failed');
+    expect(body.details.some(d => /wildcard/i.test(d.message))).toBe(true);
   });
 
   // ── Catalog ─────────────────────────────────────────────────────────────

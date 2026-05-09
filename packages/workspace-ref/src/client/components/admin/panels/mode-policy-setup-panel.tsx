@@ -13,7 +13,7 @@ import {
   MODES_POLICY_OCT_PLACEHOLDER,
   PLACEHOLDER_BANNER_REASON,
 } from '../placeholder/placeholder-data.js';
-import type { DashboardSurfaceStatus } from '../placeholder/placeholder-types.js';
+import type { DashboardSurfaceStatus } from '@nexus/contracts';
 import { PanelChrome } from './_panel-chrome.js';
 
 interface Props {

@@ -50,8 +50,26 @@ import type {
   Actor,
 } from '@nexus/contracts';
 import { addSeconds, nowIso, riskTierExceeds } from '@nexus/contracts';
+import { z } from 'zod';
 import { checkAdminAuth, type AdminAuthDeps } from './admin-auth.js';
 import { san } from './shared.js';
+
+// CLAUDE-CODE-AUDIT-TIGHTEN-PHASE-AB §2 — Zod schema replaces the
+// hand-rolled parseBody. Strict object: unknown fields rejected; every
+// required field must be a non-empty string. The agentId is loosely
+// typed (`z.string().min(1)`) rather than `z.string().uuid()` so the
+// route can return a friendly "Agent not found" error from the
+// registry lookup instead of a Zod uuid-format error — the lookup is
+// the canonical existence check.
+const TestActionSchema = z
+  .object({
+    tool: z.string().min(1),
+    verb: z.string().min(1),
+    target: z.string().min(1),
+    intent: z.string().min(1),
+    agentId: z.string().min(1),
+  })
+  .strict();
 
 /** Pipeline-side delegation parameters extracted from the agent + principal. */
 interface MintRootDelegationParams {
@@ -99,42 +117,6 @@ export interface AdminNxsRouteDeps extends AdminAuthDeps {
 /** Default TTLs for ephemeral test session + delegation (10 minutes). */
 const TEST_SESSION_TTL_SECONDS = 10 * 60;
 
-interface TestActionBody {
-  tool: string;
-  verb: string;
-  target: string;
-  intent: string;
-  agentId: string;
-}
-
-function parseBody(
-  raw: unknown
-): { ok: true; body: TestActionBody } | { ok: false; error: string } {
-  if (raw === null || typeof raw !== 'object') {
-    return { ok: false, error: 'JSON object body required' };
-  }
-  const r = raw as Record<string, unknown>;
-  const fields = ['tool', 'verb', 'target', 'intent', 'agentId'] as const;
-  const out: Record<string, string> = {};
-  for (const k of fields) {
-    const v = r[k];
-    if (typeof v !== 'string' || v.length === 0) {
-      return { ok: false, error: `field "${k}" must be a non-empty string` };
-    }
-    out[k] = v;
-  }
-  return {
-    ok: true,
-    body: {
-      tool: out['tool']!,
-      verb: out['verb']!,
-      target: out['target']!,
-      intent: out['intent']!,
-      agentId: out['agentId']!,
-    },
-  };
-}
-
 export function registerAdminNxsRoutes(app: Express, deps: AdminNxsRouteDeps): void {
   app.post('/workspace/admin/nxs/test-action', async (req: Request, res: Response) => {
     const auth = await checkAdminAuth(req, res, deps);
@@ -155,12 +137,19 @@ export function registerAdminNxsRoutes(app: Express, deps: AdminNxsRouteDeps): v
       return;
     }
 
-    const parsed = parseBody(req.body);
-    if (!parsed.ok) {
-      res.status(400).json({ ok: false, error: parsed.error });
+    const parsed = TestActionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        ok: false,
+        error: 'Validation failed',
+        details: parsed.error.issues.map(i => ({
+          path: i.path.join('.'),
+          message: i.message,
+        })),
+      });
       return;
     }
-    const body = parsed.body;
+    const body = parsed.data;
 
     try {
       // 1. Look up the target agent.

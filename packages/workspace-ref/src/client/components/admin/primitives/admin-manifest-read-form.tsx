@@ -15,7 +15,7 @@
 
 import { AdminDisabledMutationBanner } from '../admin-disabled-mutation-banner.js';
 import { AdminSecretField } from './admin-secret-field.js';
-import type { DashboardSecretField } from '../placeholder/placeholder-types.js';
+import type { DashboardSecretField } from '@nexus/contracts';
 
 interface Props {
   /** Manifest entry to render (any record shape). */

@@ -3,7 +3,7 @@
 // One card per setup surface on AdminSetupOverview.
 
 import { AdminStatusBadge } from './admin-status-badge.js';
-import type { DashboardReadinessState } from './admin-status.js';
+import type { DashboardReadinessState } from '@nexus/contracts';
 
 export interface SurfaceCardProps {
   surfaceId: string;

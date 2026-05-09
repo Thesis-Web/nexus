@@ -7,7 +7,7 @@
 // Renders one of three lowercase status pills: present | missing | unknown.
 // Accepts a `fieldPath` for label/aria but never echoes secret material.
 
-import type { DashboardSecretFieldStatus } from '../placeholder/placeholder-types.js';
+import type { DashboardSecretFieldStatus } from '@nexus/contracts';
 
 interface Props {
   fieldPath: string;

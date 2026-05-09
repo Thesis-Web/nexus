@@ -11,7 +11,7 @@ import {
 } from '../primitives/admin-manifest-table.js';
 import { AdminManifestReadForm } from '../primitives/admin-manifest-read-form.js';
 import { CONNECTORS_PLACEHOLDER } from '../placeholder/placeholder-data.js';
-import type { DashboardSurfaceStatus } from '../placeholder/placeholder-types.js';
+import type { DashboardSurfaceStatus } from '@nexus/contracts';
 import { PanelChrome } from './_panel-chrome.js';
 import { addConnector, removeConnector } from '../../../admin-writer-api.js';
 

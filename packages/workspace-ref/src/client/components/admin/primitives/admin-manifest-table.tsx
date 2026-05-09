@@ -15,7 +15,7 @@
 // owning panel scrolls AdminManifestReadForm to the selected row.
 
 import { AdminStatusBadge } from '../admin-status-badge.js';
-import type { DashboardReadinessState } from '../admin-status.js';
+import type { DashboardReadinessState } from '@nexus/contracts';
 
 export interface ManifestTableColumn<T> {
   key: keyof T & string;
