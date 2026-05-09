@@ -36,6 +36,15 @@ const COLUMNS: readonly ManifestTableColumn<ConnectorEntry>[] = [
     label: 'allowedSystems',
     render: v => (Array.isArray(v) ? v.join(', ') : '—'),
   },
+  // CLAUDE-CODE-NXS-WIRE-PHASE-B §4 — surface enabled state explicitly.
+  // The bootstrap loader filters disabled connectors out of `entries`
+  // (so anything visible here is enabled), but rendering the column
+  // makes the contract observable from the UI rather than implicit.
+  {
+    key: 'enabled',
+    label: 'enabled',
+    render: v => (v === true ? '✓ enabled' : v === false ? '✗ disabled' : '—'),
+  },
 ];
 
 export function ConnectorSetupPanel({ data, elevatedSessionId }: Props) {
@@ -49,7 +58,10 @@ export function ConnectorSetupPanel({ data, elevatedSessionId }: Props) {
   const [addFields, setAddFields] = useState({
     connectorId: '',
     connectorType: 'stub',
-    allowedSystems: '*',
+    // CLAUDE-CODE-NXS-WIRE-PHASE-B §5 — no wildcards. Default the form
+    // to the connectorType so operators land on a concrete system
+    // identifier instead of a wildcard that would silently widen scope.
+    allowedSystems: 'stub',
   });
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -57,12 +69,30 @@ export function ConnectorSetupPanel({ data, elevatedSessionId }: Props) {
 
   async function handleAdd() {
     if (!elevatedSessionId || !addFields.connectorId || !addFields.connectorType) return;
+    // CLAUDE-CODE-NXS-WIRE-PHASE-B §5 — wildcard guard. The manifest
+    // schema accepts arbitrary strings; we reject `*` at the form layer
+    // so admins can't widen authority scope by accident.
+    const allowedSystems = addFields.allowedSystems
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    if (allowedSystems.length === 0) {
+      setFeedback({ type: 'error', msg: 'allowedSystems must list at least one concrete system' });
+      return;
+    }
+    if (allowedSystems.includes('*')) {
+      setFeedback({
+        type: 'error',
+        msg: 'Wildcards (*) are not allowed in allowedSystems. Use concrete system identifiers.',
+      });
+      return;
+    }
     setBusy(true);
     setFeedback(null);
     const res = await addConnector(elevatedSessionId, {
       connectorId: addFields.connectorId,
       connectorType: addFields.connectorType,
-      allowedSystems: addFields.allowedSystems.split(',').map(s => s.trim()),
+      allowedSystems,
       configuration: {},
       enabled: true,
     });
@@ -73,7 +103,7 @@ export function ConnectorSetupPanel({ data, elevatedSessionId }: Props) {
         msg: `Connector ${addFields.connectorId} added. Restart required.`,
       });
       setShowAddForm(false);
-      setAddFields({ connectorId: '', connectorType: 'stub', allowedSystems: '*' });
+      setAddFields({ connectorId: '', connectorType: 'stub', allowedSystems: 'stub' });
     } else {
       setFeedback({ type: 'error', msg: res.error ?? 'Failed to add connector' });
     }

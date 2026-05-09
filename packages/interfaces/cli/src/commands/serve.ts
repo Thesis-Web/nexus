@@ -56,6 +56,8 @@ export type WorkspaceApiDeps = Partial<
     | 'orchestrator'
     | 'orchestratorSockets'
     | 'pipelineInterface'
+    // CLAUDE-CODE-NXS-WIRE-PHASE-B — runtime NXS dispatch.
+    | 'dispatchToNxs'
     // ── Claude C / SPEC-addendum-beta1-admin-dashboard §3.2 ──
     // Manifest records flow through to admin-setup projection routes.
     | 'identityRecords'

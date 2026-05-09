@@ -35,6 +35,9 @@ import {
   mintRootDelegation,
   RegistryBackedIdentityProvider,
   SimpleConnectorRegistry,
+  SimpleChannelRegistry,
+  SqliteApproverRegistry,
+  loadPolicyFile,
 } from '@nexus/core';
 import { StubConnector } from '@nexus/connector-stub';
 import { createCli } from '@nexus/cli';
@@ -57,6 +60,9 @@ import type {
   CompileReturnAck,
   FinalResponseArtifact,
   CompileReturnRequest,
+  AgentAction,
+  PipelineContext,
+  PipelineResult,
 } from '@nexus/contracts';
 import { nowIso, riskTierExceeds, CAPABILITY_IDS } from '@nexus/contracts';
 import { bootstrap, bootstrapWorkspace, type BootstrapResult } from './nexus-bootstrap.js';
@@ -1060,8 +1066,171 @@ const program = createCli({
 
     console.log('[orch-wire] Step 22 complete: orchestrator assembled');
 
+    // ── CLAUDE-CODE-NXS-WIRE-PHASE-B — runtime NXS dispatch ──────────────
+    //
+    // The NXS pipeline is constructed at line ~243 with all 7 gates wired
+    // against real stores. Phase B brings it online by giving routes a
+    // single entry point that:
+    //   1. Builds a fresh PipelineContext from the live registries +
+    //      injected stores (no `as any`, every required field set).
+    //   2. Loads the signed default policy file once at runtime — Gate 04
+    //      needs LoadedPolicyFile, not a path.
+    //   3. Calls pipeline.process(rawAction, context) — every mode produces
+    //      an evidence record (Gate 07 always runs).
+    //   4. Records the §22.5 bypass annotation (this dispatch is not
+    //      preceded by an NVG call) and the nxs_action ledger event so
+    //      audit consumers see what entered the pipeline.
+    //
+    // NVG and NXS remain independent checkpoints — the workspace prompt
+    // path doesn't call this. Today the only caller is the admin test
+    // route; future inbound adapters that submit governed actions will
+    // also call here.
+    const nxsPolicyPath = path.join(
+      process.cwd(),
+      'packages/core/src/policy/rules/default.policy.json'
+    );
+    const nxsPolicyFile = await loadPolicyFile(nxsPolicyPath, controlPlaneKey);
+    const nxsApproverRegistry = new SqliteApproverRegistry(coreDeps.db);
+
+    const buildNxsContext = async (
+      action: Omit<AgentAction, 'delegationSequence'>
+    ): Promise<PipelineContext> => {
+      const actor = await coreDeps.actorRegistry.get(action.actorId);
+      if (!actor) throw new Error(`NXS dispatch: actor not found — ${action.actorId}`);
+      const principal = await coreDeps.principalRegistry.get(action.principalId);
+      if (!principal) {
+        throw new Error(`NXS dispatch: principal not found — ${action.principalId}`);
+      }
+      const delegation = await coreDeps.delegationStore.getById(action.delegationId);
+      if (!delegation) {
+        throw new Error(`NXS dispatch: delegation not found — ${action.delegationId}`);
+      }
+
+      // Per-call connector + channel registries. Connector registry is
+      // populated from the manifest; for now StubConnector is the only
+      // registered concrete connector. Adding another connector means
+      // registering its instance here, not changing the dispatcher.
+      const connectorRegistry = new SimpleConnectorRegistry();
+      connectorRegistry.register(new StubConnector());
+      const channelRegistry = new SimpleChannelRegistry();
+
+      return {
+        sessionId: action.sessionId,
+        delegationContext: delegation,
+        delegationStore: coreDeps.delegationStore,
+        actor,
+        principal,
+        policyFile: nxsPolicyFile,
+        approverRegistry: nxsApproverRegistry,
+        connectorRegistry,
+        channelRegistry,
+        threatLog: [],
+        startedAt: nowIso(),
+      };
+    };
+
+    const dispatchToNxs = async (input: {
+      rawAction: Omit<AgentAction, 'delegationSequence'>;
+      runId: Uuid;
+      /**
+       * Optional bracket events. When provided, dispatchToNxs emits
+       * `run_opened` before invoking the pipeline and `run_closed` after,
+       * so admin/test surfaces that are NOT part of the workspace
+       * compile-return loop still produce a complete run lifecycle in
+       * the ledger. `runOpenDetail` is merged into the run_opened event.
+       *
+       * EXT-12 OCT-SECURE-LOOP scans only the routes directory; this
+       * file (composition root) is the lawful place for non-compile
+       * run-bracket writes. Routes should never hand-write run_closed.
+       */
+      bracketRun?: {
+        runOpenDetail: Record<string, unknown>;
+      };
+    }): Promise<PipelineResult> => {
+      const { rawAction, runId } = input;
+      console.log(
+        '[nxs-wire] dispatching action — run:',
+        runId,
+        'tool:',
+        rawAction.tool,
+        'verb:',
+        rawAction.rawVerb
+      );
+
+      // run_opened — only when the caller is the originator of the run
+      // (e.g. admin test route). Skipping when the run already has a
+      // workspace-side run_opened keeps the ledger from double-bracketing.
+      if (input.bracketRun) {
+        await coreDeps.runLedgerWriter!.writeEvent({
+          runId,
+          eventType: 'run_opened',
+          timestamp: nowIso(),
+          actorId: null,
+          detail: input.bracketRun.runOpenDetail,
+        });
+      }
+
+      const context = await buildNxsContext(rawAction);
+      const result = await nxsPipeline.process(rawAction, context);
+      const evidence = result.evidenceRecord;
+
+      // §22.5 bypass annotation BEFORE the action event — this dispatch
+      // didn't go through NVG, so the audit consumer can see why no NVG
+      // entries exist for this runId.
+      await coreDeps.runLedgerWriter!.writeEvent({
+        runId,
+        eventType: 'bypass_annotation',
+        timestamp: nowIso(),
+        actorId: null,
+        detail: { bypass_path: true, nvg_entries: false },
+      });
+
+      await coreDeps.runLedgerWriter!.writeEvent({
+        runId,
+        eventType: 'nxs_action',
+        timestamp: nowIso(),
+        actorId: rawAction.actorId,
+        detail: {
+          actionId: rawAction.actionId,
+          tool: rawAction.tool,
+          verb: rawAction.rawVerb,
+          target: rawAction.rawTarget,
+          finalOutcome: evidence.finalOutcome,
+          evidenceRecordId: evidence.recordId,
+          ledgerSequence: evidence.ledgerSequence,
+          policyOutcome: evidence.policyOutcome,
+          disposition: result.disposition,
+        },
+      });
+
+      // run_closed bracket — symmetric to run_opened above.
+      if (input.bracketRun) {
+        await coreDeps.runLedgerWriter!.writeEvent({
+          runId,
+          eventType: 'run_closed',
+          timestamp: nowIso(),
+          actorId: null,
+          detail: {
+            ...input.bracketRun.runOpenDetail,
+            finalOutcome: evidence.finalOutcome,
+            evidenceRecordId: evidence.recordId,
+          },
+        });
+      }
+
+      console.log(
+        '[nxs-wire] result — outcome:',
+        evidence.finalOutcome,
+        'evidence:',
+        evidence.recordId
+      );
+      return result;
+    };
+
     return {
       ...wsDeps,
+      // CLAUDE-CODE-NXS-WIRE-PHASE-B — runtime entry into the 7-gate chain.
+      dispatchToNxs,
       // Manifest records for admin-setup projection (Claude C)
       identityRecords: br.externals.identityRecords,
       connectorRecords: br.externals.connectorRecords,

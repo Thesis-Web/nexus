@@ -1,18 +1,18 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-04-26T06:46:58.644Z'
-signature: gr150hDv3CwwWBCmb5rdn8kg_qUp-AmaiU3QvXbElzr4FHxva2LaVvl019SY6zxPecV5EhxyUAZ49I8IKSr9Dw
+issuedAt: '2026-05-09T15:47:53.998Z'
+signature: HDBIWxzifdfqQtSJ3fcEQXzemGy99kKFyUbpsJ_vjjr0e62RdJiu0pBhtyg3ECfAXRRSm1-PG4YU3P1r6VCZAg
 body:
   connectors:
     - connectorId: stub
       connectorType: stub
       allowedSystems:
-        - '*'
+        - stub
       configuration: {}
       enabled: true
     - connectorId: vault
       connectorType: vault
       allowedSystems:
-        - '*'
+        - vault
       configuration: {}
       enabled: false

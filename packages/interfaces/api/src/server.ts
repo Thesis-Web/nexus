@@ -50,6 +50,8 @@ import type {
   RoutingTrailReader,
   IdentityProviderInterface,
   PipelineInterface,
+  PipelineResult,
+  AgentAction,
   WorkspaceRunRequest,
   WorkspaceManifestRecord,
   OrchestratorManifestRecord,
@@ -198,6 +200,31 @@ export interface ApiDependencies {
 
   // ── §11.1 PipelineInterface — NXS pipeline (available for future routes) ─
   pipelineInterface?: PipelineInterface;
+  /**
+   * CLAUDE-CODE-NXS-WIRE-PHASE-B — runtime dispatch into the NXS pipeline.
+   * Wraps `pipelineInterface.process(...)` with PipelineContext assembly,
+   * the §22.5 bypass annotation, and the `nxs_action` ledger event.
+   *
+   * Routes that submit governed actions (currently the admin test route)
+   * call this. Workspace prompt path is independent — NVG and NXS are
+   * separate checkpoints (independence law).
+   */
+  dispatchToNxs?: (input: {
+    rawAction: Omit<AgentAction, 'delegationSequence'>;
+    runId: Uuid;
+    /**
+     * When provided, the dispatcher emits run_opened/run_closed events
+     * to bracket the test run in the ledger. Used by admin test surfaces
+     * that don't go through the workspace compile-return loop.
+     * EXT-12 keeps run_closed writes confined to compile-return.ts /
+     * compile.ts / workspace.ts at the route layer; the dispatcher
+     * lives in the composition root and is the lawful writer for
+     * non-compile bracket events.
+     */
+    bracketRun?: {
+      runOpenDetail: Record<string, unknown>;
+    };
+  }) => Promise<PipelineResult>;
 
   // ── §6.2 Workspace harness deps ─────────────────────────────────────────
   workspaceSockets?: readonly WorkspaceManifestRecord[];

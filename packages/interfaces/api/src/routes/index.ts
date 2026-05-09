@@ -45,6 +45,7 @@ import { registerTemplateRoutes } from './templates.js';
 import { registerAdminSetupRoutes } from './admin-setup.js';
 import { registerAdminWriterRoutes } from './admin-writer.js';
 import { registerAdminLedgerRoutes } from './admin-ledger.js';
+import { registerAdminNxsRoutes } from './admin-nxs.js';
 
 export function registerAllRoutes(
   app: Express,
@@ -172,6 +173,24 @@ export function registerAllRoutes(
     ledgerBackend: deps.ledgerBackend,
     ...(deps.trailReader !== undefined ? { trailReader: deps.trailReader } : {}),
     verifyChain: deps.verifyChain,
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CLAUDE-CODE-NXS-WIRE-PHASE-B §2 — admin test route that submits a
+  // synthetic AgentAction through the runtime NXS pipeline. Same admin
+  // auth as the rest of the admin-writer surface. Mounted alongside the
+  // other /workspace/admin/* routes.
+  // ═══════════════════════════════════════════════════════════════════════════
+  registerAdminNxsRoutes(app, {
+    ...(deps.elevatedAuthProvider !== undefined
+      ? { elevatedAuthProvider: deps.elevatedAuthProvider }
+      : {}),
+    ...(deps.dispatchToNxs !== undefined ? { dispatchToNxs: deps.dispatchToNxs } : {}),
+    actorRegistry: deps.actorRegistry,
+    principalRegistry: deps.principalRegistry,
+    sessionStore: deps.sessionStore,
+    delegationStore: deps.delegationStore,
+    mintRootDelegation: deps.mintRootDelegation,
   });
 
   // Compile-return routes — callback signature auth [§5.1]
