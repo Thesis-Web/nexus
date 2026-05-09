@@ -273,10 +273,20 @@ describe('Endpoint Manifest Loader (signature chain)', () => {
       adapterRegistry: registryWith('ollama-chat-v1', 'anthropic-messages-v1', 'openai-chat-v1'),
       secretSource: permissiveSecretSource(),
     });
-    // Real config has local-ollama enabled, anthropic + openai disabled
-    expect(endpoints).toHaveLength(1);
-    expect(endpoints[0].endpointId).toBe('local-ollama');
-    expect(endpoints[0].adapterId).toBe('ollama-chat-v1');
+    // The test's purpose is "the real manifest loads through the full
+    // signature + schema + registry chain without error." It must NOT
+    // hardcode endpointIds or counts — the live manifest is operator-
+    // controlled and changes as endpoints are enabled/disabled. Validate
+    // structure instead.
+    expect(endpoints.length).toBeGreaterThanOrEqual(1);
+    for (const ep of endpoints) {
+      expect(ep.endpointId).toBeTruthy();
+      expect(ep.adapterId).toBeTruthy();
+      expect(ep.tier).toBeTruthy();
+      expect(ep.url).toBeTruthy();
+      expect(ep.modelName).toBeTruthy();
+      expect(ep.healthy).toBe(true);
+    }
   });
 
   it('preserves adapterConfig on ModelEndpoint when present', async () => {
