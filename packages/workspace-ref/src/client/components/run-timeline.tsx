@@ -40,13 +40,25 @@ export function RunTimeline({ timeline }: RunTimelineProps) {
     return () => window.clearInterval(handle);
   }, [hasActive]);
 
+  // CLAUDE-CODE-FIX-SSE-AND-PLAN-REVIEW BUG-2: hide opt-in stages that
+  // never fired. plan_review only exists when the orchestrator triggered
+  // a checkback (plan_checkback_required / plan_checkback_resolved). On
+  // auto-approval (healthy primary tier, no preference conflict) it has
+  // zero events and the reducer marks it 'skipped' — which renders as a
+  // grayed-out dashed row and looks like something went wrong. When the
+  // checkback truly fired the stage carries events and renders normally.
+  const visibleStages = timeline.stages.filter(stage => {
+    if (stage.id === 'plan_review' && stage.events.length === 0) return false;
+    return true;
+  });
+
   return (
     <div className="nx-timeline" role="list" aria-label="Run play-by-play">
-      {timeline.stages.map((stage, idx) => (
+      {visibleStages.map((stage, idx) => (
         <RunStageRow
           key={stage.id}
           stage={stage}
-          isLast={idx === timeline.stages.length - 1}
+          isLast={idx === visibleStages.length - 1}
           runStartedAt={timeline.runStartedAt}
           now={now}
         />

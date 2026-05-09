@@ -419,6 +419,46 @@ body {
   font-size: 14px;
 }
 
+/* CLAUDE-CODE-FIX-SSE-AND-PLAN-REVIEW BUG-1 — error banner. Sits between
+   the run display and the prompt panel; alerts the operator when run
+   creation or the SSE stream failed instead of leaving them with a
+   frozen UI. */
+.nx-error-banner {
+  background: #2a1a1a;
+  border-top: 1px solid var(--nx-border);
+  border-bottom: 1px solid #5a2a2a;
+  color: #f0c0c0;
+  padding: 10px 20px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.nx-error-banner--warn {
+  background: #2a2616;
+  border-bottom-color: #5a4d22;
+  color: #f0d09c;
+}
+.nx-error-banner strong {
+  font-weight: 600;
+  color: #fff;
+}
+.nx-error-banner-close {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 6px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.nx-error-banner-close:hover {
+  opacity: 1;
+}
+
 /* ── Prompt Panel ──────────────────────────────────────── */
 
 .nx-prompt-panel {

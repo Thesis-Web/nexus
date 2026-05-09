@@ -66,6 +66,7 @@ function App() {
     reason: string;
     reasonDetail: string;
   } | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Load catalogs on auth (workspace view).
   useEffect(() => {
@@ -95,10 +96,19 @@ function App() {
   );
 
   // Handle prompt submission → POST /workspace/runs
+  //
+  // CLAUDE-CODE-FIX-SSE-AND-PLAN-REVIEW BUG-1: subscribe MUST happen for
+  // every successfully-created run so the timeline can render, including
+  // after a previous run was denied. The server-side fix guarantees the
+  // POST returns `{ ok:true, runId }` whenever the run was created on disk;
+  // here we always invoke `runEvents.subscribe(runId)` on that path. If the
+  // POST itself fails (network/5xx), surface the error in the UI rather
+  // than swallowing it.
   const handleSubmit = useCallback(
     async (submission: PromptSubmission) => {
       setSubmitting(true);
       setPlanRejection(null);
+      setSubmitError(null);
       try {
         if (!submission.agents?.length && selectedAgent) {
           submission.agents = [selectedAgent];
@@ -131,9 +141,16 @@ function App() {
           setRuns(prev => [newRun, ...prev]);
           setActiveRunId(runId);
           runEvents.subscribe(runId);
+        } else {
+          // ok:false — POST itself failed. The runId was never returned, so
+          // there's nothing to subscribe to. Show the error instead of
+          // silently dropping it (operator otherwise sees a dead UI).
+          setSubmitError(res.error ?? 'Run creation failed (no runId returned).');
         }
       } catch (err) {
-        console.error('Run creation failed:', err);
+        // Network or fetch-layer failure (e.g., server killed mid-request).
+        // Same surface — the operator sees the failure and can retry.
+        setSubmitError(err instanceof Error ? err.message : 'Network error while creating run.');
       } finally {
         setSubmitting(false);
       }
@@ -278,6 +295,30 @@ function App() {
             status={runEvents.status}
             planRejection={planRejection}
           />
+
+          {/* CLAUDE-CODE-FIX-SSE-AND-PLAN-REVIEW BUG-1: surface errors that
+              previously failed silently. submitError covers POST-level
+              failures (network/5xx); runEvents.error covers SSE failures
+              (mint failed, stream dropped). Without these the operator
+              would see a frozen UI and assume the system hung. */}
+          {submitError ? (
+            <div className="nx-error-banner" role="alert">
+              <strong>Run not created:</strong> {submitError}
+              <button
+                type="button"
+                className="nx-error-banner-close"
+                onClick={() => setSubmitError(null)}
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            </div>
+          ) : null}
+          {!submitError && runEvents.error ? (
+            <div className="nx-error-banner nx-error-banner--warn" role="status">
+              {runEvents.error}
+            </div>
+          ) : null}
 
           <PromptPanel
             agents={agents}

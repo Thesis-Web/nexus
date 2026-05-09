@@ -677,10 +677,43 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         });
       }
 
-      // §6.2: dispatch to orchestrator if wired
+      // §6.2: dispatch to orchestrator if wired.
+      //
+      // CLAUDE-CODE-FIX-SSE-AND-PLAN-REVIEW BUG-1 (Cause A) — the run was
+      // already created on disk (run_opened was written and ACL stored), so
+      // the POST must always return `{ ok:true, runId }` so the client can
+      // establish the SSE subscription. Governed denials flow through the
+      // coordinator cleanly today, but an UNEXPECTED throw inside the
+      // dispatch chain previously bubbled to the catch below and surfaced as
+      // a 500 with no runId — leaving the client unable to subscribe and
+      // unable to recover without a hard refresh. Catch here, log, and
+      // persist a synthetic run_closed so the run doesn't hang forever and
+      // the timeline shows error state via the SSE replay.
       let planPreview: unknown = null;
       if (deps.dispatchToOrchestrator) {
-        planPreview = await deps.dispatchToOrchestrator(request);
+        try {
+          planPreview = await deps.dispatchToOrchestrator(request);
+        } catch (dispatchErr) {
+          // eslint-disable-next-line no-console
+          console.error('[workspace] dispatchToOrchestrator threw —', dispatchErr);
+          try {
+            await deps.runLedgerWriter.writeEvent({
+              runId,
+              eventType: 'run_closed',
+              timestamp: nowIso(),
+              actorId: null,
+              detail: {
+                closeReason: 'error',
+                error: dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr),
+              },
+            });
+          } catch {
+            // ledger fanout failure isn't fatal here — the SSE response is
+            // about to return, and the client will see error state via
+            // either the run-status route or a stale-stream timeout.
+          }
+          planPreview = null;
+        }
       }
 
       res.json({ ok: true, data: { runId, planPreview } });
