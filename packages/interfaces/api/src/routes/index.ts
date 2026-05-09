@@ -121,6 +121,9 @@ export function registerAllRoutes(
     ...(deps.identityProvider !== undefined ? { identityProvider: deps.identityProvider } : {}),
     ...(deps.identityRecords !== undefined ? { identityRecords: deps.identityRecords } : {}),
     ...(deps.connectorRecords !== undefined ? { connectorRecords: deps.connectorRecords } : {}),
+    ...(deps.connectorCapabilities !== undefined
+      ? { connectorCapabilities: deps.connectorCapabilities }
+      : {}),
     ...(deps.channelRecords !== undefined ? { channelRecords: deps.channelRecords } : {}),
     ...(deps.endpoints !== undefined ? { endpoints: deps.endpoints } : {}),
     ...(deps.loadNvgRoutingPolicy !== undefined
@@ -140,6 +143,7 @@ export function registerAllRoutes(
       ? { compileReturnRecords: deps.compileReturnRecords }
       : {}),
     ...(deps.loadModeConfig !== undefined ? { loadModeConfig: deps.loadModeConfig } : {}),
+    ...(deps.nxsPolicySummary !== undefined ? { nxsPolicySummary: deps.nxsPolicySummary } : {}),
     ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
   });
 

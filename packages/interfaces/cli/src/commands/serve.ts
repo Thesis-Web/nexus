@@ -58,6 +58,9 @@ export type WorkspaceApiDeps = Partial<
     | 'pipelineInterface'
     // CLAUDE-CODE-NXS-WIRE-PHASE-B — runtime NXS dispatch.
     | 'dispatchToNxs'
+    // CLAUDE-CODE-ADMIN-PANELS-PHASE-D — connector caps + policy summary.
+    | 'connectorCapabilities'
+    | 'nxsPolicySummary'
     // ── Claude C / SPEC-addendum-beta1-admin-dashboard §3.2 ──
     // Manifest records flow through to admin-setup projection routes.
     | 'identityRecords'

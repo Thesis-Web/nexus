@@ -13,24 +13,28 @@ import { ConnectorSetupPanel } from './connector-setup-panel.js';
 import type { DashboardSurfaceStatus } from '@nexus/contracts';
 
 // Hoisted mock so the panel's import of admin-writer-api hits a vi.fn we
-// can interrogate from each test. addConnector / removeConnector are the
-// only two exports the panel touches.
+// can interrogate from each test. addConnector / removeConnector /
+// updateConnector are the three exports the panel touches.
 const addConnectorMock = vi.fn();
 const removeConnectorMock = vi.fn();
+const updateConnectorMock = vi.fn();
 vi.mock('../../../admin-writer-api.js', () => ({
   addConnector: (...args: unknown[]) => addConnectorMock(...args),
   removeConnector: (...args: unknown[]) => removeConnectorMock(...args),
+  updateConnector: (...args: unknown[]) => updateConnectorMock(...args),
 }));
 
 afterEach(() => {
   cleanup();
   addConnectorMock.mockReset();
   removeConnectorMock.mockReset();
+  updateConnectorMock.mockReset();
 });
 
 beforeEach(() => {
-  // Default: addConnector resolves successfully unless a test overrides.
+  // Default: addConnector + updateConnector resolve successfully.
   addConnectorMock.mockResolvedValue({ ok: true, data: {} });
+  updateConnectorMock.mockResolvedValue({ ok: true, data: {} });
 });
 
 const REAL_SURFACE: DashboardSurfaceStatus = {
@@ -114,5 +118,48 @@ describe('ConnectorSetupPanel', () => {
     expect(addButtons.length).toBeGreaterThanOrEqual(1);
     const disabled = addButtons.find(b => (b as HTMLButtonElement).disabled);
     expect(disabled).toBeDefined();
+  });
+
+  it('renders reported capabilities for the selected connector', () => {
+    // CLAUDE-CODE-ADMIN-PANELS-PHASE-D §1b — capabilities thread from
+    // the runtime connector via composeConnectorsSurface. Stub here is
+    // a representative value; the real bootstrap call uses
+    // `new StubConnector().supportedCapabilities()`.
+    const surface: DashboardSurfaceStatus = {
+      ...REAL_SURFACE,
+      currentConfiguredValue: {
+        entries: [
+          {
+            connectorId: 'stub',
+            connectorType: 'stub',
+            allowedSystems: ['stub'],
+            configuration: {},
+            enabled: true,
+            capabilities: ['execute', 'preview', 'health'],
+          },
+        ],
+      },
+    };
+    render(<ConnectorSetupPanel data={surface} elevatedSessionId="elev-1" />);
+    expect(screen.getByText(/Reported capabilities/i)).toBeDefined();
+    expect(screen.getByText('execute')).toBeDefined();
+    expect(screen.getByText('preview')).toBeDefined();
+    expect(screen.getByText('health')).toBeDefined();
+  });
+
+  it('disable button calls updateConnector with { enabled: false }', async () => {
+    render(<ConnectorSetupPanel data={REAL_SURFACE} elevatedSessionId="elev-1" />);
+
+    // The first entry (stub, enabled=true) is auto-selected, so the
+    // toggle button reads "Disable connector".
+    const disableBtn = screen.getByRole('button', { name: /disable connector/i });
+    fireEvent.click(disableBtn);
+
+    // Wait for the awaited fetch to settle. We resolve the mock
+    // synchronously above, so a single microtask flush suffices.
+    await Promise.resolve();
+
+    expect(updateConnectorMock).toHaveBeenCalledTimes(1);
+    expect(updateConnectorMock).toHaveBeenCalledWith('elev-1', 'stub', { enabled: false });
   });
 });

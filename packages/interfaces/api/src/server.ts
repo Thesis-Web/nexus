@@ -201,6 +201,19 @@ export interface ApiDependencies {
   // ── §11.1 PipelineInterface — NXS pipeline (available for future routes) ─
   pipelineInterface?: PipelineInterface;
   /**
+   * CLAUDE-CODE-ADMIN-PANELS-PHASE-D §1a — runtime-reported
+   * capabilities per connector systemType (matches manifest
+   * connectorType). Built once at bootstrap and threaded through
+   * admin-setup so the connector panel can display capabilities.
+   */
+  connectorCapabilities?: ReadonlyMap<string, readonly string[]>;
+  /**
+   * CLAUDE-CODE-ADMIN-PANELS-PHASE-D §3c — read-only summary of the
+   * loaded NXS default policy. Null when bootstrap couldn't load the
+   * policy file (e.g. signature failure).
+   */
+  nxsPolicySummary?: import('./routes/admin-setup.js').NxsPolicySummary | null;
+  /**
    * CLAUDE-CODE-NXS-WIRE-PHASE-B — runtime dispatch into the NXS pipeline.
    * Wraps `pipelineInterface.process(...)` with PipelineContext assembly,
    * the §22.5 bypass annotation, and the `nxs_action` ledger event.

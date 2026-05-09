@@ -13,7 +13,7 @@ import { AdminManifestReadForm } from '../primitives/admin-manifest-read-form.js
 import { CONNECTORS_PLACEHOLDER } from '../placeholder/placeholder-data.js';
 import type { DashboardSurfaceStatus } from '@nexus/contracts';
 import { PanelChrome } from './_panel-chrome.js';
-import { addConnector, removeConnector } from '../../../admin-writer-api.js';
+import { addConnector, removeConnector, updateConnector } from '../../../admin-writer-api.js';
 
 interface Props {
   data?: DashboardSurfaceStatus;
@@ -26,6 +26,13 @@ interface ConnectorEntry extends Record<string, unknown> {
   allowedSystems: readonly string[];
   configuration: Record<string, unknown>;
   enabled: boolean;
+  /**
+   * CLAUDE-CODE-ADMIN-PANELS-PHASE-D §1a — capabilities reported by
+   * the runtime connector implementation, threaded onto each entry by
+   * `composeConnectorsSurface`. Empty array when the connector type is
+   * declared in the manifest but no runtime instance is registered.
+   */
+  capabilities?: readonly string[];
 }
 
 const COLUMNS: readonly ManifestTableColumn<ConnectorEntry>[] = [
@@ -123,6 +130,33 @@ export function ConnectorSetupPanel({ data, elevatedSessionId }: Props) {
     }
   }
 
+  /**
+   * CLAUDE-CODE-ADMIN-PANELS-PHASE-D §1c — enable/disable toggle.
+   * The PUT /workspace/admin/setup/connectors/:id route accepts
+   * `{ enabled: boolean }` (validated by the Zod ConnectorUpdateSchema
+   * added in the audit-tightening pass). Bootstrap loader filters
+   * disabled connectors out of `entries`, so the table only ever
+   * shows currently-enabled rows; this lets operators flip them off.
+   * Manifest writes require restart.
+   */
+  async function handleToggleEnabled(target: ConnectorEntry, nextEnabled: boolean) {
+    if (!elevatedSessionId) return;
+    setBusy(true);
+    setFeedback(null);
+    const res = await updateConnector(elevatedSessionId, target.connectorId, {
+      enabled: nextEnabled,
+    });
+    setBusy(false);
+    if (res.ok) {
+      setFeedback({
+        type: 'success',
+        msg: `Connector ${target.connectorId} ${nextEnabled ? 'enabled' : 'disabled'}. Restart required to take effect.`,
+      });
+    } else {
+      setFeedback({ type: 'error', msg: res.error ?? 'Failed to update connector' });
+    }
+  }
+
   return (
     <PanelChrome surface={surface}>
       {feedback && (
@@ -150,6 +184,31 @@ export function ConnectorSetupPanel({ data, elevatedSessionId }: Props) {
             ? {}
             : { disabledReason: 'Writer not available — elevated session required' })}
         />
+        {/* CLAUDE-CODE-ADMIN-PANELS-PHASE-D §1b — capabilities the
+            runtime connector instance reports. Differs from the
+            manifest's allowedSystems (which is governance scope);
+            this list is what the connector code claims it can do.
+            Empty when no runtime instance is registered for the type
+            (e.g. Vault declared but disabled). */}
+        {selected ? (
+          <div className="nx-admin-panel__capabilities">
+            <h4>Reported capabilities</h4>
+            {selected.capabilities && selected.capabilities.length > 0 ? (
+              <ul className="nx-admin-panel__capabilities-list">
+                {selected.capabilities.map(cap => (
+                  <li key={cap}>
+                    <code>{cap}</code>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="nx-admin-panel__capabilities-empty">
+                No capabilities reported. The connector type may be declared in the manifest without
+                a registered runtime instance.
+              </p>
+            )}
+          </div>
+        ) : null}
       </div>
       <div className="nx-admin-panel__actions">
         {canWrite ? (
@@ -158,9 +217,24 @@ export function ConnectorSetupPanel({ data, elevatedSessionId }: Props) {
               + Add connector
             </button>
             {selected && (
-              <button type="button" disabled={busy} onClick={handleDelete}>
-                Delete selected
-              </button>
+              <>
+                {/* CLAUDE-CODE-ADMIN-PANELS-PHASE-D §1c — flip enabled
+                    state. The bootstrap loader filters disabled rows
+                    out of `entries`, so anything we see here is
+                    currently enabled; the button always offers the
+                    opposite transition until a refresh shows new
+                    state. The manifest write requires a restart. */}
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleToggleEnabled(selected, !selected.enabled)}
+                >
+                  {selected.enabled ? 'Disable' : 'Enable'} connector
+                </button>
+                <button type="button" disabled={busy} onClick={handleDelete}>
+                  Delete selected
+                </button>
+              </>
             )}
           </>
         ) : (

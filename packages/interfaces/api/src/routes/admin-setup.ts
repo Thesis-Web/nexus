@@ -70,6 +70,23 @@ import { san } from './shared.js';
 // ─── DI deps ────────────────────────────────────────────────────────────────
 
 /**
+ * CLAUDE-CODE-ADMIN-PANELS-PHASE-D §3c — public-safe summary of the
+ * signed NXS policy file. Bundle id and version are public; rule
+ * outcomes are aggregated as counts so the panel can show "6 rules
+ * (3 allow, 2 require_approval, 1 escalate)" without exposing the
+ * full policy body to the dashboard projection.
+ */
+export interface NxsPolicySummary {
+  readonly bundleId: string;
+  readonly version: string;
+  readonly issuer: string;
+  readonly defaultOutcome: string;
+  readonly ruleCount: number;
+  /** outcome → count, e.g. {"allow":3,"require_approval":2,"escalate":1}. */
+  readonly outcomeCounts: Readonly<Record<string, number>>;
+}
+
+/**
  * Per-surface dependency surface. All optional — the route handler reports
  * missing deps as `blocked`/`partial` rather than 501. Operators get a
  * truthful projection even before runtime is fully wired.
@@ -84,6 +101,15 @@ export interface AdminSetupRouteDeps {
 
   // ── Connectors surface ──
   readonly connectorRecords?: readonly ConnectorManifestRecord[];
+  /**
+   * CLAUDE-CODE-ADMIN-PANELS-PHASE-D §1a — capabilities reported by
+   * each connector implementation, keyed by `systemType` (which
+   * matches `ConnectorManifestRecord.connectorType`). Built once at
+   * bootstrap from the SimpleConnectorRegistry; the surface composer
+   * looks each connector entry up by type so the dashboard can show
+   * what the connector advertises (vs. the manifest's wire-shape).
+   */
+  readonly connectorCapabilities?: ReadonlyMap<string, readonly string[]>;
 
   // ── Channels surface ──
   readonly channelRecords?: readonly ChannelManifestRecord[];
@@ -109,6 +135,14 @@ export interface AdminSetupRouteDeps {
 
   // ── Modes / OCT / policy surface ──
   readonly loadModeConfig?: () => Promise<ModeConfiguration>;
+  /**
+   * CLAUDE-CODE-ADMIN-PANELS-PHASE-D §3c — read-only summary of the
+   * loaded NXS policy file (bundle id, version, default outcome, rule
+   * counts by outcome). Computed once at bootstrap from the signed
+   * default policy so the panel can render it without re-reading the
+   * file. Null when the policy hasn't loaded.
+   */
+  readonly nxsPolicySummary?: NxsPolicySummary | null;
 
   // ── Observability surface ──
   readonly runLedgerWriter?: RunLedgerWriter;
@@ -290,6 +324,11 @@ function composeConnectorsSurface(deps: AdminSetupRouteDeps): DashboardSurfaceSt
         connectorType: r.connectorType,
         allowedSystems: r.allowedSystems,
         enabled: true, // HOLE-C01 partial visibility — loader-filtered
+        // CLAUDE-CODE-ADMIN-PANELS-PHASE-D §1a — capabilities the
+        // connector implementation advertises at runtime. Empty array
+        // when the type isn't registered (e.g. Vault connector
+        // declared in the manifest but not enabled).
+        capabilities: deps.connectorCapabilities?.get(r.connectorType) ?? [],
       })),
     },
     secretFields: [],
@@ -700,14 +739,22 @@ async function composeModesPolicyOctSurface(
       'fixtures/nvg/default.routing-policy.yaml',
       'packages/core/src/modes/mode-manager.ts',
     ],
-    currentConfiguredValue:
-      modeConfig !== null
+    currentConfiguredValue: {
+      ...(modeConfig !== null
         ? {
             nxsMode: modeConfig.nxsMode,
             nvgMode: modeConfig.nvgMode,
             enforcingLocked: modeConfig.enforcingLocked,
+            updatedAt: modeConfig.updatedAt,
+            updatedBy: modeConfig.updatedBy?.adminId ?? null,
           }
-        : {},
+        : {}),
+      // CLAUDE-CODE-ADMIN-PANELS-PHASE-D §3c — the panel displays a
+      // bundle/version/rule-count summary so operators can see what
+      // policy the engine is enforcing without reading the JSON file.
+      // Null when the policy hasn't loaded.
+      nxsPolicySummary: deps.nxsPolicySummary ?? null,
+    },
     secretFields: [],
     blockers,
     evidence,

@@ -1194,6 +1194,35 @@ const program = createCli({
     const nxsPolicyFile = await loadPolicyFile(nxsPolicyPath, controlPlaneKey);
     const nxsApproverRegistry = new SqliteApproverRegistry(coreDeps.db);
 
+    // CLAUDE-CODE-ADMIN-PANELS-PHASE-D §3c — derive a public-safe
+    // policy summary the modes panel can show without re-reading the
+    // signed JSON file. Outcome counts aggregate the rule outcome
+    // field across rules so the panel can render
+    // "6 rules (3 allow, 2 require_approval, 1 escalate)".
+    const outcomeCounts: Record<string, number> = {};
+    for (const rule of nxsPolicyFile.rules) {
+      const o = String(rule.outcome ?? 'unknown');
+      outcomeCounts[o] = (outcomeCounts[o] ?? 0) + 1;
+    }
+    const nxsPolicySummary = {
+      bundleId: String(nxsPolicyFile.bundleId),
+      version: String(nxsPolicyFile.bundleVersion),
+      issuer: String(nxsPolicyFile.issuer),
+      defaultOutcome: String(nxsPolicyFile.defaultOutcome),
+      ruleCount: nxsPolicyFile.rules.length,
+      outcomeCounts,
+    };
+
+    // CLAUDE-CODE-ADMIN-PANELS-PHASE-D §1a — capabilities map keyed by
+    // connector systemType. Each enabled connector is instantiated
+    // once at boot and asked what it supports; the manifest's
+    // connectorType matches the connector's systemType so the surface
+    // composer can look up `connectorCapabilities.get(r.connectorType)`.
+    const stubConnectorInstance = new StubConnector();
+    const connectorCapabilities = new Map<string, readonly string[]>([
+      [stubConnectorInstance.systemType, stubConnectorInstance.supportedCapabilities()],
+    ]);
+
     const buildNxsContext = async (
       action: Omit<AgentAction, 'delegationSequence'>
     ): Promise<PipelineContext> => {
@@ -1350,6 +1379,10 @@ const program = createCli({
       ...wsDeps,
       // CLAUDE-CODE-NXS-WIRE-PHASE-B — runtime entry into the 7-gate chain.
       dispatchToNxs,
+      // CLAUDE-CODE-ADMIN-PANELS-PHASE-D — admin-setup data threaded
+      // through to the connector + modes panels.
+      connectorCapabilities,
+      nxsPolicySummary,
       // Manifest records for admin-setup projection (Claude C)
       identityRecords: br.externals.identityRecords,
       connectorRecords: br.externals.connectorRecords,
