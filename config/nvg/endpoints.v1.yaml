@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-08T17:13:40.440Z'
-signature: aExskAE3NI__ygcZS9NC8ddweIj5cJzGThTYwFhSeQem1YCVE5bzOnnGC1cIjiC17mH_4WQjknnVLDt49zwdCA
+issuedAt: '2026-05-09T18:25:14.623Z'
+signature: JNEQDbDVPLjG53Z5P2OVahufMpJbSKOPdQwSO_7SaNffHq7tnNkNvpiPxB0J9q2Uw_G2bMDhZJD6TK05j6hHCg
 body:
   endpoints:
     - endpointId: local-ollama
@@ -9,6 +9,7 @@ body:
       url: http://localhost:11434/api/chat
       adapterId: ollama-chat-v1
       modelName: llama3.2
+      timeoutMs: 120000
       auth:
         kind: none
       enabled: false
@@ -34,12 +35,13 @@ body:
         secretRef: file:OPENAI_API_KEY
         headerName: Authorization
         prefix: 'Bearer '
-      enabled: false
+      enabled: true
     - endpointId: ollama-blackmac
       url: http://10.31.1.137:11434/api/chat
       adapterId: ollama-chat-v1
       modelName: qwen3.5:0.8b
       tier: on_prem_general
+      timeoutMs: 120000
       enabled: false
       auth:
         kind: none
@@ -48,6 +50,7 @@ body:
       adapterId: ollama-chat-v1
       modelName: granite3-dense:latest
       tier: on_prem_general
+      timeoutMs: 120000
       enabled: true
       auth:
         kind: none
@@ -56,6 +59,7 @@ body:
       adapterId: ollama-chat-v1
       modelName: gemma2:2b
       tier: on_prem_sensitive
+      timeoutMs: 120000
       enabled: true
       auth:
         kind: none
@@ -64,6 +68,7 @@ body:
       adapterId: ollama-chat-v1
       modelName: qwen2.5:1.5b
       tier: on_prem_general
+      timeoutMs: 120000
       enabled: true
       auth:
         kind: none

@@ -1059,6 +1059,14 @@ export interface RoutingProvenanceTrailEntry {
   latencyMs: number;
   responseSize: number | null;
   timestamp: IsoTimestamp;
+  /**
+   * CLAUDE-CODE-MODEL-PREFERENCE-TRANSPARENCY §3 — every attempt that ran
+   * (or was skipped) before this final outcome. Self-contained forensics so
+   * a single trail entry shows the full preference / sibling / fallback
+   * chain without cross-referencing per-attempt entries. Optional: only set
+   * on the final-outcome inbound entry when at least one attempt failed.
+   */
+  priorAttempts?: InvocationAttempt[];
 }
 
 export interface RoutingTrailWriter {

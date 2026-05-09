@@ -532,6 +532,96 @@ describe('BUG-3: preferred-tier sibling fallback (CLAUDE-CODE-FIX-MODEL-PREFEREN
     expect(sibCalls).toBe(0);
   });
 
+  // CLAUDE-CODE-MODEL-PREFERENCE-TRANSPARENCY §2 — when the preferred
+  // endpoint is ineligible (unhealthy + cooldown active) we used to skip
+  // it silently with no audit footprint. The router must now record a
+  // synthetic priorAttempt so the trail and run-ledger expose the skip.
+  it('records a priorAttempt when preferred endpoint is ineligible (transparency §2)', async () => {
+    // Simulated clock so we can mark the preferred endpoint unhealthy and
+    // keep the cooldown unfinished. Policy tier == preferred tier so the
+    // sibling block is skipped — the priorAttempt MUST come from the
+    // ineligible-skip branch alone, not from a transport call.
+    const clock = { ms: 1_000_000 };
+    const registry = new TierRegistry({ now: () => clock.ms });
+
+    const preferred = makeEndpoint('ep-pref-ineligible', MODEL_TIER.ON_PREM_GENERAL, {
+      adapterId: 'never-called' as NonEmpty,
+      healthy: true,
+      modelName: 'granite-test' as NonEmpty,
+    });
+    const sibling = makeEndpoint('ep-sibling', MODEL_TIER.ON_PREM_GENERAL, {
+      adapterId: 'sibling-adapter' as NonEmpty,
+      healthy: true,
+    });
+    registry.registerEndpoint(preferred);
+    registry.registerEndpoint(sibling);
+
+    // Mark preferred unhealthy. With a fresh cooldown timestamp set to
+    // clock.ms, isEndpointEligible() returns false (probation = elapsed >=
+    // healthCooldownMs, and we just started). Verifies the synthetic
+    // priorAttempt fires when the endpoint is skipped, not invoked.
+    registry.updateEndpointHealth(
+      'ep-pref-ineligible' as NonEmpty,
+      false,
+      new Date().toISOString() as IsoTimestamp
+    );
+
+    let preferredCalls = 0;
+    const adapters = new Map<string, ModelTransportAdapter>([
+      [
+        'never-called',
+        {
+          ...makeMockAdapter('never-called', { success: true, latencyMs: 0 }),
+          async invoke() {
+            preferredCalls++;
+            return { success: true, responseSize: 0, latencyMs: 0 };
+          },
+        },
+      ],
+      [
+        'sibling-adapter',
+        makeMockAdapter('sibling-adapter', {
+          success: true,
+          responseSize: 9,
+          latencyMs: 1,
+        }),
+      ],
+    ]);
+    const transportCtx = makeMockTransportContext(adapters);
+    const request = makeRequest();
+    const classification = classifyOutboundData(request.dataLabels);
+
+    // Policy tier == preferred tier, so siblings are tried via the same-tier
+    // retry block (NOT the preferred-tier-sibling block, which is skipped
+    // when tiers match — see model-router.ts:198 guard).
+    const result = await invokeModel(
+      MODEL_TIER.ON_PREM_GENERAL,
+      null,
+      request,
+      classification,
+      registry,
+      transportCtx,
+      preferred
+    );
+
+    // Sibling answers; preferred adapter never invoked.
+    expect(result.success).toBe(true);
+    expect(result.endpointUsed!.endpointId).toBe('ep-sibling');
+    expect(preferredCalls).toBe(0);
+
+    // Synthetic priorAttempt is the smoking gun the spec demands.
+    expect(result.priorAttempts).toBeDefined();
+    const skipped = result.priorAttempts!.find(
+      a => a.endpointUsed === 'ep-pref-ineligible'
+    );
+    expect(skipped).toBeDefined();
+    expect(skipped!.denialCode).toBe(DENIAL_CODE.NVG_ENDPOINT_UNREACHABLE);
+    expect(skipped!.reason).toBe('preferred_endpoint_ineligible');
+    expect(skipped!.tier).toBe(MODEL_TIER.ON_PREM_GENERAL);
+    expect(skipped!.modelName).toBe('granite-test');
+    expect(skipped!.latencyMs).toBe(0); // no transport call happened
+  });
+
   it('Auto (preferredEndpoint=null) preserves policy-tier behavior unchanged', async () => {
     const registry = new TierRegistry();
     registry.registerEndpoint(

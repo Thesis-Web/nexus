@@ -172,6 +172,127 @@ describe('computeRunTimeline', () => {
     expect(timeline.stages.every(s => s.status === 'pending')).toBe(true);
   });
 
+  // CLAUDE-CODE-MODEL-PREFERENCE-TRANSPARENCY §4 — surface preference
+  // substitution in the timeline. When the user's chosen endpoint is
+  // unhealthy and NVG silently runs a same-tier sibling, the run still
+  // succeeds — but the operator must see what was actually used.
+  it('surfaces preference substitution in nvg_wall and agent_response stages', () => {
+    const substitutedEvents: RunEvent[] = [
+      ev('run_opened', {}, '2026-05-09T00:05:00.000Z'),
+      ev('plan_created', { planId: 'p5' }, '2026-05-09T00:05:01.000Z'),
+      ev('plan_confirmed', { planId: 'p5' }, '2026-05-09T00:05:02.000Z'),
+      ev('orchestrator_dispatched', {}, '2026-05-09T00:05:03.000Z'),
+      ev('delegation_issued', {}, '2026-05-09T00:05:04.000Z'),
+      ev('node_dispatched', { agentId: 'agent-1' }, '2026-05-09T00:05:05.000Z'),
+      ev(
+        'partial_result',
+        { mailboxItemId: 'mb1', responseSize: 500 },
+        '2026-05-09T00:05:06.000Z'
+      ),
+      ev(
+        'node_completed',
+        {
+          completionMetadata: {
+            mailboxItemId: 'mb1',
+            modelTierInvoked: 'on_prem_general',
+            responseSize: 500,
+            preferredEndpointId: 'ollama-jameshp',
+            actualEndpointId: 'ollama-jamesImac',
+            preferenceHonored: false,
+            switchReason: 'preferred_unhealthy_same_tier_sibling',
+          },
+        },
+        '2026-05-09T00:05:07.000Z'
+      ),
+      ev('dag_completed', { completedCount: 1 }, '2026-05-09T00:05:08.000Z'),
+      ev('compile_assembly_complete', {}, '2026-05-09T00:05:09.000Z'),
+      ev('final_response', { artifactId: 'art2' }, '2026-05-09T00:05:10.000Z'),
+      ev('run_closed', { closeReason: 'completed' }, '2026-05-09T00:05:11.000Z'),
+    ];
+
+    const timeline = computeRunTimeline(substitutedEvents);
+
+    // Run still succeeds — the substitution is informational, not failure.
+    expect(timeline.closed).toBe(true);
+    expect(timeline.failure).toBeNull();
+
+    const nvg = timeline.stages.find(s => s.id === 'nvg_wall')!;
+    expect(nvg.status).toBe('complete');
+    // NVG wall surfaces the full preferred / actual / reason triple.
+    expect(nvg.detailLines).toEqual(
+      expect.arrayContaining([
+        'Preferred: ollama-jameshp',
+        'Actual: ollama-jamesImac',
+        'Reason: preferred unhealthy same tier sibling',
+      ])
+    );
+
+    const agentResponse = timeline.stages.find(s => s.id === 'agent_response')!;
+    expect(agentResponse.status).toBe('complete');
+    // Agent_response gets the shorter warning line — operators scanning the
+    // timeline at a glance see the substitution without scrolling up.
+    expect(agentResponse.detailLines).toEqual(
+      expect.arrayContaining(['⚠ Model substituted: ollama-jamesImac'])
+    );
+  });
+
+  it('omits substitution detail lines on the happy path (preference honored)', () => {
+    const honoredEvents: RunEvent[] = [
+      ...SUCCESS_EVENTS.slice(0, 8), // through node_completed
+    ];
+    // Replace node_completed with one carrying preferenceHonored=true.
+    honoredEvents[8] = ev(
+      'node_completed',
+      {
+        completionMetadata: {
+          mailboxItemId: 'm1',
+          modelTierInvoked: 'on_prem_general',
+          responseSize: 200,
+          preferredEndpointId: 'ollama-jameshp',
+          actualEndpointId: 'ollama-jameshp',
+          preferenceHonored: true,
+          switchReason: null,
+        },
+      },
+      '2026-05-09T00:00:08.000Z'
+    );
+    const fullEvents = [...honoredEvents, ...SUCCESS_EVENTS.slice(9)];
+
+    const timeline = computeRunTimeline(fullEvents);
+    const nvg = timeline.stages.find(s => s.id === 'nvg_wall')!;
+    const agentResponse = timeline.stages.find(s => s.id === 'agent_response')!;
+
+    // No substitution lines when preference honored — keeps the green path quiet.
+    expect(nvg.detailLines.some(l => l.startsWith('Preferred:'))).toBe(false);
+    expect(nvg.detailLines.some(l => l.startsWith('Actual:'))).toBe(false);
+    expect(agentResponse.detailLines.some(l => l.includes('Model substituted'))).toBe(false);
+  });
+
+  it('omits substitution detail lines when no preference was supplied (Auto policy)', () => {
+    const autoEvents: RunEvent[] = [...SUCCESS_EVENTS];
+    autoEvents[8] = ev(
+      'node_completed',
+      {
+        completionMetadata: {
+          mailboxItemId: 'm1',
+          modelTierInvoked: 'frontier_general',
+          responseSize: 800,
+          preferredEndpointId: null,
+          actualEndpointId: 'openai-gpt',
+          preferenceHonored: null, // null = "no preference asked", distinct from false
+          switchReason: null,
+        },
+      },
+      '2026-05-09T00:00:08.000Z'
+    );
+
+    const timeline = computeRunTimeline(autoEvents);
+    const nvg = timeline.stages.find(s => s.id === 'nvg_wall')!;
+
+    expect(nvg.detailLines.some(l => l.startsWith('Preferred:'))).toBe(false);
+    expect(nvg.detailLines.some(l => l.startsWith('Actual:'))).toBe(false);
+  });
+
   it('handles unknown event types without crashing', () => {
     const eventsWithUnknown: RunEvent[] = [
       ev('run_opened', {}, '2026-05-09T00:04:00.000Z'),

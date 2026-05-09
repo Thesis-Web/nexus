@@ -348,7 +348,43 @@ function describeDelegation(events: RunEvent[]): string[] {
   return lines;
 }
 
-function describeNvg(events: RunEvent[], partial: RunEvent | undefined): string[] {
+/**
+ * CLAUDE-CODE-MODEL-PREFERENCE-TRANSPARENCY §4 — extract preference-vs-actual
+ * model selection from `node_completed.completionMetadata`. Returns `null`
+ * when no preference was supplied or the preference was honored — only the
+ * substituted case produces detail. The metadata is written by
+ * makeDispatchToGovernance (scripts/nexus-main.ts §5) and is on the wire
+ * already; this reader is the UI surface for the operator.
+ */
+function describePreferenceSubstitution(
+  completed: RunEvent | undefined,
+  prefix: string
+): string[] {
+  if (!completed?.detail) return [];
+  const meta = completed.detail['completionMetadata'];
+  if (!meta || typeof meta !== 'object') return [];
+  const m = meta as Record<string, unknown>;
+  if (m['preferenceHonored'] !== false) return [];
+  const lines: string[] = [];
+  const preferred = str(m['preferredEndpointId']);
+  const actual = str(m['actualEndpointId']);
+  const reason = str(m['switchReason']);
+  if (prefix === 'nvg_wall') {
+    if (preferred) lines.push(`Preferred: ${preferred}`);
+    if (actual) lines.push(`Actual: ${actual}`);
+    if (reason) lines.push(`Reason: ${reason.replace(/_/g, ' ')}`);
+  } else {
+    // agent_response stage: shorter signal, the NVG wall has the full breakdown.
+    if (actual) lines.push(`⚠ Model substituted: ${actual}`);
+  }
+  return lines;
+}
+
+function describeNvg(
+  events: RunEvent[],
+  partial: RunEvent | undefined,
+  completed: RunEvent | undefined
+): string[] {
   const dispatched = events.find(e => e.type === 'node_dispatched');
   const lines: string[] = [];
   if (dispatched?.detail) {
@@ -363,12 +399,15 @@ function describeNvg(events: RunEvent[], partial: RunEvent | undefined): string[
     const responseSize = num(partial.detail['responseSize']);
     if (responseSize !== null) lines.push(`Response: ${responseSize} bytes`);
   }
+  // Preference substitution surfaces under the green check — Option A.
+  lines.push(...describePreferenceSubstitution(completed, 'nvg_wall'));
   return lines;
 }
 
 function describeAgentResponse(events: RunEvent[]): string[] {
   const partial = events.find(e => e.type === 'partial_result');
   const dag = events.find(e => e.type === 'dag_completed');
+  const completed = events.find(e => e.type === 'node_completed');
   const lines: string[] = [];
   if (partial?.detail) {
     const mailboxItemId = str(partial.detail['mailboxItemId']);
@@ -380,6 +419,7 @@ function describeAgentResponse(events: RunEvent[]): string[] {
     const completed = num(dag.detail['completedCount']);
     if (completed !== null) lines.push(`Nodes completed: ${completed}`);
   }
+  lines.push(...describePreferenceSubstitution(completed, 'agent_response'));
   return lines;
 }
 
@@ -654,10 +694,14 @@ export function computeRunTimeline(events: RunEvent[]): RunTimelineState {
         detailLines = describeDelegation(own);
         break;
       case 'nvg_wall': {
-        const partial = (buckets.get('agent_response') ?? []).find(
-          e => e.type === 'partial_result'
-        );
-        detailLines = describeNvg(own, partial);
+        const agentResponseBucket = buckets.get('agent_response') ?? [];
+        const partial = agentResponseBucket.find(e => e.type === 'partial_result');
+        // node_completed lives on the agent_response stage but its
+        // completionMetadata describes what happened *at* the NVG wall — pass
+        // it through so the model-substitution warning lands where the user
+        // expects to see it (next to the "Classification / Response" lines).
+        const completed = agentResponseBucket.find(e => e.type === 'node_completed');
+        detailLines = describeNvg(own, partial, completed);
         if (status === 'denied' || status === 'error') {
           const failed = own.find(e => e.type === 'node_failed' || e.type === 'node_timed_out');
           const reasonStr = str(failed?.detail?.['failureReason']) ?? '';

@@ -266,11 +266,19 @@ function App() {
             onChange={e => setSelectedModel(e.target.value)}
           >
             <option value="">Auto (policy)</option>
+            {/* CLAUDE-CODE-MODEL-PREFERENCE-TRANSPARENCY §5 — show every
+                visible endpoint; mark unhealthy ones disabled with a
+                "(unhealthy)" suffix. The HTML `disabled` attribute keeps
+                the user from selecting them while still exposing that the
+                endpoint exists. Filtering by `visible` is the catalog's
+                blueprint §3.4.3 separation: visible = capability-ceiling,
+                selectable = currently-invokable. */}
             {models
-              .filter(m => m.selectable)
+              .filter(m => m.visible)
               .map(m => (
-                <option key={m.id} value={m.id}>
+                <option key={m.id} value={m.id} disabled={!m.selectable}>
                   {m.name}
+                  {m.selectable ? '' : ' (unhealthy)'}
                 </option>
               ))}
           </select>

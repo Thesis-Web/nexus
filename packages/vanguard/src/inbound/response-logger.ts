@@ -61,6 +61,11 @@ export async function logInboundResponse(
   }
 
   // Final-outcome trail entry
+  // CLAUDE-CODE-MODEL-PREFERENCE-TRANSPARENCY §3.1 — embed `priorAttempts` on
+  // the final entry so forensic consumers can read the full chain (preferred
+  // skip, sibling failures, cross-tier fallback) from a single record. The
+  // per-attempt entries above remain authoritative for ordered timing audits;
+  // this is a self-contained convenience surface, not a replacement.
   await trailWriter.append({
     entryId: crypto.randomUUID(),
     runId: request.runId,
@@ -84,6 +89,9 @@ export async function logInboundResponse(
     latencyMs: invocation.latencyMs ?? 0,
     responseSize: invocation.responseSize ?? null,
     timestamp: new Date().toISOString(),
+    ...(invocation.priorAttempts && invocation.priorAttempts.length > 0
+      ? { priorAttempts: invocation.priorAttempts }
+      : {}),
   });
 }
 

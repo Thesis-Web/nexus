@@ -181,6 +181,28 @@ export async function invokeModel(
       latencyMs: result.latencyMs ?? 0,
       attemptedAt: new Date().toISOString() as IsoTimestamp,
     });
+  } else if (preferredEndpoint !== null) {
+    // CLAUDE-CODE-MODEL-PREFERENCE-TRANSPARENCY §2 — the preferred endpoint
+    // exists in the registry but is currently ineligible (unhealthy and not
+    // yet probationary). The previous behavior was to silently fall through
+    // to the sibling/policy chain with no audit footprint — operators had no
+    // way to tell from the trail that the user's preference was even
+    // considered. Push a synthetic priorAttempt so the routing trail and
+    // run-ledger completionMetadata both expose the skip.
+    //
+    // NVG_ENDPOINT_UNREACHABLE is the closest existing retriable code; the
+    // `reason` distinguishes the "endpoint not invoked, in cooldown" case
+    // from an actual network failure.
+    priorAttempts.push({
+      endpointUsed: preferredEndpoint.endpointId,
+      tier: preferredEndpoint.tier,
+      adapterId: preferredEndpoint.adapterId,
+      modelName: preferredEndpoint.modelName,
+      denialCode: DENIAL_CODE.NVG_ENDPOINT_UNREACHABLE,
+      reason: 'preferred_endpoint_ineligible',
+      latencyMs: 0,
+      attemptedAt: new Date().toISOString() as IsoTimestamp,
+    });
   }
 
   // ── Preferred-tier siblings (CLAUDE-CODE-FIX-MODEL-PREFERENCE-ROUTING §3) ──
