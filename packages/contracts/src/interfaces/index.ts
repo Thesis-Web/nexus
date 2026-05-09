@@ -37,6 +37,11 @@ export interface Principal {
 
 // ─── §12.3.2 Actor ───
 // ORCH-WIRE-001: allowedCapabilities + enabled — governed agent profile [§20.2].
+// HOLE-A02: roles are part of the governed Actor record so the identity
+// adapter can no longer hardcode admin for everyone. The identity provider
+// maps `actor.roles ?? []` onto IdentityClaims.roleAssignments. Admin gating
+// (`hasAdminRole()`) reads from those claims, so dropping a role here is the
+// only way to grant admin — there is no longer an out-of-band master path.
 export interface Actor {
   actorId: Uuid;
   actorClass: ActorClass;
@@ -47,6 +52,7 @@ export interface Actor {
   riskCeiling: RiskTier;
   allowedSystems: string[];
   allowedCapabilities?: string[];
+  roles?: NonEmpty[];
   enabled?: boolean;
   registeredAt: IsoTimestamp;
   owner?: NonEmpty;

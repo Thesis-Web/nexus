@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { getMe, type WorkspaceMe } from '../api.js';
-import { hasAdminRole } from '../admin-role.js';
+import { hasAdminRole } from '@nexus/contracts';
 
 export interface MeState {
   loading: boolean;

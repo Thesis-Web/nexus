@@ -13,7 +13,7 @@
 import { useState, useEffect } from 'react';
 import { AdminSetupOverview } from './admin-setup-overview.js';
 import { AdminCategoryPage } from './admin-category-page.js';
-import { ADMIN_DISPLAY_LABEL } from '../../admin-role.js';
+import { ADMIN_DISPLAY_LABEL } from '@nexus/contracts';
 import { getSetupStatus } from '../../admin-setup-api.js';
 import { getCatalog, type AdminCatalog } from '../../admin-catalog-api.js';
 import type { DashboardSetupStatusResponse, DashboardSurfaceStatus } from '@nexus/contracts';

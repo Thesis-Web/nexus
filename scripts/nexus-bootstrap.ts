@@ -1049,7 +1049,12 @@ export async function bootstrapWorkspace(
           riskCeiling: actor.riskCeiling,
           allowedSystems: actor.allowedSystems,
           allowedCapabilities: actor.allowedCapabilities ?? [],
-          roles: ['admin'], // HOLE-A02 temp: master-key seed; per-actor roles pending Layer-2 ratification
+          // HOLE-A02 closure: roles come from the governed Actor record, not
+          // hardcoded. Actors without an explicit role get an empty list and
+          // therefore fail the admin check in hasAdminRole(). The dev-admin
+          // seed below carries roles: ['nexus-admin']; agents and test users
+          // intentionally omit it so they cannot reach admin routes.
+          roles: actor.roles ?? [],
           ...(actor.owner !== undefined ? { owner: actor.owner } : {}),
           ...(actor.purpose !== undefined ? { purpose: actor.purpose } : {}),
           ...(actor.reviewCadence !== undefined ? { reviewCadence: actor.reviewCadence } : {}),
@@ -1115,6 +1120,12 @@ export async function bootstrapWorkspace(
         riskCeiling: 'critical',
         allowedSystems: DEV_ADMIN_SYSTEMS,
         allowedCapabilities: DEV_ADMIN_CAPABILITIES,
+        // HOLE-A02 closure: canonical admin role per OR-001. The identity
+        // adapter projects this onto IdentityClaims.roleAssignments, and
+        // hasAdminRole() in the admin auth chain matches it. No master key,
+        // no wildcard — admin is a normal enumerated role on the governed
+        // Actor record. Only this seed carries it.
+        roles: ['nexus-admin' as NonEmpty],
         enabled: true,
         registeredAt: now,
         owner: 'system' as NonEmpty,

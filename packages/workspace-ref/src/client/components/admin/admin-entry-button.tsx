@@ -3,7 +3,7 @@
 // Owner ruling OR-001 (2026-05-06): role 'nexus-admin'.
 // Acceptance gate #1: non-admin users do not see the admin button.
 
-import { ADMIN_DISPLAY_LABEL } from '../../admin-role.js';
+import { ADMIN_DISPLAY_LABEL } from '@nexus/contracts';
 
 interface Props {
   isAdmin: boolean;
