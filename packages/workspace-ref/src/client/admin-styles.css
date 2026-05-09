@@ -1023,6 +1023,59 @@
   font-size: 12px;
   font-style: italic;
 }
+
+/* Informational empty state — used when a tab is empty by design (e.g., NXS
+ * doesn't fire for prompt runs, or a run was rejected before NVG dispatch).
+ * Distinct from .nx-ledger-empty-pane (italic muted single-line) so the text
+ * has room to explain context without looking like an error. */
+.nx-ledger-empty-state {
+  padding: 16px 18px;
+  background: #1a1a1f;
+  border: 1px solid #2a2a35;
+  border-left: 3px solid #6cb0f0;
+  border-radius: 4px;
+  color: #c0c0c0;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.nx-ledger-empty-state h4 {
+  margin: 0 0 8px 0;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.nx-ledger-empty-state p {
+  margin: 6px 0;
+}
+.nx-ledger-empty-state ul {
+  margin: 6px 0 6px 0;
+  padding-left: 20px;
+}
+.nx-ledger-empty-state li {
+  margin: 3px 0;
+}
+.nx-ledger-empty-state code {
+  background: #0f0f12;
+  padding: 1px 4px;
+  border-radius: 2px;
+  color: #a0c0e0;
+  font-size: 11px;
+}
+.nx-ledger-empty-state strong {
+  color: #fff;
+  font-weight: 600;
+}
+.nx-ledger-empty-state em {
+  color: #a0c0e0;
+  font-style: normal;
+  font-weight: 600;
+}
+.nx-ledger-empty-state .nx-ledger-hint {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #2a2a35;
+  display: block;
+}
 .nx-ledger-empty {
   color: #555;
   font-style: italic;
