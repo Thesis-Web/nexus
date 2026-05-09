@@ -153,7 +153,8 @@ import {
   AnthropicMessagesV1Adapter,
   OpenAiChatV1Adapter,
   EnvSecretSource,
-  FileSecretSource,
+  VaultSecretSource,
+  ensureVaultKey,
   ChainedSecretSource,
   loadEndpointManifest,
   loadNvgRoutingPolicy,
@@ -224,6 +225,10 @@ const MODE_CONFIG = 'keys/mode-config.json';
 // CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — admin-managed API keys.
 // Gitignored; created on first POST /workspace/admin/setup/secrets.
 const SECRETS_FILE = 'keys/secrets.json';
+// CLAUDE-CODE-VAULT-SECRET-SOURCE — AES-256-GCM key for at-rest encryption
+// of secrets. Distinct from the Ed25519 control-plane key (different
+// algorithm, different purpose). Gitignored; auto-generated on first run.
+const VAULT_KEY_FILE = 'keys/vault.key';
 // §5.1 — externals five domains
 const MANIFEST_WORKSPACE = 'config/workspace/workspaces.v1.yaml';
 const MANIFEST_ORCHESTRATORS = 'config/orchestrators/orchestrators.v1.yaml';
@@ -283,12 +288,13 @@ export interface BootstrapResult {
   readonly modeConfig: ModeConfiguration;
   readonly externals: ExternalsRuntime;
   /**
-   * File-backed secret store for admin-managed API keys
-   * (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC). Composition root adapts this into
+   * Encryption-at-rest secret store for admin-managed API keys
+   * (CLAUDE-CODE-VAULT-SECRET-SOURCE). Composition root adapts this into
    * the SecretWriter port for the admin secret routes; the read side is
    * already wired into transportContext.secretSource via ChainedSecretSource.
+   * Values on disk are AES-256-GCM ciphertext keyed by `keys/vault.key`.
    */
-  readonly fileSecretSource: FileSecretSource;
+  readonly vaultSecretSource: VaultSecretSource;
   /** Backing path of the secrets file — for evidence labels in the dashboard. */
   readonly secretsStorageLabel: string;
 }
@@ -436,6 +442,17 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   const privKey = controlPlaneKey.privateKey;
   console.log(`[bootstrap] Step 2 complete: public key ${pubKey.slice(0, 16)}...`);
 
+  // ─── Step 2b: Ensure vault encryption key (CLAUDE-CODE-VAULT-SECRET-SOURCE) ──
+  // Generates keys/vault.key on first run; idempotent thereafter. Must run
+  // BEFORE Step 7 so VaultSecretSource.canResolve()/resolve() can read the
+  // vault key during endpoint manifest loading.
+  console.log(`[bootstrap] Step 2b: ensuring vault encryption key (${VAULT_KEY_FILE})`);
+  const vaultKeyResult = await ensureVaultKey(path.join(process.cwd(), VAULT_KEY_FILE));
+  if (vaultKeyResult.generated) {
+    console.log('[bootstrap] vault key generated — fresh AES-256-GCM key written to disk');
+  }
+  console.log(`[bootstrap] Step 2b complete: vault key ${vaultKeyResult.generated ? 'created' : 'loaded'}`);
+
   // ─── Step 3: Load identity manifest ──────────────────────────────────────
   console.log(`[bootstrap] Step 3: loading identity manifest (${MANIFEST_IDENTITY})`);
   const identityRecords = await loadIdentityManifest({
@@ -477,14 +494,26 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   console.log(`[bootstrap] Step 6 complete: ${channelRecords.length} enabled channel(s)`);
 
   // ─── Step 7: Load endpoint manifest ──────────────────────────────────────
-  // CLAUDE-CODE-SECRET-MANAGEMENT-SPEC: chained resolver — `file:` refs
+  // CLAUDE-CODE-VAULT-SECRET-SOURCE: chained resolver — `file:` refs
   // resolve from keys/secrets.json (admin-managed at runtime via the
-  // dashboard); bare KEY refs fall back to process.env so existing
-  // env-driven deployments keep working.
+  // dashboard) with values authenticated-encrypted at rest under the vault
+  // key from Step 2b; bare KEY refs fall back to process.env so existing
+  // env-driven deployments keep working. Any plaintext values left over
+  // from the pre-vault era are migrated in-place at first boot.
   console.log(`[bootstrap] Step 7: loading endpoint manifest (${MANIFEST_ENDPOINTS})`);
-  const fileSecretSource = new FileSecretSource(path.join(process.cwd(), SECRETS_FILE));
+  const vaultSecretSource = new VaultSecretSource(
+    path.join(process.cwd(), SECRETS_FILE),
+    path.join(process.cwd(), VAULT_KEY_FILE)
+  );
+  const migration = await vaultSecretSource.migrateToEncrypted();
+  if (migration.migrated > 0) {
+    console.log(
+      `[bootstrap] vault: encrypted ${migration.migrated} plaintext secret(s) ` +
+        `(one-time migration from FileSecretSource format)`
+    );
+  }
   const envSecretSource = new EnvSecretSource();
-  const secretSource = new ChainedSecretSource([fileSecretSource, envSecretSource]);
+  const secretSource = new ChainedSecretSource([vaultSecretSource, envSecretSource]);
   const endpoints = await loadEndpointManifest({
     manifestPath: MANIFEST_ENDPOINTS,
     controlPlanePublicKey: pubKey,
@@ -872,7 +901,7 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
     routingPolicy,
     modeConfig,
     externals,
-    fileSecretSource,
+    vaultSecretSource,
     secretsStorageLabel: SECRETS_FILE,
   };
 }

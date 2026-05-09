@@ -211,14 +211,16 @@ const program = createCli({
     const computeDigest = (obj: unknown): Sha256Hex =>
       createHash('sha256').update(canonicalize(obj)).digest('hex') as Sha256Hex;
 
-    // CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — adapter from FileSecretSource (Layer 3)
+    // CLAUDE-CODE-VAULT-SECRET-SOURCE — adapter from VaultSecretSource (Layer 3)
     // to the SecretWriter port consumed by admin-writer.ts (Layer 7). Layer 7
-    // never sees the read side (no readSecret method) — values stay in the
-    // ChainedSecretSource that Vanguard's transport adapters call.
+    // never sees the read side (no readSecret method) and never sees plaintext
+    // — writeSecret encrypts under the vault key before persisting, and the
+    // ChainedSecretSource that Vanguard's transport adapters call decrypts
+    // transparently at invoke-time.
     const secretWriter = {
-      writeSecret: (k: string, v: string) => br.fileSecretSource.writeSecret(k, v),
-      deleteSecret: (k: string) => br.fileSecretSource.deleteSecret(k),
-      listKeyNames: () => br.fileSecretSource.listKeyNames(),
+      writeSecret: (k: string, v: string) => br.vaultSecretSource.writeSecret(k, v),
+      deleteSecret: (k: string) => br.vaultSecretSource.deleteSecret(k),
+      listKeyNames: () => br.vaultSecretSource.listKeyNames(),
       storageLabel: br.secretsStorageLabel,
     };
 

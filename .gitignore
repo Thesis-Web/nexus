@@ -26,6 +26,9 @@ keys/admins/
 # Admin-managed API keys (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC)
 keys/secrets.json
 keys/secrets.json.tmp-*
+# Vault encryption key (CLAUDE-CODE-VAULT-SECRET-SOURCE)
+keys/vault.key
+keys/vault.key.tmp-*
 
 # Environment files
 .env
