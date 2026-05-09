@@ -100,6 +100,7 @@ function makeRequest(agentIds: Uuid[]): WorkspaceRunRequest {
     workspaceSocketId: 'ref-workspace-v1' as NonEmpty,
     planCheckbackRequested: false,
     preferredEndpointId: null,
+    attachedFiles: [],
   };
 }
 

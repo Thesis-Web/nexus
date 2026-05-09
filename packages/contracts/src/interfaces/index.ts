@@ -836,6 +836,11 @@ export type RunEventType =
   | 'workspace_file_staged'
   | 'workspace_file_bound'
   | 'workspace_file_quarantined'
+  // CLAUDE-CODE-FILE-ATTACH Phase A — emitted once per run after every
+  // attached file has classified + bound + read successfully. Detail
+  // carries metadata only (fileId, filename, mediaType, sizeChars) —
+  // NEVER the content (Phase A §5: ledger entries stay bounded).
+  | 'workspace_file_attached'
   | 'run_cancelled'
   // ── Admin secret onboarding (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC) ──────────
   // Credential-lifecycle audit: emitted on successful POST/DELETE against

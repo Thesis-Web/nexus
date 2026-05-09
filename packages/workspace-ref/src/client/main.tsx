@@ -141,6 +141,13 @@ function App() {
           setRuns(prev => [newRun, ...prev]);
           setActiveRunId(runId);
           runEvents.subscribe(runId);
+          // CLAUDE-CODE-FILE-ATTACH Phase A — files were just bound to
+          // this run by the server; the workspace file store rejects
+          // re-binding a 'bound' file to another run. Clear locally so
+          // the next prompt starts with no attachments. The blob bytes
+          // remain readable from the run we just started; nothing is
+          // deleted, only the staging UI list.
+          setFiles([]);
         } else {
           // ok:false — POST itself failed. The runId was never returned, so
           // there's nothing to subscribe to. Show the error instead of
@@ -323,6 +330,8 @@ function App() {
           <PromptPanel
             agents={agents}
             preferredEndpointId={selectedModel}
+            attachedFiles={files}
+            onRemoveFile={fileId => setFiles(prev => prev.filter(f => f.fileId !== fileId))}
             onSubmit={submission => void handleSubmit(submission)}
             onFileUpload={() => void handleFileUpload()}
             disabled={submitting}

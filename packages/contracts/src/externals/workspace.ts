@@ -46,6 +46,29 @@ export interface WorkspaceRunRequest {
    * routing (which may trigger a checkback).
    */
   preferredEndpointId: NonEmpty | null;
+  /**
+   * CLAUDE-CODE-FILE-ATTACH Phase A — file content the workspace route read
+   * from the blob store after classification + binding. Each entry carries
+   * file metadata and the decoded content (UTF-8 for text-like media types,
+   * base64 for binary). Empty array when no files are attached.
+   *
+   * Phase A semantics: this content is included in the model prompt as
+   * READ-ONLY context. The model can summarize, quote, or reason over it
+   * but cannot act on external systems through it — that requires NXS +
+   * connectors, deferred to a later phase.
+   *
+   * This field is transient: it lives only long enough for the orchestrator
+   * to assemble the NVG payload. It is NEVER copied into the run-ledger
+   * detail (only metadata is logged) and NEVER persisted in WorkspaceRunRequest
+   * storage. The blob store remains the system of record for file bytes.
+   */
+  attachedFiles: ReadonlyArray<{
+    fileId: string;
+    filename: string;
+    mediaType: string;
+    /** UTF-8 text for text-like media types; base64 for binary. */
+    content: string;
+  }>;
 }
 
 // ─── CompileReturnAck ───

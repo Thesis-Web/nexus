@@ -28,6 +28,17 @@ export interface PromptSubmission {
   constrainedInputs?: Record<string, string>;
 }
 
+/**
+ * CLAUDE-CODE-FILE-ATTACH Phase A — file shape the parent passes in. Kept
+ * in this component (and mirrored in main.tsx) rather than imported from
+ * a shared module because workspace-ref's client is intentionally thin —
+ * the wire shape is `{ fileId, filename }`.
+ */
+export interface AttachedFileSummary {
+  fileId: string;
+  filename: string;
+}
+
 interface PromptPanelProps {
   agents: CatalogItem[];
   /**
@@ -35,6 +46,14 @@ interface PromptPanelProps {
    * Threaded through PromptSubmission.preferredEndpointId on submit.
    */
   preferredEndpointId?: string;
+  /**
+   * Files the user has uploaded but not yet sent. Rendered as chips below
+   * the textarea. Each chip's ✕ calls `onRemoveFile(fileId)`. After submit
+   * the parent is expected to clear the list — the workspace file store
+   * binds files to a single runId, so the same fileId can't ship twice.
+   */
+  attachedFiles?: readonly AttachedFileSummary[];
+  onRemoveFile?: (fileId: string) => void;
   onSubmit: (submission: PromptSubmission) => void;
   onFileUpload?: () => void;
   disabled?: boolean;
@@ -43,6 +62,8 @@ interface PromptPanelProps {
 export function PromptPanel({
   agents,
   preferredEndpointId,
+  attachedFiles,
+  onRemoveFile,
   onSubmit,
   onFileUpload,
   disabled,
@@ -65,6 +86,12 @@ export function PromptPanel({
     if (selectedAgents.length > 0) submission.agents = selectedAgents;
     if (preferredEndpointId) {
       submission.preferredEndpointId = preferredEndpointId;
+    }
+    // CLAUDE-CODE-FILE-ATTACH Phase A — every staged file ships with the
+    // submission. The server reads the bound bytes and threads them onto
+    // WorkspaceRunRequest.attachedFiles for the NVG payload.
+    if (attachedFiles && attachedFiles.length > 0) {
+      submission.attachmentIds = attachedFiles.map(f => f.fileId);
     }
 
     if (tab === 'sectioned') {
@@ -182,6 +209,33 @@ export function PromptPanel({
           Secure Rails require elevated session assurance. Use Vault auth to unlock.
         </div>
       )}
+
+      {/* CLAUDE-CODE-FILE-ATTACH Phase A — attached files chip strip.
+          Renders only when files are staged so the empty-state input
+          area stays visually quiet. Clicking ✕ removes one file from
+          the parent state; submit ships every remaining file. */}
+      {attachedFiles && attachedFiles.length > 0 ? (
+        <div className="nx-prompt-attachments" aria-label="Attached files">
+          {attachedFiles.map(f => (
+            <span key={f.fileId} className="nx-prompt-attachment" title={f.fileId}>
+              <span className="nx-prompt-attachment-icon" aria-hidden="true">
+                📎
+              </span>
+              <span className="nx-prompt-attachment-name">{f.filename}</span>
+              {onRemoveFile ? (
+                <button
+                  type="button"
+                  className="nx-prompt-attachment-remove"
+                  aria-label={`Remove ${f.filename}`}
+                  onClick={() => onRemoveFile(f.fileId)}
+                >
+                  ×
+                </button>
+              ) : null}
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       {/* Prompt input area */}
       <div className="nx-prompt-input-area">

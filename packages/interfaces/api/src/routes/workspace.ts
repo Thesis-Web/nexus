@@ -504,26 +504,23 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         workspaceSocketId,
       });
 
-      // §6.1 step 5: build WorkspaceRunRequest
-      const request: WorkspaceRunRequest = {
-        runId,
-        userId: actorId as NonEmpty,
-        principalId: principalId as Uuid,
-        authenticatedBy: deps.identityProvider.providerType as NonEmpty,
-        enteredAt,
-        prompt: prompt as NonEmpty,
-        promptDigest,
-        promptRef: null,
-        selectedAgentIds: selectedAgentIds as Uuid[],
-        workspaceSocketId,
-        planCheckbackRequested,
-        preferredEndpointId: preferredEndpointId as NonEmpty | null,
-      };
+      // CLAUDE-CODE-FILE-ATTACH Phase A — collected after the existing
+      // classify+bind loop so file content rides into the run request only
+      // for governance-cleared bytes. Empty when no attachments were sent.
+      const attachedFiles: Array<{
+        fileId: string;
+        filename: string;
+        mediaType: string;
+        content: string;
+      }> = [];
 
       // §6.1 step 5: write run_opened — no raw prompt in detail (hard rule 19)
       // CLAUDE-CODE-MODEL-SELECTION-SPEC §5 — preferredEndpointId in audit
       // trail records what the user asked for; the dispatch event later
       // records what was actually used and whether the preference was honored.
+      // (attachedFiles metadata is appended below after binding completes —
+      // the run_opened event documents what the run was OPENED with, but we
+      // need the bound file list before we can include it.)
       await deps.runLedgerWriter.writeEvent({
         runId,
         eventType: 'run_opened',
@@ -535,9 +532,9 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
           principalId,
           authenticatedBy: deps.identityProvider.providerType,
           promptDigest,
-          selectedAgentIds: request.selectedAgentIds,
-          planCheckbackRequested: request.planCheckbackRequested,
-          preferredEndpointId: request.preferredEndpointId,
+          selectedAgentIds,
+          planCheckbackRequested,
+          preferredEndpointId,
         },
       });
 
@@ -626,8 +623,96 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
               classificationLabels: classification.labels,
             },
           });
+
+          // CLAUDE-CODE-FILE-ATTACH Phase A — read the bound bytes from the
+          // blob store and decode them for the prompt payload. Text-like
+          // media types are decoded as UTF-8; everything else is base64
+          // (Phase A passes only text content into the model — see
+          // makeDispatchToGovernance — but base64 keeps the wire shape
+          // uniform for future binary/vision support).
+          //
+          // This is the ONLY place file content is loaded into memory.
+          // It rides on WorkspaceRunRequest.attachedFiles long enough for
+          // the orchestrator to assemble the NVG payload, then is dropped.
+          // Never written to the run ledger; never persisted in storage.
+          const stream = await deps.workspaceBlobStore.read(fileRef.storedAt);
+          if (stream === null) {
+            // Bound file should always be readable; missing bytes is a
+            // backend integrity error. Close the run rather than ship a
+            // bound-but-empty file silently.
+            await deps.runLedgerWriter.writeEvent({
+              runId,
+              eventType: 'run_closed',
+              timestamp: nowIso(),
+              actorId: null,
+              detail: {
+                closeReason: `Attachment ${attachId} bound but blob unreadable`,
+              },
+            });
+            res.status(500).json({
+              ok: false,
+              error: `Attachment ${attachId} bytes unavailable`,
+            });
+            return;
+          }
+          const chunks: Buffer[] = [];
+          for await (const chunk of stream) {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          }
+          const buffer = Buffer.concat(chunks);
+          const isTextLike =
+            /^(text\/|application\/json|application\/xml|application\/javascript|application\/x-yaml)/.test(
+              fileRef.mediaType
+            );
+          attachedFiles.push({
+            fileId: attachId as string,
+            filename: fileRef.declaredFilename,
+            mediaType: fileRef.mediaType,
+            content: isTextLike ? buffer.toString('utf-8') : buffer.toString('base64'),
+          });
+        }
+
+        // CLAUDE-CODE-FILE-ATTACH Phase A §5 — log attachment metadata
+        // (NOT content) so operators can see what files entered the run
+        // without bloating the ledger with potentially-huge file bytes.
+        if (attachedFiles.length > 0) {
+          await deps.runLedgerWriter.writeEvent({
+            runId,
+            eventType: 'workspace_file_attached',
+            timestamp: nowIso(),
+            actorId: null,
+            detail: {
+              attachedFileCount: attachedFiles.length,
+              attachedFiles: attachedFiles.map(f => ({
+                fileId: f.fileId,
+                filename: f.filename,
+                mediaType: f.mediaType,
+                sizeChars: f.content.length,
+              })),
+            },
+          });
         }
       }
+
+      // §6.1 step 5 (deferred): build WorkspaceRunRequest now that any
+      // attached files have been classified, bound, and read. The request
+      // carries `attachedFiles` so the orchestrator can hand the content
+      // to NVG without re-reading from the blob store.
+      const request: WorkspaceRunRequest = {
+        runId,
+        userId: actorId as NonEmpty,
+        principalId: principalId as Uuid,
+        authenticatedBy: deps.identityProvider.providerType as NonEmpty,
+        enteredAt,
+        prompt: prompt as NonEmpty,
+        promptDigest,
+        promptRef: null,
+        selectedAgentIds: selectedAgentIds as Uuid[],
+        workspaceSocketId,
+        planCheckbackRequested,
+        preferredEndpointId: preferredEndpointId as NonEmpty | null,
+        attachedFiles,
+      };
 
       // §8.1/§8.2: secure rail events (gate 14) — write if promptMode === 'secure_rails'
       if (input.promptMode === 'secure_rails') {

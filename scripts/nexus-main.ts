@@ -300,6 +300,31 @@ const program = createCli({
           const agent = await coreDeps.actorRegistry.get(node.agentId);
           if (!agent) throw new Error('Agent not found in registry: ' + node.agentId);
 
+          // CLAUDE-CODE-FILE-ATTACH Phase A §4 — build the messages array
+          // for the model. Each text-like attached file becomes a separate
+          // user message preceding the prompt so the model sees document
+          // context first, then the user's instruction. Binary files (image,
+          // pdf) are skipped here — vision-model wiring is a separate
+          // enhancement and would belong in a transport adapter that
+          // understands content blocks. NVG never inspects this payload
+          // (§13.7.1); the transport adapter passes it to the provider
+          // unmodified.
+          const messages: Array<{ role: string; content: string }> = [];
+          for (const file of request.attachedFiles) {
+            const isText =
+              file.mediaType.startsWith('text/') ||
+              file.mediaType === 'application/json' ||
+              file.mediaType === 'application/xml' ||
+              file.mediaType === 'application/javascript' ||
+              file.mediaType === 'application/x-yaml';
+            if (!isText) continue;
+            messages.push({
+              role: 'user',
+              content: `[Attached file: ${file.filename} (${file.mediaType})]\n\n${file.content}`,
+            });
+          }
+          messages.push({ role: 'user', content: request.prompt });
+
           const nvgRequest: NvgOutboundRequest = {
             requestId: crypto.randomUUID() as Uuid,
             runId: request.runId,
@@ -309,7 +334,7 @@ const program = createCli({
             taskIntent: node.taskSummary,
             // Ollama chat schema: messages[]. The transport adapter passes
             // request.payload through to the provider unmodified.
-            payload: [{ role: 'user', content: request.prompt }],
+            payload: messages,
             dataLabels: [],
             costPreference: 'standard',
             latencyPreference: 'standard',
