@@ -356,10 +356,7 @@ function describeDelegation(events: RunEvent[]): string[] {
  * makeDispatchToGovernance (scripts/nexus-main.ts §5) and is on the wire
  * already; this reader is the UI surface for the operator.
  */
-function describePreferenceSubstitution(
-  completed: RunEvent | undefined,
-  prefix: string
-): string[] {
+function describePreferenceSubstitution(completed: RunEvent | undefined, prefix: string): string[] {
   if (!completed?.detail) return [];
   const meta = completed.detail['completionMetadata'];
   if (!meta || typeof meta !== 'object') return [];

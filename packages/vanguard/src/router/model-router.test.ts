@@ -611,9 +611,7 @@ describe('BUG-3: preferred-tier sibling fallback (CLAUDE-CODE-FIX-MODEL-PREFEREN
 
     // Synthetic priorAttempt is the smoking gun the spec demands.
     expect(result.priorAttempts).toBeDefined();
-    const skipped = result.priorAttempts!.find(
-      a => a.endpointUsed === 'ep-pref-ineligible'
-    );
+    const skipped = result.priorAttempts!.find(a => a.endpointUsed === 'ep-pref-ineligible');
     expect(skipped).toBeDefined();
     expect(skipped!.denialCode).toBe(DENIAL_CODE.NVG_ENDPOINT_UNREACHABLE);
     expect(skipped!.reason).toBe('preferred_endpoint_ineligible');

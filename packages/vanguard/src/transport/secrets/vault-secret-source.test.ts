@@ -25,11 +25,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import {
-  VaultSecretSource,
-  ensureVaultKey,
-  VAULT_PREFIX,
-} from './vault-secret-source.js';
+import { VaultSecretSource, ensureVaultKey, VAULT_PREFIX } from './vault-secret-source.js';
 
 const TEST_VALUE = 'sk-do-not-log-this-value-7f3c-9a';
 const SECOND_VALUE = 'sk-ant-second-value-1d2e-4b';

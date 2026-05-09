@@ -451,7 +451,9 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   if (vaultKeyResult.generated) {
     console.log('[bootstrap] vault key generated — fresh AES-256-GCM key written to disk');
   }
-  console.log(`[bootstrap] Step 2b complete: vault key ${vaultKeyResult.generated ? 'created' : 'loaded'}`);
+  console.log(
+    `[bootstrap] Step 2b complete: vault key ${vaultKeyResult.generated ? 'created' : 'loaded'}`
+  );
 
   // ─── Step 3: Load identity manifest ──────────────────────────────────────
   console.log(`[bootstrap] Step 3: loading identity manifest (${MANIFEST_IDENTITY})`);

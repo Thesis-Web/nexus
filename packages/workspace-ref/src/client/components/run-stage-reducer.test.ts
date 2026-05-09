@@ -184,11 +184,7 @@ describe('computeRunTimeline', () => {
       ev('orchestrator_dispatched', {}, '2026-05-09T00:05:03.000Z'),
       ev('delegation_issued', {}, '2026-05-09T00:05:04.000Z'),
       ev('node_dispatched', { agentId: 'agent-1' }, '2026-05-09T00:05:05.000Z'),
-      ev(
-        'partial_result',
-        { mailboxItemId: 'mb1', responseSize: 500 },
-        '2026-05-09T00:05:06.000Z'
-      ),
+      ev('partial_result', { mailboxItemId: 'mb1', responseSize: 500 }, '2026-05-09T00:05:06.000Z'),
       ev(
         'node_completed',
         {
