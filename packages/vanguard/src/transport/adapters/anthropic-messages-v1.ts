@@ -36,6 +36,24 @@ export const AnthropicAdapterConfigSchema = z
 
 export type AnthropicAdapterConfig = z.infer<typeof AnthropicAdapterConfigSchema>;
 
+/**
+ * CLAUDE-CODE-ACTION-NORMALIZER-PHASE-C §4 — accept either a bare
+ * messages array (legacy) or `{ messages, tools? }`. Anthropic's
+ * tool-use format is provider-specific (input_schema fields); the
+ * composition root's tool-definition generator is responsible for
+ * shaping each provider's tools list. This adapter just passes the
+ * already-shaped array through to the provider as-is.
+ */
+const PayloadSchema = z.union([
+  z.array(z.unknown()),
+  z
+    .object({
+      messages: z.array(z.unknown()),
+      tools: z.array(z.unknown()).optional(),
+    })
+    .strict(),
+]);
+
 export class AnthropicMessagesV1Adapter implements ModelTransportAdapter<AnthropicAdapterConfig> {
   readonly adapterId = 'anthropic-messages-v1';
   readonly adapterVersion = '1.0.0';
@@ -77,14 +95,31 @@ export class AnthropicMessagesV1Adapter implements ModelTransportAdapter<Anthrop
       headers[endpoint.auth.headerName] = (endpoint.auth.prefix ?? '') + secret;
     }
 
-    // 2. EXPLICIT body construction — §24.5.5 default: max_tokens = 4096
+    // 2. EXPLICIT body construction — §24.5.5 default: max_tokens = 4096.
+    //    Phase C: accept either a messages array or { messages, tools? }.
+    //    Bad shape returns a denial without raising.
+    const payloadParse = PayloadSchema.safeParse(request.payload);
+    if (!payloadParse.success) {
+      return {
+        success: false,
+        denialCode: DENIAL_CODE.NVG_TRANSPORT_PROVIDER_ERROR,
+        reason: 'invalid payload shape — expected messages array or {messages, tools?}',
+        latencyMs: Date.now() - startMs,
+      };
+    }
+    const messages = Array.isArray(payloadParse.data)
+      ? payloadParse.data
+      : payloadParse.data.messages;
+    const tools = Array.isArray(payloadParse.data) ? undefined : payloadParse.data.tools;
+
     const cfg = (endpoint.adapterConfig ?? {}) as AnthropicAdapterConfig;
     const body: Record<string, unknown> = {
       model: endpoint.modelName,
-      messages: request.payload,
+      messages,
       stream: false,
       max_tokens: cfg.max_tokens ?? 4096, // §24.5.5 default
     };
+    if (tools !== undefined && tools.length > 0) body.tools = tools;
     if (cfg.system !== undefined) body.system = cfg.system;
     if (cfg.top_p !== undefined) body.top_p = cfg.top_p;
     if (cfg.top_k !== undefined) body.top_k = cfg.top_k;

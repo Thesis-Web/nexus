@@ -47,6 +47,21 @@ export const OllamaAdapterConfigSchema = z
 
 export type OllamaAdapterConfig = z.infer<typeof OllamaAdapterConfigSchema>;
 
+/**
+ * CLAUDE-CODE-ACTION-NORMALIZER-PHASE-C §4 — accept either a bare
+ * messages array (legacy) or `{ messages, tools? }`. Same shape as
+ * the OpenAI adapter; see that file for the rationale.
+ */
+const PayloadSchema = z.union([
+  z.array(z.unknown()),
+  z
+    .object({
+      messages: z.array(z.unknown()),
+      tools: z.array(z.unknown()).optional(),
+    })
+    .strict(),
+]);
+
 export class OllamaChatV1Adapter implements ModelTransportAdapter<OllamaAdapterConfig> {
   readonly adapterId = 'ollama-chat-v1';
   readonly adapterVersion = '1.0.0';
@@ -92,12 +107,31 @@ export class OllamaChatV1Adapter implements ModelTransportAdapter<OllamaAdapterC
     //    rejected at Step 6.4. We pull individual validated fields by name — NEVER spread.
     //
     //    r4 (audit C-C): num_predict lives inside options.num_predict per Ollama API.
+    //
+    //    Phase C: payload may be either a bare messages array (legacy)
+    //    or { messages, tools? }. Validate at the boundary — a bad shape
+    //    returns a denial without raising.
+    const payloadParse = PayloadSchema.safeParse(request.payload);
+    if (!payloadParse.success) {
+      return {
+        success: false,
+        denialCode: DENIAL_CODE.NVG_TRANSPORT_PROVIDER_ERROR,
+        reason: 'invalid payload shape — expected messages array or {messages, tools?}',
+        latencyMs: Date.now() - startMs,
+      };
+    }
+    const messages = Array.isArray(payloadParse.data)
+      ? payloadParse.data
+      : payloadParse.data.messages;
+    const tools = Array.isArray(payloadParse.data) ? undefined : payloadParse.data.tools;
+
     const cfg = (endpoint.adapterConfig ?? {}) as OllamaAdapterConfig;
     const body: Record<string, unknown> = {
       model: endpoint.modelName, // from endpoint (NOT operator-overridable)
-      messages: request.payload, // from request (NOT operator-overridable)
+      messages, // from request (NOT operator-overridable)
       stream: false, // NISP-001.A streaming forbidden — HARDCODED
     };
+    if (tools !== undefined && tools.length > 0) body.tools = tools;
     if (cfg.options !== undefined) body.options = cfg.options;
     if (cfg.keep_alive !== undefined) body.keep_alive = cfg.keep_alive;
 

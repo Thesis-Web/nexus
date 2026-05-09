@@ -89,6 +89,7 @@ export interface AdminNxsRouteDeps extends AdminAuthDeps {
   readonly dispatchToNxs?: (input: {
     rawAction: Omit<AgentAction, 'delegationSequence'>;
     runId: Uuid;
+    isNvgBypass: boolean;
     bracketRun?: {
       runOpenDetail: Record<string, unknown>;
     };
@@ -245,9 +246,14 @@ export function registerAdminNxsRoutes(app: Express, deps: AdminNxsRouteDeps): v
       //    run_opened, bypass_annotation, nxs_action, and run_closed when
       //    we pass `bracketRun` — keeping run_closed writes out of the
       //    routes layer so EXT-12 (OCT-SECURE-LOOP) stays clean.
+      //
+      //    isNvgBypass:true — admin test actions never go through NVG.
+      //    Phase C added the flag so post-inference dispatches (which DO
+      //    follow an NVG invocation) can suppress bypass_annotation.
       const result = await deps.dispatchToNxs({
         rawAction,
         runId,
+        isNvgBypass: true,
         bracketRun: {
           runOpenDetail: {
             origin: 'admin-nxs-test',

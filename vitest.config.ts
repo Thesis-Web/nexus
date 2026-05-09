@@ -14,6 +14,10 @@ export default defineConfig({
       // component tests opt into jsdom via per-file
       // `// @vitest-environment jsdom` directive.
       'packages/workspace-ref/src/**/*.test.{ts,tsx}',
+      // CLAUDE-CODE-ACTION-NORMALIZER-PHASE-C §6 — composition-boundary
+      // helpers (e.g. extract-tool-calls) live under scripts/ and need
+      // their own tests. Picked up here, not in the package globs.
+      'scripts/**/*.test.ts',
       'tests/**/*.test.ts',
     ],
     exclude: ['**/*.integration.test.ts', '**/*.threat.test.ts'],

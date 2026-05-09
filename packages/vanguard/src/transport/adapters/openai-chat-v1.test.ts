@@ -228,3 +228,66 @@ describe('OpenAiChatV1Adapter — §38.9', () => {
     expect(result.success).toBe(false);
   });
 });
+
+// CLAUDE-CODE-ACTION-NORMALIZER-PHASE-C §4 — payload-shape tests.
+// The adapter must accept either the legacy messages array or the
+// structured `{ messages, tools? }` form. Bad shapes return a
+// structured denial without throwing.
+describe('OpenAiChatV1Adapter — payload shapes (Phase C)', () => {
+  it('accepts a structured payload with messages + tools and forwards both', async () => {
+    mockFetchResponse(200, { model: 'gpt-4o', choices: [{ message: { content: 'ok' } }] });
+    const req = makeRequest();
+    req.payload = {
+      messages: [{ role: 'user', content: 'use the tool' }],
+      tools: [
+        {
+          type: 'function',
+          function: { name: 'read_db', parameters: { type: 'object' } },
+        },
+      ],
+    };
+    const result = await adapter.invoke(makeEndpoint(), req, makeSecretSource('sk-test'));
+    expect(result.success).toBe(true);
+
+    const posted = JSON.parse(vi.mocked(globalThis.fetch).mock.calls[0][1]!.body as string);
+    expect(posted.messages).toEqual([{ role: 'user', content: 'use the tool' }]);
+    expect(posted.tools).toHaveLength(1);
+    expect(posted.tools[0].function.name).toBe('read_db');
+  });
+
+  it('omits tools from the body when payload provides none', async () => {
+    mockFetchResponse(200, { model: 'gpt-4o', choices: [{ message: { content: 'ok' } }] });
+    const req = makeRequest();
+    req.payload = { messages: [{ role: 'user', content: 'no tools' }] };
+    await adapter.invoke(makeEndpoint(), req, makeSecretSource('sk-test'));
+    const posted = JSON.parse(vi.mocked(globalThis.fetch).mock.calls[0][1]!.body as string);
+    expect(posted).not.toHaveProperty('tools');
+  });
+
+  it('omits tools when the array is present but empty (no body bloat)', async () => {
+    mockFetchResponse(200, { model: 'gpt-4o', choices: [{ message: { content: 'ok' } }] });
+    const req = makeRequest();
+    req.payload = { messages: [{ role: 'user', content: 'hi' }], tools: [] };
+    await adapter.invoke(makeEndpoint(), req, makeSecretSource('sk-test'));
+    const posted = JSON.parse(vi.mocked(globalThis.fetch).mock.calls[0][1]!.body as string);
+    expect(posted).not.toHaveProperty('tools');
+  });
+
+  it('rejects a non-array, non-object payload with a structured denial', async () => {
+    const req = makeRequest();
+    // Force-cast to satisfy the unknown-typed payload field.
+    (req as { payload: unknown }).payload = 'invalid string';
+    const result = await adapter.invoke(makeEndpoint(), req, makeSecretSource('sk-test'));
+    expect(result.success).toBe(false);
+    expect(result.denialCode).toBe(DENIAL_CODE.NVG_TRANSPORT_PROVIDER_ERROR);
+    expect(result.reason).toMatch(/payload shape/i);
+  });
+
+  it('rejects an object payload missing the messages field', async () => {
+    const req = makeRequest();
+    (req as { payload: unknown }).payload = { tools: [] };
+    const result = await adapter.invoke(makeEndpoint(), req, makeSecretSource('sk-test'));
+    expect(result.success).toBe(false);
+    expect(result.denialCode).toBe(DENIAL_CODE.NVG_TRANSPORT_PROVIDER_ERROR);
+  });
+});

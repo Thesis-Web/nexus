@@ -38,6 +38,8 @@ import {
   SimpleChannelRegistry,
   SqliteApproverRegistry,
   loadPolicyFile,
+  LexicalNormalizer,
+  PostInferenceNormalizerImpl,
 } from '@nexus/core';
 import { StubConnector } from '@nexus/connector-stub';
 import { createCli } from '@nexus/cli';
@@ -63,7 +65,9 @@ import type {
   AgentAction,
   PipelineContext,
   PipelineResult,
+  NormalizerContext,
 } from '@nexus/contracts';
+import { ACTION_VERB } from '@nexus/contracts';
 import { nowIso, riskTierExceeds, CAPABILITY_IDS } from '@nexus/contracts';
 import { bootstrap, bootstrapWorkspace, type BootstrapResult } from './nexus-bootstrap.js';
 import { ActorRegistryAgentReader } from './ref-agent-registry-reader.js';
@@ -102,6 +106,7 @@ import {
   recomputeArtifactDigest,
 } from '../packages/core/src/compile/compile-return-dispatcher.js';
 import { verifyArtifactSignature } from '../packages/core/src/compile/final-response-signer.js';
+import { extractToolCalls } from './extract-tool-calls.js';
 
 const DEFAULT_TRAIL_DIR = path.join(process.cwd(), 'runs');
 
@@ -277,6 +282,18 @@ const program = createCli({
     );
     console.log('[orch-wire] NXS Pipeline constructed (7 gates)');
 
+    // 22a-bis. Post-Inference Action Normalizer (§28.1) — converts
+    // tool calls extracted from model responses into AgentAction
+    // envelopes that flow into the same 7-gate pipeline. Lexical
+    // helper loaded from the governed verb fixture; canonical verb
+    // list comes from contracts so they stay in lockstep.
+    const lexicalNormalizer = LexicalNormalizer.loadFromFixture(
+      process.cwd(),
+      Object.values(ACTION_VERB)
+    );
+    const postInferenceNormalizer = new PostInferenceNormalizerImpl(lexicalNormalizer);
+    console.log('[orch-wire] PostInferenceNormalizer ready');
+
     // 22b. AgentRegistryReader — projection over canonical NXS ActorRegistry
     const agentRegistry = new ActorRegistryAgentReader(coreDeps.actorRegistry);
 
@@ -396,6 +413,91 @@ const program = createCli({
               failureReason: (code + ': ' + reason) as NonEmpty,
               governanceDenied: false,
             };
+          }
+
+          // CLAUDE-CODE-ACTION-NORMALIZER-PHASE-C §5 — post-inference
+          // tool-call routing. If the model returned tool calls, hand
+          // each one to the PostInferenceNormalizer and dispatch the
+          // resulting AgentAction through NXS. NVG was already
+          // traversed for the model invocation, so isNvgBypass:false.
+          //
+          // Multi-tool-call semantics: the canonical
+          // PostInferenceNormalizer interface returns a SINGLE
+          // AgentAction. We iterate extracted calls and call
+          // normalize() once per call.
+          //
+          // Failures here MUST NOT abort the run — the model still
+          // produced a text response. Each tool call is governed
+          // independently; a denied call shows up in the run ledger
+          // as nxs_action with finalOutcome=denied_*, while the model
+          // text continues into the compile chain below.
+          const toolCalls = extractToolCalls(inv.opaqueProviderResponse);
+          if (toolCalls.length > 0) {
+            console.log(
+              '[post-inference] extracted',
+              toolCalls.length,
+              'tool call(s) from model response — dispatching through NXS'
+            );
+            // We need a session+delegation already provisioned for the
+            // agent. The orchestrator's makeIssueDelegation already
+            // minted one for this node; reuse it via a quick lookup.
+            // (For Phase C, an explicit session+delegation lookup is
+            //  implicit in the active-run state — but we don't have a
+            //  store handle for sessions by actor. Mint per-tool-call
+            //  ephemerals so each call gets governed independently.)
+            for (const tc of toolCalls) {
+              try {
+                const ctx: NormalizerContext = {
+                  runId: request.runId,
+                  actorId: node.agentId,
+                  principalId: request.principalId,
+                  // Reuse the orchestrator-issued delegation. The
+                  // orchestrator stored it on _delegationId. Session is
+                  // ephemeral per tool call — created here so Gate 01
+                  // finds an active session at process time.
+                  sessionId: crypto.randomUUID() as Uuid,
+                  delegationId: _delegationId,
+                  protocol: 'post-inference-tool-call' as NonEmpty,
+                };
+                // Provision a fresh session bound to the existing
+                // delegation so Gate 01 can resolve identity.
+                const sessionTtlSeconds = 10 * 60;
+                await coreDeps.sessionStore.create({
+                  sessionId: ctx.sessionId,
+                  actorId: ctx.actorId,
+                  principalId: ctx.principalId,
+                  delegationId: ctx.delegationId,
+                  createdAt: nowIso(),
+                  expiresAt: new Date(
+                    Date.now() + sessionTtlSeconds * 1000
+                  ).toISOString() as IsoTimestamp,
+                });
+
+                const action = postInferenceNormalizer.normalize(tc, ctx);
+                const nxsResult = await dispatchToNxs({
+                  rawAction: action,
+                  runId: request.runId,
+                  isNvgBypass: false, // NVG was traversed — not a bypass
+                });
+                console.log(
+                  '[post-inference] tool:',
+                  tc.toolName,
+                  'outcome:',
+                  nxsResult.evidenceRecord.finalOutcome
+                );
+              } catch (toolErr) {
+                // Tool-call dispatch failed structurally (e.g. session
+                // creation race). Log and continue — text response
+                // still flows downstream so the user sees something.
+                // eslint-disable-next-line no-console
+                console.warn(
+                  '[post-inference] tool dispatch error for',
+                  tc.toolName,
+                  '—',
+                  toolErr instanceof Error ? toolErr.message : String(toolErr)
+                );
+              }
+            }
           }
 
           // Extract assistant text from the opaque provider response. NVG
@@ -1133,6 +1235,18 @@ const program = createCli({
       rawAction: Omit<AgentAction, 'delegationSequence'>;
       runId: Uuid;
       /**
+       * CLAUDE-CODE-ACTION-NORMALIZER-PHASE-C §1 — controls whether
+       * the §22.5 `bypass_annotation` ledger event is written.
+       *   - true  → action enters NXS WITHOUT a prior NVG call
+       *             (admin test route, future direct-adapter inbound)
+       *   - false → action follows an NVG model invocation
+       *             (post-inference tool calls — NVG was traversed)
+       * The annotation tells audit consumers why no NVG trail entries
+       * exist for the run; emitting it on a post-inference dispatch
+       * would be a false positive.
+       */
+      isNvgBypass: boolean;
+      /**
        * Optional bracket events. When provided, dispatchToNxs emits
        * `run_opened` before invoking the pipeline and `run_closed` after,
        * so admin/test surfaces that are NOT part of the workspace
@@ -1154,7 +1268,9 @@ const program = createCli({
         'tool:',
         rawAction.tool,
         'verb:',
-        rawAction.rawVerb
+        rawAction.rawVerb,
+        'bypass:',
+        input.isNvgBypass
       );
 
       // run_opened — only when the caller is the originator of the run
@@ -1174,16 +1290,19 @@ const program = createCli({
       const result = await nxsPipeline.process(rawAction, context);
       const evidence = result.evidenceRecord;
 
-      // §22.5 bypass annotation BEFORE the action event — this dispatch
-      // didn't go through NVG, so the audit consumer can see why no NVG
-      // entries exist for this runId.
-      await coreDeps.runLedgerWriter!.writeEvent({
-        runId,
-        eventType: 'bypass_annotation',
-        timestamp: nowIso(),
-        actorId: null,
-        detail: { bypass_path: true, nvg_entries: false },
-      });
+      // §22.5 bypass annotation BEFORE the action event — only when this
+      // dispatch genuinely DID NOT traverse NVG. Post-inference tool
+      // calls (Phase C) pass isNvgBypass:false because the model was
+      // invoked through NVG before it returned the tool call.
+      if (input.isNvgBypass) {
+        await coreDeps.runLedgerWriter!.writeEvent({
+          runId,
+          eventType: 'bypass_annotation',
+          timestamp: nowIso(),
+          actorId: null,
+          detail: { bypass_path: true, nvg_entries: false },
+        });
+      }
 
       await coreDeps.runLedgerWriter!.writeEvent({
         runId,

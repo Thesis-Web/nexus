@@ -129,3 +129,10 @@ export { EvidenceGate } from './gates/07-evidence.gate.js';
 // §SPEC-ADMIN-WRITER §3 — Generic manifest YAML writer
 export { ManifestWriterService } from './manifest/manifest-writer-service.js';
 export type { ManifestWriterConfig } from './manifest/manifest-writer-service.js';
+
+// §28.1 — Post-Inference Action Normalizer (NVG → NXS boundary).
+// Subordinate helper LexicalNormalizer (§28.2) is also exported so the
+// composition root can construct it from the governed verb fixture.
+export { LexicalNormalizer } from './normalization/lexical-normalizer.js';
+export { PostInferenceNormalizerImpl } from './normalization/post-inference-normalizer.js';
+export type { ExtractedToolCall } from './normalization/post-inference-normalizer.js';

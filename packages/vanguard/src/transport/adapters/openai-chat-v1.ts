@@ -37,6 +37,28 @@ export const OpenAiAdapterConfigSchema = z
 
 export type OpenAiAdapterConfig = z.infer<typeof OpenAiAdapterConfigSchema>;
 
+/**
+ * CLAUDE-CODE-ACTION-NORMALIZER-PHASE-C §4 — payload may be either:
+ *   - a bare messages array (legacy): `[{role, content}, ...]`
+ *   - a structured object: `{ messages: [...], tools?: [...] }`
+ *
+ * The structured form lets the composition root attach tool definitions
+ * (Phase C buildToolDefinitions) without changing every caller. NVG
+ * itself never inspects either shape — it carries `payload: unknown`
+ * straight from the orchestrator (§13.7.1). The adapter is the only
+ * layer that has to know about the wire shape because it constructs
+ * the provider HTTP body.
+ */
+const PayloadSchema = z.union([
+  z.array(z.unknown()),
+  z
+    .object({
+      messages: z.array(z.unknown()),
+      tools: z.array(z.unknown()).optional(),
+    })
+    .strict(),
+]);
+
 export class OpenAiChatV1Adapter implements ModelTransportAdapter<OpenAiAdapterConfig> {
   readonly adapterId = 'openai-chat-v1';
   readonly adapterVersion = '1.0.0';
@@ -77,13 +99,32 @@ export class OpenAiChatV1Adapter implements ModelTransportAdapter<OpenAiAdapterC
       headers[endpoint.auth.headerName] = (endpoint.auth.prefix ?? '') + secret;
     }
 
-    // 2. EXPLICIT body construction
+    // 2. EXPLICIT body construction. Payload validated through the
+    //    union schema — legacy messages-array OR { messages, tools? }.
+    //    Malformed payloads return a denial without raising; NVG never
+    //    sends a non-array/non-object payload but defense-in-depth keeps
+    //    the adapter from blowing up on a future caller bug.
+    const payloadParse = PayloadSchema.safeParse(request.payload);
+    if (!payloadParse.success) {
+      return {
+        success: false,
+        denialCode: DENIAL_CODE.NVG_TRANSPORT_PROVIDER_ERROR,
+        reason: 'invalid payload shape — expected messages array or {messages, tools?}',
+        latencyMs: Date.now() - startMs,
+      };
+    }
+    const messages = Array.isArray(payloadParse.data)
+      ? payloadParse.data
+      : payloadParse.data.messages;
+    const tools = Array.isArray(payloadParse.data) ? undefined : payloadParse.data.tools;
+
     const cfg = (endpoint.adapterConfig ?? {}) as OpenAiAdapterConfig;
     const body: Record<string, unknown> = {
       model: endpoint.modelName,
-      messages: request.payload,
+      messages,
       stream: false,
     };
+    if (tools !== undefined && tools.length > 0) body.tools = tools;
     if (cfg.temperature !== undefined) body.temperature = cfg.temperature;
     if (cfg.max_tokens !== undefined) body.max_tokens = cfg.max_tokens;
     if (cfg.top_p !== undefined) body.top_p = cfg.top_p;

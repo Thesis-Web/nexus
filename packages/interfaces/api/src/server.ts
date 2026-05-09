@@ -213,6 +213,12 @@ export interface ApiDependencies {
     rawAction: Omit<AgentAction, 'delegationSequence'>;
     runId: Uuid;
     /**
+     * CLAUDE-CODE-ACTION-NORMALIZER-PHASE-C §1 — controls bypass_annotation.
+     * true  = NXS dispatch without prior NVG (admin test route)
+     * false = NXS dispatch following an NVG model invocation (post-inference)
+     */
+    isNvgBypass: boolean;
+    /**
      * When provided, the dispatcher emits run_opened/run_closed events
      * to bracket the test run in the ledger. Used by admin test surfaces
      * that don't go through the workspace compile-return loop.
