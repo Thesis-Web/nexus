@@ -421,17 +421,45 @@ const program = createCli({
             request.runId
           );
 
-          // CLAUDE-CODE-MODEL-SELECTION-SPEC §5 — record the preference vs.
-          // the actually-used endpoint so the audit trail reveals when the
-          // user's selection was honored, when a sibling on the same tier
-          // ran instead, and when policy fallback fired. preferenceHonored
-          // is null (rather than false) when the user supplied no preference
-          // — that distinguishes "not asked" from "asked but unhonored".
+          // CLAUDE-CODE-MODEL-SELECTION-SPEC §5 + CLAUDE-CODE-FIX-MODEL-
+          // PREFERENCE-ROUTING §3 — record the preference vs. the actually-
+          // used endpoint and, when the preference wasn't honored, WHY.
+          // preferenceHonored is null (rather than false) when the user
+          // supplied no preference — distinguishes "not asked" from
+          // "asked but unhonored".
+          //
+          // switchReason values (set only when preferenceHonored=false):
+          //   - 'preferred_unhealthy_same_tier_sibling' — actual endpoint
+          //     is on the SAME tier as the preference (BUG-3 sibling path)
+          //   - 'preferred_tier_exhausted_policy_fallback' — actual
+          //     endpoint is on a DIFFERENT tier (preferred tier had no
+          //     healthy siblings; fell through to policy)
+          //   - 'preferred_unknown_endpointId' — preferredEndpointId did
+          //     not resolve in the tier registry (stale catalog reference)
           const actualEndpointId = inv.endpointUsed?.endpointId ?? null;
+          const actualTier = inv.endpointUsed?.tier ?? null;
           const preferenceHonored: boolean | null =
             request.preferredEndpointId === null
               ? null
               : actualEndpointId === request.preferredEndpointId;
+
+          let switchReason: string | null = null;
+          if (preferenceHonored === false && request.preferredEndpointId) {
+            const preferredEp = br.tierRegistry.findEndpointById(
+              request.preferredEndpointId as NonEmpty
+            );
+            if (preferredEp === null) {
+              switchReason = 'preferred_unknown_endpointId';
+            } else if (actualTier === null) {
+              // No actual endpoint at all — shouldn't happen on the
+              // success branch we're in, but guard explicitly.
+              switchReason = 'preferred_no_endpoint_invoked';
+            } else if (actualTier === preferredEp.tier) {
+              switchReason = 'preferred_unhealthy_same_tier_sibling';
+            } else {
+              switchReason = 'preferred_tier_exhausted_policy_fallback';
+            }
+          }
 
           return {
             success: true,
@@ -442,6 +470,7 @@ const program = createCli({
               preferredEndpointId: request.preferredEndpointId,
               actualEndpointId,
               preferenceHonored,
+              switchReason,
             },
             failureReason: null,
             governanceDenied: false,

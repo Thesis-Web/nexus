@@ -137,7 +137,9 @@ const fixtureStubTransport = makeMockTransportContext(
       {
         adapterId: 'fixture-adapter' as NonEmpty,
         adapterVersion: 'v0.0.1' as NonEmpty,
-        configSchema: { parse: (v: unknown) => v } as any,
+        // Structural AdapterConfigSchema — `safeParse` is the contract; a
+        // pass-through schema is fine for tests that don't exercise config.
+        configSchema: { safeParse: () => ({ success: true as const, data: {} }) },
         async invoke() {
           return { success: true, responseSize: 0, latencyMs: 1 };
         },
@@ -151,6 +153,10 @@ describe('WIRE-003: invokeModel health update wiring (§24.5, blueprint §13.6)'
     const oldTimestamp = '2020-01-01T00:00:00.000Z' as IsoTimestamp;
     const registry = new TierRegistry();
     const ep = makeEndpoint('ep-success', MODEL_TIER.FRONTIER_GENERAL, {
+      // adapterId must match the fixture transport's registered adapter,
+      // otherwise callEndpoint returns NVG_TRANSPORT_UNKNOWN_ADAPTER and
+      // the success path never runs.
+      adapterId: 'fixture-adapter' as NonEmpty,
       healthy: true,
       lastCheckAt: oldTimestamp,
     });
@@ -290,5 +296,284 @@ describe('WIRE-003: invokeModel health update wiring (§24.5, blueprint §13.6)'
     // No priorAttempts — ep1 was excluded, ep2 succeeded immediately
     expect(result2.priorAttempts).toBeUndefined();
     expect(result2.endpointUsed!.endpointId).toBe('ep-ok');
+  });
+});
+
+// ── BUG-3 Preferred-tier sibling logic ───────────────────────────────────
+//
+// CLAUDE-CODE-FIX-MODEL-PREFERENCE-ROUTING — when a user picks a specific
+// endpoint and it is unhealthy (or its retriable invocation failed), the
+// router must try other healthy endpoints on the SAME tier as the
+// preference before dropping to the routing-policy-selected tier. The
+// dropdown choice carries tier intent as well as endpoint intent.
+
+describe('BUG-3: preferred-tier sibling fallback (CLAUDE-CODE-FIX-MODEL-PREFERENCE-ROUTING)', () => {
+  it('tries same-tier sibling when preferred endpoint is unhealthy and policy tier differs', async () => {
+    // Simulated clock so we can mark the preferred endpoint unhealthy and
+    // keep the cooldown unfinished — the preference becomes ineligible.
+    const clock = { ms: 1_000_000 };
+    const registry = new TierRegistry({ now: () => clock.ms });
+
+    const preferred = makeEndpoint('ep-preferred', MODEL_TIER.ON_PREM_GENERAL, {
+      adapterId: 'never-called' as NonEmpty,
+      healthy: true,
+    });
+    const sibling = makeEndpoint('ep-sibling-onprem', MODEL_TIER.ON_PREM_GENERAL, {
+      adapterId: 'sibling-adapter' as NonEmpty,
+      healthy: true,
+    });
+    const policyEndpoint = makeEndpoint('ep-frontier', MODEL_TIER.FRONTIER_GENERAL, {
+      adapterId: 'frontier-adapter' as NonEmpty,
+      healthy: true,
+    });
+    registry.registerEndpoint(preferred);
+    registry.registerEndpoint(sibling);
+    registry.registerEndpoint(policyEndpoint);
+
+    // Mark the preferred endpoint unhealthy 5 seconds ago — well inside
+    // the default 60s cooldown so it stays ineligible for invocation.
+    registry.updateEndpointHealth(
+      'ep-preferred' as NonEmpty,
+      false,
+      new Date().toISOString() as IsoTimestamp
+    );
+
+    const adapters = new Map<string, ModelTransportAdapter>([
+      [
+        'sibling-adapter',
+        makeMockAdapter('sibling-adapter', {
+          success: true,
+          responseSize: 11,
+          latencyMs: 5,
+        }),
+      ],
+      [
+        'frontier-adapter',
+        makeMockAdapter('frontier-adapter', {
+          success: true,
+          responseSize: 22,
+          latencyMs: 5,
+        }),
+      ],
+    ]);
+    const transportCtx = makeMockTransportContext(adapters);
+    const request = makeRequest();
+    const classification = classifyOutboundData(request.dataLabels);
+
+    // Policy picks FRONTIER_GENERAL. Preference is on ON_PREM_GENERAL.
+    // Sibling on ON_PREM_GENERAL is healthy → it must be chosen, NOT
+    // the policy tier's frontier endpoint.
+    const result = await invokeModel(
+      MODEL_TIER.FRONTIER_GENERAL,
+      null,
+      request,
+      classification,
+      registry,
+      transportCtx,
+      preferred
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.endpointUsed!.endpointId).toBe('ep-sibling-onprem');
+    expect(result.endpointUsed!.tier).toBe(MODEL_TIER.ON_PREM_GENERAL);
+  });
+
+  it('falls through to policy tier when preferred tier has no healthy siblings', async () => {
+    const registry = new TierRegistry();
+
+    // Preferred endpoint on tier A, no siblings on tier A. Policy tier B
+    // has a healthy endpoint — that's what should run.
+    const preferred = makeEndpoint('ep-only-onprem', MODEL_TIER.ON_PREM_GENERAL, {
+      adapterId: 'unreachable-adapter' as NonEmpty,
+      healthy: false, // unhealthy AND no cooldown entry → not eligible
+    });
+    const policyEndpoint = makeEndpoint('ep-frontier', MODEL_TIER.FRONTIER_GENERAL, {
+      adapterId: 'frontier-adapter' as NonEmpty,
+      healthy: true,
+    });
+    registry.registerEndpoint(preferred);
+    registry.registerEndpoint(policyEndpoint);
+
+    const transportCtx = makeMockTransportContext(
+      new Map<string, ModelTransportAdapter>([
+        [
+          'frontier-adapter',
+          makeMockAdapter('frontier-adapter', {
+            success: true,
+            responseSize: 7,
+            latencyMs: 5,
+          }),
+        ],
+      ])
+    );
+    const request = makeRequest();
+    const classification = classifyOutboundData(request.dataLabels);
+
+    const result = await invokeModel(
+      MODEL_TIER.FRONTIER_GENERAL,
+      null,
+      request,
+      classification,
+      registry,
+      transportCtx,
+      preferred
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.endpointUsed!.endpointId).toBe('ep-frontier');
+    expect(result.endpointUsed!.tier).toBe(MODEL_TIER.FRONTIER_GENERAL);
+  });
+
+  it('does NOT double-invoke when preferred tier matches policy tier', async () => {
+    // Preferred on tier A, policy tier = A (same). The existing same-tier
+    // retry below the new block already covers siblings — the new block
+    // must not run, otherwise we'd hit each sibling twice.
+    const registry = new TierRegistry();
+    const preferred = makeEndpoint('ep-pref', MODEL_TIER.ON_PREM_GENERAL, {
+      adapterId: 'never-called' as NonEmpty,
+      healthy: false, // unhealthy, no cooldown entry → ineligible
+    });
+    const sibling = makeEndpoint('ep-sib', MODEL_TIER.ON_PREM_GENERAL, {
+      adapterId: 'sibling-adapter' as NonEmpty,
+      healthy: true,
+    });
+    registry.registerEndpoint(preferred);
+    registry.registerEndpoint(sibling);
+
+    const siblingAdapter = makeMockAdapter('sibling-adapter', {
+      success: true,
+      responseSize: 3,
+      latencyMs: 2,
+    });
+    let invokeCount = 0;
+    const wrappedAdapter: ModelTransportAdapter = {
+      ...siblingAdapter,
+      async invoke(endpoint, req, secrets) {
+        invokeCount++;
+        return siblingAdapter.invoke(endpoint, req, secrets);
+      },
+    };
+    const transportCtx = makeMockTransportContext(
+      new Map<string, ModelTransportAdapter>([['sibling-adapter', wrappedAdapter]])
+    );
+    const request = makeRequest();
+    const classification = classifyOutboundData(request.dataLabels);
+
+    const result = await invokeModel(
+      MODEL_TIER.ON_PREM_GENERAL, // policy tier == preferred tier
+      null,
+      request,
+      classification,
+      registry,
+      transportCtx,
+      preferred
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.endpointUsed!.endpointId).toBe('ep-sib');
+    expect(invokeCount).toBe(1);
+  });
+
+  it('preference healthy → invoked directly, no sibling attempts', async () => {
+    const registry = new TierRegistry();
+    const preferred = makeEndpoint('ep-pref', MODEL_TIER.ON_PREM_GENERAL, {
+      adapterId: 'pref-adapter' as NonEmpty,
+      healthy: true,
+    });
+    const sibling = makeEndpoint('ep-sib', MODEL_TIER.ON_PREM_GENERAL, {
+      adapterId: 'sib-adapter' as NonEmpty,
+      healthy: true,
+    });
+    registry.registerEndpoint(preferred);
+    registry.registerEndpoint(sibling);
+
+    let prefCalls = 0;
+    let sibCalls = 0;
+    const transportCtx = makeMockTransportContext(
+      new Map<string, ModelTransportAdapter>([
+        [
+          'pref-adapter',
+          {
+            ...makeMockAdapter('pref-adapter', { success: true, latencyMs: 1 }),
+            async invoke() {
+              prefCalls++;
+              return { success: true, responseSize: 1, latencyMs: 1 };
+            },
+          },
+        ],
+        [
+          'sib-adapter',
+          {
+            ...makeMockAdapter('sib-adapter', { success: true, latencyMs: 1 }),
+            async invoke() {
+              sibCalls++;
+              return { success: true, responseSize: 1, latencyMs: 1 };
+            },
+          },
+        ],
+      ])
+    );
+    const request = makeRequest();
+    const classification = classifyOutboundData(request.dataLabels);
+
+    const result = await invokeModel(
+      MODEL_TIER.FRONTIER_GENERAL,
+      null,
+      request,
+      classification,
+      registry,
+      transportCtx,
+      preferred
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.endpointUsed!.endpointId).toBe('ep-pref');
+    expect(prefCalls).toBe(1);
+    expect(sibCalls).toBe(0);
+  });
+
+  it('Auto (preferredEndpoint=null) preserves policy-tier behavior unchanged', async () => {
+    const registry = new TierRegistry();
+    registry.registerEndpoint(
+      makeEndpoint('ep-frontier', MODEL_TIER.FRONTIER_GENERAL, {
+        adapterId: 'frontier-adapter' as NonEmpty,
+        healthy: true,
+      })
+    );
+    registry.registerEndpoint(
+      makeEndpoint('ep-onprem', MODEL_TIER.ON_PREM_GENERAL, {
+        adapterId: 'onprem-adapter' as NonEmpty,
+        healthy: true,
+      })
+    );
+
+    const transportCtx = makeMockTransportContext(
+      new Map<string, ModelTransportAdapter>([
+        [
+          'frontier-adapter',
+          makeMockAdapter('frontier-adapter', { success: true, responseSize: 1, latencyMs: 1 }),
+        ],
+        [
+          'onprem-adapter',
+          makeMockAdapter('onprem-adapter', { success: true, responseSize: 1, latencyMs: 1 }),
+        ],
+      ])
+    );
+    const request = makeRequest();
+    const classification = classifyOutboundData(request.dataLabels);
+
+    // No preferredEndpoint → policy tier is the only path.
+    const result = await invokeModel(
+      MODEL_TIER.FRONTIER_GENERAL,
+      null,
+      request,
+      classification,
+      registry,
+      transportCtx,
+      null
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.endpointUsed!.endpointId).toBe('ep-frontier');
   });
 });

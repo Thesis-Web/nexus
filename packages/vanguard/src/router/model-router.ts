@@ -183,6 +183,60 @@ export async function invokeModel(
     });
   }
 
+  // ── Preferred-tier siblings (CLAUDE-CODE-FIX-MODEL-PREFERENCE-ROUTING §3) ──
+  //
+  // BUG-3: when the user picks a specific endpoint and it is unhealthy
+  // (eligibility=false) or its retriable invocation failed above, the
+  // dropdown choice carries TIER intent as well as endpoint intent. Try
+  // healthy siblings on the preferred tier BEFORE dropping to the policy-
+  // selected tier — silently jumping tiers on a transient endpoint outage
+  // is a governance surprise.
+  //
+  // Skipped when preferredTier === policy `tier`: the same-tier retry block
+  // below already covers those siblings (preferredEndpoint is filtered out
+  // there to avoid double-calling).
+  if (preferredEndpoint !== null && preferredEndpoint.tier !== tier) {
+    const sameTierSiblings = registry
+      .getHealthyEndpoints(preferredEndpoint.tier)
+      .filter(e => e.endpointId !== preferredEndpoint.endpointId);
+
+    for (const sibling of sameTierSiblings) {
+      const result = await callEndpoint(sibling, request, transportContext);
+      registry.updateEndpointHealth(
+        sibling.endpointId,
+        result.success,
+        new Date().toISOString() as IsoTimestamp
+      );
+
+      if (result.success) {
+        // Same tier as the user's preference, different endpoint — tier
+        // intent honored even though the specific endpoint wasn't used.
+        // The route-trail records `priorAttempts` so operators can see
+        // why the preferred endpoint was skipped.
+        return buildInvocationResult(result, sibling, false, null, priorAttempts);
+      }
+
+      const denialCode = result.denialCode ?? DENIAL_CODE.NVG_FALLBACK_DENIED;
+      if (!FALLBACK_TRIGGERING_CODES.has(denialCode)) {
+        // Non-retriable on a sibling (auth/config/parse) — surface it
+        // immediately. Continuing through the rest of the chain would
+        // mask a real misconfiguration.
+        return buildInvocationResult(result, sibling, false, null, priorAttempts);
+      }
+
+      priorAttempts.push({
+        endpointUsed: sibling.endpointId,
+        tier: sibling.tier,
+        adapterId: sibling.adapterId,
+        modelName: sibling.modelName,
+        denialCode,
+        reason: result.reason ?? 'preferred_tier_sibling_failed',
+        latencyMs: result.latencyMs ?? 0,
+        attemptedAt: new Date().toISOString() as IsoTimestamp,
+      });
+    }
+  }
+
   // ── Same-tier retry: try ALL healthy primary endpoints in manifest order ──
   const primaryEndpoints = registry.getHealthyEndpoints(tier).filter(
     // Already attempted above — skip to avoid double-call when policy tier

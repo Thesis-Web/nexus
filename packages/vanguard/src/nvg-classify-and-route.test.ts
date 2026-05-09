@@ -28,6 +28,10 @@ import {
   type NvgOutboundRequest,
   type NvgRoutingPolicy,
   type ModeConfiguration,
+  type ModelTransportAdapter,
+  type ModelTransportAdapterRegistry,
+  type NvgTransportContext,
+  type SecretSource,
   type Uuid,
   type NonEmpty,
   type IsoTimestamp,
@@ -139,12 +143,49 @@ function makeModeConfig(
   };
 }
 
+// CLAUDE-CODE-FIX-MODEL-PREFERENCE-ROUTING FLAG-4: T6-F03 made
+// transportContext mandatory on NvgServiceDeps. Pre-existing fixture
+// constructed the deps without it, which crashed callEndpoint with
+// "Cannot read properties of undefined (reading 'registry')" on every
+// classifyAndRoute test that reached invocation. Inject a fixture
+// adapter keyed to 'ollama-chat-v1' (matches makeEndpoint) so the
+// invocation path resolves cleanly.
+const stubSecretSource: SecretSource = {
+  canResolve: () => false,
+  resolve: async () => {
+    throw new Error('classify-and-route fixture: no secrets');
+  },
+};
+
+function makeFixtureTransport(): NvgTransportContext {
+  const adapter: ModelTransportAdapter = {
+    adapterId: 'ollama-chat-v1' as NonEmpty,
+    adapterVersion: '1.0.0' as NonEmpty,
+    configSchema: { safeParse: () => ({ success: true as const, data: {} }) },
+    async invoke() {
+      return {
+        success: true,
+        responseSize: 4,
+        latencyMs: 1,
+        opaqueProviderResponse: { message: { role: 'assistant', content: 'ok' } },
+      };
+    },
+  };
+  const registry: ModelTransportAdapterRegistry = {
+    register: () => {},
+    get: id => (id === adapter.adapterId ? adapter : null),
+    list: () => [adapter],
+  };
+  return { registry, secretSource: stubSecretSource };
+}
+
 function makeDeps(overrides: Partial<NvgServiceDeps> = {}): NvgServiceDeps {
   return {
     routingPolicy: makePolicy(),
     tierRegistry: makeRegistry(),
     trailWriter: trailBackend,
     modeConfig: makeModeConfig(),
+    transportContext: makeFixtureTransport(),
     ...overrides,
   };
 }
@@ -236,9 +277,12 @@ describe('NVG classifyAndRoute — Full Wall Checkpoint (NVG-PIPE-001)', () => {
     expect(result.invocation).toBeNull();
   });
 
-  it('uses fallback tier when primary is ceiling-denied but fallback is allowed', async () => {
-    // OCT-SECURE can access on_prem_sensitive only, not frontier.
-    // Policy routes to frontier with fallback to on_prem_sensitive.
+  it('OCT ceiling denial on primary tier is terminal (T6-F05) — fallback does not escape', async () => {
+    // T6-F05: primary OCT ceiling denial is TERMINAL per blueprint §13.5.
+    // Fallback exists for availability/health (inside invokeModel), NEVER
+    // for escaping a ceiling denial. Even if the fallback tier would be
+    // allowed for the OCT level, we must still deny — otherwise the
+    // ceiling becomes routable around at the policy level.
     const policy = makePolicy({
       rules: [
         {
@@ -255,12 +299,13 @@ describe('NVG classifyAndRoute — Full Wall Checkpoint (NVG-PIPE-001)', () => {
 
     const result = await nvg.classifyAndRoute(request);
 
-    // Primary (frontier) is ceiling-denied for OCT-SECURE.
-    // Fallback (on_prem_sensitive) is allowed for OCT-SECURE.
-    expect(result.allowed).toBe(true);
-    expect(result.modelTierSelected).toBe(MODEL_TIER.ON_PREM_SENSITIVE);
-    expect(result.denialCode).toBeNull();
-    expect(result.invocation).not.toBeNull();
+    // Primary (frontier) is ceiling-denied for OCT-SECURE → terminal.
+    expect(result.allowed).toBe(false);
+    expect(result.denialCode).toBe(DENIAL_CODE.NVG_OCT_CEILING_DENIED);
+    expect(result.invocation).toBeNull();
+    // modelTierSelected reflects what the policy picked, even though we
+    // denied — the trail entry needs the tier the user asked for.
+    expect(result.modelTierSelected).toBe(MODEL_TIER.FRONTIER_GENERAL);
   });
 
   it('writes outbound RPT entry on allowed routing (NVG-RPT-001)', async () => {
@@ -421,6 +466,9 @@ describe('NVG classifyAndRoute — Label Validation (NVG-CLASS-001)', () => {
       tierRegistry: tierReg,
       trailWriter: tb,
       modeConfig: makeModeConfig(),
+      // Same fixture transport as the outer makeDeps — required for the
+      // tests in this describe that reach the invocation step.
+      transportContext: makeFixtureTransport(),
     };
   }
 
@@ -434,7 +482,7 @@ describe('NVG classifyAndRoute — Label Validation (NVG-CLASS-001)', () => {
           // Missing source → rejected by readLabels
           { source: '' as NonEmpty, label: DATA_CLASS.PUBLIC, confidence: 0.9 },
           // Unknown data class → rejected by readLabels
-          { source: 'dlp' as NonEmpty, label: 'INVALID_CLASS' as any, confidence: 0.9 },
+          { source: 'dlp' as NonEmpty, label: 'INVALID_CLASS', confidence: 0.9 },
         ],
       })
     );
