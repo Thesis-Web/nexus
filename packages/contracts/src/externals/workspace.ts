@@ -19,6 +19,7 @@
 import type { Uuid, IsoTimestamp, Sha256Hex, NonEmpty } from '../types/index.js';
 import type { DenialCode } from '../constants/index.js';
 import type { CompileReturnRequest } from './compile-return.js';
+import type { SubTaskDecl, SubTaskEdgeHint } from './planner.js';
 
 // ─── WorkspaceRunRequest ───
 
@@ -69,6 +70,21 @@ export interface WorkspaceRunRequest {
     /** UTF-8 text for text-like media types; base64 for binary. */
     content: string;
   }>;
+  /**
+   * AMEND-spec-nexus-orch §5 extension — multi-node planner submit shape.
+   * When non-null and non-empty, the workspace is submitting an explicit
+   * sub-task DAG (as the bash-script workflow shapes do today). The
+   * orchestrator threads `subTasks` and `subTaskEdges` into the
+   * PlannerRequest unchanged; the planner emits one PlanNode per sub-task
+   * with proper kind-driven nodeType branching. When null, the legacy
+   * single-prompt path (selectedAgentIds → 1-node-per-agent) applies.
+   *
+   * Required-and-nullable rather than optional so workspace-route
+   * construction stays clean under exactOptionalPropertyTypes — every
+   * WorkspaceRunRequest carries an explicit null on the legacy path.
+   */
+  subTasks: SubTaskDecl[] | null;
+  subTaskEdges: SubTaskEdgeHint[] | null;
 }
 
 // ─── CompileReturnAck ───

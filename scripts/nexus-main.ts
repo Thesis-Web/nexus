@@ -1531,6 +1531,12 @@ const program = createCli({
       // through the planner request so downstream node dispatch can pass it
       // on to NVG for biased endpoint selection.
       preferredEndpointId: request.preferredEndpointId,
+      // AMEND-spec-nexus-orch §5 extension — thread structured sub-task
+      // DAGs through to the planner. When null/absent the planner takes
+      // its legacy single-prompt path; when non-empty it emits one
+      // PlanNode per sub-task with kind-driven nodeType branching.
+      subTasks: request.subTasks ?? null,
+      subTaskEdges: request.subTaskEdges ?? null,
     });
 
     // 22g. Assemble coordinator + orchestrator.

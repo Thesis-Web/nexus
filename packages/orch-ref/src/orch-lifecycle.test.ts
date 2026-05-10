@@ -102,6 +102,8 @@ function makeRequest(agentIds: Uuid[]): WorkspaceRunRequest {
     planCheckbackRequested: false,
     preferredEndpointId: null,
     attachedFiles: [],
+    subTasks: null,
+    subTaskEdges: null,
   };
 }
 

@@ -185,6 +185,93 @@ const ModelPreferenceSchema = z
   })
   .strict();
 
+// ─── Multi-node planner sub-task input schemas ───
+// AMEND-spec-nexus-orch §5 extension. These are optional on the
+// run-submit input; when omitted the legacy single-prompt path
+// applies. The planner does deeper structural validation
+// (subTaskKey uniqueness, edge cycles, slot ref resolution); these
+// schemas just keep the API gate tight on the wire shape.
+
+const SlotReadRefSchema = z
+  .object({
+    fromSubTaskKey: z.string().min(1),
+    slotId: z.string().min(1),
+  })
+  .strict();
+
+const NxsActionTemplateSchema = z
+  .object({
+    capability: z.string().min(1),
+    target: z
+      .object({
+        system: z.string().min(1),
+        resourceType: z.string().min(1),
+        resourceScope: z.string().min(1),
+      })
+      .strict(),
+    rawPayload: z.unknown(),
+  })
+  .strict();
+
+const NvgSubTaskSchema = z
+  .object({
+    kind: z.literal('nvg'),
+    subTaskKey: z.string().min(1),
+    agentId: z.string().min(1),
+    taskSummary: z.string().min(1),
+    expectedOutputSlots: z.array(z.string().min(1)),
+    inputSlotReads: z.array(SlotReadRefSchema),
+    taskPrompt: z.string().min(1).nullable(),
+  })
+  .strict();
+
+const NxsSubTaskSchema = z
+  .object({
+    kind: z.literal('nxs'),
+    subTaskKey: z.string().min(1),
+    agentId: z.string().min(1),
+    taskSummary: z.string().min(1),
+    expectedOutputSlots: z.array(z.string().min(1)),
+    inputSlotReads: z.array(SlotReadRefSchema),
+    actionTemplate: NxsActionTemplateSchema,
+  })
+  .strict();
+
+const SecureHandoffSubTaskSchema = z
+  .object({
+    kind: z.literal('secure_handoff'),
+    subTaskKey: z.string().min(1),
+    agentId: z.string().min(1),
+    taskSummary: z.string().min(1),
+    expectedOutputSlots: z.array(z.string().min(1)),
+    inputSlotReads: z.array(SlotReadRefSchema),
+    taskPrompt: z.string().min(1).nullable(),
+  })
+  .strict();
+
+const SubTaskDeclSchema = z.discriminatedUnion('kind', [
+  NvgSubTaskSchema,
+  NxsSubTaskSchema,
+  SecureHandoffSubTaskSchema,
+]);
+
+const SubTaskEdgeHintSchema = z
+  .object({
+    sourceSubTaskKey: z.string().min(1),
+    targetSubTaskKey: z.string().min(1),
+    edgeType: z.enum(['data_dependency', 'conditional', 'sequential']),
+    conditionSpec: z
+      .object({
+        sourceField: z.string().min(1),
+        operator: z.string(),
+        value: z.union([z.string(), z.number(), z.boolean(), z.null()]),
+      })
+      .strict()
+      .nullable(),
+    outputSlotRef: z.string().min(1).nullable(),
+  })
+  .strict();
+
 const FreeTextSchema = z
   .object({
     promptMode: z.literal('free_text'),
@@ -200,6 +287,16 @@ const FreeTextSchema = z
     preferredEndpointId: z.string().optional(),
     modelPreferences: z.array(ModelPreferenceSchema).optional(),
     attachmentIds: z.array(z.string()).optional(),
+    /**
+     * AMEND-spec-nexus-orch §5 extension — optional structured sub-task DAG.
+     * When non-empty the orchestrator emits one node per sub-task (multi-
+     * node planner) instead of one node per agent (legacy path). Edges
+     * keyed by subTaskKey via subTaskEdges. The bash-script workflow
+     * shapes (parallel fan-out, sequential pipes, judge routing) submit
+     * via this field.
+     */
+    subTasks: z.array(SubTaskDeclSchema).optional(),
+    subTaskEdges: z.array(SubTaskEdgeHintSchema).optional(),
   })
   .strict();
 
@@ -456,10 +553,11 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
       let selectedAgentIds: string[] = [];
       let preferredEndpointId: string | null = null;
       const planCheckbackRequested = false;
+      let subTasks: z.infer<typeof SubTaskDeclSchema>[] | null = null;
+      let subTaskEdges: z.infer<typeof SubTaskEdgeHintSchema>[] | null = null;
 
       switch (input.promptMode) {
         case 'free_text':
-        case 'sectioned':
           prompt = input.prompt;
           selectedAgentIds = (input.agents ?? []) as string[];
           // CLAUDE-CODE-MODEL-SELECTION-SPEC §1c — accept the direct
@@ -467,6 +565,23 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
           // modelPreferences[] array is provided without preferredEndpointId,
           // extract the first entry's modelTier (which is in fact an
           // endpointId, despite the misleading field name in older clients).
+          if (input.preferredEndpointId !== undefined && input.preferredEndpointId !== '') {
+            preferredEndpointId = input.preferredEndpointId;
+          } else if (input.modelPreferences && input.modelPreferences.length > 0) {
+            const firstPref = input.modelPreferences[0];
+            if (firstPref && firstPref.modelTier !== '') {
+              preferredEndpointId = firstPref.modelTier;
+            }
+          }
+          // AMEND-spec-nexus-orch §5 extension — multi-node submit shape.
+          if (input.subTasks && input.subTasks.length > 0) {
+            subTasks = input.subTasks;
+            subTaskEdges = input.subTaskEdges ?? [];
+          }
+          break;
+        case 'sectioned':
+          prompt = input.prompt;
+          selectedAgentIds = (input.agents ?? []) as string[];
           if (input.preferredEndpointId !== undefined && input.preferredEndpointId !== '') {
             preferredEndpointId = input.preferredEndpointId;
           } else if (input.modelPreferences && input.modelPreferences.length > 0) {
@@ -712,6 +827,9 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         planCheckbackRequested,
         preferredEndpointId: preferredEndpointId as NonEmpty | null,
         attachedFiles,
+        // AMEND-spec-nexus-orch §5 extension — null on legacy submits.
+        subTasks: subTasks as WorkspaceRunRequest['subTasks'],
+        subTaskEdges: subTaskEdges as WorkspaceRunRequest['subTaskEdges'],
       };
 
       // §8.1/§8.2: secure rail events (gate 14) — write if promptMode === 'secure_rails'
