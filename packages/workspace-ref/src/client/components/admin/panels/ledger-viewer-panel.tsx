@@ -273,12 +273,26 @@ function buildEventSummary(eventType: string, detail: Record<string, unknown>): 
     const sourceType = detail['sourceType'];
     const slotId = detail['slotId'];
     if (typeof sourceType === 'string' && typeof slotId === 'string') {
-      // Receipt vs data isn't (yet) on the partial_result detail
-      // (would require backend contract surgery in OutputCollector).
-      // For now we surface sourceType — operators can drill into the
-      // mailbox item if they need to distinguish receipt JSON from a
-      // connector data payload.
-      return `mailbox write · ${sourceType} → slot '${slotId}'`;
+      // Receipt vs data discrimination: partial_result.detail.resultRef
+      // (added in 02df348) carries the file:// URL of the mailbox
+      // payload. NXS receipts use the convention <actionId>.receipt.json;
+      // connector data payloads land at <actionId>.json. Path-based
+      // detection is reliable for the current file-resolver convention;
+      // Phase 2 may add a structured `kind` field if non-file://
+      // resolvers ever land.
+      const resultRef = detail['resultRef'];
+      let kindLabel = '';
+      if (typeof resultRef === 'string') {
+        if (resultRef.endsWith('.receipt.json')) {
+          kindLabel = ' · RECEIPT';
+        } else if (sourceType === 'nxs_execution_result') {
+          // Successful NXS connector data payloads — distinguish from
+          // receipt-only writes so operators can read mailbox shape
+          // at a glance.
+          kindLabel = ' · DATA';
+        }
+      }
+      return `mailbox write · ${sourceType}${kindLabel} → slot '${slotId}'`;
     }
     return null;
   }
