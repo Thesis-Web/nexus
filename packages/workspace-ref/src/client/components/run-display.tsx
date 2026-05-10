@@ -12,6 +12,7 @@ import { useState, useMemo } from 'react';
 import { submitApproval } from '../api.js';
 import type { RunEvent } from '../hooks/use-run-events.js';
 import { RunTimeline } from './run-timeline.js';
+import { RunDagSection } from './run-dag-section.js';
 import { RunDenialCard } from './run-denial-card.js';
 import { RunCheckbackCard } from './run-checkback-card.js';
 import { computeRunTimeline, type RunTimelineState } from './run-stage-reducer.js';
@@ -104,6 +105,14 @@ export function RunDisplay({ runId, events, status, planRejection }: RunDisplayP
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <div className="nx-content">
         <RunTimeline timeline={timeline} />
+
+        {/* AMEND-spec-nexus-orch §5 — multi-node DAG visualization.
+            Renders only when the run's plan carried multiple nodes
+            (or any sub-task carried a subTaskKey). Single-prompt
+            runs continue to use the single-stage timeline above. */}
+        {timeline.dag !== null && timeline.dag.isMultiNode && (
+          <RunDagSection dag={timeline.dag} runStartedAt={timeline.runStartedAt} />
+        )}
 
         {/* Empty state for an active run before the first SSE event lands. */}
         {events.length === 0 && status?.status === 'open' && (

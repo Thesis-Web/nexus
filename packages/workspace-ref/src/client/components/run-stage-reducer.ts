@@ -89,6 +89,73 @@ export interface RunTimelineState {
    * checkback card needs to render. Null otherwise.
    */
   pendingCheckback: PendingCheckback | null;
+  /**
+   * AMEND-spec-nexus-orch §5 extension — multi-node planner DAG. Populated
+   * from `orchestrator_dispatched.detail.selectedAgents[]` + `edges[]` and
+   * the per-node lifecycle events. Null until the dispatch event lands;
+   * `isMultiNode === false` for legacy single-prompt runs (or when the
+   * planner emitted only one node) so the run-display can fall back to
+   * the existing single-stage timeline view.
+   */
+  dag: RunDagState | null;
+}
+
+// ─── Multi-node planner DAG (AMEND-spec-nexus-orch §5) ─────────────────────
+
+export type DagNodeStatus =
+  | 'pending'
+  | 'dispatched'
+  | 'completed'
+  | 'failed'
+  | 'skipped'
+  | 'timed_out';
+
+export type DagNodeType =
+  | 'nvg_dispatch'
+  | 'nxs_dispatch'
+  | 'local_control'
+  | 'secure_agent_handoff';
+
+export interface RunDagNode {
+  nodeId: string;
+  /** Multi-node planner sub-task key. Null for legacy single-prompt
+   *  nodes (which still flow through the DAG state for uniformity). */
+  subTaskKey: string | null;
+  taskSummary: string;
+  nodeType: DagNodeType;
+  agentId: string;
+  expectedOutputSlots: string[];
+  inputSlotReads: { fromSubTaskKey: string; slotId: string }[];
+  planOrderIndex: number;
+  status: DagNodeStatus;
+  failureReason: string | null;
+  governanceDenied: boolean;
+  /** From node_completed.completionMetadata (round-trip work). Null when
+   *  the node hasn't completed yet, or wasn't an nvg dispatch. */
+  toolTurnCount: number | null;
+  toolCallsPerTurn: number[] | null;
+  capReached: boolean;
+  /** Most recent mailbox slot the node wrote (from partial_result events). */
+  writtenSlots: string[];
+  dispatchedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface RunDagEdge {
+  edgeId: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  edgeType: 'data_dependency' | 'conditional' | 'sequential';
+  outputSlotRef: string | null;
+}
+
+export interface RunDagState {
+  nodes: RunDagNode[];
+  edges: RunDagEdge[];
+  /** True when the planner emitted multiple nodes OR any node carries a
+   *  subTaskKey. Drives the dashboard's switch between single-stage and
+   *  per-node DAG rendering. */
+  isMultiNode: boolean;
 }
 
 export interface PendingCheckback {
@@ -603,6 +670,163 @@ function statusForStage(stageId: StageId, ctx: StageStatusContext): StageStatus 
   return 'pending';
 }
 
+// ─── DAG state extraction (multi-node planner) ────────────────────────────
+// Walks the run-ledger events ONCE and produces the per-node DAG state
+// the dashboard renders. Defensive against missing fields — the new
+// `orchestrator_dispatched` extensions (subTaskKey, inputSlotReads, edges)
+// are absent on legacy single-prompt runs and on events written by older
+// orchestrator versions; we treat their absence as "single-node legacy
+// shape" rather than crashing.
+
+function extractDagState(events: RunEvent[]): RunDagState | null {
+  const dispatched = events.find(e => e.type === 'orchestrator_dispatched');
+  if (!dispatched?.detail) return null;
+
+  const selectedAgents = dispatched.detail['selectedAgents'];
+  if (!Array.isArray(selectedAgents)) return null;
+
+  const nodes: RunDagNode[] = [];
+  for (const a of selectedAgents) {
+    if (a === null || typeof a !== 'object') continue;
+    const rec = a as Record<string, unknown>;
+    const taskId = str(rec['taskId']);
+    if (taskId === null) continue;
+    const slots = Array.isArray(rec['expectedOutputSlots'])
+      ? (rec['expectedOutputSlots'] as unknown[]).map(s => str(s) ?? '').filter(s => s.length > 0)
+      : [];
+    const inputSlotReadsRaw = rec['inputSlotReads'];
+    const inputSlotReads: RunDagNode['inputSlotReads'] = Array.isArray(inputSlotReadsRaw)
+      ? (inputSlotReadsRaw as unknown[])
+          .map(r => {
+            if (r === null || typeof r !== 'object') return null;
+            const rr = r as Record<string, unknown>;
+            const fromKey = str(rr['fromSubTaskKey']);
+            const slotId = str(rr['slotId']);
+            if (fromKey === null || slotId === null) return null;
+            return { fromSubTaskKey: fromKey, slotId };
+          })
+          .filter((x): x is RunDagNode['inputSlotReads'][number] => x !== null)
+      : [];
+    nodes.push({
+      nodeId: taskId,
+      subTaskKey: str(rec['subTaskKey']),
+      taskSummary: str(rec['taskSummary']) ?? '(no summary)',
+      nodeType: (str(rec['nodeType']) as DagNodeType) ?? 'nvg_dispatch',
+      agentId: str(rec['agentId']) ?? '',
+      expectedOutputSlots: slots,
+      inputSlotReads,
+      planOrderIndex: num(rec['planOrderIndex']) ?? 0,
+      status: 'pending',
+      failureReason: null,
+      governanceDenied: false,
+      toolTurnCount: null,
+      toolCallsPerTurn: null,
+      capReached: false,
+      writtenSlots: [],
+      dispatchedAt: null,
+      completedAt: null,
+    });
+  }
+
+  // Edges. Absent for legacy plans; the dashboard handles an empty array.
+  const edges: RunDagEdge[] = [];
+  const edgesRaw = dispatched.detail['edges'];
+  if (Array.isArray(edgesRaw)) {
+    for (const e of edgesRaw) {
+      if (e === null || typeof e !== 'object') continue;
+      const er = e as Record<string, unknown>;
+      const edgeId = str(er['edgeId']);
+      const sourceNodeId = str(er['sourceNodeId']);
+      const targetNodeId = str(er['targetNodeId']);
+      const edgeType = str(er['edgeType']);
+      if (edgeId === null || sourceNodeId === null || targetNodeId === null || edgeType === null) {
+        continue;
+      }
+      edges.push({
+        edgeId,
+        sourceNodeId,
+        targetNodeId,
+        edgeType: edgeType as RunDagEdge['edgeType'],
+        outputSlotRef: str(er['outputSlotRef']),
+      });
+    }
+  }
+
+  // ── Walk per-node lifecycle events to update each node's status. ──
+  // Order: latest event for a given (nodeId, eventType) wins. This
+  // matches replay semantics — the most recent event reflects current
+  // state.
+  const nodesByNodeId = new Map<string, RunDagNode>();
+  for (const n of nodes) nodesByNodeId.set(n.nodeId, n);
+
+  for (const ev of events) {
+    if (
+      ev.type !== 'node_dispatched' &&
+      ev.type !== 'node_completed' &&
+      ev.type !== 'node_failed' &&
+      ev.type !== 'node_skipped' &&
+      ev.type !== 'node_timed_out' &&
+      ev.type !== 'partial_result'
+    ) {
+      continue;
+    }
+    const detail = ev.detail ?? {};
+    const nodeId = ev.type === 'partial_result' ? str(detail['taskId']) : str(detail['nodeId']);
+    if (nodeId === null) continue;
+    const n = nodesByNodeId.get(nodeId);
+    if (!n) continue;
+
+    const ts = ev.timestamp ?? null;
+    if (ev.type === 'node_dispatched') {
+      n.status = 'dispatched';
+      n.dispatchedAt = ts;
+    } else if (ev.type === 'node_completed') {
+      n.status = 'completed';
+      n.completedAt = ts;
+      const meta = detail['completionMetadata'];
+      if (meta !== null && meta !== undefined && typeof meta === 'object') {
+        const m = meta as Record<string, unknown>;
+        const turns = m['toolTurnCount'];
+        if (typeof turns === 'number') n.toolTurnCount = turns;
+        const perTurn = m['toolCallsPerTurn'];
+        if (Array.isArray(perTurn)) {
+          n.toolCallsPerTurn = perTurn
+            .map(v => (typeof v === 'number' ? v : null))
+            .filter((v): v is number => v !== null);
+        }
+        if (m['capReached'] === true) n.capReached = true;
+      }
+    } else if (ev.type === 'node_failed') {
+      n.status = 'failed';
+      n.completedAt = ts;
+      n.failureReason = str(detail['failureReason']);
+      if (detail['governanceDenied'] === true) n.governanceDenied = true;
+    } else if (ev.type === 'node_skipped') {
+      n.status = 'skipped';
+      n.completedAt = ts;
+      n.failureReason = str(detail['reason']) ?? str(detail['failureReason']);
+    } else if (ev.type === 'node_timed_out') {
+      n.status = 'timed_out';
+      n.completedAt = ts;
+    } else if (ev.type === 'partial_result') {
+      const slotId = str(detail['slotId']);
+      if (slotId !== null && !n.writtenSlots.includes(slotId)) {
+        n.writtenSlots.push(slotId);
+      }
+    }
+  }
+
+  // Sort by planOrderIndex for deterministic rendering.
+  nodes.sort((a, b) => a.planOrderIndex - b.planOrderIndex);
+
+  // Multi-node detection: more than one node OR any node has subTaskKey
+  // (a single-sub-task multi-node plan is still "multi-node" semantically —
+  // it carries inputSlotReads, kind discrimination, etc.).
+  const isMultiNode = nodes.length > 1 || nodes.some(n => n.subTaskKey !== null);
+
+  return { nodes, edges, isMultiNode };
+}
+
 // ─── Public entrypoint ─────────────────────────────────────────────────────
 
 export function computeRunTimeline(events: RunEvent[]): RunTimelineState {
@@ -800,6 +1024,7 @@ export function computeRunTimeline(events: RunEvent[]): RunTimelineState {
     finalResponseBody: finalDescribe.body,
     finalArtifactId: finalDescribe.artifactId,
     pendingCheckback: extractPendingCheckback(events),
+    dag: extractDagState(events),
   };
 }
 

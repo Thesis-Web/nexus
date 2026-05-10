@@ -910,6 +910,258 @@ body {
   }
 }
 
+/* ── Run DAG section (multi-node planner) ───────────────────────────────── */
+/* AMEND-spec-nexus-orch §5 extension. Vertical list of node cards rendered
+   alongside the run timeline when the plan carries multiple nodes. */
+
+.nx-rundag {
+  margin-bottom: 16px;
+  padding: 14px;
+  background: var(--nx-surface-raised);
+  border-radius: var(--nx-radius-lg);
+  border: 1px solid var(--nx-border-subtle);
+}
+
+.nx-rundag__header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--nx-border-subtle);
+}
+.nx-rundag__title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--nx-text);
+}
+.nx-rundag__meta {
+  font-size: 11px;
+  color: var(--nx-text-muted);
+  font-family: var(--nx-font-mono);
+}
+
+.nx-rundag__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.nx-rundag-node {
+  display: flex;
+  gap: 12px;
+  position: relative;
+  min-height: 64px;
+}
+
+.nx-rundag-node__rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 22px;
+}
+
+.nx-rundag-node__glyph {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 50%;
+  background: var(--nx-surface);
+  border: 1px solid var(--nx-border);
+  color: var(--nx-text-muted);
+  z-index: 1;
+}
+.nx-rundag-node__connector {
+  width: 1px;
+  flex: 1;
+  background: var(--nx-border);
+  margin: 2px 0;
+  min-height: 20px;
+}
+
+.nx-rundag-node__body {
+  flex: 1;
+  padding: 8px 10px 14px;
+  min-width: 0;
+  border: 1px solid var(--nx-border-subtle);
+  border-radius: var(--nx-radius-md, 6px);
+  margin-bottom: 8px;
+  background: var(--nx-surface);
+}
+
+.nx-rundag-node__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.nx-rundag-node__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--nx-text);
+  font-family: var(--nx-font-mono);
+}
+.nx-rundag-node__type-badge {
+  font-size: 10px;
+  font-family: var(--nx-font-mono);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--nx-border);
+  color: var(--nx-text-muted);
+  background: var(--nx-surface-raised);
+}
+.nx-rundag-node__type-badge--nvg_dispatch {
+  color: var(--nx-blue, #6cb0f0);
+  border-color: rgba(108, 176, 240, 0.4);
+}
+.nx-rundag-node__type-badge--nxs_dispatch {
+  color: var(--nx-amber, #f0d09c);
+  border-color: rgba(240, 208, 156, 0.4);
+}
+.nx-rundag-node__type-badge--secure_agent_handoff {
+  color: var(--nx-purple, #c08cf0);
+  border-color: rgba(192, 140, 240, 0.4);
+}
+.nx-rundag-node__type-badge--local_control {
+  color: var(--nx-text-muted);
+}
+.nx-rundag-node__offset {
+  margin-left: auto;
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  color: var(--nx-text-muted);
+  flex-shrink: 0;
+}
+
+.nx-rundag-node__summary {
+  font-size: 12.5px;
+  color: var(--nx-text-dim);
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+.nx-rundag-node__meta {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.nx-rundag-node__meta-row {
+  display: flex;
+  gap: 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.nx-rundag-node__meta-row dt {
+  flex-shrink: 0;
+  width: 70px;
+  color: var(--nx-text-muted);
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+}
+.nx-rundag-node__meta-row dd {
+  margin: 0;
+  flex: 1;
+  color: var(--nx-text-dim);
+  font-family: var(--nx-font-mono);
+  word-break: break-word;
+  min-width: 0;
+}
+
+.nx-rundag-node__reads,
+.nx-rundag-node__writes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.nx-rundag-node__reads code,
+.nx-rundag-node__slot code {
+  background: var(--nx-surface-raised);
+  padding: 0 4px;
+  border-radius: 2px;
+  border: 1px solid var(--nx-border-subtle);
+}
+.nx-rundag-node__slot--written {
+  color: var(--nx-green);
+}
+.nx-rundag-node__slot--written code {
+  border-color: var(--nx-green-border);
+  background: var(--nx-green-dim);
+}
+
+.nx-rundag-node__empty {
+  color: var(--nx-text-muted);
+  font-style: italic;
+}
+
+.nx-rundag-node__per-turn {
+  color: var(--nx-text-muted);
+  font-size: 11px;
+}
+.nx-rundag-node__cap-warning {
+  color: var(--nx-amber, #f0d09c);
+  font-weight: 600;
+}
+
+.nx-rundag-node__failure {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--nx-red);
+  border-left: 2px solid var(--nx-red);
+  padding: 4px 0 4px 8px;
+  background: var(--nx-red-dim);
+  border-radius: 0 4px 4px 0;
+  font-family: var(--nx-font-mono);
+}
+.nx-rundag-node__failure-label {
+  font-weight: 600;
+}
+
+/* ── Per-status colors for the rail glyph ─────────────────────────────── */
+
+.nx-rundag-node--pending .nx-rundag-node__glyph {
+  color: var(--nx-text-muted);
+}
+.nx-rundag-node--dispatched .nx-rundag-node__glyph {
+  color: var(--nx-amber);
+  border-color: var(--nx-amber);
+  background: var(--nx-amber-dim);
+  animation: nx-timeline-pulse 1.4s ease-in-out infinite;
+}
+.nx-rundag-node--completed .nx-rundag-node__glyph {
+  color: var(--nx-green);
+  border-color: var(--nx-green-border);
+  background: var(--nx-green-dim);
+}
+.nx-rundag-node--failed .nx-rundag-node__glyph,
+.nx-rundag-node--timed_out .nx-rundag-node__glyph {
+  color: var(--nx-red);
+  border-color: var(--nx-red-border);
+  background: var(--nx-red-dim);
+}
+.nx-rundag-node--skipped .nx-rundag-node__glyph {
+  color: var(--nx-text-muted);
+  border-style: dashed;
+}
+.nx-rundag-node--skipped .nx-rundag-node__body {
+  opacity: 0.7;
+}
+
 /* ── Denial card ───────────────────────────────────────────────────────── */
 
 .nx-denial-card {

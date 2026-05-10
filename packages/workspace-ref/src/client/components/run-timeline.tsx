@@ -47,8 +47,16 @@ export function RunTimeline({ timeline }: RunTimelineProps) {
   // zero events and the reducer marks it 'skipped' — which renders as a
   // grayed-out dashed row and looks like something went wrong. When the
   // checkback truly fired the stage carries events and renders normally.
+  //
+  // Multi-node planner: when the run carries a multi-node DAG, the per-
+  // node breakdown lives in <RunDagSection> rendered separately by
+  // run-display. Hide the legacy nvg_wall + agent_response stages here
+  // so they don't redundantly aggregate the per-node data — the DAG
+  // section is more accurate at the node-level granularity.
+  const isMultiNode = timeline.dag !== null && timeline.dag.isMultiNode;
   const visibleStages = timeline.stages.filter(stage => {
     if (stage.id === 'plan_review' && stage.events.length === 0) return false;
+    if (isMultiNode && (stage.id === 'nvg_wall' || stage.id === 'agent_response')) return false;
     return true;
   });
 

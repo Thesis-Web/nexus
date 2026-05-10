@@ -301,4 +301,205 @@ describe('computeRunTimeline', () => {
     const timeline = computeRunTimeline(eventsWithUnknown);
     expect(timeline.closed).toBe(true);
   });
+
+  // ── Multi-node planner DAG state extraction ────────────────────────────
+
+  describe('multi-node DAG extraction', () => {
+    it('returns null dag before orchestrator_dispatched lands', () => {
+      const timeline = computeRunTimeline([ev('run_opened', {})]);
+      expect(timeline.dag).toBeNull();
+    });
+
+    it('returns null dag when orchestrator_dispatched lacks selectedAgents (older shape)', () => {
+      // SUCCESS_EVENTS at the top of this file uses the pre-extension
+      // shape — selectedAgentCount only, no selectedAgents[]. The
+      // extractor returns null rather than fabricating a phantom DAG.
+      const timeline = computeRunTimeline(SUCCESS_EVENTS);
+      expect(timeline.dag).toBeNull();
+    });
+
+    it('extracts a 2-node DAG with edges + per-node status from a multi-node run', () => {
+      const events: RunEvent[] = [
+        ev('run_opened', {}, '2026-05-09T01:00:00.000Z'),
+        ev(
+          'plan_created',
+          { planId: 'p-multi', nodeCount: 2, edgeCount: 1 },
+          '2026-05-09T01:00:01.000Z'
+        ),
+        ev(
+          'orchestrator_dispatched',
+          {
+            selectedAgentCount: 2,
+            selectedAgents: [
+              {
+                taskId: 'node-A',
+                agentId: 'agent-X',
+                expectedOutputSlots: ['low_stock'],
+                nodeType: 'nvg_dispatch',
+                taskSummary: 'Scan inventory',
+                planOrderIndex: 0,
+                subTaskKey: 'scan',
+                inputSlotReads: [],
+              },
+              {
+                taskId: 'node-B',
+                agentId: 'agent-X',
+                expectedOutputSlots: ['adjustments'],
+                nodeType: 'nvg_dispatch',
+                taskSummary: 'Plan adjustments',
+                planOrderIndex: 1,
+                subTaskKey: 'adjust',
+                inputSlotReads: [{ fromSubTaskKey: 'scan', slotId: 'low_stock' }],
+              },
+            ],
+            edges: [
+              {
+                edgeId: 'edge-1',
+                sourceNodeId: 'node-A',
+                targetNodeId: 'node-B',
+                edgeType: 'sequential',
+                outputSlotRef: 'low_stock',
+              },
+            ],
+          },
+          '2026-05-09T01:00:02.000Z'
+        ),
+        ev('node_dispatched', { nodeId: 'node-A' }, '2026-05-09T01:00:03.000Z'),
+        ev(
+          'partial_result',
+          { taskId: 'node-A', slotId: 'low_stock', mailboxItemId: 'm1' },
+          '2026-05-09T01:00:04.000Z'
+        ),
+        ev(
+          'node_completed',
+          {
+            nodeId: 'node-A',
+            completionMetadata: { toolTurnCount: 1, toolCallsPerTurn: [1, 0], capReached: false },
+          },
+          '2026-05-09T01:00:05.000Z'
+        ),
+        ev('node_dispatched', { nodeId: 'node-B' }, '2026-05-09T01:00:06.000Z'),
+      ];
+
+      const timeline = computeRunTimeline(events);
+      expect(timeline.dag).not.toBeNull();
+      const dag = timeline.dag!;
+
+      expect(dag.isMultiNode).toBe(true);
+      expect(dag.nodes).toHaveLength(2);
+      expect(dag.edges).toHaveLength(1);
+
+      const scan = dag.nodes.find(n => n.subTaskKey === 'scan')!;
+      expect(scan.taskSummary).toBe('Scan inventory');
+      expect(scan.nodeType).toBe('nvg_dispatch');
+      expect(scan.status).toBe('completed');
+      expect(scan.toolTurnCount).toBe(1);
+      expect(scan.toolCallsPerTurn).toEqual([1, 0]);
+      expect(scan.capReached).toBe(false);
+      expect(scan.writtenSlots).toEqual(['low_stock']);
+      expect(scan.inputSlotReads).toEqual([]);
+
+      const adjust = dag.nodes.find(n => n.subTaskKey === 'adjust')!;
+      expect(adjust.status).toBe('dispatched');
+      expect(adjust.inputSlotReads).toEqual([{ fromSubTaskKey: 'scan', slotId: 'low_stock' }]);
+
+      const edge = dag.edges[0]!;
+      expect(edge.sourceNodeId).toBe('node-A');
+      expect(edge.targetNodeId).toBe('node-B');
+      expect(edge.outputSlotRef).toBe('low_stock');
+    });
+
+    it('marks a failed node with governanceDenied + failureReason', () => {
+      const events: RunEvent[] = [
+        ev(
+          'orchestrator_dispatched',
+          {
+            selectedAgents: [
+              {
+                taskId: 'node-X',
+                agentId: 'agent-Y',
+                expectedOutputSlots: ['out'],
+                nodeType: 'secure_agent_handoff',
+                taskSummary: 'secure step',
+                planOrderIndex: 0,
+                subTaskKey: 'secure_step',
+                inputSlotReads: [],
+              },
+            ],
+            edges: [],
+          },
+          '2026-05-09T02:00:00.000Z'
+        ),
+        ev('node_dispatched', { nodeId: 'node-X' }, '2026-05-09T02:00:01.000Z'),
+        ev(
+          'node_failed',
+          {
+            nodeId: 'node-X',
+            failureReason: 'secure_handoff_oct_mismatch: downstream too low',
+            governanceDenied: true,
+          },
+          '2026-05-09T02:00:02.000Z'
+        ),
+      ];
+
+      const timeline = computeRunTimeline(events);
+      const node = timeline.dag!.nodes[0]!;
+      expect(node.status).toBe('failed');
+      expect(node.governanceDenied).toBe(true);
+      expect(node.failureReason).toMatch(/secure_handoff_oct_mismatch/);
+    });
+
+    it('treats a single sub-task with subTaskKey as multi-node (so the DAG view still renders)', () => {
+      const events: RunEvent[] = [
+        ev(
+          'orchestrator_dispatched',
+          {
+            selectedAgents: [
+              {
+                taskId: 'solo',
+                agentId: 'agent-Z',
+                expectedOutputSlots: ['out'],
+                nodeType: 'nxs_dispatch',
+                taskSummary: 'one fixed action',
+                planOrderIndex: 0,
+                subTaskKey: 'solo',
+                inputSlotReads: [],
+              },
+            ],
+            edges: [],
+          },
+          '2026-05-09T03:00:00.000Z'
+        ),
+      ];
+      const timeline = computeRunTimeline(events);
+      expect(timeline.dag!.isMultiNode).toBe(true);
+      expect(timeline.dag!.nodes[0]!.nodeType).toBe('nxs_dispatch');
+    });
+
+    it('legacy single-node run with no subTaskKey stays isMultiNode=false', () => {
+      const events: RunEvent[] = [
+        ev(
+          'orchestrator_dispatched',
+          {
+            selectedAgents: [
+              {
+                taskId: 'legacy-1',
+                agentId: 'agent-Q',
+                expectedOutputSlots: ['default'],
+                nodeType: 'nvg_dispatch',
+                taskSummary: 'Task for agent agent-Q',
+                planOrderIndex: 0,
+                // No subTaskKey, no inputSlotReads — legacy shape.
+              },
+            ],
+            edges: [],
+          },
+          '2026-05-09T04:00:00.000Z'
+        ),
+      ];
+      const timeline = computeRunTimeline(events);
+      expect(timeline.dag!.isMultiNode).toBe(false);
+      expect(timeline.dag!.nodes[0]!.subTaskKey).toBeNull();
+    });
+  });
 });
