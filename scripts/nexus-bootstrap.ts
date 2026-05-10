@@ -1255,6 +1255,101 @@ export async function bootstrapWorkspace(
     console.log(
       '[workspace-bootstrap] test-analyst (medium) + test-intern (low) seeded for delegation tests'
     );
+
+    // ── Default business agents (one per shipped postgres connector) ──────
+    // Concrete supervised agents the orchestrator can dispatch to. Each is
+    // scoped to a single target system so capability ceiling enforcement is
+    // demonstrable end-to-end. Both ship with `enabled: true` because the
+    // agents themselves are governance objects (capability lists, OCT level,
+    // owner, purpose) and cost nothing at startup; whether they actually
+    // reach a connector at run time still depends on the connector being
+    // enabled in the manifest + the corresponding vault entry being seeded.
+    //
+    // No API keys: agents are dispatched-to, not authenticated as. The human
+    // user authenticates; the orchestrator delegates from the human's session
+    // down to the agent. Identity flows through the delegation chain.
+
+    const SALES_AGENT_PRINCIPAL_ID = '00000000-0000-4000-a000-000000000030' as Uuid;
+    const SALES_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000031' as Uuid;
+    if (!(await coreDeps.principalRegistry.get(SALES_AGENT_PRINCIPAL_ID))) {
+      await coreDeps.principalRegistry.register({
+        principalId: SALES_AGENT_PRINCIPAL_ID,
+        displayName: 'nexus-sales-agent-svc' as NonEmpty,
+        email: 'sales-agent@nexus.local' as NonEmpty,
+        registeredAt: now,
+        maxDelegableRiskTier: 'medium',
+        allowedSystems: ['sales-finance'],
+      });
+    }
+    if (!(await coreDeps.actorRegistry.get(SALES_AGENT_ACTOR_ID))) {
+      await coreDeps.actorRegistry.register({
+        actorId: SALES_AGENT_ACTOR_ID,
+        actorClass: 'SUPERVISED_AGENT',
+        principalId: SALES_AGENT_PRINCIPAL_ID,
+        displayName: 'nexus-sales-agent' as NonEmpty,
+        environment: 'reference',
+        octLevel: 'OCT-OPEN',
+        riskCeiling: 'medium',
+        allowedSystems: ['sales-finance'],
+        allowedCapabilities: [
+          'read:record:single',
+          'read:record:bulk',
+          'query:data',
+          'search:data',
+        ],
+        enabled: true,
+        registeredAt: now,
+        owner: 'system' as NonEmpty,
+        purpose:
+          'Read-only agent for the sales-finance target (customers, quotes, sales_orders, invoices, vendors, purchase_orders).' as NonEmpty,
+        reviewCadence: 'quarterly' as NonEmpty,
+      } as Actor);
+    }
+
+    const WAREHOUSE_AGENT_PRINCIPAL_ID = '00000000-0000-4000-a000-000000000040' as Uuid;
+    const WAREHOUSE_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000041' as Uuid;
+    if (!(await coreDeps.principalRegistry.get(WAREHOUSE_AGENT_PRINCIPAL_ID))) {
+      await coreDeps.principalRegistry.register({
+        principalId: WAREHOUSE_AGENT_PRINCIPAL_ID,
+        displayName: 'nexus-warehouse-agent-svc' as NonEmpty,
+        email: 'warehouse-agent@nexus.local' as NonEmpty,
+        registeredAt: now,
+        maxDelegableRiskTier: 'medium',
+        allowedSystems: ['warehouse'],
+      });
+    }
+    if (!(await coreDeps.actorRegistry.get(WAREHOUSE_AGENT_ACTOR_ID))) {
+      await coreDeps.actorRegistry.register({
+        actorId: WAREHOUSE_AGENT_ACTOR_ID,
+        actorClass: 'SUPERVISED_AGENT',
+        principalId: WAREHOUSE_AGENT_PRINCIPAL_ID,
+        displayName: 'nexus-warehouse-agent' as NonEmpty,
+        environment: 'reference',
+        octLevel: 'OCT-OPEN',
+        riskCeiling: 'medium',
+        allowedSystems: ['warehouse'],
+        // Read + governed write. update:record:internal is the demo write
+        // path: agent reads inventory, plans an adjustment, writes it back
+        // through Gate 06. External-facing writes are not granted; the
+        // policy file gates which writes need approval.
+        allowedCapabilities: [
+          'read:record:single',
+          'read:record:bulk',
+          'query:data',
+          'search:data',
+          'update:record:internal',
+        ],
+        enabled: true,
+        registeredAt: now,
+        owner: 'system' as NonEmpty,
+        purpose:
+          'Read + governed-write agent for the warehouse target (locations, inventory, shipments, shipment_lines).' as NonEmpty,
+        reviewCadence: 'quarterly' as NonEmpty,
+      } as Actor);
+    }
+    console.log(
+      '[workspace-bootstrap] nexus-sales-agent + nexus-warehouse-agent seeded (default business agents)'
+    );
   } else {
     console.log('[workspace-bootstrap] dev-admin key not found — run nexus init');
   }
