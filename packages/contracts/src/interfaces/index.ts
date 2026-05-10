@@ -166,6 +166,18 @@ export interface PolicyCondition {
   environments?: EnvironmentId[];
   externalFacing?: boolean;
   maxChainDepth?: number;
+  /**
+   * Scope this rule to specific target systems (connector systemType
+   * values). When absent, the rule matches any target. When set, the
+   * rule matches ONLY when `action.resolvedTarget.system` is one of
+   * the listed systems. This is the field that makes per-connector
+   * policy bundles work — a marketplace vendor's `connector-x.policy.json`
+   * scopes its allow rules to `connector-x.systemType` only, so it
+   * cannot inadvertently widen permission across unrelated connectors.
+   * Backward compatible — pre-existing rules without targetSystems
+   * keep their "any target" semantics.
+   */
+  targetSystems?: string[];
 }
 
 export interface GrantTemplateHint {

@@ -54,6 +54,7 @@ export class PolicyGate implements Gate {
       environment: action.resolvedTarget!.environment,
       externalFacing: action.resolvedTarget!.externalFacing,
       chainDepth: context.delegationContext!.chainDepth, // Gate 01 invariant
+      targetSystem: action.resolvedTarget!.system, // for PolicyCondition.targetSystems
     };
 
     const matchedRule = context.policyFile.sortedRules.find(r =>

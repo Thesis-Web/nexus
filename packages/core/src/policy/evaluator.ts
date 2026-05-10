@@ -19,6 +19,9 @@ export interface PolicyEvalEnvelope {
   environment: EnvironmentId;
   externalFacing: boolean;
   chainDepth: number;
+  /** Resolved target system (connector systemType). Threaded so
+   *  PolicyCondition.targetSystems can scope rules per-connector. */
+  targetSystem: string;
 }
 
 export function matchesCondition(cond: PolicyCondition, env: PolicyEvalEnvelope): boolean {
@@ -30,5 +33,6 @@ export function matchesCondition(cond: PolicyCondition, env: PolicyEvalEnvelope)
   if (cond.environments && !cond.environments.includes(env.environment)) return false;
   if (cond.externalFacing !== undefined && cond.externalFacing !== env.externalFacing) return false;
   if (cond.maxChainDepth !== undefined && env.chainDepth > cond.maxChainDepth) return false;
+  if (cond.targetSystems && !cond.targetSystems.includes(env.targetSystem)) return false;
   return true;
 }
