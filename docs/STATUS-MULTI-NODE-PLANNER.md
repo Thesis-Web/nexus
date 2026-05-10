@@ -107,8 +107,9 @@ Backend-driven changes that needed front-end work:
 | Orchestrator panel (`maxToolTurnsPerNode`) | ✅ | Column added, live API exposes the field. |
 | Connector panel (postgres default) | ✅ | Placeholder shows postgres-sales-finance + postgres-warehouse. Live wiring already worked. |
 | Actor / agent panel (roles) | ✅ | Column + read-only row. Catalog API already returned roles raw; admin-setup endpoint mapped them in. Role mutation is intentionally not wired — sensitive op deserves a guarded writer. |
-| Ledger viewer (tool-turn / secure-handoff) | ✅ | Pretty-printed summary line for `node_completed` (toolTurnCount, toolCallsPerTurn, capReached) + `node_failed` (secure_handoff_oct_mismatch, slot_read_*, tool_turn_cap_exceeded, etc.). Receipt vs data discrimination on `partial_result` is deferred (needs backend contract change). |
-| Run-timeline / run-stage-reducer | ⏳ | Still collapses multi-node DAGs into a single "Agent response" stage. Per-node taskSummary, sub-task kind, and slot-flow rendering not surfaced. Real multi-node visualization is the largest remaining UI piece. |
+| Ledger viewer (tool-turn / secure-handoff) | ✅ | Pretty-printed summary line for `node_completed` (toolTurnCount, toolCallsPerTurn, capReached) + `node_failed` (secure_handoff_oct_mismatch, slot_read_*, tool_turn_cap_exceeded, etc.). |
+| Ledger viewer (receipt vs data) | ✅ | `partial_result.detail.resultRef` (added in 02df348) is path-checked for `.receipt.json` so mailbox writes label as `RECEIPT` vs `DATA`. Phase 2 may swap to a structured `kind` field if non-file:// resolvers land. |
+| Run-timeline / run-dag-section | ✅ | New `RunDagSection` component renders a per-node breakdown for multi-node runs. Each node card shows status glyph, subTaskKey, nodeType badge (nvg/nxs/secure/local), agent, slot reads, slot writes (green when fired), tool-turn metadata, failure reason. Single-node runs use the original timeline view unchanged. Phase 2 may add slot-flow arrows / graph-layout if DAG shapes warrant it. |
 | Prompt panel (sub-task DAG builder) | ⏳ | Intentionally skipped in Phase 1 spec. Real DAG-builder UI is a follow-up. |
 | Identity provider panel (provider configs) | n/a | Roles belong on actors, not on identity-provider configurations. The provider panel is correct as-is. |
 
