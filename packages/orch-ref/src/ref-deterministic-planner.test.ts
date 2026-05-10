@@ -589,3 +589,448 @@ describe('ORCH-20: OCT-secure plan node', () => {
     expect(result.edges).toHaveLength(0);
   });
 });
+
+// ─── Multi-node sub-task plans (AMEND-spec-nexus-orch §5 extension) ───
+// Phase 1 of the multi-node planner. When the request carries a non-empty
+// `subTasks[]` array, the planner emits one node per sub-task with proper
+// nodeType branching, per-node fields, and edges keyed by subTaskKey.
+
+describe('multi-node sub-task plans', () => {
+  const AGENT_A = '00000000-0000-4000-a000-00000000000a' as Uuid;
+  const AGENT_B = '00000000-0000-4000-a000-00000000000b' as Uuid;
+  const AGENT_C = '00000000-0000-4000-a000-00000000000c' as Uuid;
+
+  it('emits a 2-node sequential plan from subTasks (nvg → nvg)', async () => {
+    const agents = [
+      makeAgent(AGENT_A, ['read:record:bulk']),
+      makeAgent(AGENT_B, ['update:record:internal']),
+    ];
+    const planner = new RefDeterministicPlanner(mockDigest, ORCH_ACTOR_ID);
+    const request = normalRequest({
+      subTasks: [
+        {
+          kind: 'nvg',
+          subTaskKey: 'reader' as NonEmpty,
+          agentId: AGENT_A,
+          taskSummary: 'Read inventory' as NonEmpty,
+          taskPrompt: 'Find all rows in inventory.products' as NonEmpty,
+          expectedOutputSlots: ['inventory_rows' as NonEmpty],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'writer' as NonEmpty,
+          agentId: AGENT_B,
+          taskSummary: 'Update inventory' as NonEmpty,
+          taskPrompt: 'Adjust quantities based on the upstream rows' as NonEmpty,
+          expectedOutputSlots: ['update_receipt' as NonEmpty],
+          inputSlotReads: [
+            { fromSubTaskKey: 'reader' as NonEmpty, slotId: 'inventory_rows' as NonEmpty },
+          ],
+        },
+      ],
+      subTaskEdges: [
+        {
+          sourceSubTaskKey: 'reader' as NonEmpty,
+          targetSubTaskKey: 'writer' as NonEmpty,
+          edgeType: 'sequential',
+          conditionSpec: null,
+          outputSlotRef: 'inventory_rows' as NonEmpty,
+        },
+      ],
+    });
+    const result = await planner.plan(request, makeContext(agents));
+    expect(isPlan(result)).toBe(true);
+    if (!isPlan(result)) return;
+    expect(result.nodes).toHaveLength(2);
+    expect(result.edges).toHaveLength(1);
+
+    const reader = result.nodes.find(n => n.subTaskKey === 'reader')!;
+    const writer = result.nodes.find(n => n.subTaskKey === 'writer')!;
+    expect(reader.agentId).toBe(AGENT_A);
+    expect(reader.nodeType).toBe('nvg_dispatch');
+    expect(reader.requiresNvg).toBe(true);
+    expect(reader.requiresNxs).toBe(false);
+    expect(reader.taskPrompt).toBe('Find all rows in inventory.products');
+    expect(reader.expectedOutputSlots).toEqual(['inventory_rows']);
+    expect(reader.inputSlotReads).toEqual([]);
+
+    expect(writer.agentId).toBe(AGENT_B);
+    expect(writer.taskSummary).toBe('Update inventory');
+    expect(writer.inputSlotReads).toEqual([{ fromSubTaskKey: 'reader', slotId: 'inventory_rows' }]);
+
+    // Edge must reference the right node ids (resolved via subTaskKey).
+    const edge = result.edges[0]!;
+    expect(edge.sourceNodeId).toBe(reader.nodeId);
+    expect(edge.targetNodeId).toBe(writer.nodeId);
+    expect(edge.edgeType).toBe('sequential');
+    expect(edge.outputSlotRef).toBe('inventory_rows');
+  });
+
+  it('emits a 3-node fan-out plan with two edges out of the root', async () => {
+    const agents = [
+      makeAgent(AGENT_A, ['read:record:bulk']),
+      makeAgent(AGENT_B, ['classify']),
+      makeAgent(AGENT_C, ['notify']),
+    ];
+    const planner = new RefDeterministicPlanner(mockDigest, ORCH_ACTOR_ID);
+    const request = normalRequest({
+      subTasks: [
+        {
+          kind: 'nvg',
+          subTaskKey: 'fetch' as NonEmpty,
+          agentId: AGENT_A,
+          taskSummary: 'Fetch invoices' as NonEmpty,
+          taskPrompt: 'Find unpaid invoices' as NonEmpty,
+          expectedOutputSlots: ['invoices' as NonEmpty],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'classify' as NonEmpty,
+          agentId: AGENT_B,
+          taskSummary: 'Classify invoices' as NonEmpty,
+          taskPrompt: 'Tag each invoice by risk' as NonEmpty,
+          expectedOutputSlots: ['tags' as NonEmpty],
+          inputSlotReads: [{ fromSubTaskKey: 'fetch' as NonEmpty, slotId: 'invoices' as NonEmpty }],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'notify' as NonEmpty,
+          agentId: AGENT_C,
+          taskSummary: 'Notify accounts' as NonEmpty,
+          taskPrompt: 'Send notifications for high-risk invoices' as NonEmpty,
+          expectedOutputSlots: ['notifications' as NonEmpty],
+          inputSlotReads: [{ fromSubTaskKey: 'fetch' as NonEmpty, slotId: 'invoices' as NonEmpty }],
+        },
+      ],
+      subTaskEdges: [
+        {
+          sourceSubTaskKey: 'fetch' as NonEmpty,
+          targetSubTaskKey: 'classify' as NonEmpty,
+          edgeType: 'data_dependency',
+          conditionSpec: null,
+          outputSlotRef: 'invoices' as NonEmpty,
+        },
+        {
+          sourceSubTaskKey: 'fetch' as NonEmpty,
+          targetSubTaskKey: 'notify' as NonEmpty,
+          edgeType: 'data_dependency',
+          conditionSpec: null,
+          outputSlotRef: 'invoices' as NonEmpty,
+        },
+      ],
+    });
+    const result = await planner.plan(request, makeContext(agents));
+    expect(isPlan(result)).toBe(true);
+    if (!isPlan(result)) return;
+    expect(result.nodes).toHaveLength(3);
+    expect(result.edges).toHaveLength(2);
+  });
+
+  it('supports same-agent multi-step (one agent in two sub-tasks)', async () => {
+    const agents = [makeAgent(AGENT_A, ['read:record:bulk', 'update:record:internal'])];
+    const planner = new RefDeterministicPlanner(mockDigest, ORCH_ACTOR_ID);
+    const request = normalRequest({
+      subTasks: [
+        {
+          kind: 'nvg',
+          subTaskKey: 'first' as NonEmpty,
+          agentId: AGENT_A,
+          taskSummary: 'first turn' as NonEmpty,
+          taskPrompt: 'read state' as NonEmpty,
+          expectedOutputSlots: ['state' as NonEmpty],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'second' as NonEmpty,
+          agentId: AGENT_A,
+          taskSummary: 'second turn' as NonEmpty,
+          taskPrompt: 'react to state' as NonEmpty,
+          expectedOutputSlots: ['decision' as NonEmpty],
+          inputSlotReads: [{ fromSubTaskKey: 'first' as NonEmpty, slotId: 'state' as NonEmpty }],
+        },
+      ],
+      subTaskEdges: [
+        {
+          sourceSubTaskKey: 'first' as NonEmpty,
+          targetSubTaskKey: 'second' as NonEmpty,
+          edgeType: 'sequential',
+          conditionSpec: null,
+          outputSlotRef: null,
+        },
+      ],
+    });
+    const result = await planner.plan(request, makeContext(agents));
+    expect(isPlan(result)).toBe(true);
+    if (!isPlan(result)) return;
+    expect(result.nodes).toHaveLength(2);
+    expect(result.nodes.every(n => n.agentId === AGENT_A)).toBe(true);
+  });
+
+  it('emits an nxs_dispatch node with the right flags and actionTemplate', async () => {
+    const agents = [makeAgent(AGENT_A, ['update:record:internal'])];
+    const planner = new RefDeterministicPlanner(mockDigest, ORCH_ACTOR_ID);
+    const request = normalRequest({
+      subTasks: [
+        {
+          kind: 'nxs',
+          subTaskKey: 'fire' as NonEmpty,
+          agentId: AGENT_A,
+          taskSummary: 'Update one row' as NonEmpty,
+          expectedOutputSlots: ['update_receipt' as NonEmpty],
+          inputSlotReads: [],
+          actionTemplate: {
+            capability: 'update:record:internal' as NonEmpty,
+            target: {
+              system: 'warehouse' as NonEmpty,
+              resourceType: 'record' as NonEmpty,
+              resourceScope: 'single' as NonEmpty,
+            },
+            rawPayload: {
+              sql: 'UPDATE products SET units = $1 WHERE sku = $2',
+              params: [150, 'GADGET-Y'],
+            },
+          },
+        },
+      ],
+    });
+    const result = await planner.plan(request, makeContext(agents));
+    expect(isPlan(result)).toBe(true);
+    if (!isPlan(result)) return;
+    expect(result.nodes).toHaveLength(1);
+    const n = result.nodes[0]!;
+    expect(n.nodeType).toBe('nxs_dispatch');
+    expect(n.requiresNvg).toBe(false);
+    expect(n.requiresNxs).toBe(true);
+    expect(n.taskPrompt).toBeNull();
+    expect(n.actionTemplate).not.toBeNull();
+    expect(n.actionTemplate!.capability).toBe('update:record:internal');
+  });
+
+  it('emits a secure_handoff node with the right flags', async () => {
+    const agents = [makeAgent(AGENT_A, ['secure_op'])];
+    const planner = new RefDeterministicPlanner(mockDigest, ORCH_ACTOR_ID);
+    const request = normalRequest({
+      subTasks: [
+        {
+          kind: 'secure_handoff',
+          subTaskKey: 'handoff' as NonEmpty,
+          agentId: AGENT_A,
+          taskSummary: 'Secure handoff' as NonEmpty,
+          taskPrompt: 'Process the redacted payload' as NonEmpty,
+          expectedOutputSlots: ['secure_output' as NonEmpty],
+          inputSlotReads: [],
+        },
+      ],
+    });
+    const result = await planner.plan(request, makeContext(agents));
+    expect(isPlan(result)).toBe(true);
+    if (!isPlan(result)) return;
+    expect(result.nodes[0].nodeType).toBe('secure_agent_handoff');
+    expect(result.nodes[0].requiresNvg).toBe(false);
+    expect(result.nodes[0].requiresNxs).toBe(false);
+  });
+
+  it('rejects a duplicate subTaskKey', async () => {
+    const agents = [makeAgent(AGENT_A, ['read'])];
+    const planner = new RefDeterministicPlanner(mockDigest, ORCH_ACTOR_ID);
+    const request = normalRequest({
+      subTasks: [
+        {
+          kind: 'nvg',
+          subTaskKey: 'dup' as NonEmpty,
+          agentId: AGENT_A,
+          taskSummary: 'a' as NonEmpty,
+          taskPrompt: 'a' as NonEmpty,
+          expectedOutputSlots: ['x' as NonEmpty],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'dup' as NonEmpty,
+          agentId: AGENT_A,
+          taskSummary: 'b' as NonEmpty,
+          taskPrompt: 'b' as NonEmpty,
+          expectedOutputSlots: ['y' as NonEmpty],
+          inputSlotReads: [],
+        },
+      ],
+    });
+    const result = await planner.plan(request, makeContext(agents));
+    expect(isRejection(result)).toBe(true);
+    if (!isRejection(result)) return;
+    expect(result.reason).toBe('malformed_request');
+    expect(result.reasonDetail).toMatch(/Duplicate subTaskKey/);
+  });
+
+  it('rejects an inputSlotReads entry that points at an unknown subTaskKey', async () => {
+    const agents = [makeAgent(AGENT_A, ['read'])];
+    const planner = new RefDeterministicPlanner(mockDigest, ORCH_ACTOR_ID);
+    const request = normalRequest({
+      subTasks: [
+        {
+          kind: 'nvg',
+          subTaskKey: 'reader' as NonEmpty,
+          agentId: AGENT_A,
+          taskSummary: 'a' as NonEmpty,
+          taskPrompt: 'a' as NonEmpty,
+          expectedOutputSlots: ['x' as NonEmpty],
+          inputSlotReads: [{ fromSubTaskKey: 'ghost' as NonEmpty, slotId: 'whatever' as NonEmpty }],
+        },
+      ],
+    });
+    const result = await planner.plan(request, makeContext(agents));
+    expect(isRejection(result)).toBe(true);
+    if (!isRejection(result)) return;
+    expect(result.reason).toBe('malformed_request');
+    expect(result.reasonDetail).toMatch(/unknown subTaskKey 'ghost'/);
+  });
+
+  it('rejects a self-referential inputSlotReads', async () => {
+    const agents = [makeAgent(AGENT_A, ['read'])];
+    const planner = new RefDeterministicPlanner(mockDigest, ORCH_ACTOR_ID);
+    const request = normalRequest({
+      subTasks: [
+        {
+          kind: 'nvg',
+          subTaskKey: 'self' as NonEmpty,
+          agentId: AGENT_A,
+          taskSummary: 'a' as NonEmpty,
+          taskPrompt: 'a' as NonEmpty,
+          expectedOutputSlots: ['x' as NonEmpty],
+          inputSlotReads: [{ fromSubTaskKey: 'self' as NonEmpty, slotId: 'x' as NonEmpty }],
+        },
+      ],
+    });
+    const result = await planner.plan(request, makeContext(agents));
+    expect(isRejection(result)).toBe(true);
+    if (!isRejection(result)) return;
+    expect(result.reasonDetail).toMatch(/cannot read from its own slot/);
+  });
+
+  it('rejects subTaskEdges referencing an unknown subTaskKey', async () => {
+    const agents = [makeAgent(AGENT_A, ['read'])];
+    const planner = new RefDeterministicPlanner(mockDigest, ORCH_ACTOR_ID);
+    const request = normalRequest({
+      subTasks: [
+        {
+          kind: 'nvg',
+          subTaskKey: 'reader' as NonEmpty,
+          agentId: AGENT_A,
+          taskSummary: 'a' as NonEmpty,
+          taskPrompt: 'a' as NonEmpty,
+          expectedOutputSlots: ['x' as NonEmpty],
+          inputSlotReads: [],
+        },
+      ],
+      subTaskEdges: [
+        {
+          sourceSubTaskKey: 'reader' as NonEmpty,
+          targetSubTaskKey: 'ghost' as NonEmpty,
+          edgeType: 'sequential',
+          conditionSpec: null,
+          outputSlotRef: null,
+        },
+      ],
+    });
+    const result = await planner.plan(request, makeContext(agents));
+    expect(isRejection(result)).toBe(true);
+    if (!isRejection(result)) return;
+    expect(result.reasonDetail).toMatch(/unknown targetSubTaskKey 'ghost'/);
+  });
+
+  it('rejects a cycle in subTaskEdges', async () => {
+    const agents = [makeAgent(AGENT_A, ['read']), makeAgent(AGENT_B, ['read'])];
+    const planner = new RefDeterministicPlanner(mockDigest, ORCH_ACTOR_ID);
+    const request = normalRequest({
+      subTasks: [
+        {
+          kind: 'nvg',
+          subTaskKey: 'a' as NonEmpty,
+          agentId: AGENT_A,
+          taskSummary: 't' as NonEmpty,
+          taskPrompt: 't' as NonEmpty,
+          expectedOutputSlots: ['x' as NonEmpty],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'b' as NonEmpty,
+          agentId: AGENT_B,
+          taskSummary: 't' as NonEmpty,
+          taskPrompt: 't' as NonEmpty,
+          expectedOutputSlots: ['y' as NonEmpty],
+          inputSlotReads: [],
+        },
+      ],
+      subTaskEdges: [
+        {
+          sourceSubTaskKey: 'a' as NonEmpty,
+          targetSubTaskKey: 'b' as NonEmpty,
+          edgeType: 'sequential',
+          conditionSpec: null,
+          outputSlotRef: null,
+        },
+        {
+          sourceSubTaskKey: 'b' as NonEmpty,
+          targetSubTaskKey: 'a' as NonEmpty,
+          edgeType: 'sequential',
+          conditionSpec: null,
+          outputSlotRef: null,
+        },
+      ],
+    });
+    const result = await planner.plan(request, makeContext(agents));
+    expect(isRejection(result)).toBe(true);
+    if (!isRejection(result)) return;
+    expect(result.reasonDetail).toMatch(/cycle/);
+  });
+
+  it('rejects when sub-task count exceeds maxSplitDepth', async () => {
+    const agents = [makeAgent(AGENT_A, ['read']), makeAgent(AGENT_B, ['read'])];
+    const planner = new RefDeterministicPlanner(mockDigest, ORCH_ACTOR_ID);
+    const request = normalRequest({
+      subTasks: [
+        {
+          kind: 'nvg',
+          subTaskKey: 'a' as NonEmpty,
+          agentId: AGENT_A,
+          taskSummary: 't' as NonEmpty,
+          taskPrompt: 't' as NonEmpty,
+          expectedOutputSlots: ['x' as NonEmpty],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'b' as NonEmpty,
+          agentId: AGENT_B,
+          taskSummary: 't' as NonEmpty,
+          taskPrompt: 't' as NonEmpty,
+          expectedOutputSlots: ['y' as NonEmpty],
+          inputSlotReads: [],
+        },
+      ],
+    });
+    const result = await planner.plan(request, makeContext(agents, [], 1));
+    expect(isRejection(result)).toBe(true);
+    if (!isRejection(result)) return;
+    expect(result.reason).toBe('max_split_exceeded');
+  });
+
+  it('legacy single-prompt path still works when subTasks is null', async () => {
+    const agents = [makeAgent(AGENT_A, ['read'])];
+    const planner = new RefDeterministicPlanner(mockDigest, ORCH_ACTOR_ID);
+    const request = normalRequest({
+      subTasks: null,
+      selectedAgentIds: [AGENT_A],
+    });
+    const result = await planner.plan(request, makeContext(agents));
+    expect(isPlan(result)).toBe(true);
+    if (!isPlan(result)) return;
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].subTaskKey).toBeUndefined();
+    expect(result.nodes[0].nodeType).toBe('nxs_dispatch');
+  });
+});

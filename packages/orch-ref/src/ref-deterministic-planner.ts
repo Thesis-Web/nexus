@@ -19,6 +19,8 @@ import type {
   PlannerContext,
   AgentCapabilityEntry,
   EdgeHint,
+  SubTaskDecl,
+  SubTaskEdgeHint,
 } from '@nexus/contracts';
 
 import type {
@@ -31,6 +33,7 @@ import type {
   PlanRejection,
   PlanRejectionReason,
   SuggestedAgent,
+  NxsActionTemplate,
 } from '@nexus/contracts';
 
 import { EVIDENCE_SENTINEL, nowIso } from '@nexus/contracts';
@@ -229,6 +232,111 @@ function reject(
   };
 }
 
+// ─── Per-kind PlanNode builder for sub-task plans ───
+// Maps SubTaskDecl.kind → nodeType + requiresNvg/Nxs flags + per-node
+// fields, keeping the kind-discrimination logic in one place. Module-
+// level so both the planner and any future amendment path can reuse.
+
+function buildNodeFromSubTask(st: SubTaskDecl, planOrderIndex: number, nodeId: Uuid): PlanNode {
+  let nodeType: PlanNode['nodeType'];
+  let requiresNvg: boolean;
+  let requiresNxs: boolean;
+  let taskPrompt: NonEmpty | null = null;
+  let actionTemplate: NxsActionTemplate | null = null;
+
+  switch (st.kind) {
+    case 'nvg':
+      nodeType = 'nvg_dispatch';
+      requiresNvg = true;
+      requiresNxs = false;
+      taskPrompt = st.taskPrompt;
+      break;
+    case 'nxs':
+      nodeType = 'nxs_dispatch';
+      requiresNvg = false;
+      requiresNxs = true;
+      actionTemplate = st.actionTemplate;
+      break;
+    case 'secure_handoff':
+      nodeType = 'secure_agent_handoff';
+      requiresNvg = false;
+      requiresNxs = false;
+      taskPrompt = st.taskPrompt;
+      break;
+  }
+
+  return {
+    nodeId,
+    planOrderIndex,
+    agentId: st.agentId,
+    taskSummary: st.taskSummary,
+    requiresNvg,
+    requiresNxs,
+    nodeType,
+    declaredRiskHint: EVIDENCE_SENTINEL,
+    expectedOutputSlots: st.expectedOutputSlots,
+    timeoutMs: 60000,
+    subTaskKey: st.subTaskKey,
+    taskPrompt,
+    inputSlotReads: st.inputSlotReads,
+    actionTemplate,
+  };
+}
+
+// ─── Shared condition validator ───
+// Used by both EdgeHint and SubTaskEdgeHint construction paths so the
+// condition normalization law (§3.1, EdgeHint normalization) is one
+// chunk of code, not two.
+
+function validateConditionSpec(
+  edgeType: 'data_dependency' | 'conditional' | 'sequential',
+  conditionSpec: { sourceField: NonEmpty; operator: string; value: unknown } | null
+): (PlanCondition | null) | PlanRejection {
+  // Non-conditional edge requires conditionSpec === null
+  if (edgeType !== 'conditional') {
+    if (conditionSpec !== null) {
+      return reject(
+        'malformed_request',
+        `Non-conditional edge type '${edgeType}' must have null conditionSpec`
+      );
+    }
+    return null;
+  }
+
+  // Conditional edge requires non-null conditionSpec
+  if (conditionSpec === null) {
+    return reject('malformed_request', 'Conditional edge requires non-null conditionSpec');
+  }
+
+  // Validate operator
+  if (!VALID_OPERATORS.has(conditionSpec.operator)) {
+    return reject(
+      'malformed_request',
+      `Invalid conditionSpec operator '${conditionSpec.operator}'`
+    );
+  }
+
+  // Validate value type: must be string | number | boolean | null
+  if (
+    conditionSpec.value !== null &&
+    typeof conditionSpec.value !== 'string' &&
+    typeof conditionSpec.value !== 'number' &&
+    typeof conditionSpec.value !== 'boolean'
+  ) {
+    return reject(
+      'malformed_request',
+      `conditionSpec.value must be string | number | boolean | null, got ${typeof conditionSpec.value}`
+    );
+  }
+
+  return {
+    conditionId: randomUUID() as Uuid,
+    sourceField: conditionSpec.sourceField,
+    operator: conditionSpec.operator as PlanConditionOperator,
+    value: conditionSpec.value as string | number | boolean | null,
+  };
+}
+
 // ─── RefDeterministicPlanner ───
 
 export class RefDeterministicPlanner implements Planner {
@@ -249,9 +357,18 @@ export class RefDeterministicPlanner implements Planner {
       case 'oct_secure':
         return this.planOctSecure(request, context);
       case 'metadata':
+      case 'normal': {
+        // AMEND-spec-nexus-orch §5 extension — multi-node sub-task path.
+        // When the request supplies a non-empty `subTasks` array we
+        // emit one node per sub-task with per-node task descriptions,
+        // slot reads, and (for nxs sub-tasks) pre-resolved action
+        // templates. Edges come from `subTaskEdges`. selectedAgentIds /
+        // requiredCapabilities / edgeHints are ignored on this branch.
+        if (request.subTasks && request.subTasks.length > 0) {
+          return this.planFromSubTasks(request, context);
+        }
         return this.planStandard(request, context);
-      case 'normal':
-        return this.planStandard(request, context);
+      }
       default:
         return reject('malformed_request', 'Unknown visibility tier');
     }
@@ -287,6 +404,144 @@ export class RefDeterministicPlanner implements Planner {
 
     const plan = this.buildPlan(request.runId, [node], []);
     return plan;
+  }
+
+  // ─── Multi-node sub-task plan (AMEND-spec-nexus-orch §5 extension) ───
+  // Emits one node per SubTaskDecl with proper kind-driven nodeType and
+  // per-node fields wired through. selectedAgentIds /
+  // requiredCapabilities / edgeHints are NOT consulted on this branch.
+  private async planFromSubTasks(
+    request: NormalPlannerRequest | MetadataPlannerRequest,
+    context: PlannerContext
+  ): Promise<ExecutionPlan | PlanRejection> {
+    const subTasks = request.subTasks!;
+    const subTaskEdges = request.subTaskEdges ?? [];
+
+    // ── 1. subTaskKey uniqueness ──
+    const seenKeys = new Set<string>();
+    for (const st of subTasks) {
+      if (seenKeys.has(st.subTaskKey)) {
+        return reject('malformed_request', `Duplicate subTaskKey '${st.subTaskKey}'`);
+      }
+      seenKeys.add(st.subTaskKey);
+    }
+
+    // ── 2. inputSlotReads reference known sub-tasks + non-self ──
+    for (const st of subTasks) {
+      for (const ref of st.inputSlotReads) {
+        if (!seenKeys.has(ref.fromSubTaskKey)) {
+          return reject(
+            'malformed_request',
+            `subTask '${st.subTaskKey}' inputSlotReads references unknown subTaskKey '${ref.fromSubTaskKey}'`
+          );
+        }
+        if (ref.fromSubTaskKey === st.subTaskKey) {
+          return reject(
+            'malformed_request',
+            `subTask '${st.subTaskKey}' inputSlotReads cannot read from its own slot`
+          );
+        }
+      }
+    }
+
+    // ── 3. nxs sub-tasks must carry an actionTemplate ──
+    for (const st of subTasks) {
+      if (st.kind === 'nxs') {
+        if (!st.actionTemplate) {
+          return reject(
+            'malformed_request',
+            `subTask '${st.subTaskKey}' is kind 'nxs' but missing actionTemplate`
+          );
+        }
+      }
+    }
+
+    // ── 4. agent existence + visibility (per sub-task, NO dedup) ──
+    for (const st of subTasks) {
+      const agent = await context.registry.getById(st.agentId);
+      if (!agent) {
+        const alts = await this.findAlternatives([], context);
+        return reject(
+          'no_capable_agent',
+          `Agent ${st.agentId} for subTask '${st.subTaskKey}' not found in registry`,
+          alts
+        );
+      }
+      if (!this.isVisible(agent, context.capabilityCeiling)) {
+        const alts = await this.findAlternatives(agent.capabilities, context);
+        return reject(
+          'capability_outside_ceiling',
+          `Agent ${st.agentId} for subTask '${st.subTaskKey}' is outside capability ceiling`,
+          alts
+        );
+      }
+      if (!agent.enabled) {
+        const alts = await this.findAlternatives(agent.capabilities, context);
+        return reject(
+          'no_capable_agent',
+          `Agent ${st.agentId} for subTask '${st.subTaskKey}' is disabled`,
+          alts
+        );
+      }
+    }
+
+    // ── 5. maxSplitDepth on sub-task count (NOT distinct-agent count) ──
+    if (subTasks.length > context.maxSplitDepth) {
+      return reject(
+        'max_split_exceeded',
+        `Plan requires ${subTasks.length} sub-tasks but maxSplitDepth is ${context.maxSplitDepth}`
+      );
+    }
+
+    // ── 6. Construct PlanNodes per sub-task ──
+    const subTaskKeyToNodeId = new Map<string, string>();
+    const nodes: PlanNode[] = subTasks.map((st, index) => {
+      const nodeId = randomUUID() as Uuid;
+      subTaskKeyToNodeId.set(st.subTaskKey, nodeId);
+      return buildNodeFromSubTask(st, index, nodeId);
+    });
+
+    // ── 7. Build edges from subTaskEdges (keyed by subTaskKey) ──
+    const edges: PlanEdge[] = [];
+    for (const hint of subTaskEdges) {
+      const sourceNodeId = subTaskKeyToNodeId.get(hint.sourceSubTaskKey);
+      const targetNodeId = subTaskKeyToNodeId.get(hint.targetSubTaskKey);
+      if (!sourceNodeId) {
+        return reject(
+          'malformed_request',
+          `subTaskEdge references unknown sourceSubTaskKey '${hint.sourceSubTaskKey}'`
+        );
+      }
+      if (!targetNodeId) {
+        return reject(
+          'malformed_request',
+          `subTaskEdge references unknown targetSubTaskKey '${hint.targetSubTaskKey}'`
+        );
+      }
+
+      const conditionResult = validateConditionSpec(hint.edgeType, hint.conditionSpec);
+      if (conditionResult !== null && 'rejected' in conditionResult) {
+        return conditionResult;
+      }
+
+      edges.push({
+        edgeId: randomUUID() as Uuid,
+        sourceNodeId: sourceNodeId as Uuid,
+        targetNodeId: targetNodeId as Uuid,
+        edgeType: hint.edgeType as PlanEdgeType,
+        condition: conditionResult,
+        outputSlotRef: hint.outputSlotRef,
+      });
+    }
+
+    // ── 8. DAG acyclicity ──
+    if (edges.length > 0 && hasCycle(nodes, edges)) {
+      return reject('malformed_request', 'subTaskEdges form a cycle — DAG required');
+    }
+
+    // ── 9. Sort + build ──
+    edges.sort(compareEdges);
+    return this.buildPlan(request.runId, nodes, edges);
   }
 
   // ─── Standard plan (normal / metadata) ───
@@ -464,48 +719,7 @@ export class RefDeterministicPlanner implements Planner {
 
   // ─── Validate and build PlanCondition from EdgeHint ───
   private validateAndBuildCondition(hint: EdgeHint): (PlanCondition | null) | PlanRejection {
-    // Non-conditional edge requires conditionSpec === null
-    if (hint.edgeType !== 'conditional') {
-      if (hint.conditionSpec !== null) {
-        return reject(
-          'malformed_request',
-          `Non-conditional edge type '${hint.edgeType}' must have null conditionSpec`
-        );
-      }
-      return null;
-    }
-
-    // Conditional edge requires non-null conditionSpec
-    if (hint.conditionSpec === null) {
-      return reject('malformed_request', 'Conditional edge requires non-null conditionSpec');
-    }
-
-    const spec = hint.conditionSpec;
-
-    // Validate operator
-    if (!VALID_OPERATORS.has(spec.operator)) {
-      return reject('malformed_request', `Invalid conditionSpec operator '${spec.operator}'`);
-    }
-
-    // Validate value type: must be string | number | boolean | null
-    if (
-      spec.value !== null &&
-      typeof spec.value !== 'string' &&
-      typeof spec.value !== 'number' &&
-      typeof spec.value !== 'boolean'
-    ) {
-      return reject(
-        'malformed_request',
-        `conditionSpec.value must be string | number | boolean | null, got ${typeof spec.value}`
-      );
-    }
-
-    return {
-      conditionId: randomUUID() as Uuid,
-      sourceField: spec.sourceField,
-      operator: spec.operator as PlanConditionOperator,
-      value: spec.value as string | number | boolean | null,
-    };
+    return validateConditionSpec(hint.edgeType, hint.conditionSpec);
   }
 
   // ─── Build final ExecutionPlan with digest ───
