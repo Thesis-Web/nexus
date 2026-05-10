@@ -62,6 +62,8 @@ import type {
   PlannerRequest,
   PlanNode,
   NvgOutboundRequest,
+  NvgClassifyAndRouteResult,
+  NvgInvocationResult,
   CompileRequest,
   CompileReturnEndpointRecord,
   CompileReturnAck,
@@ -113,6 +115,12 @@ import {
 import { verifyArtifactSignature } from '../packages/core/src/compile/final-response-signer.js';
 import { extractToolCalls } from './extract-tool-calls.js';
 import { bridgeNxsResultToMailbox } from './nxs-result-mailbox-bridge.js';
+import {
+  runDispatchRoundTrip,
+  type NvgTurnResult,
+  type ToolCallDispatchResult,
+} from './dispatch-round-trip.js';
+import type { ExtractedToolCall } from '@nexus/core';
 
 const DEFAULT_TRAIL_DIR = path.join(process.cwd(), 'runs');
 
@@ -454,7 +462,7 @@ const program = createCli({
           // understands content blocks. NVG never inspects this payload
           // (§13.7.1); the transport adapter passes it to the provider
           // unmodified.
-          const messages: Array<{ role: string; content: string }> = [];
+          const initialMessages: Array<{ role: string; content: string }> = [];
           for (const file of request.attachedFiles) {
             const isText =
               file.mediaType.startsWith('text/') ||
@@ -463,31 +471,12 @@ const program = createCli({
               file.mediaType === 'application/javascript' ||
               file.mediaType === 'application/x-yaml';
             if (!isText) continue;
-            messages.push({
+            initialMessages.push({
               role: 'user',
               content: `[Attached file: ${file.filename} (${file.mediaType})]\n\n${file.content}`,
             });
           }
-          messages.push({ role: 'user', content: request.prompt });
-
-          const nvgRequest: NvgOutboundRequest = {
-            requestId: crypto.randomUUID() as Uuid,
-            runId: request.runId,
-            actorId: node.agentId,
-            octLevel: agent.octLevel ?? 'OCT-OPEN',
-            environmentContext: agent.environment,
-            taskIntent: node.taskSummary,
-            // Ollama chat schema: messages[]. The transport adapter passes
-            // request.payload through to the provider unmodified.
-            payload: messages,
-            dataLabels: [],
-            costPreference: 'standard',
-            latencyPreference: 'standard',
-            // CLAUDE-CODE-MODEL-SELECTION-SPEC §2b — surface the user's
-            // dropdown preference. NVG treats it as a weighted suggestion
-            // within the governed tier set; null = Auto (policy).
-            preferredEndpointId: request.preferredEndpointId,
-          };
+          initialMessages.push({ role: 'user', content: request.prompt });
 
           console.log(
             '[orch-wire] NVG dispatch — run:',
@@ -495,189 +484,240 @@ const program = createCli({
             'agent:',
             node.agentId,
             'task:',
-            node.taskSummary
-          );
-          const result = await br.nvgService.classifyAndRoute(nvgRequest);
-          console.log(
-            '[nvg] classification:',
-            result.classification.effectiveDataClass,
-            'route:',
-            result.modelTierSelected ?? '<none>',
-            'disposition:',
-            result.disposition
+            node.taskSummary,
+            '— round-trip cap:',
+            orchManifest.maxToolTurnsPerNode
           );
 
-          if (!result.allowed) {
-            console.warn(
-              '[nvg] denied —',
-              result.denialCode ?? 'unknown',
-              ':',
-              result.denialReason ?? ''
+          // The round-trip loop drives this dispatch through possibly many
+          // NVG turns. We capture the LAST allowed/successful turn's
+          // metadata so the post-loop mailbox write reflects the final
+          // model invocation, not turn 0.
+          let lastResult: NvgClassifyAndRouteResult | null = null;
+          let lastInv: NvgInvocationResult | null = null;
+
+          const callNvgTurn = async (messages: readonly unknown[]): Promise<NvgTurnResult> => {
+            const nvgRequest: NvgOutboundRequest = {
+              requestId: crypto.randomUUID() as Uuid,
+              runId: request.runId,
+              actorId: node.agentId,
+              octLevel: agent.octLevel ?? 'OCT-OPEN',
+              environmentContext: agent.environment,
+              taskIntent: node.taskSummary,
+              // Ollama chat schema: messages[]. The transport adapter passes
+              // request.payload through to the provider unmodified, so this
+              // happily carries the round-trip's accumulated assistant +
+              // tool messages alongside the user prompt.
+              payload: messages,
+              dataLabels: [],
+              costPreference: 'standard',
+              latencyPreference: 'standard',
+              // CLAUDE-CODE-MODEL-SELECTION-SPEC §2b — surface the user's
+              // dropdown preference. NVG treats it as a weighted suggestion
+              // within the governed tier set; null = Auto (policy).
+              preferredEndpointId: request.preferredEndpointId,
+            };
+            const result = await br.nvgService.classifyAndRoute(nvgRequest);
+            console.log(
+              '[nvg] classification:',
+              result.classification.effectiveDataClass,
+              'route:',
+              result.modelTierSelected ?? '<none>',
+              'disposition:',
+              result.disposition
             );
+            if (!result.allowed) {
+              console.warn(
+                '[nvg] denied —',
+                result.denialCode ?? 'unknown',
+                ':',
+                result.denialReason ?? ''
+              );
+              return {
+                kind: 'denied',
+                denialCode: result.denialCode ?? 'nvg_denied',
+                reason: result.denialReason ?? '',
+              };
+            }
+            const inv = result.invocation;
+            if (!inv || !inv.success) {
+              const reason = inv?.reason ?? 'invocation_unavailable';
+              const code = inv?.denialCode ?? 'invocation_failed';
+              console.warn('[nvg] invocation failed —', code, ':', reason);
+              return { kind: 'invocation_failed', code, reason };
+            }
+            console.log(
+              '[nvg] model response —',
+              inv.responseSize ?? 0,
+              'bytes,',
+              inv.latencyMs ?? 0,
+              'ms, tier:',
+              result.modelTierInvoked ?? '<unknown>'
+            );
+            lastResult = result;
+            lastInv = inv;
+            return { kind: 'success', opaqueResponse: inv.opaqueProviderResponse };
+          };
+
+          // CLAUDE-CODE-ACTION-NORMALIZER-PHASE-C §5 — post-inference
+          // tool-call dispatch. Each tool call gets a fresh ephemeral
+          // session bound to the orchestrator-issued delegation, runs
+          // through the 7-gate pipeline, and the connector result is
+          // bridged into the run mailbox (data payload OR receipt). The
+          // round-trip loop reads the bridged file body to build the next
+          // turn's tool_result message.
+          const dispatchToolCall = async (
+            tc: ExtractedToolCall,
+            turnIndex: number
+          ): Promise<ToolCallDispatchResult> => {
+            try {
+              const ctx: NormalizerContext = {
+                runId: request.runId,
+                actorId: node.agentId,
+                principalId: request.principalId,
+                sessionId: crypto.randomUUID() as Uuid,
+                delegationId: _delegationId,
+                protocol: 'post-inference-tool-call' as NonEmpty,
+              };
+              const sessionTtlSeconds = 10 * 60;
+              await coreDeps.sessionStore.create({
+                sessionId: ctx.sessionId,
+                actorId: ctx.actorId,
+                principalId: ctx.principalId,
+                delegationId: ctx.delegationId,
+                createdAt: nowIso(),
+                expiresAt: new Date(
+                  Date.now() + sessionTtlSeconds * 1000
+                ).toISOString() as IsoTimestamp,
+              });
+
+              const action = postInferenceNormalizer.normalize(tc, ctx);
+              const nxsResult = await dispatchToNxs({
+                rawAction: action,
+                runId: request.runId,
+                isNvgBypass: false, // NVG was traversed — not a bypass
+              });
+              console.log(
+                '[post-inference] turn',
+                turnIndex,
+                'tool:',
+                tc.toolName,
+                'outcome:',
+                nxsResult.evidenceRecord.finalOutcome
+              );
+
+              const bridged = await bridgeNxsResultToMailbox(nxsResult.evidenceRecord, {
+                outputCollector: br.externals.outputCollector,
+                payloadsRoot: path.join(DEFAULT_TRAIL_DIR, 'payloads'),
+                agentOctLevel: agent.octLevel ?? 'OCT-OPEN',
+              });
+              if (bridged === null) {
+                // Bridge returns null only when executionResult itself was
+                // null — there is no evidence to receipt. Surface as a
+                // structural failure so the loop synthesizes a tool_result
+                // and the conversation stays well-formed.
+                return { ok: false, reason: 'no_evidence_to_bridge' };
+              }
+              console.log(
+                '[post-inference] mailbox item',
+                bridged.mailboxItem.mailboxItemId,
+                '(' + bridged.kind + ')',
+                'written for tool:',
+                tc.toolName
+              );
+              return { ok: true, payloadPath: bridged.payloadPath, kind: bridged.kind };
+            } catch (toolErr) {
+              const msg = toolErr instanceof Error ? toolErr.message : String(toolErr);
+              console.warn('[post-inference] tool dispatch error for', tc.toolName, '—', msg);
+              return { ok: false, reason: msg };
+            }
+          };
+
+          const roundTrip = await runDispatchRoundTrip(initialMessages, {
+            callNvgTurn,
+            dispatchToolCall,
+            maxToolTurnsPerNode: orchManifest.maxToolTurnsPerNode,
+          });
+
+          // ── Map round-trip outcomes onto NodeDispatchResult ─────────────
+          if (roundTrip.outcome === 'denied') {
             return {
               success: false,
-              completionMetadata: null,
-              failureReason: ((result.denialCode ?? 'nvg_denied') +
-                ': ' +
-                (result.denialReason ?? '')) as NonEmpty,
+              completionMetadata: {
+                toolTurnCount: roundTrip.toolTurnCount,
+                toolCallsPerTurn: [...roundTrip.toolCallsPerTurn],
+              },
+              failureReason: (roundTrip.denialCode + ': ' + roundTrip.reason) as NonEmpty,
               governanceDenied: true,
             };
           }
-
-          const inv = result.invocation;
-          if (!inv || !inv.success) {
-            const reason = inv?.reason ?? 'invocation_unavailable';
-            const code = inv?.denialCode ?? 'invocation_failed';
-            console.warn('[nvg] invocation failed —', code, ':', reason);
+          if (roundTrip.outcome === 'invocation_failed') {
             return {
               success: false,
-              completionMetadata: null,
-              failureReason: (code + ': ' + reason) as NonEmpty,
+              completionMetadata: {
+                toolTurnCount: roundTrip.toolTurnCount,
+                toolCallsPerTurn: [...roundTrip.toolCallsPerTurn],
+              },
+              failureReason: (roundTrip.code + ': ' + roundTrip.reason) as NonEmpty,
+              governanceDenied: false,
+            };
+          }
+          if (roundTrip.outcome === 'cap_reached') {
+            console.warn(
+              '[orch-wire] tool turn cap reached for run:',
+              request.runId,
+              'turns:',
+              roundTrip.toolTurnCount,
+              'callsPerTurn:',
+              JSON.stringify(roundTrip.toolCallsPerTurn)
+            );
+            return {
+              success: false,
+              completionMetadata: {
+                toolTurnCount: roundTrip.toolTurnCount,
+                toolCallsPerTurn: [...roundTrip.toolCallsPerTurn],
+                capReached: true,
+              },
+              failureReason: ('tool_turn_cap_exceeded: model still requested tools after ' +
+                orchManifest.maxToolTurnsPerNode +
+                ' turns') as NonEmpty,
+              governanceDenied: false,
+            };
+          }
+          if (roundTrip.outcome === 'malformed_response') {
+            console.warn('[orch-wire] malformed provider response — round-trip aborted');
+            return {
+              success: false,
+              completionMetadata: {
+                toolTurnCount: roundTrip.toolTurnCount,
+                toolCallsPerTurn: [...roundTrip.toolCallsPerTurn],
+              },
+              failureReason: 'malformed_provider_response' as NonEmpty,
               governanceDenied: false,
             };
           }
 
-          // CLAUDE-CODE-ACTION-NORMALIZER-PHASE-C §5 — post-inference
-          // tool-call routing. If the model returned tool calls, hand
-          // each one to the PostInferenceNormalizer and dispatch the
-          // resulting AgentAction through NXS. NVG was already
-          // traversed for the model invocation, so isNvgBypass:false.
-          //
-          // Multi-tool-call semantics: the canonical
-          // PostInferenceNormalizer interface returns a SINGLE
-          // AgentAction. We iterate extracted calls and call
-          // normalize() once per call.
-          //
-          // Failures here MUST NOT abort the run — the model still
-          // produced a text response. Each tool call is governed
-          // independently; a denied call shows up in the run ledger
-          // as nxs_action with finalOutcome=denied_*, while the model
-          // text continues into the compile chain below.
-          const toolCalls = extractToolCalls(inv.opaqueProviderResponse);
-          if (toolCalls.length > 0) {
-            console.log(
-              '[post-inference] extracted',
-              toolCalls.length,
-              'tool call(s) from model response — dispatching through NXS'
-            );
-            // We need a session+delegation already provisioned for the
-            // agent. The orchestrator's makeIssueDelegation already
-            // minted one for this node; reuse it via a quick lookup.
-            // (For Phase C, an explicit session+delegation lookup is
-            //  implicit in the active-run state — but we don't have a
-            //  store handle for sessions by actor. Mint per-tool-call
-            //  ephemerals so each call gets governed independently.)
-            for (const tc of toolCalls) {
-              try {
-                const ctx: NormalizerContext = {
-                  runId: request.runId,
-                  actorId: node.agentId,
-                  principalId: request.principalId,
-                  // Reuse the orchestrator-issued delegation. The
-                  // orchestrator stored it on _delegationId. Session is
-                  // ephemeral per tool call — created here so Gate 01
-                  // finds an active session at process time.
-                  sessionId: crypto.randomUUID() as Uuid,
-                  delegationId: _delegationId,
-                  protocol: 'post-inference-tool-call' as NonEmpty,
-                };
-                // Provision a fresh session bound to the existing
-                // delegation so Gate 01 can resolve identity.
-                const sessionTtlSeconds = 10 * 60;
-                await coreDeps.sessionStore.create({
-                  sessionId: ctx.sessionId,
-                  actorId: ctx.actorId,
-                  principalId: ctx.principalId,
-                  delegationId: ctx.delegationId,
-                  createdAt: nowIso(),
-                  expiresAt: new Date(
-                    Date.now() + sessionTtlSeconds * 1000
-                  ).toISOString() as IsoTimestamp,
-                });
-
-                const action = postInferenceNormalizer.normalize(tc, ctx);
-                const nxsResult = await dispatchToNxs({
-                  rawAction: action,
-                  runId: request.runId,
-                  isNvgBypass: false, // NVG was traversed — not a bypass
-                });
-                console.log(
-                  '[post-inference] tool:',
-                  tc.toolName,
-                  'outcome:',
-                  nxsResult.evidenceRecord.finalOutcome
-                );
-                // NXS result → mailbox bridge. When the connector landed
-                // a payload file (postgres-shaped connectors do today),
-                // this lifts it into a signed mailbox item under the
-                // run's primary mailbox so downstream nodes — and the
-                // agent's next turn — can read it. Failures and no-
-                // payload outcomes are skipped here; the EvidenceRecord
-                // already carries the audit trail.
-                try {
-                  const bridged = await bridgeNxsResultToMailbox(nxsResult.evidenceRecord, {
-                    outputCollector: br.externals.outputCollector,
-                    payloadsRoot: path.join(DEFAULT_TRAIL_DIR, 'payloads'),
-                    agentOctLevel: agent.octLevel ?? 'OCT-OPEN',
-                  });
-                  if (bridged) {
-                    console.log(
-                      '[post-inference] mailbox item',
-                      bridged.mailboxItem.mailboxItemId,
-                      'written from nxs result for tool:',
-                      tc.toolName
-                    );
-                  }
-                } catch (bridgeErr) {
-                  // Bridging failure must not abort the run — the
-                  // EvidenceRecord still attests what NXS executed.
-                  // Surface as a warning so operators notice a missing
-                  // mailbox item without losing the work.
-                  // eslint-disable-next-line no-console
-                  console.warn(
-                    '[post-inference] mailbox bridge error for',
-                    tc.toolName,
-                    '—',
-                    bridgeErr instanceof Error ? bridgeErr.message : String(bridgeErr)
-                  );
-                }
-              } catch (toolErr) {
-                // Tool-call dispatch failed structurally (e.g. session
-                // creation race). Log and continue — text response
-                // still flows downstream so the user sees something.
-                // eslint-disable-next-line no-console
-                console.warn(
-                  '[post-inference] tool dispatch error for',
-                  tc.toolName,
-                  '—',
-                  toolErr instanceof Error ? toolErr.message : String(toolErr)
-                );
-              }
-            }
+          // ── 'final' — write the LAST turn's text into the mailbox ───────
+          if (lastResult === null || lastInv === null) {
+            // Unreachable: callNvgTurn captures both on every successful
+            // turn, and 'final' implies at least one success. Defensive.
+            throw new Error('round-trip final outcome but no captured turn metadata');
           }
+          // Cast to satisfy strict null-narrowing across the await
+          // boundary — the captures inside callNvgTurn are non-null when
+          // we reach this branch.
+          const finalResult: NvgClassifyAndRouteResult = lastResult;
+          const finalInv: NvgInvocationResult = lastInv;
 
-          // Extract assistant text from the opaque provider response. NVG
-          // never inspects this payload (§13.7.1) — extraction happens here at
-          // the composition boundary so we can persist + digest the bytes.
-          // The helper handles Ollama / OpenAI / Anthropic response shapes;
-          // adding a new provider means adding a branch there, not touching
-          // the transport adapter (which stays adapter-agnostic).
-          const content = extractAssistantContent(inv.opaqueProviderResponse);
-          console.log(
-            '[nvg] model response —',
-            inv.responseSize ?? 0,
-            'bytes,',
-            inv.latencyMs ?? 0,
-            'ms, tier:',
-            result.modelTierInvoked ?? '<unknown>'
-          );
-
-          // Persist response bytes to disk so the registered file:// payload
-          // resolver can read them back to verify the digest before mailbox
-          // write. The same resolver is used by DeterministicRenderer.
+          // Extract assistant text from the FINAL opaque provider response
+          // and persist it. NVG never inspects this payload (§13.7.1) —
+          // extraction happens here at the composition boundary so we can
+          // digest + verify the bytes through the file:// resolver.
+          const content = extractAssistantContent(roundTrip.finalResponse);
           const payloadDir = path.join(process.cwd(), 'runs', 'payloads', request.runId);
           await fs.mkdir(payloadDir, { recursive: true });
-          const payloadPath = path.join(payloadDir, nvgRequest.requestId + '.txt');
+          const finalPayloadId = crypto.randomUUID() as Uuid;
+          const payloadPath = path.join(payloadDir, finalPayloadId + '.txt');
           const payloadBytes = new TextEncoder().encode(content);
           await fs.writeFile(payloadPath, payloadBytes);
           const resultRef = ('file://' + path.resolve(payloadPath)) as NonEmpty;
@@ -691,15 +731,15 @@ const program = createCli({
             slotId,
             resultRef,
             resultDigest,
-            resultClassifications: [result.classification.effectiveDataClass],
+            resultClassifications: [finalResult.classification.effectiveDataClass],
             octLevel: agent.octLevel ?? 'OCT-OPEN',
             redactionState: 'not_required',
             // Trail correlation: NVG already wrote outbound + inbound entries
             // under this id; reuse it for cross-linking with the mailbox item.
-            routingTrailRecordId: result.trailCorrelationId,
-            trailCorrelationId: result.trailCorrelationId,
-            modelTierInvoked: result.modelTierInvoked,
-            responseSize: inv.responseSize ?? null,
+            routingTrailRecordId: finalResult.trailCorrelationId,
+            trailCorrelationId: finalResult.trailCorrelationId,
+            modelTierInvoked: finalResult.modelTierInvoked,
+            responseSize: finalInv.responseSize ?? null,
           });
 
           const item = await br.externals.outputCollector.writeMailboxItemFromNvgResult(outputRef);
@@ -707,7 +747,9 @@ const program = createCli({
             '[output] mailbox item',
             item.mailboxItemId,
             'written for run:',
-            request.runId
+            request.runId,
+            '(toolTurns:',
+            roundTrip.toolTurnCount + ')'
           );
 
           // CLAUDE-CODE-MODEL-SELECTION-SPEC §5 + CLAUDE-CODE-FIX-MODEL-
@@ -715,7 +757,8 @@ const program = createCli({
           // used endpoint and, when the preference wasn't honored, WHY.
           // preferenceHonored is null (rather than false) when the user
           // supplied no preference — distinguishes "not asked" from
-          // "asked but unhonored".
+          // "asked but unhonored". Reflects the FINAL turn's endpoint —
+          // routing may have switched between turns under retry/fallback.
           //
           // switchReason values (set only when preferenceHonored=false):
           //   - 'preferred_unhealthy_same_tier_sibling' — actual endpoint
@@ -725,8 +768,8 @@ const program = createCli({
           //     healthy siblings; fell through to policy)
           //   - 'preferred_unknown_endpointId' — preferredEndpointId did
           //     not resolve in the tier registry (stale catalog reference)
-          const actualEndpointId = inv.endpointUsed?.endpointId ?? null;
-          const actualTier = inv.endpointUsed?.tier ?? null;
+          const actualEndpointId = finalInv.endpointUsed?.endpointId ?? null;
+          const actualTier = finalInv.endpointUsed?.tier ?? null;
           const preferenceHonored: boolean | null =
             request.preferredEndpointId === null
               ? null
@@ -740,8 +783,6 @@ const program = createCli({
             if (preferredEp === null) {
               switchReason = 'preferred_unknown_endpointId';
             } else if (actualTier === null) {
-              // No actual endpoint at all — shouldn't happen on the
-              // success branch we're in, but guard explicitly.
               switchReason = 'preferred_no_endpoint_invoked';
             } else if (actualTier === preferredEp.tier) {
               switchReason = 'preferred_unhealthy_same_tier_sibling';
@@ -754,12 +795,15 @@ const program = createCli({
             success: true,
             completionMetadata: {
               mailboxItemId: item.mailboxItemId,
-              modelTierInvoked: result.modelTierInvoked,
-              responseSize: inv.responseSize ?? null,
+              modelTierInvoked: finalResult.modelTierInvoked,
+              responseSize: finalInv.responseSize ?? null,
               preferredEndpointId: request.preferredEndpointId,
               actualEndpointId,
               preferenceHonored,
               switchReason,
+              toolTurnCount: roundTrip.toolTurnCount,
+              toolCallsPerTurn: [...roundTrip.toolCallsPerTurn],
+              capReached: false,
             },
             failureReason: null,
             governanceDenied: false,
