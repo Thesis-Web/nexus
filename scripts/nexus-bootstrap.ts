@@ -345,6 +345,14 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
     },
   };
   connectorFactoryRegistry.register(stubConnectorFactory);
+  // Postgres connector factory (default-shipped target system). Like the
+  // stub above, this is a no-op factory whose only job is to satisfy the
+  // manifest loader's connectorType-presence check (§12.3.48 invariant 2).
+  // Real PostgresConnector instances are constructed in the composition
+  // root (scripts/nexus-main.ts) where the SecretSource is in scope and
+  // per-instance passwords resolve fail-closed.
+  const { PostgresConnectorFactory } = await import('@nexus/connector-postgres');
+  connectorFactoryRegistry.register(new PostgresConnectorFactory());
 
   // 1d. Approval channel factory registry (§12.3.47)
   const channelFactoryRegistry = new ApprovalChannelFactoryRegistry();

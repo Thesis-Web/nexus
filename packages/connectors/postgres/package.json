@@ -1,0 +1,27 @@
+{
+  "name": "@nexus/connector-postgres",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/postgres.connector.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@nexus/contracts": "workspace:*",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.30",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.8.3"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/postgres.connector.d.ts",
+      "import": "./dist/postgres.connector.js"
+    }
+  },
+  "types": "./dist/postgres.connector.d.ts"
+}

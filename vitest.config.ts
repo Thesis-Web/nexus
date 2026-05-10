@@ -19,6 +19,11 @@ export default defineConfig({
       // their own tests. Picked up here, not in the package globs.
       'scripts/**/*.test.ts',
       'tests/**/*.test.ts',
+      // Connector packages are laid out flat (packages/connectors/<name>/
+      // <name>.connector.ts), not under src/, so the standard src/**/
+      // globs above don't catch them. Pick them up explicitly so unit
+      // tests for connectors run with the rest of the suite.
+      'packages/connectors/*/*.test.ts',
     ],
     exclude: ['**/*.integration.test.ts', '**/*.threat.test.ts'],
     globals: false,

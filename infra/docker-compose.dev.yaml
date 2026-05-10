@@ -1,0 +1,59 @@
+# Nexus default-shipped target databases — dev compose.
+#
+# Two Postgres instances ship with the product so the connector manifold
+# can be exercised against >1 of the same connector type with different
+# configs and credentials. They mirror the operational shape most mid-
+# market businesses run: ERP (sales/finance) separate from WMS (warehouse).
+#
+# Both bind to 127.0.0.1 only. Both use volumes so data survives restarts.
+# Init SQL runs once on first volume creation; rerun with `down -v` to
+# rebuild from scratch.
+#
+# Passwords here are the local dev values — they MUST also be present in
+# the Nexus secret vault (file:POSTGRES_SALES_FINANCE_PASSWORD and
+# file:POSTGRES_WAREHOUSE_PASSWORD) for the connector to start. There is
+# no hardcoded fallback in the connector or in the bootstrap wiring; if
+# the vault entry is missing, the connector refuses to register.
+
+services:
+  nexus-sales-finance:
+    image: postgres:16-alpine
+    container_name: nexus-sales-finance
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexus_sales_finance
+      POSTGRES_USER: nexus_dev
+      POSTGRES_PASSWORD: nexus_dev_local_only
+    ports:
+      - '127.0.0.1:5433:5432'
+    volumes:
+      - nexus-sales-finance-pgdata:/var/lib/postgresql/data
+      - ./postgres-init/sales-finance:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U nexus_dev -d nexus_sales_finance']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  nexus-warehouse:
+    image: postgres:16-alpine
+    container_name: nexus-warehouse
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexus_warehouse
+      POSTGRES_USER: nexus_dev
+      POSTGRES_PASSWORD: nexus_dev_local_only
+    ports:
+      - '127.0.0.1:5434:5432'
+    volumes:
+      - nexus-warehouse-pgdata:/var/lib/postgresql/data
+      - ./postgres-init/warehouse:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U nexus_dev -d nexus_warehouse']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  nexus-sales-finance-pgdata:
+  nexus-warehouse-pgdata:

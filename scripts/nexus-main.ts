@@ -42,6 +42,11 @@ import {
   PostInferenceNormalizerImpl,
 } from '@nexus/core';
 import { StubConnector } from '@nexus/connector-stub';
+import {
+  buildPostgresConnector,
+  type PostgresConnectorFactoryConfig,
+  type PostgresConnector,
+} from '@nexus/connector-postgres';
 import { createCli } from '@nexus/cli';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
@@ -179,8 +184,116 @@ let _bootstrapResult: BootstrapResult | null = null;
 async function getBootstrap(): Promise<BootstrapResult> {
   if (_bootstrapResult === null) {
     _bootstrapResult = await bootstrap(DEFAULT_TRAIL_DIR);
+    // After the 21-step bootstrap returns, resolve credentials for any
+    // postgres connector instances declared enabled in the manifest. The
+    // postgres connector is the first ship-with-defaults target; the secret
+    // source has already been wired into the bootstrap's transport context.
+    await ensurePostgresConnectors(_bootstrapResult);
   }
   return _bootstrapResult;
+}
+
+// ---------------------------------------------------------------------------
+// Postgres connector instances — composition root.
+// One instance per enabled manifest entry of connectorType=postgres. Each
+// holds its own pg.Pool and resolves its own password via the SecretSource.
+// Built once at bootstrap; both connector-registry construction sites
+// (the sync createConnectorRegistry callback used by --help/serve-mcp/run
+// and the per-NXS-dispatch site inside dispatchToNxs) read from the cache.
+// ---------------------------------------------------------------------------
+let _postgresConnectors: readonly PostgresConnector[] = [];
+
+/**
+ * Resolve credentials and construct a PostgresConnector per enabled manifest
+ * entry of connectorType=postgres. Idempotent. Fail-closed: if the manifest
+ * declares the connector enabled but the password secret is missing or empty,
+ * bootstrap throws — there is no hardcoded fallback.
+ *
+ * Configuration shape on the manifest entry:
+ *   {
+ *     host: string,
+ *     port: number,
+ *     database: string,
+ *     user: string,
+ *     passwordSecretRef: 'file:KEY' | 'env:KEY' | 'KEY',
+ *     systemType: NonEmpty,        // gate-06 lookup key, also in allowedSystems
+ *     allowedTables: string[],
+ *     displayLabel?: string,
+ *     maxRows?: number,
+ *     maxConnections?: number,
+ *     queryTimeoutMs?: number,
+ *     statementTimeoutMs?: number,
+ *     connectionTimeoutMs?: number,
+ *     ssl?: boolean
+ *   }
+ */
+async function ensurePostgresConnectors(br: BootstrapResult): Promise<void> {
+  if (_postgresConnectors.length > 0) return;
+  const secretSource = br.transportContext.secretSource;
+  const payloadsRoot = path.join(DEFAULT_TRAIL_DIR, 'payloads');
+  const built: PostgresConnector[] = [];
+  for (const record of br.externals.connectorRecords) {
+    if (record.connectorType !== 'postgres') continue;
+    const cfg = record.configuration;
+    const passwordRef = cfg['passwordSecretRef'];
+    if (typeof passwordRef !== 'string' || passwordRef.length === 0) {
+      throw new Error(
+        `[bootstrap] connector '${record.connectorId}' (postgres) has no passwordSecretRef in its configuration. ` +
+          'Add e.g. passwordSecretRef: "file:POSTGRES_SALES_FINANCE_PASSWORD" and re-sign the manifest.'
+      );
+    }
+    const password = await secretSource.resolve(passwordRef);
+    if (password === null || password.length === 0) {
+      throw new Error(
+        `[bootstrap] connector '${record.connectorId}' (postgres) password secret '${passwordRef}' did not resolve. ` +
+          'Seed it via the admin dashboard secret form or set the corresponding env var, then restart.'
+      );
+    }
+    const systemTypeRaw = cfg['systemType'];
+    if (typeof systemTypeRaw !== 'string' || systemTypeRaw.length === 0) {
+      throw new Error(
+        `[bootstrap] connector '${record.connectorId}' (postgres) configuration is missing systemType.`
+      );
+    }
+    const allowedTablesRaw = cfg['allowedTables'];
+    const allowedTables = Array.isArray(allowedTablesRaw)
+      ? allowedTablesRaw.filter((t): t is string => typeof t === 'string')
+      : [];
+    const factoryConfig: PostgresConnectorFactoryConfig = {
+      systemType: systemTypeRaw as NonEmpty,
+      host: typeof cfg['host'] === 'string' ? cfg['host'] : '127.0.0.1',
+      port: typeof cfg['port'] === 'number' ? cfg['port'] : 5432,
+      database: typeof cfg['database'] === 'string' ? cfg['database'] : '',
+      user: typeof cfg['user'] === 'string' ? cfg['user'] : '',
+      password,
+      allowedTables,
+      payloadsRoot,
+      ...(typeof cfg['displayLabel'] === 'string' ? { displayLabel: cfg['displayLabel'] } : {}),
+      ...(typeof cfg['maxRows'] === 'number' ? { maxRows: cfg['maxRows'] } : {}),
+      ...(typeof cfg['maxConnections'] === 'number'
+        ? { maxConnections: cfg['maxConnections'] }
+        : {}),
+      ...(typeof cfg['queryTimeoutMs'] === 'number'
+        ? { queryTimeoutMs: cfg['queryTimeoutMs'] }
+        : {}),
+      ...(typeof cfg['statementTimeoutMs'] === 'number'
+        ? { statementTimeoutMs: cfg['statementTimeoutMs'] }
+        : {}),
+      ...(typeof cfg['connectionTimeoutMs'] === 'number'
+        ? { connectionTimeoutMs: cfg['connectionTimeoutMs'] }
+        : {}),
+      ...(typeof cfg['ssl'] === 'boolean' ? { ssl: cfg['ssl'] } : {}),
+    };
+    built.push(buildPostgresConnector(factoryConfig));
+    console.log(
+      `[bootstrap] postgres connector '${record.connectorId}' constructed for system '${systemTypeRaw}'`
+    );
+  }
+  _postgresConnectors = built;
+}
+
+function getPostgresConnectors(): readonly PostgresConnector[] {
+  return _postgresConnectors;
 }
 
 const program = createCli({
@@ -193,6 +306,12 @@ const program = createCli({
   createConnectorRegistry: () => {
     const reg = new SimpleConnectorRegistry();
     reg.register(new StubConnector());
+    // Postgres connectors come from the manifest + vault. They are
+    // populated by ensurePostgresConnectors() inside getBootstrap(). For
+    // pre-bootstrap commands (e.g. --help, classify) the cache is empty
+    // and only the stub is registered, which is correct — those paths
+    // never dispatch through Gate 06.
+    for (const c of getPostgresConnectors()) reg.register(c);
     return reg;
   },
   bootstrapNvgService: async () => {
@@ -1224,6 +1343,12 @@ const program = createCli({
     const connectorCapabilities = new Map<string, readonly string[]>([
       [stubConnectorInstance.systemType, stubConnectorInstance.supportedCapabilities()],
     ]);
+    // Surface postgres-connector capabilities to the admin dashboard so the
+    // operator can see what each configured target advertises (read/write
+    // verbs, query/search capabilities) without having to read the source.
+    for (const pg of getPostgresConnectors()) {
+      connectorCapabilities.set(pg.systemType, pg.supportedCapabilities());
+    }
 
     const buildNxsContext = async (
       action: Omit<AgentAction, 'delegationSequence'>
@@ -1239,12 +1364,14 @@ const program = createCli({
         throw new Error(`NXS dispatch: delegation not found — ${action.delegationId}`);
       }
 
-      // Per-call connector + channel registries. Connector registry is
-      // populated from the manifest; for now StubConnector is the only
-      // registered concrete connector. Adding another connector means
-      // registering its instance here, not changing the dispatcher.
+      // Per-call connector + channel registries. Connector registry holds
+      // every concrete connector instance the manifest declared enabled
+      // (plus the stub, which is always available for fixtures and tests).
+      // Postgres connectors come from the lazy ensurePostgresConnectors()
+      // singleton populated at bootstrap.
       const connectorRegistry = new SimpleConnectorRegistry();
       connectorRegistry.register(new StubConnector());
+      for (const c of getPostgresConnectors()) connectorRegistry.register(c);
       const channelRegistry = new SimpleChannelRegistry();
 
       return {

@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-09T15:47:53.998Z'
-signature: HDBIWxzifdfqQtSJ3fcEQXzemGy99kKFyUbpsJ_vjjr0e62RdJiu0pBhtyg3ECfAXRRSm1-PG4YU3P1r6VCZAg
+issuedAt: '2026-05-10T05:58:36.918Z'
+signature: M3aiAdS3TSyf7rP9vrJovJfSR4OsL5giL5oYepUUzcdyX4FE-On1vS5Ut2ICYBbD6fv_pAFixFX-FR47eWpODQ
 body:
   connectors:
     - connectorId: stub
@@ -15,4 +15,54 @@ body:
       allowedSystems:
         - vault
       configuration: {}
+      enabled: false
+    - connectorId: postgres-sales-finance
+      connectorType: postgres
+      allowedSystems:
+        - sales-finance
+      configuration:
+        host: 127.0.0.1
+        port: 5433
+        database: nexus_sales_finance
+        user: nexus_dev
+        passwordSecretRef: file:POSTGRES_SALES_FINANCE_PASSWORD
+        systemType: sales-finance
+        displayLabel: sales-finance
+        maxRows: 500
+        queryTimeoutMs: 10000
+        statementTimeoutMs: 10000
+        connectionTimeoutMs: 5000
+        allowedTables:
+          - customers
+          - vendors
+          - products
+          - quotes
+          - quote_lines
+          - sales_orders
+          - sales_order_lines
+          - invoices
+          - purchase_orders
+          - purchase_order_lines
+      enabled: false
+    - connectorId: postgres-warehouse
+      connectorType: postgres
+      allowedSystems:
+        - warehouse
+      configuration:
+        host: 127.0.0.1
+        port: 5434
+        database: nexus_warehouse
+        user: nexus_dev
+        passwordSecretRef: file:POSTGRES_WAREHOUSE_PASSWORD
+        systemType: warehouse
+        displayLabel: warehouse
+        maxRows: 500
+        queryTimeoutMs: 10000
+        statementTimeoutMs: 10000
+        connectionTimeoutMs: 5000
+        allowedTables:
+          - locations
+          - inventory
+          - shipments
+          - shipment_lines
       enabled: false
