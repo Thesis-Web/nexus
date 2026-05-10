@@ -32,8 +32,11 @@ import {
   type AdminEvidenceVerifyResult,
   type AdminTrailEntry,
 } from '../../../admin-ledger-api.js';
+import { computeRunTimeline } from '../../run-stage-reducer.js';
+import type { RunEvent } from '../../../hooks/use-run-events.js';
+import { RunDagSection } from '../../run-dag-section.js';
 
-type Tab = 'run_events' | 'evidence' | 'routing_trail';
+type Tab = 'run_events' | 'evidence' | 'routing_trail' | 'dag';
 
 interface Props {
   data?: DashboardSurfaceStatus;
@@ -679,6 +682,22 @@ export function LedgerViewerPanel({ data, elevatedSessionId }: Props) {
     [runs, selectedRunId]
   );
 
+  // ── Derive RunDagState from the selected run's events ──
+  // Reuses the same reducer the workspace's run-display uses so the
+  // workspace user view and the admin observability view stay in sync.
+  // The AdminLedgerEntry shape differs from RunEvent only in field
+  // name (eventType vs type) — small adapter, no fetches.
+  const timeline = useMemo(() => {
+    const runEvents: RunEvent[] = events.map(e => ({
+      type: e.eventType,
+      runId: e.runId,
+      detail: e.detail,
+      timestamp: e.timestamp,
+    }));
+    return computeRunTimeline(runEvents);
+  }, [events]);
+  const dagAvailable = timeline.dag !== null && timeline.dag.isMultiNode;
+
   return (
     <PanelChrome surface={surface}>
       <div className="nx-ledger-toolbar">
@@ -776,6 +795,20 @@ export function LedgerViewerPanel({ data, elevatedSessionId }: Props) {
             >
               Routing Trail ({trail.length})
             </button>
+            {/* DAG tab — only visible for multi-node runs. Phase 1 of
+                the multi-node planner adds per-node breakdowns + slot
+                flow; this tab lets operators inspect the structure of
+                any run, not just their own from the workspace view. */}
+            {dagAvailable && (
+              <button
+                type="button"
+                className={`nx-ledger-tab ${tab === 'dag' ? 'nx-ledger-tab--active' : ''}`}
+                onClick={() => setTab('dag')}
+                title="Multi-node planner DAG breakdown"
+              >
+                DAG ({timeline.dag!.nodes.length})
+              </button>
+            )}
           </div>
 
           {tab === 'run_events' ? (
@@ -810,6 +843,10 @@ export function LedgerViewerPanel({ data, elevatedSessionId }: Props) {
                 runEvents={events}
               />
             )
+          ) : null}
+
+          {tab === 'dag' && dagAvailable ? (
+            <RunDagSection dag={timeline.dag!} runStartedAt={timeline.runStartedAt} />
           ) : null}
         </section>
       ) : null}
