@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-03T01:38:24.076Z'
-signature: 1bMK22zCfy3wHja_GjC7YF-tnz08enmONsq43cWeJ7-pfmOyhGnQHPmq6J6lOtG1U9gnGGwsU2aIS4O8mTzrCA
+issuedAt: '2026-05-10T07:38:00.493Z'
+signature: 7bW2nlnq7KwTRiwXMpkZEDHez2TMwx1t2WORAKDh5-RtxmJczGo6ligbZr2u7UFW2z-IekCZkIR-g6K29fdADw
 body:
   orchestrators:
     - orchestratorSocketId: reference-orchestrator
@@ -32,3 +32,4 @@ body:
         enabled: true
         minRequiredCompletedNodes: 1
         compileOnPartial: true
+      maxToolTurnsPerNode: 6

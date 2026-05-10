@@ -139,6 +139,7 @@ function makeManifest(
       minRequiredCompletedNodes: 1,
       compileOnPartial: true,
     },
+    maxToolTurnsPerNode: 6,
     ...overrides,
   } as OrchestratorManifestRecord;
 }

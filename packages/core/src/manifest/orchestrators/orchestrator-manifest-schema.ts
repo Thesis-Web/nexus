@@ -57,6 +57,7 @@ export const OrchestratorManifestEntrySchema = z
         compileOnPartial: z.boolean(),
       })
       .strict(),
+    maxToolTurnsPerNode: z.number().int().min(1),
   })
   .strict();
 

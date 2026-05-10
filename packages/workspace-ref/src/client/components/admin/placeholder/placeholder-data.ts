@@ -284,6 +284,7 @@ export const ORCHESTRATOR_PLACEHOLDER: DashboardSurfaceStatus = {
         plannerVersion: '1.0.0',
         planAmendment: { enabled: true, maxAmendments: 3, requiresCheckback: false },
         partialCompletion: { enabled: true, minRequiredCompletedNodes: 1, compileOnPartial: true },
+        maxToolTurnsPerNode: 6,
       },
     ],
   },

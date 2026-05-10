@@ -263,7 +263,9 @@ describe('bridgeNxsResultToMailbox', () => {
 
     // Digest matches the receipt bytes — round-trip callers verify this
     // when they re-read the file to feed the LLM, so it must line up.
-    const expected = createHash('sha256').update(JSON.stringify(body, null, 2)).digest('hex');
+    const expected = createHash('sha256')
+      .update(JSON.stringify(body, null, 2))
+      .digest('hex');
     expect(result!.resultDigest).toBe(expected);
     expect(state.writes[0]!.resultDigest).toBe(expected);
 

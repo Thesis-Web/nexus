@@ -82,6 +82,7 @@ function makeManifest(): OrchestratorManifestRecord {
       minRequiredCompletedNodes: 0,
       compileOnPartial: false,
     },
+    maxToolTurnsPerNode: 6,
   } as OrchestratorManifestRecord;
 }
 

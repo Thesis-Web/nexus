@@ -110,6 +110,18 @@ export interface OrchestratorManifestRecord {
     minRequiredCompletedNodes: number;
     compileOnPartial: boolean;
   };
+  /**
+   * Bound on LLM tool-call iterations within a single nvg_dispatch node.
+   * One "tool turn" = orch calls NVG → model emits tool_calls → orch
+   * dispatches each through NXS → bridge to mailbox → orch feeds
+   * tool_results back → orch calls NVG again. The cap stops the
+   * orchestrator from re-entering NVG once this many turns have completed,
+   * even if the model is still asking for tools — bounding model spend +
+   * NXS gate runs + ledger churn per node. Sibling concept to
+   * `maxSplitDepth` (which bounds DAG fan-out); both are governance
+   * resource bounds. Must be ≥ 1.
+   */
+  maxToolTurnsPerNode: number;
 }
 
 // ─── MailboxManifestRecord ───

@@ -134,6 +134,7 @@ export async function loadOrchestratorManifest(
         minRequiredCompletedNodes: entry.partialCompletion.minRequiredCompletedNodes,
         compileOnPartial: entry.partialCompletion.compileOnPartial,
       },
+      maxToolTurnsPerNode: entry.maxToolTurnsPerNode,
     });
   }
 
