@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-10T07:38:00.493Z'
-signature: 7bW2nlnq7KwTRiwXMpkZEDHez2TMwx1t2WORAKDh5-RtxmJczGo6ligbZr2u7UFW2z-IekCZkIR-g6K29fdADw
+issuedAt: '2026-05-10T23:32:08.683Z'
+signature: 4NBzr1o5c8BGlNWMNN7qyHewt9wnrvvi0PUgmhpNBQY6_cCJkbs1Diyzx1Fs6vwV8DDzNaR4WKn7H7dJc4R4AA
 body:
   orchestrators:
     - orchestratorSocketId: reference-orchestrator

@@ -199,6 +199,16 @@ export interface PolicyRule {
   outcome: OutcomeLabel;
   grantHint?: GrantTemplateHint;
   approvalConfig?: ApprovalConfig;
+  /**
+   * Composer-attached, NOT authored. The bundle composer sets this on
+   * each rule after loading so audit (Gate 04 decisions, run-ledger
+   * partial_result events) can trace back to the source bundle.
+   * Authored policy JSON files leave this field absent — the loader
+   * fills it in. Required for marketplace-style multi-bundle setups
+   * where two bundles may share a ruleId; bundleRef.bundleId
+   * disambiguates.
+   */
+  bundleRef?: { bundleId: Uuid; bundleVersion: NonEmpty };
 }
 
 export interface PolicyFile {

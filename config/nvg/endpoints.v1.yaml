@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-09T18:25:14.623Z'
-signature: JNEQDbDVPLjG53Z5P2OVahufMpJbSKOPdQwSO_7SaNffHq7tnNkNvpiPxB0J9q2Uw_G2bMDhZJD6TK05j6hHCg
+issuedAt: '2026-05-10T23:32:04.287Z'
+signature: 29xRLjjjKhWYSkLKv1pqGbdhJaFP45dCS5fc1hh9DJkGfFtmaI46dNKJl0iiR-hYeXSPO1f15Z6vqr-MV-OMDg
 body:
   endpoints:
     - endpointId: local-ollama

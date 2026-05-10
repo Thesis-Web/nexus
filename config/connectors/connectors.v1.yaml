@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-10T21:05:37.710Z'
-signature: yk2uAm_1FXDbVgEum0_X9rBa5V10mqsXjsOgQvV7nzihQXYqh0f_s-TVClKMKyXP_xStA_OFn4TlRQg1JM5QAQ
+issuedAt: '2026-05-10T23:32:06.970Z'
+signature: smUXp4QI3KoPcN2A15v2bKxPeThGivs4EOmCabD_ed4Xic7jE17Zq0BezkTgd9l15TqYmVfCmYnNERdcxjzmDg
 body:
   connectors:
     - connectorId: stub

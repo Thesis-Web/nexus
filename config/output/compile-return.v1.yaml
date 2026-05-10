@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-08T07:40:16.576Z'
-signature: UxDte1LXFWp0Y3oNNqColVbszxk2wCE46bkBy5RUYyMR1lqDvlSmoIErestQBR0aW8p2_gH4Yf0Nz59LVHkLDQ
+issuedAt: '2026-05-10T23:32:06.033Z'
+signature: hdruPNaydzWtz3NiP4RYdcPXLvB-MxfzxhlzeG5fPV3wbgAz3k2b7BdFO5j148LVdU6EERr2-hC6BzCuabD-CQ
 body:
   returnEndpoints:
     - returnEndpointId: reference-workspace-return
