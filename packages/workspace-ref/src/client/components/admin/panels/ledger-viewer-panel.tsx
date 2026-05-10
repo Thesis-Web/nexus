@@ -205,6 +205,86 @@ function eventClass(eventType: string): string {
   return 'nx-ledger-event--info';
 }
 
+/**
+ * Friendly one-line summaries for important event shapes so operators
+ * don't have to parse JSON to understand what happened. Returns null
+ * when the event has no special summary; the generic detail rows render
+ * underneath in either case.
+ *
+ * Covers (so far):
+ *  - node_completed with tool-turn metadata (round-trip work)
+ *  - node_failed with governance-denied or known multi-node planner
+ *    failure reasons (secure_handoff_oct_mismatch, slot_read_*, etc.)
+ *  - partial_result with sourceType so receipt vs nvg/nxs is
+ *    immediately legible
+ */
+function buildEventSummary(eventType: string, detail: Record<string, unknown>): string | null {
+  if (eventType === 'node_completed') {
+    const cm = detail['completionMetadata'];
+    if (cm !== null && cm !== undefined && typeof cm === 'object') {
+      const meta = cm as Record<string, unknown>;
+      const turns = meta['toolTurnCount'];
+      const perTurn = meta['toolCallsPerTurn'];
+      const capReached = meta['capReached'];
+      const tier = meta['modelTierInvoked'];
+      const parts: string[] = [];
+      if (typeof turns === 'number') {
+        parts.push(`${turns} tool turn${turns === 1 ? '' : 's'}`);
+      }
+      if (Array.isArray(perTurn) && perTurn.length > 0) {
+        parts.push(`calls/turn: [${perTurn.join(', ')}]`);
+      }
+      if (capReached === true) {
+        parts.push('⚠ cap reached');
+      }
+      if (typeof tier === 'string' && tier.length > 0) {
+        parts.push(`tier: ${tier}`);
+      }
+      if (parts.length > 0) return parts.join(' · ');
+    }
+    return null;
+  }
+  if (eventType === 'node_failed') {
+    const reason = detail['failureReason'];
+    if (typeof reason === 'string' && reason.length > 0) {
+      // Multi-node planner failure modes — label them so they don't
+      // disappear into a generic detail row.
+      if (reason.startsWith('secure_handoff_oct_mismatch')) {
+        return '⛔ OCT clearance mismatch on secure_agent_handoff slot read';
+      }
+      if (reason.startsWith('slot_read_missing')) {
+        return '⛔ Missing upstream mailbox item for inputSlotReads';
+      }
+      if (reason.startsWith('tool_turn_cap_exceeded')) {
+        return '⛔ Round-trip cap reached — model still requested tools';
+      }
+      if (reason.startsWith('nxs_dispatch_failed')) {
+        return `⛔ NXS gate denial · ${reason.slice('nxs_dispatch_failed: '.length)}`;
+      }
+      if (reason.startsWith('malformed_provider_response')) {
+        return '⛔ Provider returned a follow-up shape the round-trip cannot continue';
+      }
+      // Generic governance denial — flag the reason inline.
+      return `⛔ ${reason}`;
+    }
+    return null;
+  }
+  if (eventType === 'partial_result') {
+    const sourceType = detail['sourceType'];
+    const slotId = detail['slotId'];
+    if (typeof sourceType === 'string' && typeof slotId === 'string') {
+      // Receipt vs data isn't (yet) on the partial_result detail
+      // (would require backend contract surgery in OutputCollector).
+      // For now we surface sourceType — operators can drill into the
+      // mailbox item if they need to distinguish receipt JSON from a
+      // connector data payload.
+      return `mailbox write · ${sourceType} → slot '${slotId}'`;
+    }
+    return null;
+  }
+  return null;
+}
+
 // ── Tab content panes ──────────────────────────────────────────────────────
 
 function RunEventsPane({ events }: { events: readonly AdminLedgerEntry[] }) {
@@ -213,28 +293,36 @@ function RunEventsPane({ events }: { events: readonly AdminLedgerEntry[] }) {
   }
   return (
     <ol className="nx-ledger-events">
-      {events.map(e => (
-        <li key={e.entryId} className={`nx-ledger-event ${eventClass(e.eventType)}`}>
-          <header className="nx-ledger-event-head">
-            <Timestamp value={e.timestamp} />{' '}
-            <span className="nx-ledger-event-type">{e.eventType}</span>
-            {e.actorId !== null ? (
-              <>
-                {' '}
-                · <span className="nx-ledger-event-actor">actor</span>{' '}
-                <ShortId value={e.actorId} label="actorId" />
-              </>
+      {events.map(e => {
+        const summary = buildEventSummary(e.eventType, e.detail ?? {});
+        return (
+          <li key={e.entryId} className={`nx-ledger-event ${eventClass(e.eventType)}`}>
+            <header className="nx-ledger-event-head">
+              <Timestamp value={e.timestamp} />{' '}
+              <span className="nx-ledger-event-type">{e.eventType}</span>
+              {e.actorId !== null ? (
+                <>
+                  {' '}
+                  · <span className="nx-ledger-event-actor">actor</span>{' '}
+                  <ShortId value={e.actorId} label="actorId" />
+                </>
+              ) : null}
+            </header>
+            {summary !== null ? (
+              <div className="nx-ledger-event-summary" role="note">
+                {summary}
+              </div>
             ) : null}
-          </header>
-          {Object.keys(e.detail ?? {}).length > 0 ? (
-            <div className="nx-ledger-event-detail">
-              {Object.entries(e.detail).map(([k, v]) => (
-                <DetailRow key={k} k={k} v={v} />
-              ))}
-            </div>
-          ) : null}
-        </li>
-      ))}
+            {Object.keys(e.detail ?? {}).length > 0 ? (
+              <div className="nx-ledger-event-detail">
+                {Object.entries(e.detail).map(([k, v]) => (
+                  <DetailRow key={k} k={k} v={v} />
+                ))}
+              </div>
+            ) : null}
+          </li>
+        );
+      })}
     </ol>
   );
 }

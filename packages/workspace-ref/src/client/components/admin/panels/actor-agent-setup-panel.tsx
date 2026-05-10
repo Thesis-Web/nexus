@@ -46,6 +46,11 @@ const COLUMNS: readonly ManifestTableColumn<AdminCatalogActorEntry>[] = [
     label: 'caps',
     render: v => (Array.isArray(v) ? `${v.length}` : '—'),
   },
+  {
+    key: 'roles',
+    label: 'roles',
+    render: v => (Array.isArray(v) && v.length > 0 ? v.join(', ') : '—'),
+  },
 ];
 
 const ENVIRONMENTS: readonly string[] = ['reference', 'dev', 'staging', 'production'];
@@ -727,6 +732,10 @@ function ActorReadOnly({ entry }: { entry: AdminCatalogActorEntry }) {
             : '—'
         }
         mono
+      />
+      <RoRow
+        label="Roles"
+        value={entry.roles && entry.roles.length > 0 ? entry.roles.join(', ') : '— (no roles)'}
       />
       {entry.owner && <RoRow label="Owner" value={entry.owner} />}
       {entry.purpose && <RoRow label="Purpose" value={entry.purpose} />}

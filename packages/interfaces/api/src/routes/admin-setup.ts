@@ -471,7 +471,16 @@ async function composeActorsAgentsSurface(
         octLevel: a.octLevel,
         riskCeiling: a.riskCeiling,
         allowedSystems: a.allowedSystems,
+        // Surface allowedCapabilities + roles so the dashboard's actor
+        // table mirrors what's in SQLite. Roles drive admin gating
+        // (HOLE-A02 cb1e07c) and operators need to see them.
+        allowedCapabilities: a.allowedCapabilities ?? [],
+        roles: a.roles ?? [],
         enabled: a.enabled !== false,
+        registeredAt: a.registeredAt,
+        ...(a.owner ? { owner: a.owner } : {}),
+        ...(a.purpose ? { purpose: a.purpose } : {}),
+        ...(a.reviewCadence ? { reviewCadence: a.reviewCadence } : {}),
       }));
       evidence.push({
         label: 'Actor registry list()',
@@ -598,6 +607,18 @@ function composeOrchestratorSurface(deps: AdminSetupRouteDeps): DashboardSurface
         plannerVersion: s.plannerVersion,
         secureMode: s.secureMode,
         outputSlotPolicy: s.outputSlotPolicy,
+        // Bringing the live surface up to parity with the placeholder
+        // shape so operators see the full manifest record on the
+        // dashboard, not a half-projection. The dashboard read-form
+        // primitive auto-renders any field on the entry, so adding
+        // them here is sufficient — no panel changes needed.
+        maxSplitDepth: s.maxSplitDepth,
+        planCheckbackDefault: s.planCheckbackDefault,
+        retryPolicy: s.retryPolicy,
+        timeouts: s.timeouts,
+        planAmendment: s.planAmendment,
+        partialCompletion: s.partialCompletion,
+        maxToolTurnsPerNode: s.maxToolTurnsPerNode,
       })),
     },
     secretFields: [],

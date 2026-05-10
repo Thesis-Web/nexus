@@ -1372,6 +1372,25 @@
   color: #888;
   font-size: 11px;
 }
+.nx-ledger-event-summary {
+  margin-top: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #d8d8d8;
+  background: rgba(108, 176, 240, 0.08);
+  border-left: 2px solid #6cb0f0;
+  border-radius: 2px;
+  font-family: monospace;
+}
+.nx-ledger-event--error .nx-ledger-event-summary {
+  background: rgba(240, 108, 108, 0.08);
+  border-left-color: #f06c6c;
+  color: #f0d8d8;
+}
+.nx-ledger-event--success .nx-ledger-event-summary {
+  background: rgba(108, 240, 152, 0.06);
+  border-left-color: #6cf098;
+}
 .nx-ledger-event-detail {
   margin-top: 4px;
   padding-left: 10px;

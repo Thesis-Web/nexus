@@ -28,6 +28,11 @@ interface OrchestratorEntry extends Record<string, unknown> {
   plannerMode: string;
   plannerType: string;
   plannerVersion: string;
+  /** AMEND-spec-nexus-orch §4.2 — bound on LLM tool-call iterations
+   *  per nvg_dispatch node. Surfaced as a list column so operators
+   *  can spot mis-configured caps without drilling into the detail
+   *  view. */
+  maxToolTurnsPerNode: number;
 }
 
 const COLUMNS: readonly ManifestTableColumn<OrchestratorEntry>[] = [
@@ -35,6 +40,7 @@ const COLUMNS: readonly ManifestTableColumn<OrchestratorEntry>[] = [
   { key: 'orchestratorType', label: 'type' },
   { key: 'plannerMode', label: 'plannerMode' },
   { key: 'plannerType', label: 'plannerType' },
+  { key: 'maxToolTurnsPerNode', label: 'toolTurnCap' },
 ];
 
 export function OrchestratorSetupPanel({ data }: Props) {

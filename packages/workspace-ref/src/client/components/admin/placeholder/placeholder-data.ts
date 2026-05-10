@@ -83,9 +83,36 @@ export const CONNECTORS_PLACEHOLDER: DashboardSurfaceStatus = {
         configuration: {},
         enabled: false,
       },
+      // 71coreDeps — postgres connector ships by default with two
+      // dev databases (sales-finance + warehouse). Reflected here so
+      // the placeholder stays a faithful preview of the real
+      // connectors.v1.yaml manifest.
+      {
+        connectorId: 'postgres-sales-finance',
+        connectorType: 'postgres',
+        allowedSystems: ['sales-finance'],
+        configuration: { host: 'localhost', port: 5433, database: 'sales_finance' },
+        enabled: true,
+      },
+      {
+        connectorId: 'postgres-warehouse',
+        connectorType: 'postgres',
+        allowedSystems: ['warehouse'],
+        configuration: { host: 'localhost', port: 5434, database: 'warehouse' },
+        enabled: true,
+      },
     ],
   },
-  secretFields: [],
+  secretFields: [
+    {
+      fieldPath: 'postgres-sales-finance.password',
+      status: 'missing',
+    },
+    {
+      fieldPath: 'postgres-warehouse.password',
+      status: 'missing',
+    },
+  ],
   blockers: ['vault connector: factory + runtime registry instantiation pending'],
   evidence: [
     {
@@ -97,6 +124,16 @@ export const CONNECTORS_PLACEHOLDER: DashboardSurfaceStatus = {
       label: 'vault connector disabled',
       pathOrRoute: 'connectors.v1.yaml#vault',
       status: 'disabled',
+    },
+    {
+      label: 'postgres sales-finance enabled',
+      pathOrRoute: 'connectors.v1.yaml#postgres-sales-finance',
+      status: 'configured',
+    },
+    {
+      label: 'postgres warehouse enabled',
+      pathOrRoute: 'connectors.v1.yaml#postgres-warehouse',
+      status: 'configured',
     },
   ],
   allowedActions: ['view'],

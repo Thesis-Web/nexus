@@ -46,6 +46,14 @@ export interface AdminCatalogActorEntry extends Record<string, unknown> {
   owner?: string;
   purpose?: string;
   reviewCadence?: string;
+  /**
+   * HOLE-A02 closure (cb1e07c) — Actor.roles is now a Layer-2 contract
+   * field, persisted in SQLite. Surfaced here so the admin panel can
+   * show role assignments (especially admin) per actor. Mutations are
+   * NOT wired in this surface — granting / revoking roles is sensitive
+   * and waits on a dedicated guarded writer endpoint.
+   */
+  roles?: readonly string[];
 }
 export interface AdminCatalogPrincipal extends Record<string, unknown> {
   principalId: string;
