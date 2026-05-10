@@ -1817,6 +1817,21 @@ async function main(): Promise<void> {
   await runDeploymentGate();
   pass('server boots, health + auth + /workspace/me verified');
 
+  // Step 80: integration test gate — opt-in. Real-DB integration suite
+  // (postgres connector against the dev docker-compose pair). Skipped
+  // unless NEXUS_RUN_INTEGRATION=1 so the gate stays fast in casual runs;
+  // the CI pre-merge invocation sets the flag and gets full coverage.
+  // -------------------------------------------------------------------------
+  if (process.env['NEXUS_RUN_INTEGRATION'] === '1') {
+    stepLog('INTEG-01 integration test gate (NEXUS_RUN_INTEGRATION=1)');
+    runCmd('pnpm exec tsx scripts/integration-pg.ts');
+    pass('integration suite passed against real Postgres');
+  } else {
+    console.log(
+      'Step 80: INTEG-01 integration test gate ... [33mSKIPPED[0m  (set NEXUS_RUN_INTEGRATION=1 to run)'
+    );
+  }
+
   // POST-GATE: bin assertion — HOLE-001 Option A (owner approved)
   // Both nexus and nexus-mcp-proxy bins must be executable after pnpm build.
   // -------------------------------------------------------------------------
@@ -1836,7 +1851,8 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  console.log('\n=== ci:gate PASSED — all 79 steps ===\n');
+  const totalSteps = process.env['NEXUS_RUN_INTEGRATION'] === '1' ? 80 : 79;
+  console.log(`\n=== ci:gate PASSED — all ${totalSteps} steps ===\n`);
 }
 
 // ===========================================================================
