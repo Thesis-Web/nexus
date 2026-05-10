@@ -112,6 +112,7 @@ import {
 } from '../packages/core/src/compile/compile-return-dispatcher.js';
 import { verifyArtifactSignature } from '../packages/core/src/compile/final-response-signer.js';
 import { extractToolCalls } from './extract-tool-calls.js';
+import { bridgeNxsResultToMailbox } from './nxs-result-mailbox-bridge.js';
 
 const DEFAULT_TRAIL_DIR = path.join(process.cwd(), 'runs');
 
@@ -606,6 +607,40 @@ const program = createCli({
                   'outcome:',
                   nxsResult.evidenceRecord.finalOutcome
                 );
+                // NXS result → mailbox bridge. When the connector landed
+                // a payload file (postgres-shaped connectors do today),
+                // this lifts it into a signed mailbox item under the
+                // run's primary mailbox so downstream nodes — and the
+                // agent's next turn — can read it. Failures and no-
+                // payload outcomes are skipped here; the EvidenceRecord
+                // already carries the audit trail.
+                try {
+                  const bridged = await bridgeNxsResultToMailbox(nxsResult.evidenceRecord, {
+                    outputCollector: br.externals.outputCollector,
+                    payloadsRoot: path.join(DEFAULT_TRAIL_DIR, 'payloads'),
+                    agentOctLevel: agent.octLevel ?? 'OCT-OPEN',
+                  });
+                  if (bridged) {
+                    console.log(
+                      '[post-inference] mailbox item',
+                      bridged.mailboxItem.mailboxItemId,
+                      'written from nxs result for tool:',
+                      tc.toolName
+                    );
+                  }
+                } catch (bridgeErr) {
+                  // Bridging failure must not abort the run — the
+                  // EvidenceRecord still attests what NXS executed.
+                  // Surface as a warning so operators notice a missing
+                  // mailbox item without losing the work.
+                  // eslint-disable-next-line no-console
+                  console.warn(
+                    '[post-inference] mailbox bridge error for',
+                    tc.toolName,
+                    '—',
+                    bridgeErr instanceof Error ? bridgeErr.message : String(bridgeErr)
+                  );
+                }
               } catch (toolErr) {
                 // Tool-call dispatch failed structurally (e.g. session
                 // creation race). Log and continue — text response

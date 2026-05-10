@@ -1,6 +1,34 @@
 import { defineConfig } from 'vitest/config';
+import { fileURLToPath } from 'node:url';
+import * as path from 'node:path';
+
+const root = path.dirname(fileURLToPath(import.meta.url));
+
+// Workspace package aliases — scripts/ tests import @nexus/* by name and
+// need vitest's resolver to find them. Type-only imports (the older
+// scripts pattern) didn't trip this because TS strips them; value imports
+// do. Aliases mirror tsconfig.base.json paths so the runtime behavior
+// matches the typecheck.
+const NEXUS_ALIASES = {
+  '@nexus/contracts': path.join(root, 'packages/contracts/src/index.ts'),
+  '@nexus/core': path.join(root, 'packages/core/src/index.ts'),
+  '@nexus/vanguard': path.join(root, 'packages/vanguard/src/index.ts'),
+  '@nexus/identity-ref': path.join(root, 'packages/identity-ref/src/index.ts'),
+  '@nexus/orch-ref': path.join(root, 'packages/orch-ref/src/index.ts'),
+  '@nexus/runtime-utils': path.join(root, 'packages/runtime-utils/src/index.ts'),
+  '@nexus/workspace-ref': path.join(root, 'packages/workspace-ref/src/index.ts'),
+  '@nexus/cli': path.join(root, 'packages/interfaces/cli/src/index.ts'),
+  '@nexus/api': path.join(root, 'packages/interfaces/api/src/server.ts'),
+  '@nexus/adapter-mcp': path.join(root, 'packages/adapters/mcp/src/index.ts'),
+  '@nexus/connector-stub': path.join(root, 'packages/connectors/stub/stub.connector.ts'),
+  '@nexus/connector-postgres': path.join(
+    root,
+    'packages/connectors/postgres/postgres.connector.ts'
+  ),
+};
 
 export default defineConfig({
+  resolve: { alias: NEXUS_ALIASES },
   test: {
     include: [
       'packages/contracts/src/**/*.test.ts',
