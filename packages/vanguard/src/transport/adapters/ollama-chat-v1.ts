@@ -27,7 +27,9 @@ import {
   type NvgOutboundRequest,
   type SecretSource,
   type NonEmpty,
+  type ToolSchemaDescriptor,
 } from '@nexus/contracts';
+import { toOllamaTools } from '../tool-schema-translators.js';
 
 const TIMEOUT_DEFAULT_MS = 30_000;
 
@@ -49,8 +51,14 @@ export type OllamaAdapterConfig = z.infer<typeof OllamaAdapterConfigSchema>;
 
 /**
  * CLAUDE-CODE-ACTION-NORMALIZER-PHASE-C §4 — accept either a bare
- * messages array (legacy) or `{ messages, tools? }`. Same shape as
- * the OpenAI adapter; see that file for the rationale.
+ * messages array (legacy) or `{ messages, tools?, toolDescriptors? }`.
+ * Same shape as the OpenAI adapter; see that file for the rationale.
+ *
+ * `toolDescriptors` is the canonical neutral shape the orchestrator
+ * attaches; this adapter translates them into the provider format
+ * via toOllamaTools(). `tools` is the legacy escape hatch for tests
+ * and direct-shape callers — when both are present, toolDescriptors
+ * wins (it's the governance-bound surface).
  */
 const PayloadSchema = z.union([
   z.array(z.unknown()),
@@ -58,6 +66,7 @@ const PayloadSchema = z.union([
     .object({
       messages: z.array(z.unknown()),
       tools: z.array(z.unknown()).optional(),
+      toolDescriptors: z.array(z.unknown()).optional(),
     })
     .strict(),
 ]);
@@ -123,7 +132,21 @@ export class OllamaChatV1Adapter implements ModelTransportAdapter<OllamaAdapterC
     const messages = Array.isArray(payloadParse.data)
       ? payloadParse.data
       : payloadParse.data.messages;
-    const tools = Array.isArray(payloadParse.data) ? undefined : payloadParse.data.tools;
+    const explicitTools = Array.isArray(payloadParse.data) ? undefined : payloadParse.data.tools;
+    const toolDescriptors = Array.isArray(payloadParse.data)
+      ? undefined
+      : payloadParse.data.toolDescriptors;
+
+    // Translate neutral descriptors → Ollama tool format. When both
+    // toolDescriptors and a legacy tools array are present, descriptors
+    // win — they're the governance-bound surface fed by the
+    // composition root via the connector's describeToolSchemas().
+    let tools: unknown[] | undefined;
+    if (toolDescriptors !== undefined && toolDescriptors.length > 0) {
+      tools = toOllamaTools(toolDescriptors as readonly ToolSchemaDescriptor[]);
+    } else if (explicitTools !== undefined && explicitTools.length > 0) {
+      tools = explicitTools;
+    }
 
     const cfg = (endpoint.adapterConfig ?? {}) as OllamaAdapterConfig;
     const body: Record<string, unknown> = {

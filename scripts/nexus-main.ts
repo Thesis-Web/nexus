@@ -123,7 +123,9 @@ import {
   type ToolCallDispatchResult,
 } from './dispatch-round-trip.js';
 import { checkSecureHandoffSlotRead } from './secure-handoff-guard.js';
+import { buildToolDescriptorsForAgent, type ConnectorLookup } from './build-tool-schemas.js';
 import type { ExtractedToolCall } from '@nexus/core';
+import type { ToolSchemaDescriptor } from '@nexus/contracts';
 
 const DEFAULT_TRAIL_DIR = path.join(process.cwd(), 'runs');
 
@@ -744,6 +746,64 @@ const program = createCli({
             orchManifest.maxToolTurnsPerNode
           );
 
+          // ── Tool-schema bridge (Phase C buildToolDefinitions) ──────
+          // Resolve the agent's reachable tool surface ONCE per node
+          // dispatch. The list is stable across round-trip turns
+          // (agent caps + connector schemas don't change mid-run);
+          // we still emit the audit event each turn so replay shows
+          // the surface that was attached to every NVG call.
+          const connectorLookup: ConnectorLookup = {
+            get(systemType) {
+              if (systemType === 'stub') return new StubConnector();
+              for (const c of getPostgresConnectors()) {
+                if (c.systemType === systemType) return c;
+              }
+              return null;
+            },
+          };
+          const toolDescriptors = buildToolDescriptorsForAgent(agent, connectorLookup);
+          const toolSchemaDigest =
+            toolDescriptors.length > 0
+              ? (createHash('sha256')
+                  .update(canonicalize(toolDescriptors))
+                  .digest('hex') as Sha256Hex)
+              : null;
+          if (toolDescriptors.length > 0) {
+            console.log(
+              '[orch-wire] tool surface for',
+              node.agentId,
+              '·',
+              toolDescriptors.length,
+              'tools:',
+              toolDescriptors.map(d => d.name).join(', ')
+            );
+          }
+
+          // Per-NVG-turn audit event helper — fires before each
+          // classifyAndRoute so the run ledger captures what we
+          // authorized the model to consider on every turn (boundary
+          // between what we govern + the third-party LLM provider).
+          let nvgTurnIndex = 0;
+          const emitToolSchemasAttached = async (): Promise<void> => {
+            if (toolDescriptors.length === 0) return;
+            await coreDeps.runLedgerWriter!.writeEvent({
+              runId: request.runId,
+              eventType: 'tool_schemas_attached',
+              timestamp: nowIso(),
+              actorId: node.agentId,
+              detail: {
+                nodeId: node.nodeId,
+                agentId: node.agentId,
+                turnIndex: nvgTurnIndex,
+                toolCount: toolDescriptors.length,
+                toolNames: toolDescriptors.map(d => d.name),
+                capabilityRefs: toolDescriptors.map(d => d.capability),
+                targetSystems: Array.from(new Set(toolDescriptors.map(d => d.target.system))),
+                schemaDigest: toolSchemaDigest,
+              },
+            });
+          };
+
           // The round-trip loop drives this dispatch through possibly many
           // NVG turns. We capture the LAST allowed/successful turn's
           // metadata so the post-loop mailbox write reflects the final
@@ -752,6 +812,15 @@ const program = createCli({
           let lastInv: NvgInvocationResult | null = null;
 
           const callNvgTurn = async (messages: readonly unknown[]): Promise<NvgTurnResult> => {
+            // Audit BEFORE the call — captures what we presented even
+            // when the call denies / fails downstream.
+            await emitToolSchemasAttached();
+            // Wrap messages + descriptors into the structured payload
+            // the adapters' PayloadSchema accepts. Empty descriptors →
+            // legacy bare-messages-array payload (back-compat for
+            // adapters that hadn't seen a structured payload before).
+            const turnPayload: unknown =
+              toolDescriptors.length > 0 ? { messages, toolDescriptors } : messages;
             const nvgRequest: NvgOutboundRequest = {
               requestId: crypto.randomUUID() as Uuid,
               runId: request.runId,
@@ -759,11 +828,7 @@ const program = createCli({
               octLevel: agent.octLevel ?? 'OCT-OPEN',
               environmentContext: agent.environment,
               taskIntent: node.taskSummary,
-              // Ollama chat schema: messages[]. The transport adapter passes
-              // request.payload through to the provider unmodified, so this
-              // happily carries the round-trip's accumulated assistant +
-              // tool messages alongside the user prompt.
-              payload: messages,
+              payload: turnPayload,
               dataLabels: [],
               costPreference: 'standard',
               latencyPreference: 'standard',
@@ -772,6 +837,7 @@ const program = createCli({
               // within the governed tier set; null = Auto (policy).
               preferredEndpointId: request.preferredEndpointId,
             };
+            nvgTurnIndex++;
             const result = await br.nvgService.classifyAndRoute(nvgRequest);
             console.log(
               '[nvg] classification:',

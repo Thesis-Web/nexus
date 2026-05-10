@@ -20,7 +20,9 @@ import {
   type NvgOutboundRequest,
   type SecretSource,
   type NonEmpty,
+  type ToolSchemaDescriptor,
 } from '@nexus/contracts';
+import { toAnthropicTools } from '../tool-schema-translators.js';
 
 const TIMEOUT_DEFAULT_MS = 30_000;
 
@@ -50,6 +52,7 @@ const PayloadSchema = z.union([
     .object({
       messages: z.array(z.unknown()),
       tools: z.array(z.unknown()).optional(),
+      toolDescriptors: z.array(z.unknown()).optional(),
     })
     .strict(),
 ]);
@@ -110,7 +113,16 @@ export class AnthropicMessagesV1Adapter implements ModelTransportAdapter<Anthrop
     const messages = Array.isArray(payloadParse.data)
       ? payloadParse.data
       : payloadParse.data.messages;
-    const tools = Array.isArray(payloadParse.data) ? undefined : payloadParse.data.tools;
+    const explicitTools = Array.isArray(payloadParse.data) ? undefined : payloadParse.data.tools;
+    const toolDescriptors = Array.isArray(payloadParse.data)
+      ? undefined
+      : payloadParse.data.toolDescriptors;
+    let tools: unknown[] | undefined;
+    if (toolDescriptors !== undefined && toolDescriptors.length > 0) {
+      tools = toAnthropicTools(toolDescriptors as readonly ToolSchemaDescriptor[]);
+    } else if (explicitTools !== undefined && explicitTools.length > 0) {
+      tools = explicitTools;
+    }
 
     const cfg = (endpoint.adapterConfig ?? {}) as AnthropicAdapterConfig;
     const body: Record<string, unknown> = {
