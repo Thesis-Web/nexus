@@ -182,6 +182,14 @@ export class OutputCollectorImpl implements IOutputCollector {
         taskId: item.taskId,
         agentId: item.agentId,
         slotId: item.slotId,
+        // The mailbox item's resultRef. Surfaced here so audit consumers
+        // (ledger viewer in particular) can distinguish a connector
+        // data payload from a synthesized NXS receipt without walking
+        // back through the bridge — receipts use the convention
+        // <actionId>.receipt.json. Phase 2 may replace this with a
+        // structured `kind: 'data' | 'receipt'` field if path-based
+        // detection ever needs to cope with non-file:// resolvers.
+        resultRef: item.resultRef,
         resultDigest: item.resultDigest,
         resultClassifications: item.resultClassifications,
         evidenceRecordId: item.evidenceRecordId,

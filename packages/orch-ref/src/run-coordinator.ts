@@ -258,6 +258,28 @@ export class RefRunCoordinator implements RunCoordinator {
         taskId: n.nodeId,
         agentId: n.agentId,
         expectedOutputSlots: n.expectedOutputSlots,
+        // ── Multi-node planner — per-node fields for the run-timeline
+        //    DAG visualization. Optional: legacy single-prompt nodes
+        //    omit subTaskKey/inputSlotReads. The dashboard treats the
+        //    presence of subTaskKey on any node as the signal to switch
+        //    to multi-node DAG rendering. ──
+        nodeType: n.nodeType,
+        taskSummary: n.taskSummary,
+        planOrderIndex: n.planOrderIndex,
+        ...(n.subTaskKey !== undefined ? { subTaskKey: n.subTaskKey } : {}),
+        ...(n.inputSlotReads !== undefined && n.inputSlotReads.length > 0
+          ? { inputSlotReads: n.inputSlotReads }
+          : {}),
+      })),
+      // Plan edges. Empty for single-node legacy plans; populated for
+      // multi-node DAGs. The viewer needs (sourceNodeId, targetNodeId,
+      // edgeType, outputSlotRef) to draw arrows between node cards.
+      edges: plan.edges.map(e => ({
+        edgeId: e.edgeId,
+        sourceNodeId: e.sourceNodeId,
+        targetNodeId: e.targetNodeId,
+        edgeType: e.edgeType,
+        outputSlotRef: e.outputSlotRef,
       })),
       outputSlotPolicy: manifest.outputSlotPolicy,
     });
