@@ -46,6 +46,8 @@ import {
   type ExecutionGrantTemplate,
   type GrantVault,
   type NonEmpty,
+  type ToolSchemaDescriptor,
+  type ToolInputSchema,
 } from '@nexus/contracts';
 
 const { Pool } = pg;
@@ -238,6 +240,62 @@ export class PostgresConnector implements Connector {
       'update:record:internal',
       'delete:record',
       'write:record:internal',
+    ];
+  }
+
+  describeToolSchemas(): readonly ToolSchemaDescriptor[] {
+    // Two-tool surface: one for read paths, one for governed writes.
+    // The connector enforces verb/SQL consistency at execute time and
+    // checks the allow-list of tables — the gates enforce capability.
+    // We surface the table allow-list in the description so the model
+    // doesn't waste turns referencing tables it can't reach.
+    const allowedTablesText =
+      this.allowedTables.length > 0 ? ` Allowed tables: ${this.allowedTables.join(', ')}.` : '';
+    const sqlInputSchema: ToolInputSchema = {
+      type: 'object',
+      properties: {
+        sql: {
+          type: 'string',
+          description:
+            'SQL statement to execute. Use $1, $2, ... placeholders for parameters; do not interpolate values into the SQL string.',
+        },
+        params: {
+          type: 'array',
+          description:
+            'Parameter values for the SQL placeholders, in $1, $2, ... order. Strings, numbers, and booleans are accepted.',
+        },
+      },
+      required: ['sql'],
+    };
+    return [
+      {
+        name: `read_${this.systemType}` as NonEmpty,
+        description: (`Run a SELECT query against the ${this.displayLabel} postgres database and ` +
+          `return the matching rows as JSON. Use this to look up records, search, or ` +
+          `compute aggregates over existing data.${allowedTablesText}`) as NonEmpty,
+        capability: 'read:record:bulk' as NonEmpty,
+        target: {
+          system: this.systemType,
+          resourceType: 'record' as NonEmpty,
+          resourceScope: 'bulk' as NonEmpty,
+        },
+        inputSchema: sqlInputSchema,
+      },
+      {
+        name: `update_${this.systemType}` as NonEmpty,
+        description:
+          (`Run an INSERT, UPDATE, or DELETE statement against the ${this.displayLabel} ` +
+            `postgres database. Always use parameterised queries; never interpolate user ` +
+            `data into the SQL string. Returns a write receipt; row data is not echoed ` +
+            `back.${allowedTablesText}`) as NonEmpty,
+        capability: 'update:record:internal' as NonEmpty,
+        target: {
+          system: this.systemType,
+          resourceType: 'record' as NonEmpty,
+          resourceScope: 'single' as NonEmpty,
+        },
+        inputSchema: sqlInputSchema,
+      },
     ];
   }
 

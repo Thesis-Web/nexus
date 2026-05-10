@@ -144,6 +144,13 @@ export class HashiCorpVaultConnector implements Connector {
     return true;
   }
 
+  describeToolSchemas() {
+    // Vault is a credential broker, not a target the LLM should call.
+    // Reference connector exposes no tool schemas — the broker pattern
+    // is access-via-grant, not access-via-tool-call.
+    return [];
+  }
+
   async produceDiff(action: AgentAction, template: ExecutionGrantTemplate): Promise<string> {
     const verb = action.resolvedVerb ?? action.rawVerb;
     const target = action.resolvedTarget

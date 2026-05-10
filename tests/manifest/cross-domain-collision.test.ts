@@ -186,6 +186,9 @@ describe('Cross-Domain Identifier Collision Detection (§32a.3)', () => {
     const connReg = new ConnectorFactoryRegistry();
     connReg.register(stubConnectorFactory('stub'));
     connReg.register(stubConnectorFactory('vault'));
+    // Default-shipped postgres connectors are enabled in the real
+    // manifest; register the type so the loader accepts them.
+    connReg.register(stubConnectorFactory('postgres'));
     const connRecords = await loadConnectorManifest({
       manifestPath: 'config/connectors/connectors.v1.yaml',
       controlPlanePublicKey: publicKey,

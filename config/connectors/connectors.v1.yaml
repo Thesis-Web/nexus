@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-10T05:58:36.918Z'
-signature: M3aiAdS3TSyf7rP9vrJovJfSR4OsL5giL5oYepUUzcdyX4FE-On1vS5Ut2ICYBbD6fv_pAFixFX-FR47eWpODQ
+issuedAt: '2026-05-10T21:05:37.710Z'
+signature: yk2uAm_1FXDbVgEum0_X9rBa5V10mqsXjsOgQvV7nzihQXYqh0f_s-TVClKMKyXP_xStA_OFn4TlRQg1JM5QAQ
 body:
   connectors:
     - connectorId: stub
@@ -43,7 +43,7 @@ body:
           - invoices
           - purchase_orders
           - purchase_order_lines
-      enabled: false
+      enabled: true
     - connectorId: postgres-warehouse
       connectorType: postgres
       allowedSystems:
@@ -65,4 +65,4 @@ body:
           - inventory
           - shipments
           - shipment_lines
-      enabled: false
+      enabled: true

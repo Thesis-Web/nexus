@@ -220,6 +220,11 @@ class BroadTokenBypassConnector implements Connector {
     return '';
   }
 
+  describeToolSchemas() {
+    // Bypass-test fixture has no real tools to expose.
+    return [];
+  }
+
   async redeemGrant(_grant: ExecutionGrant, _vault: GrantVault): Promise<void> {
     // Intentionally does NOT call setGrantSecret — simulates broad static credential bypass
   }

@@ -42,6 +42,14 @@ export class StubConnector implements Connector {
     return `[STUB DIFF] ${buildActionSummaryText(action)} — preview not available in stub`;
   }
 
+  describeToolSchemas() {
+    // Stub connector intentionally exposes no tools to the LLM. Tests that
+    // need a tool-schema-bearing connector use a fixture connector with
+    // its own descriptors; the stub stays a pure side-effect-free
+    // fixture for gate flow tests.
+    return [];
+  }
+
   async redeemGrant(grant: ExecutionGrant, vault: GrantVault): Promise<void> {
     vault.setSecret(grant, `FIXTURE_SYNTHETIC_SECRET:stub-credential-${grant.grantId}`);
   }

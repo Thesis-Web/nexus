@@ -525,6 +525,68 @@ export interface Connector {
   produceDiff?(action: AgentAction, template: ExecutionGrantTemplate): Promise<string | null>;
   execute(action: AgentAction, grant: ExecutionGrant, vault: GrantVault): Promise<ExecutionResult>;
   redeemGrant(grant: ExecutionGrant, vault: GrantVault): Promise<void>;
+  /**
+   * Provider-neutral tool descriptors that the orchestrator can attach
+   * to NVG outbound payloads so the LLM knows which governed tools are
+   * reachable through this connector. The composition root resolves an
+   * agent's `allowedCapabilities` against this list to decide which
+   * tools the model gets to see on a given turn — capabilities the
+   * agent doesn't have are filtered out before the schema reaches the
+   * provider. Returns an empty array for connectors that don't expose
+   * tools (e.g. stub).
+   */
+  describeToolSchemas(): readonly ToolSchemaDescriptor[];
+}
+
+// ─── Tool-schema bridge (Phase C buildToolDefinitions) ───
+// Provider-neutral descriptors. Per-provider translators map these onto
+// OpenAI's `function.parameters`, Anthropic's `input_schema`, and
+// Ollama's `function.parameters` — all three accept draft-07-compatible
+// JSON-Schema shapes for tool input.
+//
+// Audit boundary: what we tell the LLM it can call is governance-
+// relevant. Every NVG turn that ships a tools[] array fires a
+// `tool_schemas_attached` run-ledger event (see RunEventType below)
+// so replay can verify the exact tool surface presented to the model
+// at any point in a run.
+
+export type ToolInputType = 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
+
+export interface ToolInputProperty {
+  readonly type: ToolInputType;
+  readonly description?: string;
+  /** For 'array' types: schema of items. */
+  readonly items?: ToolInputProperty;
+  /** Enum constraint — Phase 1 covers string-valued enums (e.g. SQL
+   *  table names from the connector's allowedTables). */
+  readonly enum?: readonly string[];
+}
+
+export interface ToolInputSchema {
+  readonly type: 'object';
+  readonly properties: Readonly<Record<string, ToolInputProperty>>;
+  readonly required: readonly string[];
+}
+
+export interface ToolSchemaDescriptor {
+  /**
+   * Tool name as the model will see it. Convention: `<verb>_<target>`
+   * so the post-inference normalizer (§28.1) recovers the canonical
+   * verb + target on the way back without re-parsing.
+   */
+  readonly name: NonEmpty;
+  /** Operator-authored description shown to the model. */
+  readonly description: NonEmpty;
+  /** The capability this tool exercises — Gate 02 / Gate 03 enforce. */
+  readonly capability: NonEmpty;
+  /** Resolved target this tool acts on. */
+  readonly target: {
+    readonly system: NonEmpty;
+    readonly resourceType: NonEmpty;
+    readonly resourceScope: NonEmpty;
+  };
+  /** JSON-schema-shaped tool input. */
+  readonly inputSchema: ToolInputSchema;
 }
 
 // ─── §12.3.26 ApprovalChannel Interface ───
@@ -854,7 +916,17 @@ export type RunEventType =
   // + storageLabel only — NEVER the value or any derivative (length, hash,
   // prefix). Same adminOperation: true convention as template_ingested.
   | 'secret_stored'
-  | 'secret_removed';
+  | 'secret_removed'
+  // ── Tool-schema bridge (Phase C buildToolDefinitions) ──────────────────
+  // Fired once per NVG turn before classifyAndRoute. Records the exact
+  // tool surface presented to the LLM provider. The connector boundary
+  // (Gate 07 / EvidenceRecord) audits what the model ASKED FOR; this
+  // event audits what we AUTHORIZED THE MODEL TO CONSIDER. Detail
+  // shape: { nodeId, agentId, turnIndex, endpointId, adapterId,
+  //          toolCount, toolNames[], capabilityRefs[], targetSystems[],
+  //          schemaDigest } — never the input values, never the
+  //          resulting tool_calls.
+  | 'tool_schemas_attached';
 
 export interface RunLedgerEntry {
   entryId: Uuid;
