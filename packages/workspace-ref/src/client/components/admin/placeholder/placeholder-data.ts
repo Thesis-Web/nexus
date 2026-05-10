@@ -233,10 +233,7 @@ export const ACTORS_AGENTS_PLACEHOLDER: DashboardSurfaceStatus = {
     ],
   },
   secretFields: [],
-  blockers: [
-    'Actor.roles?: NonEmpty[] not declared in Layer-2 contract (HOLE-A02)',
-    'Bootstrap currently uses master-key DEF-A01 patch for admin role assignment',
-  ],
+  blockers: [],
   evidence: [
     {
       label: 'dev-admin seeded',

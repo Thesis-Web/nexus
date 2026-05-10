@@ -8,9 +8,12 @@
  * or enterprise IAM/RBAC. It is a bootstrap convenience so that every IdentityGate
  * construction site has a real, non-optional provider without cross-layer imports.
  *
- * allowedCapabilities: returned as ['*'] because the Actor type does not carry
- * per-actor capability restrictions. This is an explicit provider decision — NOT
- * a gate-level fallback. Enterprise IAM/RBAC providers return scoped capabilities.
+ * HOLE-A02 closure: roles + allowedCapabilities now come from the governed
+ * Actor record (persisted in SqliteActorRegistry). Empty arrays mean no
+ * per-actor allowance — gates fail closed. Earlier versions hardcoded
+ * `roleAssignments: []` and `allowedCapabilities: ['*']`, which silently
+ * granted every actor admin-equivalent reach when the second-checkpoint
+ * pipeline ran through this provider. That hardcode is gone.
  *
  * Layer 1 — imports from Layer 2 (@nexus/contracts) only.
  * Spec: §10.2 (IdentityProviderInterface), §32.1 (three valid sources)
@@ -44,13 +47,13 @@ export class RegistryBackedIdentityProvider implements IdentityProviderInterface
 
     const ceiling: CapabilityCeiling = {
       allowedSystems: actor.allowedSystems,
-      allowedCapabilities: ['*'], // explicit provider decision — Actor type has no capability field
+      allowedCapabilities: actor.allowedCapabilities ?? [],
       maxRiskTier: actor.riskCeiling,
     };
 
     return {
       principalIdentity: principal.principalId as NonEmpty,
-      roleAssignments: [], // Actor type does not carry roles — enterprise IAM/RBAC provides these
+      roleAssignments: (actor.roles ?? []) as NonEmpty[],
       capabilityCeilings: [ceiling],
       environmentContext: actor.environment,
       actorClass: actor.actorClass,

@@ -33,7 +33,8 @@ export function initializeSchema(db: Database.Database): void {
       allowed_capabilities  TEXT NOT NULL DEFAULT '[]',
       enabled               INTEGER NOT NULL DEFAULT 1,
       approver_public_key   TEXT,
-      approver_channels     TEXT
+      approver_channels     TEXT,
+      roles                 TEXT NOT NULL DEFAULT '[]'
     );
     CREATE INDEX IF NOT EXISTS idx_actors_principal   ON actors(principal_id);
     CREATE INDEX IF NOT EXISTS idx_actors_environment ON actors(environment);
@@ -98,8 +99,13 @@ export function initializeSchema(db: Database.Database): void {
   `);
 }
 
-// Migration: add columns for existing databases
-function migrateSchema(db: Database.Database): void {
+/**
+ * Migration: add columns for existing databases. Idempotent.
+ * Exported so every db-open path can run it (the CLI's `openDb()` and the
+ * helper `openDatabase()` below). Fresh installs pick up new columns via
+ * `initializeSchema`; upgrades pick them up here.
+ */
+export function migrateSchema(db: Database.Database): void {
   const cols = db.prepare('PRAGMA table_info(actors)').all() as Array<{ name: string }>;
   const names = new Set(cols.map(c => c.name));
   if (!names.has('oct_level')) db.exec('ALTER TABLE actors ADD COLUMN oct_level TEXT DEFAULT NULL');
@@ -107,6 +113,12 @@ function migrateSchema(db: Database.Database): void {
     db.exec("ALTER TABLE actors ADD COLUMN allowed_capabilities TEXT NOT NULL DEFAULT '[]'");
   if (!names.has('enabled'))
     db.exec('ALTER TABLE actors ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
+  // HOLE-A02 closure: per-actor roles in the governed Actor record. Existing
+  // rows default to an empty array and therefore fail hasAdminRole() until a
+  // signed admin action grants them roles. Bootstrap performs a one-shot seed
+  // for the dev-admin actor so existing deployments don't lose admin access.
+  if (!names.has('roles'))
+    db.exec("ALTER TABLE actors ADD COLUMN roles TEXT NOT NULL DEFAULT '[]'");
 }
 
 export function openDatabase(dbPath: string): Database.Database {

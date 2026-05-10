@@ -483,15 +483,13 @@ async function composeActorsAgentsSurface(
     }
   }
 
-  // HOLE-A02 carries forward — Actor.roles isn't a Layer-2 contract field;
-  // bootstrap currently master-key-patches roles in the identity adapter.
-  // Surface this as a blocker so the projection is honest.
-  blockers.push(
-    'HOLE-A02: Actor.roles not in @nexus/contracts; admin role currently injected at adapter'
-  );
+  // HOLE-A02 closed: Actor.roles is now a Layer-2 contract field, persisted
+  // by SqliteActorRegistry, projected by RegistryBackedIdentityProvider and
+  // by the bootstrap canonical adapter. Admin gating reads the governed
+  // record; no adapter-level injection.
 
   const state: DashboardReadinessState =
-    entries.length === 0 ? 'missing' : blockers.length > 1 ? 'partial' : 'partial';
+    entries.length === 0 ? 'missing' : blockers.length > 0 ? 'partial' : 'configured';
   return {
     surfaceId: 'actors_agents',
     title: 'Actors & Agents',

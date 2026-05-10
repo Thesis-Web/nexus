@@ -1109,7 +1109,8 @@ export async function bootstrapWorkspace(
         allowedSystems: DEV_ADMIN_SYSTEMS,
       });
     }
-    if (!(await coreDeps.actorRegistry.get(DEV_ADMIN_ACTOR_ID))) {
+    const existingDevAdmin = await coreDeps.actorRegistry.get(DEV_ADMIN_ACTOR_ID);
+    if (!existingDevAdmin) {
       await coreDeps.actorRegistry.register({
         actorId: DEV_ADMIN_ACTOR_ID,
         actorClass: 'HUMAN',
@@ -1132,6 +1133,19 @@ export async function bootstrapWorkspace(
         purpose: 'Reference bootstrap admin' as NonEmpty,
         reviewCadence: 'quarterly' as NonEmpty,
       } as Actor);
+    } else if (!(existingDevAdmin.roles ?? []).includes('nexus-admin' as NonEmpty)) {
+      // HOLE-A02 one-shot upgrade migration: pre-existing dev-admin row was
+      // written before the roles column existed. Without this, restarting
+      // after the schema migration would leave dev-admin with an empty
+      // roles array → hasAdminRole() returns false → loss of admin access.
+      // Idempotent on subsequent boots.
+      await coreDeps.actorRegistry.update(DEV_ADMIN_ACTOR_ID, {
+        ...existingDevAdmin,
+        roles: ['nexus-admin' as NonEmpty],
+      } as Actor);
+      console.log(
+        "[workspace-bootstrap] dev-admin upgraded with role 'nexus-admin' (HOLE-A02 migration)"
+      );
     }
     authProvider.registerKey(devAdminApiKey, DEV_ADMIN_ACTOR_ID);
 

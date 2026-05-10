@@ -13,6 +13,7 @@ import {
   type ActorClass,
   type ActorRegistry,
   type OctLevel,
+  type NonEmpty,
 } from '../types/index.js';
 
 interface ActorRow {
@@ -30,9 +31,30 @@ interface ActorRow {
   purpose: string | null;
   review_cadence: string | null;
   oct_level: string | null;
+  // HOLE-A02 closure: governed roles persisted as a JSON-encoded string of
+  // NonEmpty[]. Defaulted to '[]' for both fresh installs and upgraded rows.
+  roles: string;
 }
 
 function rowToActor(row: ActorRow): Actor {
+  // HOLE-A02 closure: roles is the governed source of truth for admin gating.
+  // Empty array is a valid value (most actors have no roles) and yields
+  // hasAdminRole() === false. The defensive parse handles the edge case
+  // where an out-of-band write left a NULL or non-JSON value.
+  let roles: NonEmpty[] = [];
+  if (typeof row.roles === 'string' && row.roles.length > 0) {
+    try {
+      const parsed = JSON.parse(row.roles) as unknown;
+      if (Array.isArray(parsed)) {
+        roles = parsed.filter(
+          (r): r is NonEmpty => typeof r === 'string' && r.length > 0
+        ) as NonEmpty[];
+      }
+    } catch {
+      // Treat malformed roles JSON as empty — gates fail closed.
+      roles = [];
+    }
+  }
   return {
     actorId: row.actor_id,
     actorClass: row.actor_class,
@@ -48,6 +70,7 @@ function rowToActor(row: ActorRow): Actor {
     // Gate 02 enforces fail-closed: null/unknown OCT = deny.
     // oct_assignment signed operator action assigns OCT post-registration.
     octLevel: row.oct_level ? (row.oct_level as OctLevel) : null,
+    ...(roles.length > 0 ? { roles } : {}),
     ...(row.owner !== null ? { owner: row.owner } : {}),
     ...(row.purpose !== null ? { purpose: row.purpose } : {}),
     ...(row.review_cadence !== null ? { reviewCadence: row.review_cadence } : {}),
@@ -94,8 +117,8 @@ export class SqliteActorRegistry implements ActorRegistry {
         `INSERT INTO actors
           (actor_id, actor_class, principal_id, display_name, environment, risk_ceiling,
            allowed_systems, allowed_capabilities, enabled,
-           registered_at, owner, purpose, review_cadence, oct_level)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           registered_at, owner, purpose, review_cadence, oct_level, roles)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         actor.actorId,
@@ -111,7 +134,8 @@ export class SqliteActorRegistry implements ActorRegistry {
         actor.owner ?? null,
         actor.purpose ?? null,
         actor.reviewCadence ?? null,
-        actor.octLevel
+        actor.octLevel,
+        JSON.stringify(actor.roles ?? [])
       );
   }
 
@@ -130,7 +154,8 @@ export class SqliteActorRegistry implements ActorRegistry {
         `UPDATE actors SET
           actor_class = ?, principal_id = ?, display_name = ?, environment = ?,
           risk_ceiling = ?, allowed_systems = ?, allowed_capabilities = ?,
-          enabled = ?, owner = ?, purpose = ?, review_cadence = ?, oct_level = ?
+          enabled = ?, owner = ?, purpose = ?, review_cadence = ?, oct_level = ?,
+          roles = ?
         WHERE actor_id = ?`
       )
       .run(
@@ -146,6 +171,7 @@ export class SqliteActorRegistry implements ActorRegistry {
         actor.purpose ?? null,
         actor.reviewCadence ?? null,
         actor.octLevel,
+        JSON.stringify(actor.roles ?? []),
         actorId
       );
     if (result.changes === 0) {
