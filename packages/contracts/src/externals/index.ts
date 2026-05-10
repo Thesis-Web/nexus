@@ -113,6 +113,11 @@ export type {
   OctSecurePlannerRequest,
   PlannerRequest,
   EdgeHint,
+  SubTaskDecl,
+  NvgSubTask,
+  NxsSubTask,
+  SecureHandoffSubTask,
+  SubTaskEdgeHint,
   PlannerContext,
   Planner,
 } from './planner.js';
@@ -133,6 +138,8 @@ export type {
   NodeStatus,
   NodeDelegationBinding,
   RunDagState,
+  SlotReadRef,
+  NxsActionTemplate,
 } from './execution-plan.js';
 
 // ── AMEND-nexus-spec-workspace §1.4 — workspace-governed.ts exports ──

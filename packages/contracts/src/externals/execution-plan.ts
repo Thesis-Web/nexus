@@ -11,6 +11,44 @@
 import type { Uuid, NonEmpty, Sha256Hex, IsoTimestamp } from '../types/index.js';
 import type { EvidenceSentinel } from '../constants/index.js';
 
+// ─── SlotReadRef ───
+// Reference from a downstream node to an upstream node's output slot.
+// At dispatch time the orchestrator looks up the latest mailbox item
+// matching (runId, taskId=upstreamNodeId, slotId) and seeds it into the
+// downstream node's input — as a user message for nvg_dispatch /
+// secure_agent_handoff, or (Phase 2) as a parameter substitution for
+// nxs_dispatch action templates.
+
+export interface SlotReadRef {
+  /** subTaskKey of the upstream sub-task whose mailbox item we read. */
+  fromSubTaskKey: NonEmpty;
+  /** slotId on the upstream sub-task's expectedOutputSlots. */
+  slotId: NonEmpty;
+}
+
+// ─── NxsActionTemplate ───
+// Pre-resolved structured action for `nxs_dispatch` nodes — no LLM is
+// invoked. The orchestrator builds an AgentAction from this template +
+// the dispatching agent's identity context, then runs it through the
+// NXS pipeline. Used for deterministic side effects (a fixed SQL query,
+// a webhook, a scheduled-job trigger) where governance + audit are
+// still required but model thinking is not.
+
+export interface NxsActionTemplate {
+  /** Capability the action claims — must be in the agent's
+   *  allowedCapabilities. Gate 03 enforces. */
+  capability: NonEmpty;
+  /** Resolved target system + resource type/scope. */
+  target: {
+    system: NonEmpty;
+    resourceType: NonEmpty;
+    resourceScope: NonEmpty;
+  };
+  /** Literal payload handed to the connector. Phase 1: opaque, no slot
+   *  substitution. Phase 2 may add structured slot/jsonpath refs. */
+  rawPayload: unknown;
+}
+
 // ─── PlanNode ───
 
 export interface PlanNode {
@@ -38,6 +76,26 @@ export interface PlanNode {
   // risk classification authority. V1 always EVIDENCE_SENTINEL.
   expectedOutputSlots: NonEmpty[];
   timeoutMs: number;
+  // ── Multi-node planner (AMEND-spec-nexus-orch §5 extension) ──
+  // The fields below are populated when the plan was built from a
+  // structured `subTasks[]` PlannerRequest (Phase 1 of multi-node
+  // planning). Legacy single-prompt plans leave them undefined/empty
+  // and the dispatch falls back to the request-level prompt.
+  /** User-stable key from the originating SubTaskDecl. Lets the
+   *  composition root resolve slot reads + lifecycle events back to a
+   *  human-readable identifier without leaking internal nodeIds. */
+  subTaskKey?: NonEmpty;
+  /** Per-node prompt for nvg_dispatch / secure_agent_handoff. When
+   *  null/undefined the dispatch uses the top-level request.prompt
+   *  (legacy behavior). Ignored for nxs_dispatch / local_control. */
+  taskPrompt?: NonEmpty | null;
+  /** Slots this node reads from upstream. Empty / undefined for root
+   *  nodes and legacy plans. */
+  inputSlotReads?: SlotReadRef[];
+  /** Pre-resolved action template for nxs_dispatch nodes. Required when
+   *  nodeType === 'nxs_dispatch' under multi-node plans; absent for
+   *  every other node type and for legacy plans. */
+  actionTemplate?: NxsActionTemplate | null;
 }
 
 // ─── PlanEdgeType ───
