@@ -122,6 +122,7 @@ import {
   type NvgTurnResult,
   type ToolCallDispatchResult,
 } from './dispatch-round-trip.js';
+import { checkSecureHandoffSlotRead } from './secure-handoff-guard.js';
 import type { ExtractedToolCall } from '@nexus/core';
 
 const DEFAULT_TRAIL_DIR = path.join(process.cwd(), 'runs');
@@ -685,6 +686,27 @@ const program = createCli({
                     `subTask='${ref.fromSubTaskKey}', slot='${ref.slotId}'`) as NonEmpty,
                   governanceDenied: false,
                 };
+              }
+              // ── secure_agent_handoff guard (Phase 1) ──
+              // Hard deny when downstream OCT clearance is lower than
+              // upstream item's classification. Phase 2 replaces this
+              // with redaction at the slot boundary.
+              if (node.nodeType === 'secure_agent_handoff') {
+                const guard = checkSecureHandoffSlotRead(
+                  agent.octLevel ?? null,
+                  item.octLevel,
+                  ref.fromSubTaskKey,
+                  ref.slotId
+                );
+                if (!guard.allowed) {
+                  console.warn('[orch-wire] secure handoff denied —', guard.denyReason);
+                  return {
+                    success: false,
+                    completionMetadata: null,
+                    failureReason: guard.denyReason as NonEmpty,
+                    governanceDenied: true,
+                  };
+                }
               }
               if (!item.resultRef.startsWith('file://')) {
                 return {
