@@ -116,6 +116,30 @@ export class MailboxServiceImpl implements IMailboxService {
     }
   }
 
+  async findBySlot(
+    mailboxId: NonEmpty,
+    runId: Uuid,
+    taskId: Uuid,
+    slotId: NonEmpty
+  ): Promise<MailboxItem | null> {
+    // Multi-node planner slot lookup. The downstream node's inputSlotReads
+    // names the upstream node by subTaskKey (resolved to nodeId at the
+    // dispatch layer) and the slotId. We filter by (taskId, slotId) and
+    // return the most recently created available item. We deliberately
+    // do NOT transition any items here — slot reads are read-only.
+    const all = await this.backend.listByRun({
+      mailboxId,
+      runId,
+      includeIneligible: false,
+    });
+    const matches = all.filter(
+      item => item.taskId === taskId && item.slotId === slotId && item.mailboxStatus === 'available'
+    );
+    if (matches.length === 0) return null;
+    matches.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+    return matches[0] ?? null;
+  }
+
   async cancelRun(mailboxId: NonEmpty, runId: Uuid, reason: DenialCode): Promise<void> {
     const all = await this.backend.listByRun({
       mailboxId,

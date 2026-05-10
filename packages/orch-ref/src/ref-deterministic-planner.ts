@@ -629,7 +629,14 @@ export class RefDeterministicPlanner implements Planner {
       );
     }
 
-    // §5.1 step 4: create PlanNodes with sequential planOrderIndex
+    // §5.1 step 4: create PlanNodes with sequential planOrderIndex.
+    //
+    // Legacy single-prompt path: every node is an LLM dispatch — the
+    // composition root invokes NVG, the model may emit tool_calls, and
+    // the round-trip loop drives any NXS work through gates. Despite
+    // the historical naming, the runtime semantics here are
+    // `nvg_dispatch`, not `nxs_dispatch`. Aligning the nodeType with
+    // the actual dispatch path now that P3 branches on it.
     const agentToNodeId = new Map<string, string>();
     const nodes: PlanNode[] = resolvedAgents.map((agent, index) => {
       const nodeId = randomUUID() as Uuid;
@@ -639,9 +646,9 @@ export class RefDeterministicPlanner implements Planner {
         planOrderIndex: index,
         agentId: agent.agentId as Uuid,
         taskSummary: this.buildTaskSummary(request, agent),
-        requiresNvg: false,
-        requiresNxs: true,
-        nodeType: 'nxs_dispatch' as const,
+        requiresNvg: true,
+        requiresNxs: false,
+        nodeType: 'nvg_dispatch' as const,
         declaredRiskHint: EVIDENCE_SENTINEL,
         expectedOutputSlots: ['default' as NonEmpty],
         // Aligns with the orchestrator manifest's `timeouts.modelCallMs`

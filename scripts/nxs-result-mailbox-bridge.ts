@@ -69,6 +69,17 @@ export interface BridgeDeps {
    * uniformly regardless of whether the connector returned data or a receipt.
    */
   readonly slotId?: NonEmpty;
+  /**
+   * Override the mailbox item's `taskId`. By default the bridge uses
+   * `evidence.actionId` so each tool-call sub-action maps 1:1 to a
+   * mailbox item — correct behavior for nvg_dispatch round-trip
+   * intermediates. For nxs_dispatch nodes (multi-node planner) we want
+   * the item to be addressable by the planner's `nodeId` so downstream
+   * nodes can look it up via inputSlotReads → MailboxService.findBySlot.
+   * Passing the node's `nodeId` here makes the produced item discoverable
+   * at slot-read time.
+   */
+  readonly taskIdOverride?: Uuid;
 }
 
 export interface BridgeResult {
@@ -143,7 +154,11 @@ export async function bridgeNxsResultToMailbox(
     // action id so the mailbox item is one-to-one with the NXS dispatch.
     // Downstream callers should join through evidenceRecordId when they
     // need to walk back to the originating plan node.
-    taskId: evidence.actionId,
+    //
+    // Multi-node planner: nxs_dispatch node owners pass `taskIdOverride:
+    // node.nodeId` so the mailbox item is addressable by the planner's
+    // nodeId via MailboxService.findBySlot.
+    taskId: deps.taskIdOverride ?? evidence.actionId,
     agentId: evidence.actionSummary.actorId,
     slotId: deps.slotId ?? ('nxs_result' as NonEmpty),
     sourceType: 'nxs_execution_result',

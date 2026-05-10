@@ -57,7 +57,18 @@ export interface RunCoordinatorDeps {
   mailboxService: MailboxService;
   outputCollector: OutputCollector;
   computeDigest: (obj: unknown) => Sha256Hex;
-  dispatchToGovernance: (node: PlanNode, delegationId: Uuid) => Promise<NodeDispatchResult>;
+  /**
+   * Multi-node planner extension: dispatch receives the full ExecutionPlan
+   * so it can resolve `inputSlotReads.fromSubTaskKey` → upstream nodeId
+   * for slot-read lookups before dispatching its own NVG/NXS work.
+   * Legacy single-prompt dispatch ignores `plan` and the existing single-
+   * node behavior is unchanged.
+   */
+  dispatchToGovernance: (
+    node: PlanNode,
+    delegationId: Uuid,
+    plan: ExecutionPlan
+  ) => Promise<NodeDispatchResult>;
   issueDelegation: (agentId: Uuid, scope: DelegationScope) => Promise<Uuid>;
   triggerCompile: (runId: Uuid) => Promise<void>;
   sendPlanCheckback: (preview: OrchestratorPlanPreview) => Promise<boolean>;
@@ -278,8 +289,14 @@ export class RefRunCoordinator implements RunCoordinator {
 
     let dagResult: DagExecutionResult;
     try {
+      // Multi-node planner: wrap dispatchToGovernance to thread the
+      // ExecutionPlan through to each dispatch call so it can resolve
+      // inputSlotReads → upstream nodeId. Single-node plans ignore
+      // the third arg; the wrapper is harmless for legacy paths.
+      const planAwareDispatch = (node: PlanNode, delegationId: Uuid) =>
+        dispatchToGovernance(node, delegationId, plan);
       dagResult = await deps.dagExecutor.execute(dagState, {
-        dispatchNode: dispatchToGovernance,
+        dispatchNode: planAwareDispatch,
         resolveCondition: (condition, metadata) => evaluateCondition(condition, metadata).result,
         onNodeEvent: async (nodeId, status) => {
           const eventType: RunEventType | null =

@@ -1031,6 +1031,10 @@ describe('multi-node sub-task plans', () => {
     if (!isPlan(result)) return;
     expect(result.nodes).toHaveLength(1);
     expect(result.nodes[0].subTaskKey).toBeUndefined();
-    expect(result.nodes[0].nodeType).toBe('nxs_dispatch');
+    // Legacy single-prompt nodes run NVG (round-trip handles any tool
+    // calls). nodeType matches the actual dispatch path.
+    expect(result.nodes[0].nodeType).toBe('nvg_dispatch');
+    expect(result.nodes[0].requiresNvg).toBe(true);
+    expect(result.nodes[0].requiresNxs).toBe(false);
   });
 });

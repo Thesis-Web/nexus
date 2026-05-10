@@ -97,4 +97,18 @@ export interface MailboxService {
   listEligibleForCompile(mailboxId: NonEmpty, runId: Uuid): Promise<MailboxItem[]>;
   markConsumed(mailboxId: NonEmpty, runId: Uuid, itemIds: Uuid[]): Promise<void>;
   cancelRun(mailboxId: NonEmpty, runId: Uuid, reason: DenialCode): Promise<void>;
+  /**
+   * Multi-node planner slot-read lookup. Returns the most recent
+   * available mailbox item matching (runId, taskId, slotId) — i.e. the
+   * output of an upstream node addressed by a downstream node's
+   * `inputSlotReads` entry. Returns null when no item exists, when all
+   * matching items are blocked/cancelled/expired/consumed, or when the
+   * digest verification path would fail. Read-only; no state transitions.
+   */
+  findBySlot(
+    mailboxId: NonEmpty,
+    runId: Uuid,
+    taskId: Uuid,
+    slotId: NonEmpty
+  ): Promise<MailboxItem | null>;
 }

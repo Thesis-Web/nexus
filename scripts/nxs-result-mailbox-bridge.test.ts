@@ -309,6 +309,22 @@ describe('bridgeNxsResultToMailbox', () => {
     expect(state.writes).toHaveLength(0);
   });
 
+  it('honors a taskIdOverride so nxs_dispatch nodes are addressable by nodeId', async () => {
+    const NODE_ID = '00000000-0000-4000-a000-00000000aaaa' as Uuid;
+    await writePayload('{"rows":[],"rowCount":0}');
+    const { collector, state } = fakeCollector();
+    await bridgeNxsResultToMailbox(makeEvidence({ status: 'success' }), {
+      outputCollector: collector,
+      payloadsRoot,
+      agentOctLevel: 'OCT-OPEN',
+      taskIdOverride: NODE_ID,
+    });
+    // Without override the taskId would be evidence.actionId. With override
+    // it MUST be the supplied nodeId so MailboxService.findBySlot lookups
+    // by (runId, nodeId, slotId) succeed.
+    expect(state.writes[0]!.taskId).toBe(NODE_ID);
+  });
+
   it('honors a custom slotId on the data path', async () => {
     await writePayload('{"rows":[],"rowCount":0}');
     const { collector, state } = fakeCollector();

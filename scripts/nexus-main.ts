@@ -61,6 +61,7 @@ import type {
   WorkspaceRunRequest,
   PlannerRequest,
   PlanNode,
+  ExecutionPlan,
   NvgOutboundRequest,
   NvgClassifyAndRouteResult,
   NvgInvocationResult,
@@ -70,6 +71,7 @@ import type {
   FinalResponseArtifact,
   CompileReturnRequest,
   AgentAction,
+  Actor,
   PipelineContext,
   PipelineResult,
   NormalizerContext,
@@ -448,11 +450,184 @@ const program = createCli({
     //      item, and emits partial_result on the run ledger.
     //   5. Return NodeDispatchResult so the DAG executor records node_completed.
     const makeDispatchToGovernance = (request: WorkspaceRunRequest) => {
-      return async (node: PlanNode, _delegationId: Uuid): Promise<NodeDispatchResult> => {
+      // ── nxs_dispatch helper (multi-node planner) ───────────────────────
+      // Builds an AgentAction from the planner-supplied actionTemplate and
+      // dispatches it through the 7-gate pipeline directly. No NVG, no
+      // round-trip — these nodes are deterministic side effects (a fixed
+      // SQL query, a webhook, etc.) where governance + audit are still
+      // required but model thinking is not. The mailbox item is tagged
+      // with `taskIdOverride: node.nodeId` so downstream sub-tasks can
+      // discover it via inputSlotReads → MailboxService.findBySlot.
+      const dispatchNxsNode = async (
+        node: PlanNode,
+        delegationId: Uuid,
+        agent: Actor
+      ): Promise<NodeDispatchResult> => {
+        const tmpl = node.actionTemplate;
+        if (!tmpl) {
+          return {
+            success: false,
+            completionMetadata: null,
+            failureReason: 'nxs_dispatch_missing_action_template' as NonEmpty,
+            governanceDenied: false,
+          };
+        }
+
+        const sessionId = crypto.randomUUID() as Uuid;
+        const sessionTtlSeconds = 10 * 60;
+        await coreDeps.sessionStore.create({
+          sessionId,
+          actorId: node.agentId,
+          principalId: request.principalId,
+          delegationId,
+          createdAt: nowIso(),
+          expiresAt: new Date(Date.now() + sessionTtlSeconds * 1000).toISOString() as IsoTimestamp,
+        });
+
+        // Synthesize verb + target for Gate 02 from the declared
+        // capability + target. Gate 02 resolves these back to the
+        // canonical capability via the lexicon and capability registry;
+        // mismatches surface as denials at Gate 03 / Gate 04 — exactly
+        // the governance posture we want.
+        const capabilitySegments = tmpl.capability.split(':');
+        const verbFromCap = capabilitySegments[0] ?? tmpl.capability;
+        const rawTarget = tmpl.target.system;
+
+        const action: AgentAction = {
+          actionId: crypto.randomUUID() as Uuid,
+          runId: request.runId,
+          receivedAt: new Date().toISOString() as IsoTimestamp,
+          protocol: 'planner-nxs-dispatch' as NonEmpty,
+          adapterVersion: 'planner-nxs-v1' as NonEmpty,
+          actorId: node.agentId,
+          principalId: request.principalId,
+          sessionId,
+          delegationId,
+          delegationSequence: 0,
+          tool: `${verbFromCap}_${rawTarget}` as NonEmpty,
+          rawVerb: verbFromCap as NonEmpty,
+          rawTarget,
+          rawPayload: tmpl.rawPayload,
+          intent: {
+            objectiveSummary: node.taskSummary,
+            triggeringSource: 'planner-nxs-dispatch' as NonEmpty,
+            toolchainContext: 'planner-nxs-dispatch' as NonEmpty,
+            modelId: null,
+            modelConfidence: null,
+            riskNote: null,
+            extractedAt: new Date().toISOString() as IsoTimestamp,
+          },
+          resolvedVerb: null,
+          resolvedCapability: null,
+          resolvedTarget: null,
+          resolvedDataClasses: [],
+          resolvedRiskTier: null,
+        };
+
+        console.log(
+          '[orch-wire] nxs_dispatch — run:',
+          request.runId,
+          'agent:',
+          node.agentId,
+          'capability:',
+          tmpl.capability,
+          'target:',
+          tmpl.target.system
+        );
+
+        // isNvgBypass: true — this dispatch genuinely did NOT traverse
+        // NVG. Audit consumers see the bypass annotation and won't be
+        // confused by missing NVG entries on this node.
+        const nxsResult = await dispatchToNxs({
+          rawAction: action,
+          runId: request.runId,
+          isNvgBypass: true,
+        });
+        const finalOutcome = nxsResult.evidenceRecord.finalOutcome;
+        console.log('[orch-wire] nxs_dispatch outcome:', finalOutcome);
+
+        // Bridge the result into the mailbox keyed by THIS node's id +
+        // declared slot so downstream sub-tasks can find it.
+        const slotId = (node.expectedOutputSlots[0] ?? 'default') as NonEmpty;
+        const bridged = await bridgeNxsResultToMailbox(nxsResult.evidenceRecord, {
+          outputCollector: br.externals.outputCollector,
+          payloadsRoot: path.join(DEFAULT_TRAIL_DIR, 'payloads'),
+          agentOctLevel: agent.octLevel ?? 'OCT-OPEN',
+          slotId,
+          taskIdOverride: node.nodeId,
+        });
+        if (bridged === null) {
+          return {
+            success: false,
+            completionMetadata: {
+              evidenceRecordId: nxsResult.evidenceRecord.recordId,
+              finalOutcome,
+            },
+            failureReason:
+              'nxs_dispatch_bridge_returned_null: evidence had no executionResult' as NonEmpty,
+            governanceDenied: false,
+          };
+        }
+        console.log(
+          '[orch-wire] nxs_dispatch mailbox item:',
+          bridged.mailboxItem.mailboxItemId,
+          '(' + bridged.kind + ')'
+        );
+
+        if (finalOutcome === 'executed_successfully') {
+          return {
+            success: true,
+            completionMetadata: {
+              mailboxItemId: bridged.mailboxItem.mailboxItemId,
+              bridgedKind: bridged.kind,
+              evidenceRecordId: nxsResult.evidenceRecord.recordId,
+              finalOutcome,
+            },
+            failureReason: null,
+            governanceDenied: false,
+          };
+        }
+
+        const isDenied =
+          finalOutcome === 'denied_classification' ||
+          finalOutcome === 'denied_delegation' ||
+          finalOutcome === 'denied_policy' ||
+          finalOutcome === 'denied_approval' ||
+          finalOutcome === 'denied_execution';
+        return {
+          success: false,
+          completionMetadata: {
+            mailboxItemId: bridged.mailboxItem.mailboxItemId,
+            bridgedKind: bridged.kind,
+            evidenceRecordId: nxsResult.evidenceRecord.recordId,
+            finalOutcome,
+          },
+          failureReason: ('nxs_dispatch_failed: ' + finalOutcome) as NonEmpty,
+          governanceDenied: isDenied,
+        };
+      };
+
+      return async (
+        node: PlanNode,
+        _delegationId: Uuid,
+        plan: ExecutionPlan
+      ): Promise<NodeDispatchResult> => {
         try {
           const agent = await coreDeps.actorRegistry.get(node.agentId);
           if (!agent) throw new Error('Agent not found in registry: ' + node.agentId);
 
+          // ── Multi-node planner: nxs_dispatch direct path ─────────────
+          // For nodes the planner emitted from a `kind: 'nxs'` sub-task,
+          // skip NVG entirely. Build an AgentAction from the pre-resolved
+          // actionTemplate, run it through the 7-gate pipeline, and bridge
+          // the result into the mailbox keyed by nodeId so downstream
+          // sub-tasks can read it via inputSlotReads. No round-trip loop;
+          // no model spend.
+          if (node.nodeType === 'nxs_dispatch') {
+            return await dispatchNxsNode(node, _delegationId, agent);
+          }
+
+          // ── nvg_dispatch / secure_agent_handoff path ─────────────────
           // CLAUDE-CODE-FILE-ATTACH Phase A §4 — build the messages array
           // for the model. Each text-like attached file becomes a separate
           // user message preceding the prompt so the model sees document
@@ -476,7 +651,65 @@ const program = createCli({
               content: `[Attached file: ${file.filename} (${file.mediaType})]\n\n${file.content}`,
             });
           }
-          initialMessages.push({ role: 'user', content: request.prompt });
+
+          // ── Multi-node planner: pre-seed upstream slot reads ──────────
+          // For each entry in the node's inputSlotReads, look up the
+          // upstream node by subTaskKey, fetch the latest mailbox item
+          // for (runId, upstreamNodeId, slotId), and inject the file body
+          // as a user message ahead of the per-node prompt. The model
+          // sees the upstream output before being asked to act on it.
+          // Phase 1 uses a simple text framing; Phase 2 may add a
+          // structured tool_result-shaped variant for tool-aware models.
+          if (node.inputSlotReads && node.inputSlotReads.length > 0) {
+            const mailboxId = br.externals.socketRegistry.getPrimaryMailbox().mailboxId;
+            for (const ref of node.inputSlotReads) {
+              const upstreamNode = plan.nodes.find(n => n.subTaskKey === ref.fromSubTaskKey);
+              if (!upstreamNode) {
+                // Planner already validates this — defensive throw to
+                // surface any future contract drift.
+                throw new Error(
+                  `inputSlotReads references subTaskKey '${ref.fromSubTaskKey}' but no node has that key`
+                );
+              }
+              const item = await br.externals.mailboxService.findBySlot(
+                mailboxId,
+                request.runId,
+                upstreamNode.nodeId,
+                ref.slotId
+              );
+              if (item === null) {
+                return {
+                  success: false,
+                  completionMetadata: null,
+                  failureReason: ('slot_read_missing: no available mailbox item for ' +
+                    `subTask='${ref.fromSubTaskKey}', slot='${ref.slotId}'`) as NonEmpty,
+                  governanceDenied: false,
+                };
+              }
+              if (!item.resultRef.startsWith('file://')) {
+                return {
+                  success: false,
+                  completionMetadata: null,
+                  failureReason: ('slot_read_unsupported_scheme: resultRef must be file:// for ' +
+                    'Phase 1, got ' +
+                    item.resultRef) as NonEmpty,
+                  governanceDenied: false,
+                };
+              }
+              const filePath = item.resultRef.slice('file://'.length);
+              const body = await fs.readFile(filePath, 'utf-8');
+              initialMessages.push({
+                role: 'user',
+                content: `[Upstream slot ${ref.fromSubTaskKey}.${ref.slotId}]\n\n${body}`,
+              });
+            }
+          }
+
+          // Per-node prompt (sub-task path) or top-level request prompt
+          // (legacy path). taskPrompt: null on a sub-task means "use the
+          // request-level prompt"; absent on legacy nodes means same.
+          const nodePrompt = (node.taskPrompt ?? request.prompt) as NonEmpty;
+          initialMessages.push({ role: 'user', content: nodePrompt });
 
           console.log(
             '[orch-wire] NVG dispatch — run:',
