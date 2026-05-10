@@ -23,17 +23,19 @@
  *   4. Calls outputCollector.writeMailboxItemFromNxsResult — same path
  *      NVG model results already use, no new mailbox machinery.
  *
- * Returns null when:
- *   - executionResult is missing or status !== 'success' (the connector
- *     did not produce data — receipt-only mailbox items are a separate
- *     follow-up; for now we keep the failure trail in the evidence ledger
- *     without polluting the mailbox).
- *   - the payload file does not exist on disk (the connector path is by
- *     convention; not all connectors emit one).
+ * Receipt branch (write-only / failure outcomes):
+ *   When executionResult exists but the connector did NOT produce a payload
+ *   file — either the action failed, or the action succeeded with no body
+ *   (e.g. INSERT / UPDATE / DELETE that returned no rows) — the bridge
+ *   synthesizes a small receipt JSON from the EvidenceRecord and writes it
+ *   to runs/payloads/<runId>/<actionId>.receipt.json. The mailbox item is
+ *   built the same way (sourceType: 'nxs_execution_result', same default
+ *   slot) so the orchestrator's round-trip loop can feed every tool call
+ *   back to the LLM uniformly: tool_result content is always the file bytes.
  *
- * Layer note: this file lives at the composition boundary (scripts/),
- * mirroring extract-tool-calls.ts. Pure, side-effect contained to the
- * mailbox write + a single file read.
+ * Returns null only when:
+ *   - executionResult is null on the evidence (truly nothing happened — no
+ *     receipt to synthesize, the audit record itself is the trail).
  */
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -62,21 +64,32 @@ export interface BridgeDeps {
    * Slot identifier the produced mailbox item belongs to. Compile + downstream
    * node lookups key off this. Defaults to 'nxs_result' if the caller has no
    * better information; orchestrator-issued tool calls may pass the originating
-   * node's expectedOutputSlots[0] for cleaner DAG slot routing.
+   * node's expectedOutputSlots[0] for cleaner DAG slot routing. Receipts share
+   * the same slot so the orchestrator round-trip can read tool results
+   * uniformly regardless of whether the connector returned data or a receipt.
    */
   readonly slotId?: NonEmpty;
 }
 
 export interface BridgeResult {
   readonly mailboxItem: MailboxItem;
+  /** Absolute path to the file the mailbox item references — either the
+   * connector-emitted payload OR a synthesized receipt JSON. Round-trip
+   * callers read this to build the next NVG turn's tool_result message. */
   readonly payloadPath: string;
   readonly resultDigest: Sha256Hex;
+  /** Discriminates data vs receipt so callers can log + classify accordingly.
+   * Both flow through the same OutputCollector entry point. */
+  readonly kind: 'data' | 'receipt';
 }
 
 /**
  * Build an NxsOutputReference from an EvidenceRecord + the on-disk payload
- * file the connector wrote, then write a mailbox item via the composition-
- * root OutputCollector. Returns null when there is no payload to bridge.
+ * file the connector wrote (or a synthesized receipt when no payload exists),
+ * then write a mailbox item via the composition-root OutputCollector.
+ *
+ * Returns null only when evidence.executionResult is itself null — there is
+ * nothing to receipt and the audit record holds the trail directly.
  */
 export async function bridgeNxsResultToMailbox(
   evidence: EvidenceRecord,
@@ -84,20 +97,36 @@ export async function bridgeNxsResultToMailbox(
 ): Promise<BridgeResult | null> {
   const exec = evidence.executionResult;
   if (exec === null) return null;
-  if (exec.status !== 'success') return null;
 
   const payloadPath = path.join(deps.payloadsRoot, evidence.runId, `${evidence.actionId}.json`);
 
-  let bytes: Buffer;
-  try {
-    bytes = await fs.readFile(payloadPath);
-  } catch (err: unknown) {
-    const code = (err as { code?: string } | null)?.code;
-    if (code === 'ENOENT') return null;
-    throw err;
+  let bytes: Buffer | null = null;
+  if (exec.status === 'success') {
+    try {
+      bytes = await fs.readFile(payloadPath);
+    } catch (err: unknown) {
+      const code = (err as { code?: string } | null)?.code;
+      // ENOENT is the expected miss for write-only successes — fall through
+      // to receipt synthesis. Any other error is a real I/O problem we must
+      // surface so operators see it (e.g. permissions, ENOTDIR, EIO).
+      if (code !== 'ENOENT') throw err;
+    }
   }
 
-  const resultDigest = createHash('sha256').update(bytes).digest('hex') as Sha256Hex;
+  let resultPath: string;
+  let resultDigest: Sha256Hex;
+  let kind: 'data' | 'receipt';
+
+  if (bytes !== null) {
+    resultPath = payloadPath;
+    resultDigest = createHash('sha256').update(bytes).digest('hex') as Sha256Hex;
+    kind = 'data';
+  } else {
+    const receipt = await synthesizeReceipt(evidence, deps.payloadsRoot);
+    resultPath = receipt.receiptPath;
+    resultDigest = receipt.digest;
+    kind = 'receipt';
+  }
 
   const grantId = (() => {
     const g = evidence.grantMetadata.grantId;
@@ -118,7 +147,7 @@ export async function bridgeNxsResultToMailbox(
     agentId: evidence.actionSummary.actorId,
     slotId: deps.slotId ?? ('nxs_result' as NonEmpty),
     sourceType: 'nxs_execution_result',
-    resultRef: `file://${payloadPath}` as NonEmpty,
+    resultRef: `file://${resultPath}` as NonEmpty,
     resultDigest,
     // Connector currently does not classify; default to empty. Mailboxes
     // configured with classificationRequired=true will reject this — that
@@ -135,5 +164,45 @@ export async function bridgeNxsResultToMailbox(
   };
 
   const mailboxItem = await deps.outputCollector.writeMailboxItemFromNxsResult(reference);
-  return { mailboxItem, payloadPath, resultDigest };
+  return { mailboxItem, payloadPath: resultPath, resultDigest, kind };
+}
+
+interface SynthesizedReceipt {
+  readonly receiptPath: string;
+  readonly digest: Sha256Hex;
+}
+
+/**
+ * Write a small receipt JSON derived from the EvidenceRecord into the same
+ * per-run payload directory so it can be referenced by file://. Receipts
+ * are sibling files to data payloads ('<actionId>.receipt.json') so a
+ * directory listing distinguishes them at a glance.
+ */
+async function synthesizeReceipt(
+  evidence: EvidenceRecord,
+  payloadsRoot: string
+): Promise<SynthesizedReceipt> {
+  const exec = evidence.executionResult!;
+  const dir = path.join(payloadsRoot, evidence.runId);
+  await fs.mkdir(dir, { recursive: true });
+  const receiptPath = path.join(dir, `${evidence.actionId}.receipt.json`);
+
+  const receipt = {
+    kind: 'nxs_receipt',
+    actionId: evidence.actionId,
+    runId: evidence.runId,
+    executedAt: exec.executedAt,
+    status: exec.status,
+    responseCode: exec.responseCode,
+    durationMs: exec.durationMs,
+    redactedSummary: exec.redactedSummary,
+    errorType: exec.errorType,
+    errorMessage: exec.errorMessage,
+    finalOutcome: evidence.finalOutcome,
+  };
+
+  const body = JSON.stringify(receipt, null, 2);
+  await fs.writeFile(receiptPath, body, { encoding: 'utf-8', mode: 0o600 });
+  const digest = createHash('sha256').update(body).digest('hex') as Sha256Hex;
+  return { receiptPath, digest };
 }

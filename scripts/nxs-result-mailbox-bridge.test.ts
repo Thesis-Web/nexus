@@ -3,11 +3,13 @@
  *
  * Cases:
  *  - Successful execution + payload file present → mailbox item written
- *    with correct digest, slot, source type, evidence linkage
- *  - Failed execution → no mailbox write (returns null)
- *  - Missing payload file → no mailbox write, no throw (returns null)
- *  - executionResult === null → no mailbox write
- *  - Custom slotId override is honored
+ *    with kind:'data', correct digest, slot, source type, evidence linkage
+ *  - Failed execution → mailbox item written with kind:'receipt' carrying
+ *    the failure summary from EvidenceRecord
+ *  - Successful execution but payload file missing (write-only outcome) →
+ *    mailbox item written with kind:'receipt', status:'success'
+ *  - executionResult === null → no mailbox write (returns null)
+ *  - Custom slotId override is honored on both data + receipt paths
  *  - Sentinel grantId ('NOT_APPLICABLE') becomes null on the reference
  *  - resultRef carries a file:// URL pointing at the on-disk payload
  *  - I/O error other than ENOENT propagates (do not silently swallow)
@@ -90,6 +92,8 @@ function makeEvidence(opts: {
   status?: ExecutionResult['status'];
   executionNull?: boolean;
   grantId?: string;
+  errorType?: string | null;
+  errorMessage?: string | null;
 }): EvidenceRecord {
   const exec: ExecutionResult | null = opts.executionNull
     ? null
@@ -97,11 +101,15 @@ function makeEvidence(opts: {
         grantId: GRANT_ID,
         executedAt: new Date().toISOString() as IsoTimestamp,
         status: opts.status ?? 'success',
-        responseCode: '200',
+        responseCode: opts.status === 'failure' ? '500' : '200',
         durationMs: 12,
-        redactedSummary: '[postgres:test] SELECT → 2 row(s); payload=...',
-        errorType: null,
-        errorMessage: null,
+        redactedSummary:
+          opts.status === 'failure'
+            ? '[postgres:test] denied: forbidden verb'
+            : '[postgres:test] SELECT → 2 row(s); payload=...',
+        errorType: opts.errorType ?? (opts.status === 'failure' ? 'FORBIDDEN_QUERY' : null),
+        errorMessage:
+          opts.errorMessage ?? (opts.status === 'failure' ? "verb 'DROP' is not permitted" : null),
       };
   return {
     recordId: RECORD_ID,
@@ -192,7 +200,7 @@ async function writePayload(content: string): Promise<string> {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('bridgeNxsResultToMailbox', () => {
-  it('writes a mailbox item when the execution succeeded and payload exists', async () => {
+  it('writes a data mailbox item when the execution succeeded and payload exists', async () => {
     const payloadContent = JSON.stringify({ rows: [{ x: 1 }, { x: 2 }], rowCount: 2 });
     const payloadPath = await writePayload(payloadContent);
     const { collector, state } = fakeCollector();
@@ -204,6 +212,7 @@ describe('bridgeNxsResultToMailbox', () => {
     });
 
     expect(result).not.toBeNull();
+    expect(result!.kind).toBe('data');
     expect(result!.payloadPath).toBe(payloadPath);
     expect(result!.resultDigest).toBe(createHash('sha256').update(payloadContent).digest('hex'));
     expect(state.writes).toHaveLength(1);
@@ -222,16 +231,68 @@ describe('bridgeNxsResultToMailbox', () => {
     expect(result!.mailboxItem.mailboxItemId).toBe('00000000-0000-4000-a000-000000000777');
   });
 
-  it('returns null and skips the write when execution failed', async () => {
-    await writePayload('{}');
+  it('writes a receipt mailbox item when the execution failed', async () => {
+    // No payload file written — the failure path should not depend on one
+    // existing on disk. The connector typically does not write a payload
+    // when status='failure'.
     const { collector, state } = fakeCollector();
     const result = await bridgeNxsResultToMailbox(makeEvidence({ status: 'failure' }), {
       outputCollector: collector,
       payloadsRoot,
       agentOctLevel: 'OCT-OPEN',
     });
-    expect(result).toBeNull();
-    expect(state.writes).toHaveLength(0);
+    expect(result).not.toBeNull();
+    expect(result!.kind).toBe('receipt');
+    expect(state.writes).toHaveLength(1);
+
+    // Receipt file is at <runId>/<actionId>.receipt.json — distinguishable
+    // from data payloads at the directory level.
+    const receiptPath = path.join(payloadsRoot, RUN_ID, `${ACTION_ID}.receipt.json`);
+    expect(result!.payloadPath).toBe(receiptPath);
+    expect(state.writes[0]!.resultRef).toBe(`file://${receiptPath}`);
+
+    // Receipt body carries the failure summary from the EvidenceRecord.
+    const body = JSON.parse(await fs.readFile(receiptPath, 'utf-8'));
+    expect(body.kind).toBe('nxs_receipt');
+    expect(body.actionId).toBe(ACTION_ID);
+    expect(body.runId).toBe(RUN_ID);
+    expect(body.status).toBe('failure');
+    expect(body.errorType).toBe('FORBIDDEN_QUERY');
+    expect(body.errorMessage).toBe("verb 'DROP' is not permitted");
+    expect(body.finalOutcome).toBe('denied_execution');
+
+    // Digest matches the receipt bytes — round-trip callers verify this
+    // when they re-read the file to feed the LLM, so it must line up.
+    const expected = createHash('sha256').update(JSON.stringify(body, null, 2)).digest('hex');
+    expect(result!.resultDigest).toBe(expected);
+    expect(state.writes[0]!.resultDigest).toBe(expected);
+
+    // finalOutcome on the reference reflects the denial.
+    expect(state.writes[0]!.finalOutcome).toBe('denied_execution');
+  });
+
+  it('writes a receipt mailbox item when the execution succeeded but no payload file exists', async () => {
+    // Simulates a write-only success: INSERT/UPDATE/DELETE that returned
+    // no rows. The connector marks status=success but doesn't write a
+    // payload file because there's nothing to persist.
+    const { collector, state } = fakeCollector();
+    const result = await bridgeNxsResultToMailbox(makeEvidence({ status: 'success' }), {
+      outputCollector: collector,
+      payloadsRoot,
+      agentOctLevel: 'OCT-OPEN',
+    });
+    expect(result).not.toBeNull();
+    expect(result!.kind).toBe('receipt');
+    expect(state.writes).toHaveLength(1);
+
+    const receiptPath = path.join(payloadsRoot, RUN_ID, `${ACTION_ID}.receipt.json`);
+    expect(result!.payloadPath).toBe(receiptPath);
+
+    const body = JSON.parse(await fs.readFile(receiptPath, 'utf-8'));
+    expect(body.status).toBe('success');
+    expect(body.finalOutcome).toBe('executed_successfully');
+    expect(body.errorType).toBeNull();
+    expect(body.errorMessage).toBeNull();
   });
 
   it('returns null when executionResult is missing', async () => {
@@ -246,18 +307,7 @@ describe('bridgeNxsResultToMailbox', () => {
     expect(state.writes).toHaveLength(0);
   });
 
-  it('returns null when payload file is missing (no throw)', async () => {
-    const { collector, state } = fakeCollector();
-    const result = await bridgeNxsResultToMailbox(makeEvidence({ status: 'success' }), {
-      outputCollector: collector,
-      payloadsRoot,
-      agentOctLevel: 'OCT-OPEN',
-    });
-    expect(result).toBeNull();
-    expect(state.writes).toHaveLength(0);
-  });
-
-  it('honors a custom slotId', async () => {
+  it('honors a custom slotId on the data path', async () => {
     await writePayload('{"rows":[],"rowCount":0}');
     const { collector, state } = fakeCollector();
     await bridgeNxsResultToMailbox(makeEvidence({ status: 'success' }), {
@@ -267,6 +317,17 @@ describe('bridgeNxsResultToMailbox', () => {
       slotId: 'inventory_query' as NonEmpty,
     });
     expect(state.writes[0]!.slotId).toBe('inventory_query');
+  });
+
+  it('honors a custom slotId on the receipt path', async () => {
+    const { collector, state } = fakeCollector();
+    await bridgeNxsResultToMailbox(makeEvidence({ status: 'failure' }), {
+      outputCollector: collector,
+      payloadsRoot,
+      agentOctLevel: 'OCT-OPEN',
+      slotId: 'inventory_update' as NonEmpty,
+    });
+    expect(state.writes[0]!.slotId).toBe('inventory_update');
   });
 
   it('maps a sentinel grantId to null on the reference', async () => {
