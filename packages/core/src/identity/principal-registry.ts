@@ -54,6 +54,30 @@ export class SqlitePrincipalRegistry implements PrincipalRegistry {
     return;
   }
 
+  async update(principalId: Uuid, principal: Principal): Promise<void> {
+    this.db
+      .prepare(
+        `
+        UPDATE principals SET
+          display_name = ?,
+          email = ?,
+          registered_at = ?,
+          max_risk_tier = ?,
+          allowed_systems = ?
+        WHERE principal_id = ?
+      `
+      )
+      .run(
+        principal.displayName,
+        principal.email,
+        principal.registeredAt,
+        principal.maxDelegableRiskTier,
+        JSON.stringify(principal.allowedSystems),
+        principalId
+      );
+    return;
+  }
+
   async list(): Promise<Principal[]> {
     const rows = this.db.prepare('SELECT * FROM principals').all() as PrincipalRow[];
     return rows.map(rowToPrincipal);

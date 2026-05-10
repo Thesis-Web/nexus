@@ -1104,7 +1104,14 @@ export async function bootstrapWorkspace(
     // delegation engine and planner do strict subset/equality checks, so a
     // literal '*' silently fails closed (system_not_in_principal_scope at mint
     // time, capability_outside_ceiling at plan time). Enumerate explicitly.
-    const DEV_ADMIN_SYSTEMS: string[] = ['stub'];
+    //
+    // dev-admin's allowedSystems must be a SUPERSET of any seeded business
+    // agent's allowedSystems — a delegation from dev-admin → agent
+    // intersects principal.allowedSystems with agent.allowedSystems and
+    // empty intersection denies at Gate 03. The default-shipped postgres
+    // connectors (sales-finance + warehouse) need to be reachable in dev
+    // so the warehouse demo runs end-to-end.
+    const DEV_ADMIN_SYSTEMS: string[] = ['stub', 'sales-finance', 'warehouse'];
     const DEV_ADMIN_CAPABILITIES: string[] = Object.values(CAPABILITY_IDS);
 
     if (!(await coreDeps.principalRegistry.get(DEV_ADMIN_PRINCIPAL_ID))) {
@@ -1141,19 +1148,48 @@ export async function bootstrapWorkspace(
         purpose: 'Reference bootstrap admin' as NonEmpty,
         reviewCadence: 'quarterly' as NonEmpty,
       } as Actor);
-    } else if (!(existingDevAdmin.roles ?? []).includes('nexus-admin' as NonEmpty)) {
-      // HOLE-A02 one-shot upgrade migration: pre-existing dev-admin row was
-      // written before the roles column existed. Without this, restarting
-      // after the schema migration would leave dev-admin with an empty
-      // roles array → hasAdminRole() returns false → loss of admin access.
-      // Idempotent on subsequent boots.
-      await coreDeps.actorRegistry.update(DEV_ADMIN_ACTOR_ID, {
-        ...existingDevAdmin,
-        roles: ['nexus-admin' as NonEmpty],
-      } as Actor);
-      console.log(
-        "[workspace-bootstrap] dev-admin upgraded with role 'nexus-admin' (HOLE-A02 migration)"
-      );
+    } else {
+      // Idempotent dev-admin migrations — recompute desired state on
+      // every boot so config drift (new system / new role / etc.) is
+      // self-healing in dev. No-op when the existing record already
+      // matches.
+      const needsRoles = !(existingDevAdmin.roles ?? []).includes('nexus-admin' as NonEmpty);
+      const desiredSystems = new Set(DEV_ADMIN_SYSTEMS);
+      const currentSystems = new Set(existingDevAdmin.allowedSystems ?? []);
+      const needsSystems =
+        desiredSystems.size !== currentSystems.size ||
+        [...desiredSystems].some(s => !currentSystems.has(s));
+      if (needsRoles || needsSystems) {
+        await coreDeps.actorRegistry.update(DEV_ADMIN_ACTOR_ID, {
+          ...existingDevAdmin,
+          roles: ['nexus-admin' as NonEmpty],
+          allowedSystems: DEV_ADMIN_SYSTEMS,
+        } as Actor);
+        console.log(
+          '[workspace-bootstrap] dev-admin migrated · roles ok · systems:',
+          DEV_ADMIN_SYSTEMS.join(', ')
+        );
+      }
+      // Same for the dev-admin PRINCIPAL — its allowedSystems gates
+      // delegation minting (intersected against the agent's
+      // allowedSystems). Keep principal + actor in sync.
+      const existingDevAdminPrincipal =
+        await coreDeps.principalRegistry.get(DEV_ADMIN_PRINCIPAL_ID);
+      if (existingDevAdminPrincipal) {
+        const pCurrent = new Set(existingDevAdminPrincipal.allowedSystems ?? []);
+        const pNeedsSystems =
+          desiredSystems.size !== pCurrent.size || [...desiredSystems].some(s => !pCurrent.has(s));
+        if (pNeedsSystems) {
+          await coreDeps.principalRegistry.update(DEV_ADMIN_PRINCIPAL_ID, {
+            ...existingDevAdminPrincipal,
+            allowedSystems: DEV_ADMIN_SYSTEMS,
+          });
+          console.log(
+            '[workspace-bootstrap] dev-admin principal allowedSystems migrated:',
+            DEV_ADMIN_SYSTEMS.join(', ')
+          );
+        }
+      }
     }
     authProvider.registerKey(devAdminApiKey, DEV_ADMIN_ACTOR_ID);
 

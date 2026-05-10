@@ -652,6 +652,10 @@ export interface ActorRegistry {
 export interface PrincipalRegistry {
   get(principalId: Uuid): Promise<Principal | null>;
   register(principal: Principal): Promise<void>;
+  /** Replace an existing principal record. Caller must `get` first.
+   *  Used by bootstrap migrations to keep dev-admin's allowedSystems
+   *  in sync with config drift across restarts. */
+  update(principalId: Uuid, principal: Principal): Promise<void>;
   /** List all registered principals (admin/dashboard surfaces). */
   list(): Promise<Principal[]>;
 }
