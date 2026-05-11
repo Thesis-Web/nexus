@@ -40,6 +40,16 @@ import { EVIDENCE_SENTINEL, nowIso } from '@nexus/contracts';
 
 import { randomUUID } from 'node:crypto';
 
+// Per-node execution budget. The DAG executor races this against the
+// node's full work-cycle, NOT a single NVG call. Within one nvg_dispatch
+// node, the round-trip loop may invoke the model up to maxToolTurnsPerNode
+// times (default 6), and each turn can take tens of seconds on small
+// on-prem models. The previous 60_000 bound matched modelCallMs and so
+// tripped on the first slow turn for open-ended prompts. 5 min gives
+// headroom for ~5 sequential 60s turns; a single hung call still aborts
+// at modelCallMs in the adapter layer.
+const NODE_TIMEOUT_MS = 5 * 60 * 1000;
+
 // ─── Valid PlanConditionOperator values ───
 
 const VALID_OPERATORS: ReadonlySet<string> = new Set<string>([
@@ -275,7 +285,7 @@ function buildNodeFromSubTask(st: SubTaskDecl, planOrderIndex: number, nodeId: U
     nodeType,
     declaredRiskHint: EVIDENCE_SENTINEL,
     expectedOutputSlots: st.expectedOutputSlots,
-    timeoutMs: 60000,
+    timeoutMs: NODE_TIMEOUT_MS,
     subTaskKey: st.subTaskKey,
     taskPrompt,
     inputSlotReads: st.inputSlotReads,
@@ -399,7 +409,7 @@ export class RefDeterministicPlanner implements Planner {
       nodeType: 'secure_agent_handoff',
       declaredRiskHint: EVIDENCE_SENTINEL,
       expectedOutputSlots: ['secure_output' as NonEmpty],
-      timeoutMs: 60000,
+      timeoutMs: NODE_TIMEOUT_MS,
     };
 
     const plan = this.buildPlan(request.runId, [node], []);
@@ -651,12 +661,7 @@ export class RefDeterministicPlanner implements Planner {
         nodeType: 'nvg_dispatch' as const,
         declaredRiskHint: EVIDENCE_SENTINEL,
         expectedOutputSlots: ['default' as NonEmpty],
-        // Aligns with the orchestrator manifest's `timeouts.modelCallMs`
-        // default (60s). Reference on-prem ollama endpoints can take 25s+
-        // on cold load; the prior 30s bound left no headroom and tripped
-        // the DAG executor's per-node timeout race before the model
-        // returned.
-        timeoutMs: 60000,
+        timeoutMs: NODE_TIMEOUT_MS,
       };
     });
 
