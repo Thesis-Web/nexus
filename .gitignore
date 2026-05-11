@@ -55,3 +55,14 @@ coverage/
 docs/archive-v0/
 .pnpm-store/
 pnpm-store/
+
+# Stray empty files at repo root caused by shell-redirect typos
+# (`> esbuild` etc.). Real tools live in node_modules/.bin and are
+# invoked via `pnpm run build`; the names below should never appear
+# as plain files at the repo root.
+/esbuild
+/turbo
+
+# Legacy infra run-ledger at repo root. Runtime state only — the
+# authoritative run-ledger lives under runs/infra.run-ledger.jsonl.
+/nexus.ledger.jsonl
