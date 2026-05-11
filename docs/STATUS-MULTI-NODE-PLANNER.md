@@ -83,7 +83,59 @@ postgres connector). Its final assistant text lands in mailbox under slot
 `low_stock`. The second node's dispatch sees `inputSlotReads` and pre-seeds
 that text into its NVG message thread before its own round-trip.
 
-## Phase 2 — Deferred
+## Policy bundle staging — what shipped + what's next
+
+**Shipped (Stage 1):**
+- `PolicyCondition.targetSystems?: string[]` — per-connector rule
+  scoping. Marketplace bundles can author rules that match only
+  their own systemType; cannot inadvertently widen permission across
+  unrelated connectors.
+- `loadPolicyBundleSet({ defaultBundlePath, additionalBundlesDir,
+  key })` scans `config/policy/*.policy.json` at boot, verifies each
+  signature against the control-plane key, returns loaded bundles +
+  composed result.
+- `composePolicyBundles(bundles)` flattens all rules with
+  `bundleRef` per-rule provenance for audit, sorts by priority
+  ascending, ties broken by load order (default first).
+- Composition law (locked in): deny-wins on same-priority conflicts;
+  global fallback hardcoded `deny` regardless of per-bundle
+  `defaultOutcome` field.
+- Boot only — no hot reload (Stage 2).
+- Single signer (control-plane only) — no multi-signer / admin
+  countersign (Stage 3).
+- `default.policy.json` keeps its packaged location; `config/policy/`
+  is the operator/marketplace overlay directory.
+
+**Stage 2 — hot reload (deferred; pairs with hot-add-connector)**
+- File watcher on `config/policy/`
+- Atomic swap pattern: build new composed rule set, verify all
+  signatures, then swap the pointer Gate 04 reads. In-flight
+  evaluations capture the pointer at start; no torn reads.
+- New run-ledger event `policy_bundles_reloaded` with diff:
+  `{ added, removed, conflictsResolved }`.
+- Tied to hot-add-connector lifecycle so a connector + its policy
+  land together, not separately.
+
+**Stage 3 — marketplace + admin countersign (deferred; ships with marketplace)**
+- Per-bundle `signers: [{ label, publicKey }]` field. Vendors sign
+  their bundles with their own key; operator countersigns with the
+  per-deployment admin key.
+- New file `config/policy/admin-countersignatures.json` records
+  per-bundle attestations: "I authorize bundle X-v1.0.3 in this
+  nexus." Bundle loads only if both signatures verify.
+- Marketplace vendor scope claims: a bundle declares which capability
+  IDs / target systems its rules may grant for. Loader rejects
+  bundles whose rules exceed the declared scope.
+
+**Stage 4 — per-user policy preference (deferred; ships post-MVP)**
+- Workspace dropdown lets permission-gated users pick which policy
+  bundle is active for their session ("policy A" vs "policy B").
+- Permission check: only roles with `nexus-policy-switcher` can
+  pick non-default bundles.
+- Same atomic swap as Stage 2; per-session pointer rather than
+  global.
+
+## Phase 2 — Deferred (multi-node planner)
 
 Items intentionally not shipped in Phase 1, sequenced for follow-up:
 
