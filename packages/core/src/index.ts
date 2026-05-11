@@ -45,6 +45,12 @@ export { RiskClassifier } from './classification/risk-classifier.js';
 export { matchesCondition } from './policy/evaluator.js';
 export { loadPolicyFile, computePolicyBundleHash } from './policy/rule-loader.js';
 export {
+  loadPolicyBundleSet,
+  composePolicyBundles,
+  type LoadPolicyBundleSetOptions,
+  type LoadedPolicyBundleSet,
+} from './policy/bundle-loader.js';
+export {
   buildGrantTemplate,
   templateFingerprintPayload,
   assertTemplateIntegrity,

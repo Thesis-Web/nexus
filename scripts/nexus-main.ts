@@ -37,7 +37,7 @@ import {
   SimpleConnectorRegistry,
   SimpleChannelRegistry,
   SqliteApproverRegistry,
-  loadPolicyFile,
+  loadPolicyBundleSet,
   LexicalNormalizer,
   PostInferenceNormalizerImpl,
 } from '@nexus/core';
@@ -931,6 +931,18 @@ const program = createCli({
                 outputCollector: br.externals.outputCollector,
                 payloadsRoot: path.join(DEFAULT_TRAIL_DIR, 'payloads'),
                 agentOctLevel: agent.octLevel ?? 'OCT-OPEN',
+                // Inherit the node's declared output slot so mailboxes
+                // configured with `strict_declared_slots` accept the write.
+                // Tool-call results land in the same slot as the agent's
+                // final NVG text — compile aggregates per slot regardless.
+                slotId: (node.expectedOutputSlots[0] ?? 'default') as NonEmpty,
+                // Tag the mailbox item with the dispatching node's id so
+                // (a) the slot validator finds the declared slot for this
+                // task (declared slots are keyed by taskId = nodeId in the
+                // orchestrator_dispatched event), and (b) downstream
+                // multi-node sub-tasks can find the result via
+                // MailboxService.findBySlot(runId, nodeId, slotId).
+                taskIdOverride: node.nodeId,
               });
               if (bridged === null) {
                 // Bridge returns null only when executionResult itself was
@@ -1714,11 +1726,33 @@ const program = createCli({
     // path doesn't call this. Today the only caller is the admin test
     // route; future inbound adapters that submit governed actions will
     // also call here.
+    // P-pol-2: load the default policy bundle plus any operator- /
+    // marketplace-supplied bundles in config/policy/. The composer
+    // returns a synthetic LoadedPolicyFile with all rules flattened +
+    // tagged with bundleRef for audit trace-back. Backward compatible:
+    // when config/policy/ is missing or empty, the result equals
+    // loading just the default bundle alone (matches today's behavior).
     const nxsPolicyPath = path.join(
       process.cwd(),
       'packages/core/src/policy/rules/default.policy.json'
     );
-    const nxsPolicyFile = await loadPolicyFile(nxsPolicyPath, controlPlaneKey);
+    const additionalBundlesDir = path.join(process.cwd(), 'config/policy');
+    const policyBundleSet = await loadPolicyBundleSet({
+      defaultBundlePath: nxsPolicyPath,
+      additionalBundlesDir,
+      key: controlPlaneKey,
+    });
+    const nxsPolicyFile = policyBundleSet.composed;
+    if (policyBundleSet.bundles.length > 1) {
+      console.log(
+        '[bootstrap] policy bundles loaded:',
+        policyBundleSet.bundles.length,
+        '· composed rule count:',
+        nxsPolicyFile.rules.length,
+        '· bundle ids:',
+        policyBundleSet.bundles.map(b => b.bundleId.slice(0, 8)).join(', ')
+      );
+    }
     const nxsApproverRegistry = new SqliteApproverRegistry(coreDeps.db);
 
     // CLAUDE-CODE-ADMIN-PANELS-PHASE-D §3c — derive a public-safe

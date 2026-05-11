@@ -1,0 +1,49 @@
+{
+  "version": "1.0",
+  "bundleId": "ee4d7a1f-f304-4bac-9f39-c7ded9ac92b8",
+  "bundleVersion": "v0.1.0-dev-warehouse",
+  "issuer": "nexus-dev",
+  "issuedAt": "2026-05-10T00:00:00.000Z",
+  "defaultOutcome": "deny",
+  "rules": [
+    {
+      "ruleId": "allow-supervised-agent-read-warehouse",
+      "priority": 12,
+      "conditions": {
+        "actorClasses": ["SUPERVISED_AGENT"],
+        "capabilities": [
+          "read:record:single",
+          "read:record:bulk",
+          "query:data",
+          "search:data",
+          "execute:query"
+        ],
+        "environments": ["reference"],
+        "targetSystems": ["warehouse", "sales-finance"]
+      },
+      "outcome": "allow",
+      "approvalConfig": null,
+      "grantHint": {
+        "expiryClass": "action_scoped",
+        "maxRecords": 500
+      }
+    },
+    {
+      "ruleId": "allow-supervised-agent-internal-update-warehouse",
+      "priority": 14,
+      "conditions": {
+        "actorClasses": ["SUPERVISED_AGENT"],
+        "capabilities": ["update:record:internal", "create:record:internal"],
+        "environments": ["reference"],
+        "targetSystems": ["warehouse", "sales-finance"]
+      },
+      "outcome": "allow",
+      "approvalConfig": null,
+      "grantHint": {
+        "expiryClass": "action_scoped",
+        "maxRecords": 1
+      }
+    }
+  ],
+  "signature": "QqzVMwmdqe_yF8wCMVX-VIHhHLzzgypnD286h3iqld20V-kx9Sk_9jxDsb_ZJTvsu2LhxE4pHWkWeD1gQXiFDw"
+}

@@ -1,11 +1,11 @@
 {
-  "nxsMode": "observe",
+  "nxsMode": "enforcing",
   "nvgMode": "enforce",
   "enforcingLocked": false,
-  "updatedAt": "2026-05-08T07:40:16.493Z",
+  "updatedAt": "2026-05-10T23:53:17.485Z",
   "updatedBy": {
-    "adminId": "nexus-control-plane",
-    "publicKey": "b0wTVMb_yWgngh3-Z-3V9pfb-aXLgOQU6rUQRpeYbXM"
+    "adminId": "dev-admin",
+    "publicKey": "zlwFwfovYQTY85H2DIy1jbFgBpNP868RH0As5bbLb4A"
   },
-  "signature": "MMjTN0YwofpnNY7QEtFcMZLu1_0tq8NWFyG15pTGfUNxY_7nDEticgcOPyxxlIHw_F_0NfkRnY24FSIebZTJDw"
+  "signature": "7HAxErsETATiFIqwwMZoRR-wkRCouGg4xUdSN7Fy1FeYnv0kZNDUPx6TidlF3yGK9s_f4Ryap34p23exU2AEBg"
 }

@@ -70,12 +70,11 @@ describe('PostInferenceNormalizerImpl', () => {
     expect(action.tool).toBe('read_database');
     expect(action.rawVerb).toBe('read');
     expect(action.rawTarget).toBe('database');
-    // rawPayload preserves arguments + providerCallId so downstream
-    // can correlate the tool result back to the originating call.
-    expect(action.rawPayload).toEqual({
-      arguments: { table: 'customers' },
-      providerCallId: 'call_42',
-    });
+    // rawPayload IS the bare model arguments — connectors read their
+    // declared input schema directly (e.g. postgres reads payload.sql).
+    // The provider's call_id is on the ExtractedToolCall itself; the
+    // round-trip loop reads it from there for tool_result correlation.
+    expect(action.rawPayload).toEqual({ table: 'customers' });
   });
 
   it('leaves all governance fields null — Gate 02 is the authority', () => {
@@ -144,14 +143,16 @@ describe('PostInferenceNormalizerImpl', () => {
     // Gate 02 will deny via UNRESOLVABLE_VERB; the normalizer never decides.
   });
 
-  it('preserves the providerCallId in rawPayload', () => {
+  it('rawPayload IS the model arguments (no wrapper) so connectors read directly', () => {
+    // Connectors declare their own input schema (e.g. postgres expects
+    // `{ sql, params? }`). The normalizer hands the model's arguments
+    // through unchanged so the connector's extractor sees the schema
+    // it expects, not a wrapped envelope.
     const action = normalizer.normalize(
       { toolName: 'read_db', arguments: { x: 1 }, providerCallId: 'toolu_xyz' },
       CTX
     );
-    const payload = action.rawPayload as Record<string, unknown>;
-    expect(payload['providerCallId']).toBe('toolu_xyz');
-    expect(payload['arguments']).toEqual({ x: 1 });
+    expect(action.rawPayload).toEqual({ x: 1 });
   });
 
   it('throws when modelOutput is not an object (callers MUST pre-extract)', () => {

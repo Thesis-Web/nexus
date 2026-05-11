@@ -111,10 +111,14 @@ export class PostInferenceNormalizerImpl implements PostInferenceNormalizer {
       tool: tc.toolName as NonEmpty,
       rawVerb: cleanVerb as NonEmpty,
       rawTarget: rawTarget as NonEmpty,
-      rawPayload: {
-        arguments: tc.arguments ?? null,
-        providerCallId: tc.providerCallId ?? null,
-      },
+      // Pass the model's tool_call arguments through as the bare
+      // rawPayload so connectors can read their declared input
+      // schema directly (e.g. postgres reads `payload.sql` /
+      // `payload.params`). The provider's call id lives on the
+      // ExtractedToolCall itself; the round-trip loop reads it
+      // from there for tool_result correlation, so we don't need
+      // to fold it into rawPayload.
+      rawPayload: (tc.arguments ?? {}) as unknown,
       intent: {
         objectiveSummary: `${rawVerb} ${rawTarget}` as NonEmpty,
         triggeringSource: 'post-inference-tool-call' as NonEmpty,
