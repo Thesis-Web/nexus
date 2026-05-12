@@ -44,7 +44,7 @@ function computeCompileOctCeiling(inputDataClasses: DataClass[]): DataClass {
 
 export function buildOutputContractFromItems(
   runId: Uuid,
-  mailboxId: NonEmpty,
+  mailboxAllocations: ReadonlyMap<Uuid, NonEmpty>,
   items: MailboxItem[]
 ): OutputContract {
   const inputDataClasses = [...new Set(items.flatMap(i => i.resultClassifications))];
@@ -74,10 +74,18 @@ export function buildOutputContractFromItems(
     .map(i => i.routingTrailRecordId)
     .filter((id): id is Uuid => id !== null);
 
+  // AMEND-nexus-mailbox-pit-v0-2-1 HOLE-002 closure: canonicalize the
+  // (actorId → mailboxId) map as a sorted array of [actorId, mailboxId]
+  // tuples for deterministic digest computation. The runtime
+  // canonicalize() doesn't understand Map natively, so we pre-serialize.
+  const allocationsCanonical: Array<[Uuid, NonEmpty]> = Array.from(mailboxAllocations.entries())
+    .map<[Uuid, NonEmpty]>(([k, v]) => [k, v])
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+
   const contractDigest = sha256Canonical({
     outputContractId,
     runId,
-    mailboxId,
+    mailboxAllocations: allocationsCanonical,
     mailboxItems: items.map(i => i.mailboxItemId),
     inputDataClasses,
     inheritedCompileDataClass: inherited,
@@ -91,7 +99,7 @@ export function buildOutputContractFromItems(
   return {
     outputContractId,
     runId,
-    mailboxId,
+    mailboxAllocations,
     mailboxItems: items.map(i => i.mailboxItemId),
     inputDataClasses,
     inheritedCompileDataClass: inherited,

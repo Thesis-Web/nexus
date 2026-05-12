@@ -37,11 +37,25 @@ export interface CompileEligibility {
 }
 
 // ─── OutputContract ───
+//
+// AMEND-nexus-mailbox-pit-v0-2-1 §3.5 + HOLE-MAILBOX-PIT-002 closure:
+// `mailboxId` (singular) replaced with `mailboxAllocations` — the full
+// (actorId → mailboxId) map from the run's per-actor allocations.
+// Compile receives the same provenance information it would get from
+// calling listMailboxesForRun itself: no representative, no lossy
+// compression, no downstream consumer guessing which mailbox was the
+// "primary."
+//
+// The contractDigest law canonicalizes the map as a sorted array of
+// [actorId, mailboxId] tuples for deterministic hashing.
 
 export interface OutputContract {
   outputContractId: Uuid;
   runId: Uuid;
-  mailboxId: NonEmpty;
+  /** All per-actor mailbox allocations for the run, keyed by actorId.
+   *  Compile inverts this to (mailboxId → actorId) for hot-path
+   *  provenance lookup. */
+  mailboxAllocations: ReadonlyMap<Uuid, NonEmpty>;
   mailboxItems: Uuid[];
   inputDataClasses: DataClass[];
   inheritedCompileDataClass: DataClass;

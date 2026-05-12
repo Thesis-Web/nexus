@@ -1436,16 +1436,19 @@ const program = createCli({
           compiler.compilerSocketId
         );
 
+        // AMEND-nexus-mailbox-pit-v0-2-1 HOLE-002 closure: OutputContract
+        // now carries the full mailboxAllocations map. CompileRequest
+        // still has a legacy singular mailboxId field (separate
+        // contract); we set it to the alphabetically-first allocated
+        // mailbox as a stable representative — the consumer that needs
+        // the full set reads contract.mailboxAllocations.
+        const allocatedMailboxIdsSorted = Array.from(contract.mailboxAllocations.values()).sort();
+        const compileRequestMailboxId =
+          (allocatedMailboxIdsSorted[0] as NonEmpty | undefined) ?? ('compile-empty' as NonEmpty);
         const compileRequest: CompileRequest = {
           runId,
           compilerSocketId: compiler.compilerSocketId,
-          // The CompileRequest contract still carries a singular mailboxId.
-          // V1 mailbox-pit uses the same representative mailboxId as
-          // OutputCollector.buildOutputContract (lowest alphabetical of
-          // the per-actor mailboxes that contributed items). The full
-          // set is reachable via items[].mailboxId. Future amendment may
-          // extend CompileRequest with mailboxIds[]; HOLE-MAILBOX-PIT-002.
-          mailboxId: contract.mailboxId,
+          mailboxId: compileRequestMailboxId,
           outputContractId: contract.outputContractId,
           requestedAt: nowIso(),
         };

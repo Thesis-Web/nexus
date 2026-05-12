@@ -134,15 +134,17 @@ export class OutputCollectorImpl implements IOutputCollector {
   }
 
   async buildOutputContract(runId: Uuid): Promise<OutputContract> {
-    // Per spec §3.5 + §3.6: compile reads from every allocated actor
-    // mailbox for the run, NOT a single primary mailbox. Iterate the
-    // allocations and concatenate eligible items. Each item still carries
-    // its source mailboxId on the MailboxItem itself so provenance
-    // survives in the resulting OutputContract.mailboxItems list.
-    const mailboxes = await this.deps.mailboxService.listMailboxesForRun(runId);
+    // AMEND-nexus-mailbox-pit-v0-2-1 §3.5 + HOLE-002 closure: compile
+    // reads from every allocated actor mailbox for the run. The full
+    // (actorId → mailboxId) map travels on the OutputContract via
+    // `mailboxAllocations` so downstream consumers receive the same
+    // provenance information they would get from calling
+    // listMailboxesForRun themselves — no representative, no lossy
+    // compression.
+    const mailboxAllocations = await this.deps.mailboxService.listMailboxesForRun(runId);
     const allItems: MailboxItem[] = [];
     const sourceMailboxIds: NonEmpty[] = [];
-    for (const [, mailboxId] of mailboxes.entries()) {
+    for (const [, mailboxId] of mailboxAllocations.entries()) {
       const items = await this.deps.mailboxService.listEligibleForCompile(mailboxId, runId);
       if (items.length > 0) sourceMailboxIds.push(mailboxId);
       for (const it of items) allItems.push(it);
@@ -154,22 +156,9 @@ export class OutputCollectorImpl implements IOutputCollector {
       );
     }
 
-    // OutputContract.mailboxId is the legacy singular field. V1 mailbox-
-    // pit law: contract.mailboxId is the FIRST source mailbox alphabetically
-    // — a stable representative. The full set of source mailboxes is
-    // reachable via contract.mailboxItems[].mailboxId on each MailboxItem.
-    // Compile uses listMailboxesForRun directly when it needs the full set
-    // (§3.5 triggerCompile path). Future amendment may add a mailboxIds[]
-    // field; logged as HOLE-MAILBOX-PIT-002.
-    sourceMailboxIds.sort();
-    const representativeMailboxId =
-      (sourceMailboxIds[0] as NonEmpty | undefined) ?? ('compile-empty' as NonEmpty);
+    const contract = buildOutputContractFromItems(runId, mailboxAllocations, allItems);
 
-    const contract = buildOutputContractFromItems(runId, representativeMailboxId, allItems);
-
-    // Write compile_started ledger event (§6.7) — canonical event name
-    // confirmed at packages/contracts/src/interfaces/index.ts (HOLE-002
-    // closed earlier in this amendment).
+    // Write compile_started ledger event (§6.7).
     await this.deps.ledgerWriter.writeEvent({
       runId,
       eventType: 'compile_started',
@@ -177,8 +166,8 @@ export class OutputCollectorImpl implements IOutputCollector {
       actorId: null,
       detail: {
         compilerSocketId: null,
-        mailboxId: representativeMailboxId,
         sourceMailboxIds,
+        allocationCount: mailboxAllocations.size,
         outputContractId: contract.outputContractId,
         contractDigest: contract.contractDigest,
         mailboxItemCount: allItems.length,
