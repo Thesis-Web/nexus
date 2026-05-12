@@ -21,6 +21,7 @@ import type {
   CompileRequest,
   OutputContract,
   MailboxItem,
+  MailboxService,
   FinalResponseArtifact,
   PayloadResolver,
   RunLedgerWriter,
@@ -44,6 +45,13 @@ export class DeterministicRenderer implements Compiler {
   private readonly compileAssembler: CompileAssembler;
   private readonly payloadResolvers: PayloadResolver[];
   private readonly runLedgerWriter: RunLedgerWriter;
+  /** Optional: when present, the renderer queries listMailboxesForRun
+   *  before each compile to produce the (mailboxId → actorId) inverted
+   *  provenance map and passes it to the assembler. AMEND-nexus-mailbox-
+   *  pit-v0-2-1 §5.2 — provenance recheck defense-in-depth. Older callers
+   *  that pre-date Family 4 may omit this dep; the assembler skips the
+   *  provenance check when the map is undefined. */
+  private readonly mailboxService: MailboxService | null;
 
   constructor(
     compilerSocketId: NonEmpty,
@@ -53,7 +61,8 @@ export class DeterministicRenderer implements Compiler {
     defaultTemplateGenerator: DefaultTemplateGenerator,
     compileAssembler: CompileAssembler,
     payloadResolvers: PayloadResolver[],
-    runLedgerWriter: RunLedgerWriter
+    runLedgerWriter: RunLedgerWriter,
+    mailboxService: MailboxService | null = null
   ) {
     this.compilerSocketId = compilerSocketId;
     this.compilerVersion = '1.0.0' as NonEmpty;
@@ -64,6 +73,7 @@ export class DeterministicRenderer implements Compiler {
     this.compileAssembler = compileAssembler;
     this.payloadResolvers = payloadResolvers;
     this.runLedgerWriter = runLedgerWriter;
+    this.mailboxService = mailboxService;
   }
 
   async compile(
@@ -116,7 +126,24 @@ export class DeterministicRenderer implements Compiler {
     // on slot-validation failure or guard halt; per-item failures are
     // collected in result.bypassPartials and event emission happens
     // here from the typed result. The run does NOT die.
-    const result = await this.compileAssembler.assemble(template, items, this.payloadResolvers);
+    //
+    // Build the (mailboxId → actorId) provenance map for the
+    // assembler's malformed_output check when MailboxService is wired.
+    let mailboxProvenance: ReadonlyMap<NonEmpty, Uuid> | undefined;
+    if (this.mailboxService !== null) {
+      const actorByMailbox = await this.mailboxService.listMailboxesForRun(request.runId);
+      const inverted = new Map<NonEmpty, Uuid>();
+      for (const [actorId, mailboxId] of actorByMailbox.entries()) {
+        inverted.set(mailboxId, actorId);
+      }
+      mailboxProvenance = inverted;
+    }
+    const result = await this.compileAssembler.assemble(
+      template,
+      items,
+      this.payloadResolvers,
+      mailboxProvenance ? { mailboxProvenance } : undefined
+    );
 
     if (!result.guardResult.passed && result.guardResult.haltGuard !== null) {
       const halt = result.guardResult.haltGuard;

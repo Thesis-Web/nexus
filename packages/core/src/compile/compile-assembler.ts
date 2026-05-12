@@ -59,11 +59,34 @@ export interface AssemblyResult {
 
 // ─── Interface ───
 
+/**
+ * Optional per-call assembly inputs introduced by the mailbox-pit V1
+ * compile bypass surface (AMEND-nexus-mailbox-pit-v0-2-1 §5.2 disposition
+ * rows for malformed_output + digest_mismatch). Both checks are
+ * defense-in-depth on top of Family 4's write-time MailboxService
+ * assertion; the compile path adds a second pair of eyes against
+ * tampered storage or non-Nexus writes.
+ *
+ *   mailboxProvenance: invert of MailboxService.listMailboxesForRun
+ *     (mailboxId → actorId). When provided, the assembler verifies each
+ *     item's `agentId` matches the mailbox-derived actorId; mismatch
+ *     produces a malformed_output / withhold_quarantine bypass.
+ *
+ *   When mailboxProvenance is undefined the provenance check is skipped
+ *   (back-compat for older callers and unit tests that don't supply a
+ *   live MailboxService). The renderer in the composition root always
+ *   passes a real map.
+ */
+export interface AssemblyOptions {
+  readonly mailboxProvenance?: ReadonlyMap<NonEmpty, Uuid>;
+}
+
 export interface CompileAssembler {
   assemble(
     template: CompileTemplate,
     items: MailboxItem[],
-    payloadResolvers: PayloadResolver[]
+    payloadResolvers: PayloadResolver[],
+    options?: AssemblyOptions
   ): Promise<AssemblyResult>;
 }
 
@@ -93,7 +116,8 @@ export class CompileAssemblerImpl implements CompileAssembler {
   async assemble(
     template: CompileTemplate,
     items: MailboxItem[],
-    payloadResolvers: PayloadResolver[]
+    payloadResolvers: PayloadResolver[],
+    options?: AssemblyOptions
   ): Promise<AssemblyResult> {
     // file_bundle fail-closed [DIFF-S23-001]
     assertNotFileBundleFormat(template.format);
@@ -108,10 +132,55 @@ export class CompileAssemblerImpl implements CompileAssembler {
     // during assembly. Validation failures (required + optional) become
     // render_partial bypasses; guard halts become withhold_quarantine.
     const bypassPartials: BypassPartial[] = [];
+    // Track which items have been bypassed in this assembly so guard-halt
+    // bypass collection in phase 3 doesn't double-record items that
+    // already failed provenance / digest / validation.
+    const bypassedItemIds = new Set<Uuid>();
 
     for (const [locationId, matchedSlot] of matchResult.matched) {
       for (const item of matchedSlot.items) {
-        // Resolve payload bytes
+        // AMEND-nexus-mailbox-pit-v0-2-1 §5.2 — provenance recheck
+        // (defense-in-depth on Family 4's write-time assertion). When
+        // the renderer supplies a mailboxProvenance map, the item's
+        // claimed agentId MUST match the actorId the mailbox was
+        // allocated to. Mismatch ⇒ malformed_output / withhold_quarantine.
+        const provenance = options?.mailboxProvenance;
+        if (provenance) {
+          const derivedActorId = provenance.get(item.mailboxId);
+          if (derivedActorId !== undefined && derivedActorId !== item.agentId) {
+            bypassPartials.push({
+              mailboxItemId: item.mailboxItemId,
+              sourceMailboxId: item.mailboxId,
+              sourceActorId: derivedActorId,
+              bypassReason: 'malformed_output',
+              bypassDisposition: 'withhold_quarantine',
+              workspacePartialRef: null,
+            });
+            bypassedItemIds.add(item.mailboxItemId);
+            continue;
+          }
+        }
+
+        // AMEND-nexus-mailbox-pit-v0-2-1 §5.2 — digest re-verification
+        // (defense-in-depth on Family 4's write-time digest verify). If
+        // the bytes on disk hash to something other than item.resultDigest,
+        // the storage has been tampered with or corrupted between write
+        // and compile. Quarantine the item, never render its raw bytes.
+        const digestOk = await this.verifyDigestForItem(item, payloadResolvers);
+        if (!digestOk) {
+          bypassPartials.push({
+            mailboxItemId: item.mailboxItemId,
+            sourceMailboxId: item.mailboxId,
+            sourceActorId: item.agentId as Uuid,
+            bypassReason: 'digest_mismatch',
+            bypassDisposition: 'withhold_quarantine',
+            workspacePartialRef: null,
+          });
+          bypassedItemIds.add(item.mailboxItemId);
+          continue;
+        }
+
+        // Resolve payload bytes (decoded fill value)
         const fillValue = await this.resolvePayload(item.resultRef, payloadResolvers);
 
         // Validate against slot type
@@ -139,6 +208,7 @@ export class CompileAssemblerImpl implements CompileAssembler {
             bypassDisposition: 'render_partial',
             workspacePartialRef: item.resultRef,
           });
+          bypassedItemIds.add(item.mailboxItemId);
           continue;
         }
 
@@ -169,6 +239,9 @@ export class CompileAssemblerImpl implements CompileAssembler {
       void haltedLocPath;
       for (const [, matched] of matchResult.matched) {
         for (const item of matched.items) {
+          // Don't double-bypass items already recorded earlier in the
+          // pipeline (provenance / digest / validation failures).
+          if (bypassedItemIds.has(item.mailboxItemId)) continue;
           bypassPartials.push({
             mailboxItemId: item.mailboxItemId,
             sourceMailboxId: item.mailboxId,
@@ -177,6 +250,7 @@ export class CompileAssemblerImpl implements CompileAssembler {
             bypassDisposition: 'withhold_quarantine',
             workspacePartialRef: null,
           });
+          bypassedItemIds.add(item.mailboxItemId);
         }
       }
       // Clear validatedFills so the renderer produces denial markers
@@ -240,6 +314,33 @@ export class CompileAssemblerImpl implements CompileAssembler {
   }
 
   // ─── Private ───
+
+  /**
+   * AMEND-nexus-mailbox-pit-v0-2-1 §5.2 — compile-time digest re-verify.
+   * Re-resolves the raw bytes and compares sha256 against the mailbox
+   * item's stored resultDigest. Returns true when they match, false
+   * when they don't (tampering / corruption between write and compile)
+   * OR when no resolver accepts the resultRef (the assembler's existing
+   * happy path returns a placeholder string — we treat that as bypass).
+   */
+  private async verifyDigestForItem(
+    item: MailboxItem,
+    resolvers: PayloadResolver[]
+  ): Promise<boolean> {
+    for (const resolver of resolvers) {
+      if (resolver.canResolve(item.resultRef)) {
+        try {
+          const bytes = await resolver.resolveBytes(item.resultRef);
+          const actual = sha256Hex(bytes);
+          return actual === item.resultDigest;
+        } catch {
+          return false;
+        }
+      }
+    }
+    // No resolver accepted the ref → cannot verify → fail closed.
+    return false;
+  }
 
   /**
    * Resolve a resultRef to a decoded fill value via PayloadResolvers.

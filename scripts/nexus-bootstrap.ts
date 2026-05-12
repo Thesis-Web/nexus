@@ -815,6 +815,10 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   const payloadResolvers: PayloadResolver[] = [fileResolver];
 
   // Reference deterministic renderer — actor-registration exempt
+  // AMEND-nexus-mailbox-pit-v0-2-1 §5.2 — pass MailboxService so the
+  // renderer can build (mailboxId → actorId) provenance maps for the
+  // assembler's malformed_output / digest_mismatch defense-in-depth
+  // checks (HOLE-MAILBOX-PIT-003 closure).
   const deterministicRenderer = new DeterministicRenderer(
     defaultCompiler.compilerSocketId,
     privKey,
@@ -823,7 +827,8 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
     defaultTemplateGenerator,
     compileAssembler,
     payloadResolvers,
-    runLedgerWriter
+    runLedgerWriter,
+    mailboxService
   );
 
   // CompileService — selects compile mode and invokes compiler
