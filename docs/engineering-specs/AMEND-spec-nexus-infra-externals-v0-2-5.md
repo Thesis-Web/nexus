@@ -1064,7 +1064,7 @@ File: `config/orchestrators/orchestrators.v1.yaml`
           enabled: true
           orchestratorActorId: '<registered-orchestrator-actor-uuid>'
           plannerMode: deterministic_first
-          maxSplitDepth: 1
+          maxSplitDepth: 3  # plannertype-scoped — 'db-lexicon-transformer-v0' allows up to 3 per AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7.1
           planCheckbackDefault: true
           secureMode:
             octSecureDefault: single_agent_no_helper
@@ -1083,7 +1083,10 @@ Loader invariants:
 - `orchestratorType` must resolve in the populated OrchestratorFactoryRegistry.
 - Duplicate `orchestratorSocketId` fails closed.
 - `orchestratorActorId` must be syntactically UUID.
-- `maxSplitDepth` must be `0` or `1` for V1. Values greater than `1` fail closed.
+- `maxSplitDepth` is gated by a plannertype-scoped allowance table (per AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7.1).
+  - Default allowance: `1` (legacy V1 cap, unchanged for any plannertype not listed).
+  - `'db-lexicon-transformer-v0'` allowance: `3` (warehouse worked example is 3 nodes — read → adjust → write).
+  - Values exceeding the plannertype-specific allowance fail closed.
 - `plannerMode` allowed values for V1: `deterministic_first`, `policy_template`, `llm_assisted`. If `llm_assisted`, the orchestrator actor must have an OCT that permits the model route through NVG.
 - `outputSlotPolicy` allowed values: `strict_declared_slots`, `advisory_declared_slots`, `open_slots`. Production default SHALL be `strict_declared_slots`.
 - OCT-SECURE default must be `single_agent_no_helper`.

@@ -3,6 +3,70 @@
 # Version: v1.1.1
 # Filename: AMEND-nexus-spec-orch-v1-1-1.md
 # Status: RATIFIED — subordinate implementation law for AMEND-nexus-blueprint-orch-v1-1-1.md
+#
+# ───── SUPERSESSION NOTICE (added 2026-05-13 per Commit 7 of
+#       AMEND-nexus-planner-db-lexicon-v0-2-1.md §6.2) ─────
+#
+# The `RefDeterministicPlanner` class and `plannerType: 'ref-deterministic'`
+# value referenced throughout §0–§14 below were V1 scaffolding. They have
+# been REPLACED by `DbLexiconTransformerPlanner` and
+# `plannerType: 'db-lexicon-transformer-v0'` per
+# AMEND-nexus-planner-db-lexicon-v0-2-1.md. The replacement is exhaustive:
+#
+#   - Class file `packages/orch-ref/src/ref-deterministic-planner.ts`
+#     was DELETED in Commit 6 (HEAD 48e8477).
+#   - Reusable plan-assembly primitives (`planFromSubTasks`,
+#     `planStandard`, `planOctSecure`, `hasCycle`, `compareEdges`,
+#     `buildPlan`, etc.) were extracted to
+#     `packages/orch-ref/src/plan-assembly.ts` in Commit 1.
+#   - Condition + dispatch utilities (`evaluateCondition`,
+#     `determineNodeType`) were extracted to
+#     `packages/orch-ref/src/condition-evaluator.ts` in Commit 1.
+#   - The new planner lives in
+#     `packages/planners/db-lexicon/src/db-lexicon-planner.ts` and is
+#     registered with the orchestrator manifest as
+#     `plannerType: 'db-lexicon-transformer-v0'`.
+#
+# Sections affected by this supersession (read these passages with the
+# replacement in mind):
+#
+#   §1 Repository Placement — file rows 110 + 140 reference the deleted
+#     class file path; replaced by the new package layout.
+#   §5 Reference Deterministic Planner — entire section describes the
+#     deleted class; preserved as historical background; the production
+#     reference planner is now `DbLexiconTransformerPlanner` per the AMEND
+#     §3.1–§3.3.
+#   §10.1 Bootstrap steps — step 22 / step 23 narrative replaced by
+#     bootstrap step 17b (PlannerFactoryRegistry) + 18a (lexicon fixture
+#     load + factory registration) + 22c (registry resolution); see
+#     AMEND §4.1.
+#   §10.2 Manifest example — YAML block uses 'ref-deterministic' as
+#     historical example; the live signed manifest at
+#     config/orchestrators/orchestrators.v1.yaml uses
+#     plannerType: 'db-lexicon-transformer-v0', maxSplitDepth: 3,
+#     plannerVersion: '0.1.0'.
+#   §10.3 Composition root law — `RefDeterministicPlanner` in the
+#     forbidden-construction list of API routes still applies as a
+#     historical statement; under the AMEND the equivalent rule is "API
+#     routes MUST NOT construct any Planner implementation directly",
+#     which the §6.5 package-layer law in the AMEND enforces.
+#   §11 CI Gates ORCH-01 — historical gate description of "Planner
+#     interface — RefDeterministicPlanner implements Planner" is now
+#     satisfied by the equivalent test for DbLexiconTransformerPlanner +
+#     PlannerTraceReader interfaces (see AMEND §9.1).
+#   §12 ORCH-PUSH-02 — historical record of the original build push.
+#     Final V1 packaging lives under AMEND §6.2 (7-commit migration).
+#
+# Tests proving the AMEND production cut: db-lexicon-planner.test.ts (14
+# tests covering four-branch dispatch + trace/checkback stash) +
+# plan-assembly.test.ts (54 tests covering extracted primitives) +
+# condition-evaluator.test.ts (14 tests covering evaluateCondition +
+# determineNodeType) + fixture-loader.test.ts (5 tests covering signed
+# JSONL load + cross-fixture invariants) + lexical-resolver.test.ts (6
+# tests covering tokenization + alias rules + ACTION_VERB invariant) +
+# planner-factory-registry.test.ts (4 tests).
+#
+# ────────────────────────────────────────────────────────────
 # Owner: James Huson / Lake Area LLC
 # Ratified: 2026-05-02
 # Governing blueprint: AMEND-nexus-blueprint-orch-v1-1-1.md
@@ -107,7 +171,7 @@ spec owns the HOW and WHAT.
 | `NodeStatus` | contracts/externals | Per-node lifecycle state | [blueprint-K §11.6.2] |
 | `RunDagState` | contracts/externals | Full DAG runtime state | [blueprint-K §11.6.2] |
 | `PromptVisibilityTier` | contracts/externals | normal / metadata / oct_secure | [blueprint-K §11.5] |
-| `RefDeterministicPlanner` | orch-ref | V1 deterministic planner | [blueprint-K §11.4.1] |
+| `DbLexiconTransformerPlanner` | planners/db-lexicon | V1 reference planner — lexicon-backed prompt decomposition (was `RefDeterministicPlanner`; replaced per AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.2) | [blueprint-K §11.4.1] |
 | `DagExecutor` | orch-ref | DAG execution engine | [blueprint-K §11.4.1] |
 | `RunCoordinator` | orch-ref | Run lifecycle manager | [blueprint-K §11.4.1] |
 | `PlanAmendmentHandler` | orch-ref | Mid-run plan extension | [blueprint-K §11.6.6] |
@@ -137,7 +201,9 @@ never import core, vanguard, adapters, connectors, or interfaces.
 |---|---|
 | `planner.ts` | `packages/contracts/src/externals/planner.ts` |
 | `execution-plan.ts` | `packages/contracts/src/externals/execution-plan.ts` |
-| `ref-deterministic-planner.ts` | `packages/orch-ref/src/ref-deterministic-planner.ts` |
+| `db-lexicon-planner.ts` | `packages/planners/db-lexicon/src/db-lexicon-planner.ts` (was `packages/orch-ref/src/ref-deterministic-planner.ts`; replaced per AMEND-nexus-planner-db-lexicon-v0-2-1.md §6.2 Commit 6) |
+| `plan-assembly.ts` | `packages/orch-ref/src/plan-assembly.ts` (extracted plan-assembly primitives — `planStandard`, `planFromSubTasks`, `planOctSecure`, `hasCycle`, `compareEdges`, `buildPlan`; per AMEND-nexus-planner-db-lexicon-v0-2-1.md §6.2 Commit 1) |
+| `condition-evaluator.ts` | `packages/orch-ref/src/condition-evaluator.ts` (extracted `evaluateCondition` + `determineNodeType`; per AMEND-nexus-planner-db-lexicon-v0-2-1.md §6.2 Commit 1) |
 | `dag-executor.ts` | `packages/orch-ref/src/dag-executor.ts` |
 | `run-coordinator.ts` | `packages/orch-ref/src/run-coordinator.ts` |
 | `plan-amendment.ts` | `packages/orch-ref/src/plan-amendment.ts` |
@@ -674,7 +740,18 @@ for compilation. A fully failed DAG with no compile eligibility emits `dag_faile
 
 ## 5. Reference Deterministic Planner
 
-File: `packages/orch-ref/src/ref-deterministic-planner.ts`
+**SUPERSEDED** by AMEND-nexus-planner-db-lexicon-v0-2-1.md §3 (replacement
+planner) + §6.2 Commit 6 (class deletion). The section below describes
+the original V1 scaffolding planner; the production reference planner is
+now `DbLexiconTransformerPlanner` at
+`packages/planners/db-lexicon/src/db-lexicon-planner.ts`. The reusable
+plan-assembly primitives the original class hosted live in
+`packages/orch-ref/src/plan-assembly.ts` and serve both the new planner
+and test-stub planners.
+
+Historical record below.
+
+File (HISTORICAL): `packages/orch-ref/src/ref-deterministic-planner.ts` — deleted in Commit 6 of the AMEND.
 
 Implements `Planner` interface [blueprint-K §11.4.1, §11.4.3].
 
@@ -1280,25 +1357,31 @@ Two-level unpluggability [blueprint-K §11.1 amendment]:
 
 | Step | What |
 |---|---|
-| Step 22 | Register `PlannerFactory` for `ref-deterministic` type |
-| Step 23 | Construct `RefDeterministicPlanner` from manifest |
+| Step 17b (per AMEND-nexus-planner-db-lexicon-v0-2-1.md §4.1) | Construct `PlannerFactoryRegistryImpl` |
+| Step 18a (per AMEND-...-v0-2-1.md §4.1) | Load + verify signed lexicon JSONL fixtures; register `DbLexiconTransformerPlannerFactory` |
+| Step 22c (per AMEND-...-v0-2-1.md §4.1) | Resolve active planner via `registry.get(orchManifest.plannerType)?.create(orchManifest)` — fail-closed on missing factory |
 | Step 24 | Construct `DagExecutor` |
 | Step 25 | Construct `RunCoordinator` with planner, executor, injected deps |
 | Step 26 | Construct `RefOrchestrator` with coordinator |
 | Step 27 | Wire `RefOrchestrator` into OrchestratorFactory result |
+
+The Step 22 / Step 23 rows from the original spec are replaced by the
+plannertype-resolved factory path above. The direct `new RefDeterministicPlanner(...)`
+construction site is gone (Commit 6); bootstrap now fail-closed throws
+on any unknown plannertype.
 
 ### 10.2 Manifest Extension
 
 ```yaml
 orchestrator:
   orchestratorSocketId: "ref-orch-v1"
-  orchestratorType: "ref-deterministic"
+  orchestratorType: "reference_deterministic"
   enabled: true
   orchestratorActorId: "<registered-actor-uuid>"
   plannerMode: "deterministic_first"
-  plannerType: "ref-deterministic"
-  plannerVersion: "1.0.0"
-  plannerConfiguration: {}
+  plannerType: "db-lexicon-transformer-v0"
+  plannerVersion: "0.1.0"
+  plannerConfiguration: {}  # may carry { lexiconFixtureRoot?: NonEmpty } per AMEND §3.7
   planAmendment:
     enabled: true
     maxAmendments: 3
@@ -1316,7 +1399,11 @@ orchestrator:
 `interfaces/api/*` MUST NOT import `@nexus/orch-ref`.
 
 `interfaces/api/*` MUST NOT construct `RefOrchestrator`, `RunCoordinator`,
-`DagExecutor`, or `RefDeterministicPlanner`.
+`DagExecutor`, or any `Planner` implementation
+(`RefDeterministicPlanner` was the V1 example; replaced by
+`DbLexiconTransformerPlanner` per AMEND-nexus-planner-db-lexicon-v0-2-1.md;
+§6.5 of that AMEND adds a packages/planners/* layer law that ci:gate
+PLANNER-LEXICON-05 enforces structurally).
 
 The lawful composition root (bootstrap) constructs orch-ref and injects only
 the `Orchestrator` socket interface into the API server.
@@ -1350,7 +1437,7 @@ dispatch route:
 
 | Gate | Type | What |
 |---|---|---|
-| ORCH-01 | unit | Planner interface — RefDeterministicPlanner implements Planner |
+| ORCH-01 | unit | Planner interface — `DbLexiconTransformerPlanner` implements `Planner` + `PlannerTraceReader` + `PlannerCheckbackReader` (was `RefDeterministicPlanner implements Planner`; see AMEND-nexus-planner-db-lexicon-v0-2-1.md §9.1) |
 | ORCH-02 | unit | Plan creation — single-agent, multi-agent parallel, DAG with deps |
 | ORCH-03 | unit | Plan rejection — all PlanRejectionReason codes exercised |
 | ORCH-04 | unit | Suggest-not-deny — alternatives returned when available |
@@ -1382,7 +1469,7 @@ dispatch route:
 | Push | Content | Gate Target |
 |---|---|---|
 | ORCH-PUSH-01 | Contracts: planner.ts, execution-plan.ts, extensions | typecheck + ORCH-18 + ORCH-19 |
-| ORCH-PUSH-02 | Package scaffold + RefDeterministicPlanner | ORCH-01 thru ORCH-04, ORCH-11, ORCH-13, ORCH-14, ORCH-20 |
+| ORCH-PUSH-02 | Package scaffold + `RefDeterministicPlanner` (HISTORICAL — superseded by AMEND-nexus-planner-db-lexicon-v0-2-1.md 7-commit migration; current V1 production planner is `DbLexiconTransformerPlanner`) | ORCH-01 thru ORCH-04, ORCH-11, ORCH-13, ORCH-14, ORCH-20 |
 | ORCH-PUSH-03 | DagExecutor | ORCH-05, ORCH-06, ORCH-07, ORCH-08, ORCH-12, ORCH-22 |
 | ORCH-PUSH-04 | RunCoordinator + PlanAmendmentHandler + validateExecutionPlan | ORCH-09, ORCH-10, ORCH-21, ORCH-24 |
 | ORCH-PUSH-05 | RefOrchestrator + bootstrap wiring + cancel route | ORCH-15, ORCH-16, ORCH-17, ORCH-23 |

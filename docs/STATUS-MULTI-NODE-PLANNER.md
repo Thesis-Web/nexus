@@ -18,11 +18,15 @@ surfaces are partially landed (see "UI status" below).
   `SubTaskEdgeHint` — contract additions on `WorkspaceRunRequest` +
   `NormalPlannerRequest` / `MetadataPlannerRequest` + `PlanNode`
   (commit 4f109b2).
-- `RefDeterministicPlanner.planFromSubTasks` — emits N nodes with
-  kind-driven `nodeType`, edges keyed by `subTaskKey`, same-agent
-  multi-step legal. Validates duplicate keys, dangling slot reads,
-  dangling edge refs, cycles, sub-task count vs `maxSplitDepth`
-  (commit c22a9b7).
+- `planFromSubTasks` (extracted to `packages/orch-ref/src/plan-assembly.ts`
+  per AMEND-nexus-planner-db-lexicon-v0-2-1.md Commit 1; consumed by
+  `DbLexiconTransformerPlanner` Branch 2 + the new planner's Branch 4
+  via synthesized SubTaskDecl[]) — emits N nodes with kind-driven
+  `nodeType`, edges keyed by `subTaskKey`, same-agent multi-step legal.
+  Validates duplicate keys, dangling slot reads, dangling edge refs,
+  cycles, sub-task count vs `maxSplitDepth` (originally landed in commit
+  c22a9b7 on `RefDeterministicPlanner`; class deleted in Commit 6 of the
+  AMEND, primitives preserved).
 - `nodeType` branching in dispatch — `nvg_dispatch` / `nxs_dispatch` /
   `secure_agent_handoff` each take their own path. `nxs_dispatch`
   skips NVG entirely. New `MailboxService.findBySlot`. Slot reads

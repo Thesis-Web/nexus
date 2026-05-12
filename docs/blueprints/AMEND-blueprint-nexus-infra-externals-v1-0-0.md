@@ -309,7 +309,7 @@ body:
       enabled: true
       orchestratorActorId: '<registered-orchestrator-actor-uuid>'
       plannerMode: deterministic_first
-      maxSplitDepth: 1
+      maxSplitDepth: 3  # plannertype-scoped — 'db-lexicon-transformer-v0' allowance is 3 per AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7.1
       planCheckbackDefault: true
       secureMode:
         octSecureDefault: single_agent_no_helper
