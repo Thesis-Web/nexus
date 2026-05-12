@@ -51,6 +51,7 @@ function makeRequest(): NvgOutboundRequest {
     taskIntent: 'threat test' as NvgOutboundRequest['taskIntent'],
     payload: [{ role: 'user', content: 'test' }],
     dataLabels: [],
+    boundConnectorClasses: [],
     costPreference: 'standard',
     latencyPreference: 'standard',
   };

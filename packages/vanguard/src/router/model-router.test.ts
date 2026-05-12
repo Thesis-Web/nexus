@@ -54,6 +54,7 @@ function makeRequest(overrides: Partial<NvgOutboundRequest> = {}): NvgOutboundRe
         confidence: 1.0,
       } as DataLabel,
     ],
+    boundConnectorClasses: [],
     costPreference: 'low' as NonEmpty,
     ...overrides,
   };

@@ -90,6 +90,7 @@ function makeRequest(runId: Uuid, overrides: Partial<NvgOutboundRequest> = {}): 
     taskIntent: 'summarize' as NonEmpty,
     payload: null,
     dataLabels: [{ source: 'dlp' as NonEmpty, label: DATA_CLASS.PUBLIC, confidence: 0.9 }],
+    boundConnectorClasses: [],
     costPreference: 'standard',
     latencyPreference: 'standard',
     ...overrides,

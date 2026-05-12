@@ -27,8 +27,10 @@
 import { promises as fs } from 'fs';
 import {
   CAPABILITY_IDS,
+  DATA_CLASS,
   type Connector,
   type AgentAction,
+  type DataClass,
   type ExecutionGrant,
   type ExecutionGrantTemplate,
   type ExecutionResult,
@@ -133,6 +135,7 @@ function grantKVPath(grantId: Uuid, capabilityId: string): string {
 export class HashiCorpVaultConnector implements Connector {
   readonly systemType = 'hashicorp-vault';
   readonly connectorVersion = 'v0.1.0';
+  readonly dataClass: DataClass = DATA_CLASS.INTERNAL;
 
   supportedCapabilities(): string[] {
     // Reference connector supports the full governed capability set.

@@ -57,6 +57,7 @@ import type {
   Uuid,
   NonEmpty,
   IsoTimestamp,
+  DataClass,
   OrchestratorPlanPreview,
   WorkspaceRunRequest,
   PlannerRequest,
@@ -275,6 +276,7 @@ async function ensurePostgresConnectors(br: BootstrapResult): Promise<void> {
       : [];
     const factoryConfig: PostgresConnectorFactoryConfig = {
       systemType: systemTypeRaw as NonEmpty,
+      dataClass: record.dataClass,
       host: typeof cfg['host'] === 'string' ? cfg['host'] : '127.0.0.1',
       port: typeof cfg['port'] === 'number' ? cfg['port'] : 5432,
       database: typeof cfg['database'] === 'string' ? cfg['database'] : '',
@@ -761,13 +763,37 @@ const program = createCli({
               return null;
             },
           };
-          const toolDescriptors = buildToolDescriptorsForAgent(agent, connectorLookup);
-          const toolSchemaDigest =
-            toolDescriptors.length > 0
-              ? (createHash('sha256')
-                  .update(canonicalize(toolDescriptors))
-                  .digest('hex') as Sha256Hex)
-              : null;
+          // Default-secure Nexus architecture: LLMs NEVER receive tool
+          // descriptors. Orch is the deterministic authority that decides
+          // what NXS work fires; the LLM is a transformer/summarizer over
+          // mailbox contents only. Allowing the model to emit tool_use
+          // blocks (the SDK-default round-trip pattern) is a governance
+          // bypass — the model could request tools it shouldn't, or call
+          // write tools for a read-only prompt. Future plugin slot:
+          // `on-prem-llm-planner-v0` planner type can expose tools at
+          // planner-time, never at NVG-time. See memory:
+          //   feedback_llm_governance_model.md
+          //   feedback_nexus_architecture_layers.md
+          // The agent's reachable tool surface is still used by orch for
+          // binding-axis classification — that's why we still compute
+          // `boundConnectorClasses` below. We just don't ship the
+          // descriptors to the LLM.
+          const agentReachableTools = buildToolDescriptorsForAgent(agent, connectorLookup);
+          const toolDescriptors: typeof agentReachableTools = [];
+          const toolSchemaDigest: Sha256Hex | null = null;
+          // NVG binding-axis floor: data class of every connector this
+          // agent can reach (regardless of whether the LLM sees the tool
+          // schemas). The NVG classifier takes max across this and the
+          // payload labels, so an agent bound to an internal-class
+          // connector cannot route through a public-only tier even when
+          // the prompt has no labels (§24.2 binding axis).
+          const boundConnectorClasses: DataClass[] = Array.from(
+            new Set(
+              agentReachableTools
+                .map(d => connectorLookup.get(d.target.system)?.dataClass)
+                .filter((c): c is DataClass => typeof c === 'string' && c.length > 0)
+            )
+          );
           if (toolDescriptors.length > 0) {
             console.log(
               '[orch-wire] tool surface for',
@@ -830,6 +856,7 @@ const program = createCli({
               taskIntent: node.taskSummary,
               payload: turnPayload,
               dataLabels: [],
+              boundConnectorClasses,
               costPreference: 'standard',
               latencyPreference: 'standard',
               // CLAUDE-CODE-MODEL-SELECTION-SPEC §2b — surface the user's
@@ -1354,6 +1381,24 @@ const program = createCli({
           const agent = await coreDeps.actorRegistry.get(firstAgent.agentId);
           if (!agent) return true;
 
+          // Pre-flight binding axis: the checkback probe must classify with
+          // the same agent-aware floor the live dispatch will use, otherwise
+          // the checkback's tier prediction can disagree with what NVG later
+          // chooses. Pull the agent's reachable connector classes through
+          // the lookup the run will use.
+          const probeBoundClasses: DataClass[] = Array.from(
+            new Set(
+              (agent.allowedSystems ?? [])
+                .map(sys => {
+                  if (sys === 'stub') return new StubConnector().dataClass;
+                  for (const c of getPostgresConnectors()) {
+                    if (c.systemType === sys) return c.dataClass;
+                  }
+                  return undefined;
+                })
+                .filter((c): c is DataClass => typeof c === 'string' && c.length > 0)
+            )
+          );
           const probe: NvgOutboundRequest = {
             requestId: crypto.randomUUID() as Uuid,
             runId: request.runId,
@@ -1363,6 +1408,7 @@ const program = createCli({
             taskIntent: firstAgent.taskSummary,
             payload: [{ role: 'user', content: request.prompt }],
             dataLabels: [],
+            boundConnectorClasses: probeBoundClasses,
             costPreference: 'standard',
             latencyPreference: 'standard',
             // CLAUDE-CODE-MODEL-SELECTION-SPEC §4 — pre-flight inspects the

@@ -72,6 +72,22 @@ export class DeterministicRenderer implements Compiler {
     contract: OutputContract,
     items: MailboxItem[]
   ): Promise<FinalResponseArtifact> {
+    // ── Step 0: Pass-through eligibility [Nexus default-secure architecture] ──
+    // When no output contract template was selected AND there is exactly one
+    // mailbox item, the compiler is a pass-through: write the single agent's
+    // mailbox bytes verbatim as the body. No template generation, no slot
+    // matching, no slot validation. The single agent's output IS the answer.
+    //
+    // Multi-agent runs always template (madlib pattern). Single-agent runs
+    // WITH an explicit output contract still template (caller wanted a
+    // specific shape). Only single-agent + no-contract bypasses.
+    //
+    // See memory: feedback_nexus_architecture_layers.md
+    //   "Pass-through ONLY when: single agent + no output contract attached."
+    if (request.templateId === undefined && items.length === 1) {
+      return this.compilePassThrough(request, contract, items[0]!);
+    }
+
     // ── Step 1: Template resolution [spec §9.2] ──
     const template =
       request.templateId !== undefined
@@ -266,6 +282,82 @@ export class DeterministicRenderer implements Compiler {
 
     const signature = await signArtifact(artifactBase, this.signingKey);
 
+    return { ...artifactBase, signature };
+  }
+
+  /**
+   * Pass-through compile: single agent + no output contract.
+   * Reads the single mailbox item's bytes via the configured payload
+   * resolvers and writes them verbatim as the final artifact body.
+   * No template, no slot validation, no JSON.parse — bytes flow through.
+   */
+  private async compilePassThrough(
+    request: CompileRequest,
+    contract: OutputContract,
+    item: MailboxItem
+  ): Promise<FinalResponseArtifact> {
+    // Resolve the mailbox item's bytes via the registered resolvers.
+    let bodyBytes: Uint8Array | null = null;
+    for (const resolver of this.payloadResolvers) {
+      if (resolver.canResolve(item.resultRef)) {
+        bodyBytes = await resolver.resolveBytes(item.resultRef);
+        break;
+      }
+    }
+    if (bodyBytes === null) {
+      throw new Error(
+        `compile pass-through: no payload resolver accepted resultRef '${item.resultRef}'`
+      );
+    }
+
+    const artifactId = randomUUID() as Uuid;
+    const bodyPath = join(this.outputRoot, 'compile', request.runId, `${artifactId}.txt`);
+    await fs.mkdir(dirname(bodyPath), { recursive: true });
+    await fs.writeFile(bodyPath, bodyBytes);
+    const bodyRef = `file://${bodyPath}` as NonEmpty;
+    const bodyDigest = sha256Hex(bodyBytes);
+
+    await this.runLedgerWriter.writeEvent({
+      runId: request.runId,
+      eventType: 'compile_assembly_complete',
+      timestamp: nowIso(),
+      actorId: null,
+      detail: {
+        templateId: 'pass_through',
+        templateVersion: '0',
+        format: 'raw',
+        itemCount: 1,
+        unmatchedCount: 0,
+        orphanedCount: 0,
+        validationFailureCount: 0,
+        guardsFired: 0,
+        warningCount: 0,
+        partial: false,
+        bodyDigest,
+        passThrough: true,
+        sourceMailboxItemId: item.mailboxItemId,
+        sourceSlotId: item.slotId,
+        sourceType: item.sourceType,
+      },
+    });
+
+    const artifactBase: Omit<FinalResponseArtifact, 'signature'> = {
+      artifactId,
+      runId: request.runId,
+      compilerSocketId: this.compilerSocketId,
+      compilerActorId: null,
+      compileMode: 'deterministic_render',
+      bodyRef,
+      bodyDigest,
+      outputClassifications: contract.inputDataClasses,
+      sourceMailboxItems: [item.mailboxItemId],
+      evidenceRefs: contract.evidenceRefs,
+      routingTrailRefs: contract.routingTrailRefs,
+      runLedgerRefs: contract.runLedgerRefs,
+      createdAt: nowIso(),
+    };
+
+    const signature = await signArtifact(artifactBase, this.signingKey);
     return { ...artifactBase, signature };
   }
 }

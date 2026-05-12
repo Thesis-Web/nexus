@@ -66,6 +66,7 @@ function makeRequest(overrides: Partial<NvgOutboundRequest> = {}): NvgOutboundRe
     taskIntent: 'summarize document' as NonEmpty,
     payload: { text: 'test payload' },
     dataLabels: [{ source: 'dlp' as NonEmpty, label: DATA_CLASS.PUBLIC, confidence: 0.95 }],
+    boundConnectorClasses: [],
     costPreference: 'standard',
     latencyPreference: 'standard',
     ...overrides,
@@ -306,6 +307,42 @@ describe('NVG classifyAndRoute — Full Wall Checkpoint (NVG-PIPE-001)', () => {
     // modelTierSelected reflects what the policy picked, even though we
     // denied — the trail entry needs the tier the user asked for.
     expect(result.modelTierSelected).toBe(MODEL_TIER.FRONTIER_GENERAL);
+  });
+
+  it('binding axis floors routing: empty labels + internal binding → on_prem_general (§24.2)', async () => {
+    // NVG-BINDING-001: prove that an agent reaching an internal-class
+    // connector cannot route to frontier even when the prompt itself
+    // carries no labels. This is the core demo-blocking bug pre-fix:
+    // empty labels would resolve to PUBLIC and route to frontier; the
+    // binding axis floors the effective class to INTERNAL so rule 02
+    // fires.
+    const nvg = new NvgServiceImpl(makeDeps());
+    const request = makeRequest({
+      dataLabels: [],
+      boundConnectorClasses: [DATA_CLASS.INTERNAL],
+    });
+
+    const result = await nvg.classifyAndRoute(request);
+
+    expect(result.allowed).toBe(true);
+    expect(result.classification.effectiveDataClass).toBe(DATA_CLASS.INTERNAL);
+    expect(result.classification.isSensitive).toBe(false);
+    expect(result.modelTierSelected).toBe(MODEL_TIER.ON_PREM_GENERAL);
+    expect(result.denialCode).toBeNull();
+  });
+
+  it('binding axis does not lower a higher payload class (financial label + internal binding)', async () => {
+    const nvg = new NvgServiceImpl(makeDeps());
+    const request = makeRequest({
+      dataLabels: [{ source: 'dlp' as NonEmpty, label: DATA_CLASS.FINANCIAL, confidence: 0.99 }],
+      boundConnectorClasses: [DATA_CLASS.INTERNAL],
+    });
+
+    const result = await nvg.classifyAndRoute(request);
+
+    expect(result.allowed).toBe(true);
+    expect(result.classification.effectiveDataClass).toBe(DATA_CLASS.FINANCIAL);
+    expect(result.modelTierSelected).toBe(MODEL_TIER.ON_PREM_SENSITIVE);
   });
 
   it('writes outbound RPT entry on allowed routing (NVG-RPT-001)', async () => {

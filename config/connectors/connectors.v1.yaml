@@ -1,25 +1,28 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-10T23:32:06.970Z'
-signature: smUXp4QI3KoPcN2A15v2bKxPeThGivs4EOmCabD_ed4Xic7jE17Zq0BezkTgd9l15TqYmVfCmYnNERdcxjzmDg
+issuedAt: '2026-05-11T18:14:04.911Z'
+signature: ywXLWMIV8doqvRkezqdFSQqZNz6ovassPw_kUJUDwV_jsBh580tSS6wd5KE075gtLIiLvKCchIsLDn3AnFlQAw
 body:
   connectors:
     - connectorId: stub
       connectorType: stub
       allowedSystems:
         - stub
+      dataClass: public
       configuration: {}
       enabled: true
     - connectorId: vault
       connectorType: vault
       allowedSystems:
         - vault
+      dataClass: internal
       configuration: {}
       enabled: false
     - connectorId: postgres-sales-finance
       connectorType: postgres
       allowedSystems:
         - sales-finance
+      dataClass: internal
       configuration:
         host: 127.0.0.1
         port: 5433
@@ -48,6 +51,7 @@ body:
       connectorType: postgres
       allowedSystems:
         - warehouse
+      dataClass: internal
       configuration:
         host: 127.0.0.1
         port: 5434

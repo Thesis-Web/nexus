@@ -20,6 +20,7 @@
 //   structural typing.
 
 import type { Uuid, NonEmpty } from '../types/index.js';
+import type { DataClass } from '../constants/index.js';
 import type { CompileMode } from './compiler.js';
 
 // ─── OutputSlotPolicy ───
@@ -44,6 +45,7 @@ export interface ConnectorManifestRecord {
   readonly connectorId: NonEmpty;
   readonly connectorType: NonEmpty;
   readonly allowedSystems: string[];
+  readonly dataClass: DataClass;
   readonly configuration: Record<string, unknown>;
 }
 

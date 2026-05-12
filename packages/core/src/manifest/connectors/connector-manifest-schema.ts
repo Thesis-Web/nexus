@@ -15,14 +15,23 @@
  * .strict() on all schemas rejects unknown fields.
  */
 import { z } from 'zod';
+import { DATA_CLASS_ORDER } from '@nexus/contracts';
 
 const NonEmptyStringSchema = z.string().min(1);
+
+const DataClassSchema = z
+  .string()
+  .min(1)
+  .refine(v => DATA_CLASS_ORDER.includes(v), {
+    message: `dataClass must be one of: ${DATA_CLASS_ORDER.join(', ')}`,
+  });
 
 export const ConnectorManifestEntrySchema = z
   .object({
     connectorId: NonEmptyStringSchema,
     connectorType: NonEmptyStringSchema,
     allowedSystems: z.array(NonEmptyStringSchema).min(1),
+    dataClass: DataClassSchema,
     configuration: z.record(z.unknown()),
     enabled: z.boolean(),
   })

@@ -23,12 +23,27 @@ export function resolveHighestDataClass(labels: DataLabel[]): DataClass {
   return DATA_CLASS_ORDER[maxIdx]!;
 }
 
-export function classifyOutboundData(labels: DataLabel[]): NvgClassificationResult {
-  const highestClass = resolveHighestDataClass(labels);
-  const isSensitive = isSensitiveDataClass(highestClass);
+/**
+ * Classify outbound NVG data using both the payload axis (labels) and the
+ * binding axis (data classes contributed by the connectors the caller can
+ * reach). Returns the highest class across both. Empty `boundConnectorClasses`
+ * preserves pure payload classification; this is the back-compat shape for
+ * callers that don't yet plumb bindings.
+ */
+export function classifyOutboundData(
+  labels: DataLabel[],
+  boundConnectorClasses: DataClass[] = []
+): NvgClassificationResult {
+  const labelClass = resolveHighestDataClass(labels);
+  let maxIdx = DATA_CLASS_ORDER.indexOf(labelClass);
+  for (const cls of boundConnectorClasses) {
+    const idx = DATA_CLASS_ORDER.indexOf(cls);
+    if (idx > maxIdx) maxIdx = idx;
+  }
+  const highestClass = DATA_CLASS_ORDER[maxIdx]!;
   return {
     effectiveDataClass: highestClass,
-    isSensitive,
+    isSensitive: isSensitiveDataClass(highestClass),
     labels,
     classifiedAt: new Date().toISOString() as IsoTimestamp,
   };

@@ -45,6 +45,7 @@ function makeRequest(): NvgOutboundRequest {
     taskIntent: 'test query' as NvgOutboundRequest['taskIntent'],
     payload: [{ role: 'user', content: 'hello' }],
     dataLabels: [],
+    boundConnectorClasses: [],
     costPreference: 'standard',
     latencyPreference: 'standard',
   };

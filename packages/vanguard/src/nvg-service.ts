@@ -159,7 +159,10 @@ export class NvgServiceImpl implements NvgService {
     }
 
     // ── Step 2: Data Classification (§24.2) ────────────────────────────────
-    const classification = classifyOutboundData(labelResult.validLabels);
+    const classification = classifyOutboundData(
+      labelResult.validLabels,
+      request.boundConnectorClasses
+    );
 
     // ── Step 3: Policy-Governed Model Router (§24.3, §25) ──────────────────
     const routingDecision = evaluateRoutingPolicy(routingPolicy, request, classification);
@@ -356,7 +359,10 @@ export class NvgServiceImpl implements NvgService {
     const { routingPolicy, tierRegistry } = this.deps;
 
     const labelResult = readLabels(request.dataLabels);
-    const classification = classifyOutboundData(labelResult.validLabels);
+    const classification = classifyOutboundData(
+      labelResult.validLabels,
+      request.boundConnectorClasses
+    );
 
     // Resolve preference state up-front — used in both the matched and
     // default-deny branches so the checkback card always knows whether

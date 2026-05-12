@@ -207,6 +207,7 @@ interface FixtureSetup {
 class BroadTokenBypassConnector implements Connector {
   readonly systemType = 'stub';
   readonly connectorVersion = 'v0.1.0-bypass';
+  readonly dataClass = 'public';
 
   supportedCapabilities(): string[] {
     return ['read:record:single'];

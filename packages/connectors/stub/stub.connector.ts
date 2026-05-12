@@ -8,8 +8,10 @@
  */
 import {
   CAPABILITY_IDS,
+  DATA_CLASS,
   type Connector,
   type AgentAction,
+  type DataClass,
   type ExecutionGrant,
   type ExecutionResult,
   type ExecutionGrantTemplate,
@@ -27,8 +29,13 @@ function buildActionSummaryText(action: AgentAction): string {
 export class StubConnector implements Connector {
   readonly systemType = 'stub';
   readonly connectorVersion = 'v0.1.0';
+  readonly dataClass: DataClass;
 
   private calls: Array<{ action: AgentAction; grantId: string }> = [];
+
+  constructor(opts: { dataClass?: DataClass } = {}) {
+    this.dataClass = opts.dataClass ?? DATA_CLASS.PUBLIC;
+  }
 
   supportedCapabilities(): string[] {
     return Object.values(CAPABILITY_IDS);

@@ -542,6 +542,14 @@ export interface GrantVault {
 export interface Connector {
   readonly systemType: NonEmpty;
   readonly connectorVersion: NonEmpty;
+  /**
+   * Authoritative data class served by this connector instance. Read by NVG
+   * dispatch to floor the effective data class of any outbound model call
+   * whose agent can reach this connector. Per-instance, not per-type:
+   * postgres-warehouse and postgres-financial-prod use the same factory but
+   * declare different classes.
+   */
+  readonly dataClass: DataClass;
   supportedCapabilities(): string[];
   canProduceDiff(): boolean;
   produceDiff?(action: AgentAction, template: ExecutionGrantTemplate): Promise<string | null>;
@@ -1028,6 +1036,14 @@ export interface NvgOutboundRequest {
   taskIntent: NonEmpty;
   payload: unknown;
   dataLabels: DataLabel[];
+  /**
+   * Data classes contributed by the connectors this caller can reach. The
+   * NVG classifier takes max across `dataLabels` (payload axis) and these
+   * (binding axis). Empty array = no bindings → pure payload classification.
+   * Populated by dispatch from the agent's allowedSystems → connector
+   * registry → connector.dataClass.
+   */
+  boundConnectorClasses: DataClass[];
   costPreference: 'low' | 'standard' | 'high';
   latencyPreference: 'low' | 'standard' | 'high';
   /**

@@ -95,6 +95,7 @@ function makeRequest(overrides: Partial<NvgOutboundRequest> = {}): NvgOutboundRe
     taskIntent: 'summarize document' as NonEmpty,
     payload: { text: 'test payload' },
     dataLabels: [{ source: 'dlp' as NonEmpty, label: DATA_CLASS.PUBLIC, confidence: 0.95 }],
+    boundConnectorClasses: [],
     costPreference: 'standard',
     latencyPreference: 'standard',
     ...overrides,

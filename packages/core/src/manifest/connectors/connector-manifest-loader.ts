@@ -21,7 +21,7 @@
  *   MUST NOT import from packages/connectors/stub, packages/connectors/vault,
  *   packages/identity-ref, packages/vanguard, packages/interfaces.
  */
-import type { ConnectorFactoryRegistry, NonEmpty } from '@nexus/contracts';
+import type { ConnectorFactoryRegistry, DataClass, NonEmpty } from '@nexus/contracts';
 import { loadSignedManifest } from '@nexus/runtime-utils';
 import { ConnectorManifestBodySchema } from './connector-manifest-schema.js';
 
@@ -29,6 +29,7 @@ export interface ConnectorManifestRecord {
   readonly connectorId: NonEmpty;
   readonly connectorType: NonEmpty;
   readonly allowedSystems: string[];
+  readonly dataClass: DataClass;
   readonly configuration: Record<string, unknown>;
 }
 
@@ -83,6 +84,7 @@ export async function loadConnectorManifest(
       connectorId: entry.connectorId as NonEmpty,
       connectorType: entry.connectorType as NonEmpty,
       allowedSystems: entry.allowedSystems,
+      dataClass: entry.dataClass,
       configuration: entry.configuration,
     });
   }

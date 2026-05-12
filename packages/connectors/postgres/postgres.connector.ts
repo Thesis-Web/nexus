@@ -41,6 +41,7 @@ import {
   type Connector,
   type ConnectorFactory,
   type AgentAction,
+  type DataClass,
   type ExecutionGrant,
   type ExecutionResult,
   type ExecutionGrantTemplate,
@@ -86,6 +87,12 @@ export interface PostgresConnectorOptions {
   /** Absolute path to the per-action payload directory root. */
   readonly payloadsRoot: string;
   /**
+   * Authoritative data class served by this connector instance. Per-instance:
+   * a postgres connector pointed at the warehouse declares `internal`, one
+   * pointed at financial data declares `financial`.
+   */
+  readonly dataClass: DataClass;
+  /**
    * Redacted display label for evidence summaries (e.g. "sales-finance"
    * instead of the full pg URI). Defaults to systemType.
    */
@@ -107,6 +114,7 @@ export interface PostgresConnectorFactoryConfig {
   readonly statementTimeoutMs?: number;
   readonly allowedTables: readonly string[];
   readonly systemType: NonEmpty;
+  readonly dataClass: DataClass;
   readonly displayLabel?: string;
   readonly maxRows?: number;
   readonly payloadsRoot: string;
@@ -213,6 +221,7 @@ function failure(
 export class PostgresConnector implements Connector {
   readonly systemType: NonEmpty;
   readonly connectorVersion = 'v0.1.0' as NonEmpty;
+  readonly dataClass: DataClass;
 
   private readonly executor: PgQueryExecutor;
   private readonly allowedTables: readonly string[];
@@ -222,6 +231,7 @@ export class PostgresConnector implements Connector {
 
   constructor(opts: PostgresConnectorOptions) {
     this.systemType = opts.systemType;
+    this.dataClass = opts.dataClass;
     this.executor = opts.executor;
     this.allowedTables = opts.allowedTables;
     this.payloadsRoot = opts.payloadsRoot;
@@ -539,6 +549,7 @@ export function buildPostgresConnector(cfg: PostgresConnectorFactoryConfig): Pos
   });
   return new PostgresConnector({
     systemType: cfg.systemType,
+    dataClass: cfg.dataClass,
     executor: new RealPgExecutor(pool),
     allowedTables: cfg.allowedTables,
     payloadsRoot: cfg.payloadsRoot,
