@@ -28,7 +28,8 @@
       "@nexus/connector-postgres": ["packages/connectors/postgres/postgres.connector.ts"],
       "@nexus/runtime-utils": ["packages/runtime-utils/src/index.ts"],
       "@nexus/workspace-ref": ["packages/workspace-ref/src/index.ts"],
-      "@nexus/orch-ref": ["packages/orch-ref/src/index.ts"]
+      "@nexus/orch-ref": ["packages/orch-ref/src/index.ts"],
+      "@nexus/planner-db-lexicon": ["packages/planners/db-lexicon/src/index.ts"]
     }
   },
   "include": [
@@ -40,6 +41,7 @@
     "packages/connectors/**/*.ts",
     "packages/runtime-utils/src/**/*.ts",
     "packages/interfaces/*/src/**/*.ts",
+    "packages/planners/*/src/**/*.ts",
     "scripts/**/*.ts"
   ],
   "exclude": [

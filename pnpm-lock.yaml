@@ -244,6 +244,18 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
+  packages/planners/db-lexicon:
+    dependencies:
+      '@nexus/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@nexus/orch-ref':
+        specifier: workspace:*
+        version: link:../../orch-ref
+      '@nexus/runtime-utils':
+        specifier: workspace:*
+        version: link:../../runtime-utils
+
   packages/runtime-utils:
     dependencies:
       '@nexus/contracts':

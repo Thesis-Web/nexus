@@ -15,6 +15,7 @@ const NEXUS_ALIASES = {
   '@nexus/vanguard': path.join(root, 'packages/vanguard/src/index.ts'),
   '@nexus/identity-ref': path.join(root, 'packages/identity-ref/src/index.ts'),
   '@nexus/orch-ref': path.join(root, 'packages/orch-ref/src/index.ts'),
+  '@nexus/planner-db-lexicon': path.join(root, 'packages/planners/db-lexicon/src/index.ts'),
   '@nexus/runtime-utils': path.join(root, 'packages/runtime-utils/src/index.ts'),
   '@nexus/workspace-ref': path.join(root, 'packages/workspace-ref/src/index.ts'),
   '@nexus/cli': path.join(root, 'packages/interfaces/cli/src/index.ts'),
@@ -36,6 +37,7 @@ export default defineConfig({
       'packages/vanguard/src/**/*.test.ts',
       'packages/identity-ref/src/**/*.test.ts',
       'packages/orch-ref/src/**/*.test.ts',
+      'packages/planners/*/src/**/*.test.ts',
       'packages/adapters/*/src/**/*.test.ts',
       // CLAUDE-CODE-AUDIT-TIGHTEN-PHASE-AB §3 — workspace-ref client
       // tests. Pure reducer/hook tests stay on node env; React

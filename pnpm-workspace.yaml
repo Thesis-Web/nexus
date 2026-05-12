@@ -9,6 +9,7 @@ packages:
   - 'packages/connectors/postgres'
   - 'packages/identity-ref'
   - 'packages/orch-ref'
+  - 'packages/planners/db-lexicon'
   - 'packages/interfaces/cli'
   - 'packages/interfaces/api'
   - 'packages/workspace-ref'

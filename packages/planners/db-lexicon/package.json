@@ -1,0 +1,24 @@
+{
+  "name": "@nexus/planner-db-lexicon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DB lexicon transformer planner — reference Planner implementation under plannerType 'db-lexicon-transformer-v0' (AMEND-nexus-planner-db-lexicon-v0-2-1.md)",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@nexus/contracts": "workspace:*",
+    "@nexus/runtime-utils": "workspace:*",
+    "@nexus/orch-ref": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  }
+}
