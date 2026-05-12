@@ -484,11 +484,15 @@ const program = createCli({
         // pre-resolved actionTemplate before NXS sees it. NXS never sees
         // a binding; it only sees the substituted payload. Phase 2 of
         // multi-node planning (execution-plan.ts NxsSlotBinding).
+        //
+        // AMEND-nexus-mailbox-pit-v0-2-1 §3.5 — the resolver looks up
+        // each upstream slot's mailbox per-binding via
+        // mailboxService.getMailboxForActor(runId, upstreamAgentId), so
+        // the legacy single mailboxId input is no longer supplied here.
         const resolved = await resolveNxsSlotBindings({
           node,
           plan,
           mailboxService: br.externals.mailboxService,
-          mailboxId: br.externals.socketRegistry.getPrimaryMailbox().mailboxId,
           runId: request.runId,
         });
         if (!resolved.resolved) {
@@ -500,6 +504,44 @@ const program = createCli({
           };
         }
         const resolvedPayload = resolved.payload;
+
+        // AMEND-nexus-mailbox-pit-v0-2-1 §3.4.4 — emit one
+        // `mailbox_slot_resolved_for_dispatch` event per slot binding the
+        // resolver consumed. Cross-actor data movement audit; pairs with
+        // the same event the nvg-dispatch slot-read loop emits.
+        const slotBindings = tmpl.slotBindings ?? [];
+        for (const binding of slotBindings) {
+          const upstream = plan.nodes.find(n => n.subTaskKey === binding.fromSubTaskKey);
+          if (!upstream) continue; // resolver would have failed already
+          const upstreamMb = await br.externals.mailboxService.getMailboxForActor(
+            request.runId,
+            upstream.agentId
+          );
+          if (upstreamMb === null) continue;
+          const item = await br.externals.mailboxService.findBySlot(
+            upstreamMb,
+            request.runId,
+            upstream.nodeId,
+            binding.slotId
+          );
+          if (item === null) continue;
+          await coreDeps.runLedgerWriter!.writeEvent({
+            runId: request.runId,
+            eventType: 'mailbox_slot_resolved_for_dispatch',
+            timestamp: nowIso(),
+            actorId: node.agentId,
+            detail: {
+              runId: request.runId,
+              readerActorId: node.agentId,
+              sourceActorId: upstream.agentId,
+              sourceMailboxId: upstreamMb,
+              sourceTaskId: upstream.nodeId,
+              slotId: binding.slotId,
+              mailboxItemId: item.mailboxItemId,
+              resolvedAt: nowIso(),
+            },
+          });
+        }
 
         const sessionId = crypto.randomUUID() as Uuid;
         const sessionTtlSeconds = 10 * 60;
@@ -574,15 +616,31 @@ const program = createCli({
         const finalOutcome = nxsResult.evidenceRecord.finalOutcome;
         console.log('[orch-wire] nxs_dispatch outcome:', finalOutcome);
 
-        // Bridge the result into the mailbox keyed by THIS node's id +
-        // declared slot so downstream sub-tasks can find it.
+        // Bridge the result into the per-actor mailbox keyed by THIS
+        // node's id + declared slot. AMEND-nexus-mailbox-pit-v0-2-1
+        // §3.5 — the mailboxId is the dispatching agent's per-run
+        // mailbox, allocated at plan_confirmed time by RefRunCoordinator
+        // step 3.6 (see allocateForRun).
         const slotId = (node.expectedOutputSlots[0] ?? 'default') as NonEmpty;
+        const nxsNodeMailboxId = await br.externals.mailboxService.getMailboxForActor(
+          request.runId,
+          node.agentId
+        );
+        if (nxsNodeMailboxId === null) {
+          return {
+            success: false,
+            completionMetadata: null,
+            failureReason: ('mailbox_not_allocated_for_actor: agent ' + node.agentId) as NonEmpty,
+            governanceDenied: false,
+          };
+        }
         const bridged = await bridgeNxsResultToMailbox(nxsResult.evidenceRecord, {
           outputCollector: br.externals.outputCollector,
           payloadsRoot: path.join(DEFAULT_TRAIL_DIR, 'payloads'),
           agentOctLevel: agent.octLevel ?? 'OCT-OPEN',
           slotId,
           taskIdOverride: node.nodeId,
+          mailboxId: nxsNodeMailboxId,
         });
         if (bridged === null) {
           return {
@@ -689,7 +747,6 @@ const program = createCli({
           // Phase 1 uses a simple text framing; Phase 2 may add a
           // structured tool_result-shaped variant for tool-aware models.
           if (node.inputSlotReads && node.inputSlotReads.length > 0) {
-            const mailboxId = br.externals.socketRegistry.getPrimaryMailbox().mailboxId;
             for (const ref of node.inputSlotReads) {
               const upstreamNode = plan.nodes.find(n => n.subTaskKey === ref.fromSubTaskKey);
               if (!upstreamNode) {
@@ -699,8 +756,24 @@ const program = createCli({
                   `inputSlotReads references subTaskKey '${ref.fromSubTaskKey}' but no node has that key`
                 );
               }
+              // AMEND-nexus-mailbox-pit-v0-2-1 §3.5 — slot reads look in
+              // the UPSTREAM actor's mailbox, not a primary. The producing
+              // agent's mailbox holds the item we want.
+              const upstreamMailboxId = await br.externals.mailboxService.getMailboxForActor(
+                request.runId,
+                upstreamNode.agentId
+              );
+              if (upstreamMailboxId === null) {
+                return {
+                  success: false,
+                  completionMetadata: null,
+                  failureReason: ('mailbox_not_allocated_for_upstream_actor: ' +
+                    upstreamNode.agentId) as NonEmpty,
+                  governanceDenied: false,
+                };
+              }
               const item = await br.externals.mailboxService.findBySlot(
-                mailboxId,
+                upstreamMailboxId,
                 request.runId,
                 upstreamNode.nodeId,
                 ref.slotId
@@ -750,6 +823,25 @@ const program = createCli({
               initialMessages.push({
                 role: 'user',
                 content: `[Upstream slot ${ref.fromSubTaskKey}.${ref.slotId}]\n\n${body}`,
+              });
+              // AMEND-nexus-mailbox-pit-v0-2-1 §3.4.4 — emit per-resolution
+              // audit event so the cross-actor data movement orch performs
+              // is recorded in the run ledger.
+              await coreDeps.runLedgerWriter!.writeEvent({
+                runId: request.runId,
+                eventType: 'mailbox_slot_resolved_for_dispatch',
+                timestamp: nowIso(),
+                actorId: node.agentId,
+                detail: {
+                  runId: request.runId,
+                  readerActorId: node.agentId,
+                  sourceActorId: upstreamNode.agentId,
+                  sourceMailboxId: upstreamMailboxId,
+                  sourceTaskId: upstreamNode.nodeId,
+                  slotId: ref.slotId,
+                  mailboxItemId: item.mailboxItemId,
+                  resolvedAt: nowIso(),
+                },
               });
             }
           }
@@ -977,6 +1069,18 @@ const program = createCli({
                 nxsResult.evidenceRecord.finalOutcome
               );
 
+              // AMEND-nexus-mailbox-pit-v0-2-1 §3.5 — write tool-call
+              // results into the dispatching agent's per-actor mailbox.
+              const toolBridgeMailboxId = await br.externals.mailboxService.getMailboxForActor(
+                request.runId,
+                node.agentId
+              );
+              if (toolBridgeMailboxId === null) {
+                return {
+                  ok: false,
+                  reason: 'mailbox_not_allocated_for_actor: ' + node.agentId,
+                };
+              }
               const bridged = await bridgeNxsResultToMailbox(nxsResult.evidenceRecord, {
                 outputCollector: br.externals.outputCollector,
                 payloadsRoot: path.join(DEFAULT_TRAIL_DIR, 'payloads'),
@@ -993,6 +1097,7 @@ const program = createCli({
                 // multi-node sub-tasks can find the result via
                 // MailboxService.findBySlot(runId, nodeId, slotId).
                 taskIdOverride: node.nodeId,
+                mailboxId: toolBridgeMailboxId,
               });
               if (bridged === null) {
                 // Bridge returns null only when executionResult itself was
@@ -1125,7 +1230,27 @@ const program = createCli({
             responseSize: finalInv.responseSize ?? null,
           });
 
-          const item = await br.externals.outputCollector.writeMailboxItemFromNvgResult(outputRef);
+          // AMEND-nexus-mailbox-pit-v0-2-1 §3.5 + §3.6 — write to the
+          // dispatching agent's per-actor mailbox via typed MailboxWriteContext.
+          const nvgWriteMailboxId = await br.externals.mailboxService.getMailboxForActor(
+            request.runId,
+            node.agentId
+          );
+          if (nvgWriteMailboxId === null) {
+            return {
+              success: false,
+              completionMetadata: null,
+              failureReason: ('mailbox_not_allocated_for_actor: agent ' + node.agentId) as NonEmpty,
+              governanceDenied: false,
+            };
+          }
+          const item = await br.externals.outputCollector.writeMailboxItemFromNvgResult(outputRef, {
+            runId: request.runId,
+            producerActorId: node.agentId,
+            mailboxId: nvgWriteMailboxId,
+            taskId: node.nodeId,
+            slotId,
+          });
           console.log(
             '[output] mailbox item',
             item.mailboxItemId,
@@ -1277,24 +1402,50 @@ const program = createCli({
     const triggerCompile = async (runId: Uuid): Promise<void> => {
       console.log('[compile] triggered for run:', runId);
       try {
+        // AMEND-nexus-mailbox-pit-v0-2-1 §3.5 — compile reads from every
+        // per-actor mailbox allocated for the run, not a primary mailbox.
+        const allocatedMailboxes = await br.externals.mailboxService.listMailboxesForRun(runId);
+        const mailboxIds = Array.from(allocatedMailboxes.values());
+        await coreDeps.runLedgerWriter!.writeEvent({
+          runId,
+          eventType: 'compile_mailboxes_listed',
+          timestamp: nowIso(),
+          actorId: null,
+          detail: {
+            runId,
+            mailboxCount: mailboxIds.length,
+            mailboxIds,
+          },
+        });
+
         const contract = await br.externals.outputCollector.buildOutputContract(runId);
         const compiler = br.externals.socketRegistry.getDefaultCompiler();
-        const mailbox = br.externals.socketRegistry.getPrimaryMailbox();
-        const items = await br.externals.mailboxService.listEligibleForCompile(
-          mailbox.mailboxId,
-          runId
-        );
+        // Aggregate eligible items across every allocated mailbox so
+        // compile sees the full per-run cross-actor surface.
+        const items = (
+          await Promise.all(
+            mailboxIds.map(mid => br.externals.mailboxService.listEligibleForCompile(mid, runId))
+          )
+        ).flat();
         console.log(
           '[compile] mode-eligible items:',
           items.length,
-          'compiler:',
+          'across',
+          mailboxIds.length,
+          'mailbox(es); compiler:',
           compiler.compilerSocketId
         );
 
         const compileRequest: CompileRequest = {
           runId,
           compilerSocketId: compiler.compilerSocketId,
-          mailboxId: mailbox.mailboxId,
+          // The CompileRequest contract still carries a singular mailboxId.
+          // V1 mailbox-pit uses the same representative mailboxId as
+          // OutputCollector.buildOutputContract (lowest alphabetical of
+          // the per-actor mailboxes that contributed items). The full
+          // set is reachable via items[].mailboxId. Future amendment may
+          // extend CompileRequest with mailboxIds[]; HOLE-MAILBOX-PIT-002.
+          mailboxId: contract.mailboxId,
           outputContractId: contract.outputContractId,
           requestedAt: nowIso(),
         };
@@ -1315,11 +1466,14 @@ const program = createCli({
         });
 
         if (ack.accepted) {
-          await br.externals.mailboxService.markConsumed(
-            mailbox.mailboxId,
-            runId,
-            items.map(i => i.mailboxItemId)
-          );
+          // Mark consumed per source mailbox (mailbox-pit V1 — items can
+          // come from multiple per-actor mailboxes for the same run).
+          for (const mid of mailboxIds) {
+            const mineItemIds = items.filter(i => i.mailboxId === mid).map(i => i.mailboxItemId);
+            if (mineItemIds.length > 0) {
+              await br.externals.mailboxService.markConsumed(mid, runId, mineItemIds);
+            }
+          }
           console.log('[compile] return accepted at', ack.acceptedAt, '— mailbox items consumed');
         } else {
           console.warn('[compile] return NOT accepted —', ack.reason ?? '<no reason>');

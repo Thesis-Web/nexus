@@ -740,9 +740,11 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
     ? primaryOrchestrator.outputSlotPolicy
     : ('open_slots' as const);
 
+  // AMEND-nexus-mailbox-pit-v0-2-1 §3.6 — OutputCollector no longer takes
+  // a single primary mailboxId. The per-write MailboxWriteContext carries
+  // the mailboxId from the dispatch callsite (mailboxService.getMailboxForActor).
   const outputCollector = new OutputCollectorImpl({
     mailboxService,
-    mailboxId: primaryMailbox.mailboxId,
     resolverRegistry: payloadResolverRegistry,
     slotReader,
     ledgerWriter: runLedgerWriter,

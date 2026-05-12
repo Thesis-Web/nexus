@@ -138,6 +138,10 @@ function mailboxItemFor(taskId: Uuid, slotId: string, file: string): MailboxItem
 }
 
 function mockMailboxService(itemsByKey: Map<string, MailboxItem | null>): MailboxService {
+  // Mailbox-pit V1 — the resolver now looks up the upstream actor's
+  // mailbox per binding. The mock returns a constant mailboxId for any
+  // (runId, actorId) pair and ignores it in findBySlot, so existing
+  // tests that drive findBySlot via (taskId, slotId) continue to work.
   return {
     writeFromOutput: async () => {
       throw new Error('not used');
@@ -149,6 +153,11 @@ function mockMailboxService(itemsByKey: Map<string, MailboxItem | null>): Mailbo
       const key = `${taskId}::${slotId}`;
       return itemsByKey.get(key) ?? null;
     },
+    allocateForRun: async () => new Map(),
+    getMailboxForActor: async () => 'mbx-mock' as NonEmpty,
+    listMailboxesForRun: async () => new Map(),
+    resolveMailboxProvenance: async () => null,
+    assertMailboxBelongsToActor: async () => undefined,
   } as unknown as MailboxService;
 }
 
@@ -256,7 +265,6 @@ describe('resolveNxsSlotBindings', () => {
       node,
       plan,
       mailboxService: mailbox,
-      mailboxId: 'mbx-primary' as NonEmpty,
       runId: uuid(),
     });
 
@@ -288,7 +296,6 @@ describe('resolveNxsSlotBindings', () => {
       node: writer,
       plan,
       mailboxService: mailbox,
-      mailboxId: 'mbx-primary' as NonEmpty,
       runId: uuid(),
     });
 
@@ -322,7 +329,6 @@ describe('resolveNxsSlotBindings', () => {
       node: writer,
       plan,
       mailboxService: mailbox,
-      mailboxId: 'mbx-primary' as NonEmpty,
       runId: uuid(),
     });
 
@@ -351,7 +357,6 @@ describe('resolveNxsSlotBindings', () => {
       node: writer,
       plan,
       mailboxService: mockMailboxService(new Map()),
-      mailboxId: 'mbx-primary' as NonEmpty,
       runId: uuid(),
     });
 
@@ -380,7 +385,6 @@ describe('resolveNxsSlotBindings', () => {
       node: writer,
       plan,
       mailboxService: mailbox,
-      mailboxId: 'mbx-primary' as NonEmpty,
       runId: uuid(),
     });
 
@@ -412,7 +416,6 @@ describe('resolveNxsSlotBindings', () => {
       node: writer,
       plan,
       mailboxService: mailbox,
-      mailboxId: 'mbx-primary' as NonEmpty,
       runId: uuid(),
     });
 
@@ -447,7 +450,6 @@ describe('resolveNxsSlotBindings', () => {
       node: writer,
       plan,
       mailboxService: mailbox,
-      mailboxId: 'mbx-primary' as NonEmpty,
       runId: uuid(),
     });
 
@@ -493,7 +495,6 @@ describe('resolveNxsSlotBindings', () => {
       node: writer,
       plan,
       mailboxService: mailbox,
-      mailboxId: 'mbx-primary' as NonEmpty,
       runId: uuid(),
     });
 

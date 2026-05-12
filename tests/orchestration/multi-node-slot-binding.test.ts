@@ -189,7 +189,6 @@ describe('multi-node slot-binding loop (end-to-end)', () => {
         node,
         plan,
         mailboxService,
-        mailboxId: MAILBOX_ID,
         runId,
       });
       if (!resolved.resolved) {
@@ -239,8 +238,17 @@ describe('multi-node slot-binding loop (end-to-end)', () => {
         finalOutcome: 'executed_successfully',
       };
 
+      // Mailbox-pit V1: write to the per-actor mailbox allocated for this
+      // agent at coordinator step 3.6. assertMailboxBelongsToActor fires
+      // inside writeFromOutput.
+      const actorMailboxId = await mailboxService.getMailboxForActor(runId, node.agentId);
+      if (actorMailboxId === null) {
+        throw new Error(
+          `test setup: no mailbox allocated for agent ${node.agentId} in run ${runId}`
+        );
+      }
       const item = await mailboxService.writeFromOutput({
-        mailboxId: MAILBOX_ID,
+        mailboxId: actorMailboxId,
         output: reference,
         expiresAt: null,
         runLedgerEventId: null,
@@ -461,7 +469,6 @@ describe('multi-node slot-binding loop (end-to-end)', () => {
         node,
         plan,
         mailboxService,
-        mailboxId: MAILBOX_ID,
         runId,
       });
       expect(resolved.resolved).toBe(false);

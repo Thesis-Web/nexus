@@ -152,9 +152,21 @@ function buildCoordinatorDeps(
     dagExecutor: overrides.dagExecutor ?? executor,
     runLedgerWriter: overrides.runLedgerWriter ?? ledgerWriter,
     mailboxService: {
+      // Legacy mock surface — unused by these coordinator unit tests but
+      // retained for shape compat with older callsites.
       deliver: vi.fn(),
       consume: vi.fn(),
       ack: vi.fn(),
+      // Mailbox-pit V1 — AMEND-nexus-mailbox-pit-v0-2-1 §3.2. Coordinator
+      // calls allocateForRun in step 3.6; provide a no-op that returns an
+      // empty map so the coordinator path doesn't throw. The lifecycle
+      // tests do not exercise dispatch (the dispatcher is stubbed below),
+      // so the empty allocation map is harmless.
+      allocateForRun: vi.fn(async () => new Map<Uuid, NonEmpty>()),
+      getMailboxForActor: vi.fn(async () => null),
+      listMailboxesForRun: vi.fn(async () => new Map<Uuid, NonEmpty>()),
+      resolveMailboxProvenance: vi.fn(async () => null),
+      assertMailboxBelongsToActor: vi.fn(async () => undefined),
     } as unknown as MailboxService,
     outputCollector: { collect: vi.fn(), resolve: vi.fn() } as unknown as OutputCollector,
     computeDigest,

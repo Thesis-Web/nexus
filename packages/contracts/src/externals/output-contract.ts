@@ -20,7 +20,7 @@
 
 import type { Uuid, IsoTimestamp, Sha256Hex, NonEmpty } from '../types/index.js';
 import type { DataClass, DenialCode } from '../constants/index.js';
-import type { MailboxItem } from './mailbox.js';
+import type { MailboxItem, MailboxWriteContext } from './mailbox.js';
 import type {
   NvgOutputReference,
   NxsOutputReference,
@@ -56,8 +56,22 @@ export interface OutputContract {
 // ─── OutputCollector ───
 
 export interface OutputCollector {
-  writeMailboxItemFromNvgResult(input: NvgOutputReference): Promise<MailboxItem>;
-  writeMailboxItemFromNxsResult(input: NxsOutputReference): Promise<MailboxItem>;
-  writeMailboxItemFromAgentPartial(input: AgentPartialOutputReference): Promise<MailboxItem>;
+  // AMEND-nexus-mailbox-pit-v0-2-1 §3.6 — every write carries a typed
+  // MailboxWriteContext so the callsite explicitly declares which mailbox
+  // + actor it is writing for. The underlying MailboxService.writeFromOutput
+  // call asserts the mailboxId belongs to the producerActorId under runId
+  // (fail-closed on mismatch).
+  writeMailboxItemFromNvgResult(
+    input: NvgOutputReference,
+    ctx: MailboxWriteContext
+  ): Promise<MailboxItem>;
+  writeMailboxItemFromNxsResult(
+    input: NxsOutputReference,
+    ctx: MailboxWriteContext
+  ): Promise<MailboxItem>;
+  writeMailboxItemFromAgentPartial(
+    input: AgentPartialOutputReference,
+    ctx: MailboxWriteContext
+  ): Promise<MailboxItem>;
   buildOutputContract(runId: Uuid): Promise<OutputContract>;
 }

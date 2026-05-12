@@ -97,6 +97,16 @@ export class MailboxServiceImpl implements IMailboxService {
       blockedReason: null,
     };
 
+    // Mailbox-pit V1 write-time ownership assertion (AMEND-nexus-mailbox-
+    // pit-v0-2-1 §3.6). Fail-closed at the write boundary: the (runId,
+    // producerActorId, mailboxId) triple MUST match a known allocation.
+    // The producer identity comes from the output reference's `agentId`
+    // (the orchestrator built the output reference under that actor's
+    // authority). If the dispatcher / collector mis-routes a write to
+    // the wrong mailbox, this throws NexusSecurityViolation before any
+    // bytes hit the backend.
+    await this.assertMailboxBelongsToActor(output.runId, output.agentId, input.mailboxId);
+
     // Initial eligibility check — block before storage if obviously ineligible
     const check = computeMailboxEligibility(item, this.manifest, now);
     if (!check.eligible && check.transitionTo !== null) {

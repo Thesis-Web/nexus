@@ -284,6 +284,30 @@ export class RefRunCoordinator implements RunCoordinator {
       outputSlotPolicy: manifest.outputSlotPolicy,
     });
 
+    // 3.6. Mailbox-pit allocation step — AMEND-nexus-mailbox-pit-v0-2-1
+    //      §3.7. Allocate one per-actor mailbox for each unique agentId
+    //      in the plan. The MailboxService emits one `mailbox_allocated`
+    //      ledger event per new allocation (idempotent — re-running for
+    //      the same actors does not duplicate events). Local-control
+    //      nodes are emitted by the orchestrator actor itself; they
+    //      still get a mailbox allocation if their agentId appears in
+    //      the plan, because compile reads from every allocated
+    //      mailbox regardless of node type.
+    //
+    //      Insertion convention: this is "Step 3.6" between
+    //      orchestrator_dispatched (3.5) and delegation_issued (4) —
+    //      NOT a renumbering of the canonical step list.
+    //
+    //      Naming seam (DIFF-MAILBOX-PIT-001): orch contracts use
+    //      `agentId`; mailbox contracts use `actorId`. Same UUID; we
+    //      pass agentId into the actorId parameter here.
+    const uniqueActorIds: Uuid[] = Array.from(
+      new Set(plan.nodes.map(n => n.agentId).filter(id => id !== this.orchestratorActorId))
+    );
+    if (uniqueActorIds.length > 0) {
+      await deps.mailboxService.allocateForRun(request.runId, uniqueActorIds);
+    }
+
     // 4. Issue delegations [blueprint §11.3]
     const nodeDelegations: NodeDelegationBinding[] = [];
     for (const node of plan.nodes) {

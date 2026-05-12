@@ -80,6 +80,14 @@ export interface BridgeDeps {
    * at slot-read time.
    */
   readonly taskIdOverride?: Uuid;
+  /**
+   * AMEND-nexus-mailbox-pit-v0-2-1 §3.6 — the per-actor mailboxId
+   * allocated to the dispatching agent for this run. The caller looks
+   * it up via mailboxService.getMailboxForActor(runId, agentId) before
+   * invoking the bridge. The bridge passes it through to the
+   * OutputCollector's MailboxWriteContext.
+   */
+  readonly mailboxId: NonEmpty;
 }
 
 export interface BridgeResult {
@@ -178,7 +186,14 @@ export async function bridgeNxsResultToMailbox(
     finalOutcome: evidence.finalOutcome,
   };
 
-  const mailboxItem = await deps.outputCollector.writeMailboxItemFromNxsResult(reference);
+  const writeCtx = {
+    runId: reference.runId,
+    producerActorId: reference.agentId,
+    mailboxId: deps.mailboxId,
+    taskId: reference.taskId,
+    slotId: reference.slotId,
+  };
+  const mailboxItem = await deps.outputCollector.writeMailboxItemFromNxsResult(reference, writeCtx);
   return { mailboxItem, payloadPath: resultPath, resultDigest, kind };
 }
 

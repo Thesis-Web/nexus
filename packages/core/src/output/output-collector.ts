@@ -1,5 +1,6 @@
 /**
  * Output Collector — AMEND-spec §6.7, §3.8
+ * Extended for Mailbox-pit V1 — AMEND-nexus-mailbox-pit-v0-2-1 §3.6.
  *
  * File: packages/core/src/output/output-collector.ts
  * Layer 1 — baked infrastructure. NOT a replaceable plugin.
@@ -12,6 +13,23 @@
  * - Must validate slot against declared slots when policy requires.
  * - Must write Run Ledger partial_result for every successful mailbox write.
  * - Must fail closed with OUTPUT_CONTRACT_EMPTY when no eligible items exist.
+ *
+ * Mailbox-pit V1 additions:
+ * - Every writeMailboxItemFromXxx call takes a typed MailboxWriteContext
+ *   that explicitly declares (runId, producerActorId, mailboxId, taskId,
+ *   slotId). The callsite is grep-able for the write destination.
+ * - The collector cross-checks ctx fields against the OutputReference's
+ *   internal runId/agentId/taskId/slotId before writing. Mismatch throws.
+ * - The mailboxId comes from the ctx (not a constructor field) so per-
+ *   actor mailboxes work without per-instance OutputCollector copies.
+ * - MailboxService.writeFromOutput runs assertMailboxBelongsToActor on
+ *   every write (fail-closed boundary). The collector relies on that
+ *   assertion as the authoritative ownership check; this collector's
+ *   cross-check is defense-in-depth for ctx↔output consistency.
+ * - buildOutputContract aggregates eligible items across EVERY mailbox
+ *   allocated for the run (listMailboxesForRun → iterate
+ *   listEligibleForCompile). Per spec §2.6 — no dedicated compile mailbox
+ *   in V1; provenance comes from per-actor mailbox source.
  */
 import { randomUUID } from 'node:crypto';
 import type {
@@ -19,6 +37,7 @@ import type {
   OutputContract,
   MailboxItem,
   MailboxService,
+  MailboxWriteContext,
   NvgOutputReference,
   NxsOutputReference,
   AgentPartialOutputReference,
@@ -34,7 +53,6 @@ import { buildOutputContractFromItems } from './output-contract-builder.js';
 
 export interface OutputCollectorDeps {
   mailboxService: MailboxService;
-  mailboxId: NonEmpty;
   resolverRegistry: PayloadResolverRegistry;
   slotReader: DeclaredOutputSlotReader;
   ledgerWriter: RunLedgerWriter;
@@ -49,15 +67,19 @@ export class OutputCollectorImpl implements IOutputCollector {
     this.deps = deps;
   }
 
-  async writeMailboxItemFromNvgResult(input: NvgOutputReference): Promise<MailboxItem> {
+  async writeMailboxItemFromNvgResult(
+    input: NvgOutputReference,
+    ctx: MailboxWriteContext
+  ): Promise<MailboxItem> {
     if (input.sourceType !== 'nvg_result') {
       throw new Error('Expected sourceType nvg_result');
     }
+    this.assertContextMatchesOutput(input, ctx);
     await this.verifyDigest(input.resultRef, input.resultDigest);
     await this.validateSlot(input.runId, input.taskId, input.slotId);
 
     const item = await this.deps.mailboxService.writeFromOutput({
-      mailboxId: this.deps.mailboxId,
+      mailboxId: ctx.mailboxId,
       output: input,
       expiresAt: this.getExpiresAt(),
       runLedgerEventId: null,
@@ -67,15 +89,19 @@ export class OutputCollectorImpl implements IOutputCollector {
     return item;
   }
 
-  async writeMailboxItemFromNxsResult(input: NxsOutputReference): Promise<MailboxItem> {
+  async writeMailboxItemFromNxsResult(
+    input: NxsOutputReference,
+    ctx: MailboxWriteContext
+  ): Promise<MailboxItem> {
     if (input.sourceType !== 'nxs_execution_result') {
       throw new Error('Expected sourceType nxs_execution_result');
     }
+    this.assertContextMatchesOutput(input, ctx);
     await this.verifyDigest(input.resultRef, input.resultDigest);
     await this.validateSlot(input.runId, input.taskId, input.slotId);
 
     const item = await this.deps.mailboxService.writeFromOutput({
-      mailboxId: this.deps.mailboxId,
+      mailboxId: ctx.mailboxId,
       output: input,
       expiresAt: this.getExpiresAt(),
       runLedgerEventId: null,
@@ -85,15 +111,19 @@ export class OutputCollectorImpl implements IOutputCollector {
     return item;
   }
 
-  async writeMailboxItemFromAgentPartial(input: AgentPartialOutputReference): Promise<MailboxItem> {
+  async writeMailboxItemFromAgentPartial(
+    input: AgentPartialOutputReference,
+    ctx: MailboxWriteContext
+  ): Promise<MailboxItem> {
     if (input.sourceType !== 'agent_partial') {
       throw new Error('Expected sourceType agent_partial');
     }
+    this.assertContextMatchesOutput(input, ctx);
     await this.verifyDigest(input.resultRef, input.resultDigest);
     await this.validateSlot(input.runId, input.taskId, input.slotId);
 
     const item = await this.deps.mailboxService.writeFromOutput({
-      mailboxId: this.deps.mailboxId,
+      mailboxId: ctx.mailboxId,
       output: input,
       expiresAt: this.getExpiresAt(),
       runLedgerEventId: null,
@@ -104,17 +134,42 @@ export class OutputCollectorImpl implements IOutputCollector {
   }
 
   async buildOutputContract(runId: Uuid): Promise<OutputContract> {
-    const items = await this.deps.mailboxService.listEligibleForCompile(this.deps.mailboxId, runId);
+    // Per spec §3.5 + §3.6: compile reads from every allocated actor
+    // mailbox for the run, NOT a single primary mailbox. Iterate the
+    // allocations and concatenate eligible items. Each item still carries
+    // its source mailboxId on the MailboxItem itself so provenance
+    // survives in the resulting OutputContract.mailboxItems list.
+    const mailboxes = await this.deps.mailboxService.listMailboxesForRun(runId);
+    const allItems: MailboxItem[] = [];
+    const sourceMailboxIds: NonEmpty[] = [];
+    for (const [, mailboxId] of mailboxes.entries()) {
+      const items = await this.deps.mailboxService.listEligibleForCompile(mailboxId, runId);
+      if (items.length > 0) sourceMailboxIds.push(mailboxId);
+      for (const it of items) allItems.push(it);
+    }
 
-    if (items.length === 0) {
+    if (allItems.length === 0) {
       throw new Error(
         `${DENIAL_CODE.OUTPUT_CONTRACT_EMPTY}: no eligible mailbox items for run '${runId}'`
       );
     }
 
-    const contract = buildOutputContractFromItems(runId, this.deps.mailboxId, items);
+    // OutputContract.mailboxId is the legacy singular field. V1 mailbox-
+    // pit law: contract.mailboxId is the FIRST source mailbox alphabetically
+    // — a stable representative. The full set of source mailboxes is
+    // reachable via contract.mailboxItems[].mailboxId on each MailboxItem.
+    // Compile uses listMailboxesForRun directly when it needs the full set
+    // (§3.5 triggerCompile path). Future amendment may add a mailboxIds[]
+    // field; logged as HOLE-MAILBOX-PIT-002.
+    sourceMailboxIds.sort();
+    const representativeMailboxId =
+      (sourceMailboxIds[0] as NonEmpty | undefined) ?? ('compile-empty' as NonEmpty);
 
-    // Write compile_started ledger event (§6.7)
+    const contract = buildOutputContractFromItems(runId, representativeMailboxId, allItems);
+
+    // Write compile_started ledger event (§6.7) — canonical event name
+    // confirmed at packages/contracts/src/interfaces/index.ts (HOLE-002
+    // closed earlier in this amendment).
     await this.deps.ledgerWriter.writeEvent({
       runId,
       eventType: 'compile_started',
@@ -122,10 +177,11 @@ export class OutputCollectorImpl implements IOutputCollector {
       actorId: null,
       detail: {
         compilerSocketId: null,
-        mailboxId: this.deps.mailboxId,
+        mailboxId: representativeMailboxId,
+        sourceMailboxIds,
         outputContractId: contract.outputContractId,
         contractDigest: contract.contractDigest,
-        mailboxItemCount: items.length,
+        mailboxItemCount: allItems.length,
         inputDataClasses: contract.inputDataClasses,
         inheritedCompileDataClass: contract.inheritedCompileDataClass,
       },
@@ -135,6 +191,39 @@ export class OutputCollectorImpl implements IOutputCollector {
   }
 
   // ─── Private helpers ───
+
+  /** Defense-in-depth: the MailboxWriteContext is supplied by the dispatch
+   *  callsite and asserts its own view of (runId, taskId, slotId,
+   *  producerActorId). The output reference carries the same fields
+   *  internally (the engine adapter built it). They MUST agree — any
+   *  drift between the dispatcher's view and the engine's view is a
+   *  callsite bug we want to catch before the mailbox boundary, not
+   *  after. */
+  private assertContextMatchesOutput(
+    output: NvgOutputReference | NxsOutputReference | AgentPartialOutputReference,
+    ctx: MailboxWriteContext
+  ): void {
+    if (ctx.runId !== output.runId) {
+      throw new Error(
+        `MailboxWriteContext.runId '${ctx.runId}' disagrees with output.runId '${output.runId}'`
+      );
+    }
+    if (ctx.taskId !== output.taskId) {
+      throw new Error(
+        `MailboxWriteContext.taskId '${ctx.taskId}' disagrees with output.taskId '${output.taskId}'`
+      );
+    }
+    if (ctx.slotId !== output.slotId) {
+      throw new Error(
+        `MailboxWriteContext.slotId '${ctx.slotId}' disagrees with output.slotId '${output.slotId}'`
+      );
+    }
+    if (ctx.producerActorId !== output.agentId) {
+      throw new Error(
+        `MailboxWriteContext.producerActorId '${ctx.producerActorId}' disagrees with output.agentId '${output.agentId}'`
+      );
+    }
+  }
 
   private async verifyDigest(resultRef: NonEmpty, expectedDigest: string): Promise<void> {
     const valid = await this.deps.resolverRegistry.verifyDigest(resultRef, expectedDigest);
@@ -163,6 +252,9 @@ export class OutputCollectorImpl implements IOutputCollector {
     item: MailboxItem,
     input: NvgOutputReference | NxsOutputReference | AgentPartialOutputReference
   ): Promise<void> {
+    // Touch the parameter to keep tsc happy — input is the typed
+    // reference but partial_result is built from the persisted item.
+    void input;
     const slotValidation = await this.deps.slotReader.validate(
       item.runId,
       item.taskId,
@@ -209,3 +301,8 @@ export class OutputCollectorImpl implements IOutputCollector {
     return this.deps.expiresAt();
   }
 }
+
+// Silence unused-import lint when randomUUID isn't used directly; the
+// import is preserved for symmetry with the prior shape and may be used
+// in upcoming sub-mailbox utilities.
+void randomUUID;

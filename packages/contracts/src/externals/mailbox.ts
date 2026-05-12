@@ -91,6 +91,37 @@ export interface MailboxAllocation {
   allocationVersion: 'mailbox-pit/v1';
 }
 
+// ─── MailboxWriteContext ───
+// AMEND-nexus-mailbox-pit-v0-2-1 §3.6.
+// Self-describing record carried with every OutputCollector write so
+// the callsite EXPLICITLY declares which mailbox + actor + task + slot
+// is being written. Audit grep-ability + redundancy check against the
+// output reference's internal fields + the input parameter for
+// MailboxService.assertMailboxBelongsToActor.
+//
+// Fields are intentionally redundant with the output reference (which
+// already carries runId/agentId/taskId/slotId). The redundancy lets the
+// write boundary catch ANY callsite where the dispatcher's view of who
+// produced the item disagrees with what the output reference claims.
+
+export interface MailboxWriteContext {
+  /** Run this write belongs to. Must equal output.runId. */
+  runId: Uuid;
+  /** Actor whose authority produced the output. Must equal output.agentId.
+   *  Used by MailboxService.assertMailboxBelongsToActor to confirm the
+   *  mailboxId was allocated to this actor under runId. */
+  producerActorId: Uuid;
+  /** The mailbox the item is being written to. MUST be the per-actor
+   *  mailbox allocated to producerActorId for runId — single-primary
+   *  fallback is no longer permitted (R2-WIRE-008 superseded; spec
+   *  §0.3). */
+  mailboxId: NonEmpty;
+  /** Plan node id producing the item. Must equal output.taskId. */
+  taskId: Uuid;
+  /** Output slot being written. Must equal output.slotId. */
+  slotId: NonEmpty;
+}
+
 // ─── Backend write/read contracts ───
 
 export interface MailboxWriteInput {

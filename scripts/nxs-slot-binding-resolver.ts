@@ -40,10 +40,12 @@ export interface ResolveSlotBindingsInput {
    *  sub-tasks by `subTaskKey`, which the dispatcher resolves to an
    *  upstream nodeId via the plan. */
   readonly plan: ExecutionPlan;
-  /** Same MailboxService instance the rest of the loop uses. */
+  /** Same MailboxService instance the rest of the loop uses.
+   *  Mailbox-pit V1: each binding resolves to a DIFFERENT mailbox
+   *  (the upstream actor's mailbox, looked up via
+   *  mailboxService.getMailboxForActor(runId, upstreamAgentId)) —
+   *  no single-mailbox parameter on this input any more. */
   readonly mailboxService: MailboxService;
-  /** Primary mailbox id — same one writes used. */
-  readonly mailboxId: NonEmpty;
   /** Run id for slot lookups. */
   readonly runId: Uuid;
 }
@@ -118,9 +120,20 @@ async function readBindingValue(
     return { ok: false, reason: 'upstream_subtask_not_in_plan' };
   }
 
+  // AMEND-nexus-mailbox-pit-v0-2-1 §3.5 — look up the UPSTREAM actor's
+  // mailbox per-binding. Each binding may target a different upstream
+  // actor (multi-source aggregations) so the mailboxId varies per call.
+  const upstreamMailboxId = await input.mailboxService.getMailboxForActor(
+    input.runId,
+    upstream.agentId
+  );
+  if (upstreamMailboxId === null) {
+    return { ok: false, reason: 'upstream_actor_mailbox_not_allocated' };
+  }
+
   // Find the latest available mailbox item for (runId, upstreamNodeId, slotId)
   const item = await input.mailboxService.findBySlot(
-    input.mailboxId,
+    upstreamMailboxId,
     input.runId,
     upstream.nodeId,
     binding.slotId
