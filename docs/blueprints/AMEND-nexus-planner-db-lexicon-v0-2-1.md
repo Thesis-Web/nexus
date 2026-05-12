@@ -1320,6 +1320,43 @@ maintains ci:gate green + vitest green at the boundary.
   to coordinator.
 - Logs: `ADD-PLANNER-WIRING-001`.
 
+**Commit 5.5 — Parity test bridge (owner-approved additive, slippage remediation).**
+
+Discovered during Commit 6 drift check: Commit 4 was supposed to deliver
+the §9.5 parity proof (per spec line: "Parity proof delivered with
+Commit 4; Commit 6 cannot land without it") but the dedicated
+`condition-evaluator.test.ts` + `plan-assembly.test.ts` files were
+never created — the corresponding tests still lived inside the
+soon-to-be-deleted `ref-deterministic-planner.test.ts`. Hard-stopped
+on the slippage; owner approved an additive Commit 5.5 to remediate
+without rewriting Commit 4's history.
+
+- Create `packages/orch-ref/src/condition-evaluator.test.ts` — migrate
+  ORCH-13 (`determineNodeType` dispatch branching) + ORCH-14
+  (`evaluateCondition` type-coercion law) tests verbatim from
+  `ref-deterministic-planner.test.ts`. Import path changes from
+  `./ref-deterministic-planner.js` → `./condition-evaluator.js`.
+- Create `packages/orch-ref/src/plan-assembly.test.ts` — direct unit
+  tests for the extracted primitives:
+    - `hasCycle` (cycle detection on synthetic node + edge sets)
+    - `compareEdges` (stable sort comparator)
+    - `reject` (rejection helper shape)
+    - `buildNodeFromSubTask` (kind → nodeType mapping for nvg / nxs /
+      secure_handoff)
+    - `validateConditionSpec` (EdgeHint normalization law)
+    - `isVisible` (catalog ceiling filter)
+    - `findAlternatives` (suggest-not-deny — covers ORCH-04 surface)
+    - `buildEdges` (EdgeHint → PlanEdge construction)
+    - `buildPlan` (digest computation + plan emission)
+    - `planOctSecure` (OCT-secure single-node — covers ORCH-20 surface)
+    - `planFromSubTasks` (multi-node sub-task DAG path, validation rules)
+    - `planStandard` (legacy selectedAgentIds + requiredCapabilities path
+      — covers ORCH-02 / ORCH-03 / ORCH-11 surfaces)
+- No deletions in this commit. No behavior change. Tests pass on
+  current repo state; after Commit 6 deletes the originating tests
+  these become the sole proof for those code paths.
+- Logs: `INFRA-PLANNER-PARITY-BRIDGE-001`.
+
 **Commit 6 — Delete old class + tests + rewire dependent tests.**
 - Delete `packages/orch-ref/src/ref-deterministic-planner.ts` (class
   portion — utilities extracted in Commit 1).
@@ -1329,7 +1366,13 @@ maintains ci:gate green + vitest green at the boundary.
 - Update dependent tests (`orch-lifecycle.test.ts`,
   `dag-executor.test.ts`, `coordinator-amendment.test.ts`,
   `multi-node-slot-binding.test.ts`).
-- Parity check (§9.5) verified before commit.
+- Remove the transitional `RefDeterministicPlanner` fallback branch in
+  `scripts/nexus-main.ts:439` (added in Commit 5 as a transitional
+  safety net during the rewire; once the class is gone the branch can
+  no longer compile so it must be removed to a fail-closed throw on
+  missing factory).
+- Parity check (§9.5) verified before commit — `condition-evaluator.test.ts`
+  + `plan-assembly.test.ts` from Commit 5.5 deliver the proof.
 - Logs: `INFRA-PLANNER-DELETE-001`.
 
 **Commit 7 — Parent orch spec + infra-externals spec + infra-externals blueprint + doc amendments.**
