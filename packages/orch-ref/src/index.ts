@@ -4,7 +4,10 @@
 //
 // Imports @nexus/contracts ONLY [ORCH-18].
 
-export { RefDeterministicPlanner } from './ref-deterministic-planner.js';
+// RefDeterministicPlanner deleted in Commit 6 of
+// AMEND-nexus-planner-db-lexicon-v0-2-1.md. The reusable machinery lives
+// in `./plan-assembly.js` (re-exported below); the production planner is
+// `@nexus/planner-db-lexicon`'s `DbLexiconTransformerPlanner`.
 
 export { evaluateCondition, determineNodeType } from './condition-evaluator.js';
 

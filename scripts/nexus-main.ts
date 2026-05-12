@@ -81,12 +81,7 @@ import { ACTION_VERB } from '@nexus/contracts';
 import { nowIso, riskTierExceeds, CAPABILITY_IDS } from '@nexus/contracts';
 import { bootstrap, bootstrapWorkspace, type BootstrapResult } from './nexus-bootstrap.js';
 import { ActorRegistryAgentReader } from './ref-agent-registry-reader.js';
-import {
-  RefOrchestrator,
-  RefRunCoordinator,
-  RefDeterministicPlanner,
-  RefDagExecutor,
-} from '@nexus/orch-ref';
+import { RefOrchestrator, RefRunCoordinator, RefDagExecutor } from '@nexus/orch-ref';
 import type { NodeDispatchResult, DelegationScope } from '@nexus/orch-ref';
 // AMEND-nexus-planner-db-lexicon-v0-2-1.md §6.2 Commit 5 — registry-based
 // planner resolution. The lexicon planner factory is registered + the
@@ -485,22 +480,17 @@ const program = createCli({
     // on missing factory per factories.ts law ("Missing factory resolution
     // fails closed before API traffic starts").
     const plannerFactory = plannerFactoryRegistry.get(orchManifest.plannerType);
-    let planner;
-    if (plannerFactory) {
-      planner = await plannerFactory.create(orchManifest);
-      console.log(
-        `[orch-wire] Step 22c: planner resolved via registry — plannerType '${orchManifest.plannerType}', version '${planner.plannerVersion}'`
+    if (!plannerFactory) {
+      throw new Error(
+        `[orch-wire] Step 22c: no registered PlannerFactory for plannerType ` +
+          `'${orchManifest.plannerType}'. Bootstrap fail-closed per factories.ts ` +
+          `law — manifest references an unknown plannertype.`
       );
-    } else {
-      // Transitional path — legacy RefDeterministicPlanner is still
-      // constructible during Commits 5-6 of the AMEND migration. After
-      // Commit 6 (RefDeterministicPlanner deletion) this branch fails
-      // closed when the manifest references an unregistered plannertype.
-      console.log(
-        `[orch-wire] Step 22c: no registered factory for plannerType '${orchManifest.plannerType}' — falling back to RefDeterministicPlanner (transitional, removed in Commit 6)`
-      );
-      planner = new RefDeterministicPlanner(computeDigest, orchManifest.orchestratorActorId);
     }
+    const planner = await plannerFactory.create(orchManifest);
+    console.log(
+      `[orch-wire] Step 22c: planner resolved via registry — plannerType '${orchManifest.plannerType}', version '${planner.plannerVersion}'`
+    );
     const dagExecutor = new RefDagExecutor(orchManifest.partialCompletion);
 
     // 22d. Factory: makeDispatchToGovernance — closes over the originating

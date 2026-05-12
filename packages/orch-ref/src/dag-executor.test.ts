@@ -74,7 +74,7 @@ function makePlan(nodes: PlanNode[], edges: PlanEdge[] = []): ExecutionPlan {
     planDigest: 'deadbeef'.repeat(8) as `${string}`,
     nodes,
     edges,
-    plannerType: 'ref-deterministic' as NonEmpty,
+    plannerType: 'db-lexicon-transformer-v0' as NonEmpty,
     plannerVersion: '1.0.0' as NonEmpty,
     createdAt: nowIso(),
   };

@@ -36,9 +36,57 @@ import { RefRunCoordinator } from './run-coordinator.js';
 import type { RunCoordinatorDeps, DelegationScope } from './run-coordinator.js';
 import { RefDagExecutor } from './dag-executor.js';
 import type { NodeDispatchResult } from './dag-executor.js';
-import { RefDeterministicPlanner } from './ref-deterministic-planner.js';
 import { evaluateCondition } from './condition-evaluator.js';
-import type { AgentCapabilityEntry } from '@nexus/contracts';
+import {
+  planFromSubTasks,
+  planOctSecure,
+  planStandard,
+  type PlanAssemblyDeps,
+} from './plan-assembly.js';
+import type {
+  AgentCapabilityEntry,
+  MetadataPlannerRequest,
+  NormalPlannerRequest,
+} from '@nexus/contracts';
+
+// ─── StubPlanner ───
+//
+// AMEND-nexus-planner-db-lexicon-v0-2-1.md §6.2 Commit 6 — local test
+// stub replacing `RefDeterministicPlanner` after its deletion.
+// Delegates directly to the extracted `plan-assembly` primitives so
+// these coordinator-lifecycle tests stay focused on coordinator
+// behavior (event sequencing, dispatch, compile-trigger) rather than
+// planner internals. The new `DbLexiconTransformerPlanner` is the
+// production planner; orch-ref unit tests use this thin stub to avoid
+// a layer-up dependency on `@nexus/planner-db-lexicon`.
+
+class StubPlanner implements Planner {
+  readonly plannerType: NonEmpty = 'test-stub' as NonEmpty;
+  readonly plannerVersion: NonEmpty = '0.0.0' as NonEmpty;
+
+  constructor(
+    private readonly computeDigestFn: (obj: unknown) => Sha256Hex,
+    private readonly orchestratorActorId: Uuid
+  ) {}
+
+  async plan(
+    request: PlannerRequest,
+    context: PlannerContext
+  ): Promise<ExecutionPlan | PlanRejection> {
+    const deps: PlanAssemblyDeps = {
+      computeDigest: this.computeDigestFn,
+      plannerType: this.plannerType,
+      plannerVersion: this.plannerVersion,
+      orchestratorActorId: this.orchestratorActorId,
+    };
+    if (request.tier === 'oct_secure') return planOctSecure(request, context, deps);
+    const reqNM = request as NormalPlannerRequest | MetadataPlannerRequest;
+    if (reqNM.subTasks && reqNM.subTasks.length > 0) {
+      return planFromSubTasks(reqNM, context, deps);
+    }
+    return planStandard(reqNM, context, deps);
+  }
+}
 
 // ─── Helpers ───
 
@@ -56,7 +104,7 @@ const orchestratorActorId = uuid();
 function makeManifest(): OrchestratorManifestRecord {
   return {
     orchestratorSocketId: 'ref-orch-v1' as NonEmpty,
-    orchestratorType: 'ref-deterministic' as NonEmpty,
+    orchestratorType: 'reference_deterministic' as NonEmpty,
     enabled: true,
     orchestratorActorId,
     plannerMode: 'deterministic_first',
@@ -70,7 +118,7 @@ function makeManifest(): OrchestratorManifestRecord {
     timeouts: { systemActionMs: 30000, modelCallMs: 60000 },
     outputSlotPolicy: 'advisory_declared_slots',
     configuration: {},
-    plannerType: 'ref-deterministic' as NonEmpty,
+    plannerType: 'db-lexicon-transformer-v0' as NonEmpty,
     plannerVersion: '1.0.0' as NonEmpty,
     plannerConfiguration: {},
     planAmendment: {
@@ -136,7 +184,7 @@ function buildCoordinatorDeps(
   overrides: Partial<RunCoordinatorDeps> = {},
   agents: AgentCapabilityEntry[] = []
 ): RunCoordinatorDeps {
-  const planner = new RefDeterministicPlanner(computeDigest, orchestratorActorId);
+  const planner = new StubPlanner(computeDigest, orchestratorActorId);
   const executor = new RefDagExecutor({ enabled: false, minRequiredCompletedNodes: 0 });
   const ledgerWriter = makeLedgerWriter();
 

@@ -34,9 +34,14 @@ import type {
   IsoTimestamp,
   ExecutionPlan,
   PlanNode,
+  PlanRejection,
   OrchestratorManifestRecord,
   WorkspaceRunRequest,
   PlannerRequest,
+  PlannerContext,
+  Planner,
+  NormalPlannerRequest,
+  MetadataPlannerRequest,
   RunLedgerEntry,
   RunLedgerWriter,
   AgentCapabilityEntry,
@@ -49,10 +54,54 @@ import type {
 import { nowIso } from '@nexus/contracts';
 
 import { RefRunCoordinator } from '@nexus/orch-ref';
-import { RefDeterministicPlanner, evaluateCondition, RefDagExecutor } from '@nexus/orch-ref';
+import {
+  evaluateCondition,
+  RefDagExecutor,
+  planFromSubTasks,
+  planOctSecure,
+  planStandard,
+  type PlanAssemblyDeps,
+} from '@nexus/orch-ref';
 import type { NodeDispatchResult, RunCoordinatorDeps } from '@nexus/orch-ref';
 import { MailboxServiceImpl } from '../../packages/core/src/mailbox/mailbox-service.js';
 import { resolveNxsSlotBindings } from '../../scripts/nxs-slot-binding-resolver.js';
+
+// ─── StubPlanner ───
+//
+// AMEND-nexus-planner-db-lexicon-v0-2-1.md §6.2 Commit 6 — local test
+// stub replacing `RefDeterministicPlanner` after its deletion. Delegates
+// to the extracted `plan-assembly` primitives. This integration test
+// drives the multi-node sub-task path (Branch 2 in production tier
+// dispatch); the stub matches that path's semantics without depending
+// on the lexicon planner package.
+
+class StubPlanner implements Planner {
+  readonly plannerType: NonEmpty = 'test-stub' as NonEmpty;
+  readonly plannerVersion: NonEmpty = '0.0.0' as NonEmpty;
+
+  constructor(
+    private readonly computeDigestFn: (obj: unknown) => Sha256Hex,
+    private readonly orchestratorActorId: Uuid
+  ) {}
+
+  async plan(
+    request: PlannerRequest,
+    context: PlannerContext
+  ): Promise<ExecutionPlan | PlanRejection> {
+    const deps: PlanAssemblyDeps = {
+      computeDigest: this.computeDigestFn,
+      plannerType: this.plannerType,
+      plannerVersion: this.plannerVersion,
+      orchestratorActorId: this.orchestratorActorId,
+    };
+    if (request.tier === 'oct_secure') return planOctSecure(request, context, deps);
+    const reqNM = request as NormalPlannerRequest | MetadataPlannerRequest;
+    if (reqNM.subTasks && reqNM.subTasks.length > 0) {
+      return planFromSubTasks(reqNM, context, deps);
+    }
+    return planStandard(reqNM, context, deps);
+  }
+}
 
 // ─── fixtures ───
 
@@ -113,7 +162,7 @@ const MAILBOX_MANIFEST: MailboxManifestRecord = {
 function makeManifest(orchestratorActorId: Uuid): OrchestratorManifestRecord {
   return {
     orchestratorSocketId: 'ref-orch-v1' as NonEmpty,
-    orchestratorType: 'ref-deterministic' as NonEmpty,
+    orchestratorType: 'reference_deterministic' as NonEmpty,
     enabled: true,
     orchestratorActorId,
     plannerMode: 'deterministic_first',
@@ -127,7 +176,7 @@ function makeManifest(orchestratorActorId: Uuid): OrchestratorManifestRecord {
     timeouts: { systemActionMs: 30000, modelCallMs: 60000 },
     outputSlotPolicy: 'advisory_declared_slots',
     configuration: {},
-    plannerType: 'ref-deterministic' as NonEmpty,
+    plannerType: 'db-lexicon-transformer-v0' as NonEmpty,
     plannerVersion: '1.0.0' as NonEmpty,
     plannerConfiguration: {},
     planAmendment: { enabled: true, maxAmendments: 3, requiresCheckback: false },
@@ -263,7 +312,7 @@ describe('multi-node slot-binding loop (end-to-end)', () => {
     };
 
     // ── Coordinator deps (mostly real) ──
-    const planner = new RefDeterministicPlanner(computeDigest, orchestratorActorId);
+    const planner = new StubPlanner(computeDigest, orchestratorActorId);
     const dagExecutor = new RefDagExecutor({ enabled: false, minRequiredCompletedNodes: 0 });
     const registry = {
       findByCapability: vi.fn(async (cap: NonEmpty) =>
@@ -489,7 +538,7 @@ describe('multi-node slot-binding loop (end-to-end)', () => {
       };
     };
 
-    const planner = new RefDeterministicPlanner(computeDigest, orchestratorActorId);
+    const planner = new StubPlanner(computeDigest, orchestratorActorId);
     const dagExecutor = new RefDagExecutor({ enabled: false, minRequiredCompletedNodes: 0 });
     const registry = {
       findByCapability: vi.fn(async () => [agent]),

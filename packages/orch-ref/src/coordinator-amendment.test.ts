@@ -78,7 +78,7 @@ function makePlan(nodes: PlanNode[], edges: PlanEdge[] = [], runId?: Uuid): Exec
     runId: runId ?? uuid(),
     nodes: [...nodes].sort((a, b) => a.planOrderIndex - b.planOrderIndex),
     edges: [...edges].sort(compareEdges),
-    plannerType: 'ref-deterministic' as NonEmpty,
+    plannerType: 'db-lexicon-transformer-v0' as NonEmpty,
     plannerVersion: '1.0.0' as NonEmpty,
     createdAt: nowIso(),
   };
@@ -112,7 +112,7 @@ function makeManifest(
 ): OrchestratorManifestRecord {
   return {
     orchestratorSocketId: 'ref-orch-v1' as NonEmpty,
-    orchestratorType: 'ref-deterministic' as NonEmpty,
+    orchestratorType: 'reference_deterministic' as NonEmpty,
     enabled: true,
     orchestratorActorId,
     plannerMode: 'deterministic_first',
@@ -126,7 +126,7 @@ function makeManifest(
     timeouts: { systemActionMs: 30000, modelCallMs: 60000 },
     outputSlotPolicy: 'advisory_declared_slots',
     configuration: {},
-    plannerType: 'ref-deterministic' as NonEmpty,
+    plannerType: 'db-lexicon-transformer-v0' as NonEmpty,
     plannerVersion: '1.0.0' as NonEmpty,
     plannerConfiguration: {},
     planAmendment: {
@@ -788,7 +788,7 @@ describe('ORCH-21: Plan amendment merge', () => {
       planDigest: '' as Sha256Hex,
       nodes: [],
       edges: [edgeBA],
-      plannerType: 'ref-deterministic' as NonEmpty,
+      plannerType: 'db-lexicon-transformer-v0' as NonEmpty,
       plannerVersion: '1.0.0' as NonEmpty,
       createdAt: nowIso(),
     };
@@ -893,7 +893,7 @@ describe('ORCH-21: Plan amendment merge', () => {
       planDigest: '' as Sha256Hex,
       nodes: [extNode],
       edges: [edge],
-      plannerType: 'ref-deterministic' as NonEmpty,
+      plannerType: 'db-lexicon-transformer-v0' as NonEmpty,
       plannerVersion: '1.0.0' as NonEmpty,
       createdAt: nowIso(),
     };
