@@ -1,0 +1,4 @@
+{"schemaVersion":"v1","recordCount":3,"contentDigest":"087ff9bfbfc181e8cd380068ccac550165a496fc553acc0011d4fd61b823625d","signedAt":"2026-05-12T18:59:13.771Z","signature":"fWrTZjx2FheYobmeL9Jy0o9POYNGxNx2HGCnfm27XC-yGxvpOL30SPQ3R8t_IdmKn6i8q_pKuN6SO-tq3OY4Dw"}
+{"intentId":"inventory.adjust_from_receiving","requiredCapabilities":["read:record:single","update:record:internal"]}
+{"intentId":"document.summarize","requiredCapabilities":["read:record:single"]}
+{"intentId":"sales.search_records","requiredCapabilities":["search:data"]}

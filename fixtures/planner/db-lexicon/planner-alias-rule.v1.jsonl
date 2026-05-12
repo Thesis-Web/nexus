@@ -1,0 +1,4 @@
+{"schemaVersion":"v1","recordCount":3,"contentDigest":"e1e778457f096592d3f8e48da8eab2ca85c601b1bc4d63ee88d0f417ba24c58e","signedAt":"2026-05-12T18:59:13.761Z","signature":"pdM_12a9SQBkpWGn4eHUR5m_17tQifbL0m3kID9PP7EOO5jyx032dWGpOlqasXi0sVMycpTnmSyb6m43FSGDBg"}
+{"canonicalTerm":"delete","rawTerm":"delete everything","reason":"Catastrophic action — operator must use explicit per-record delete flow","status":"blocked"}
+{"canonicalTerm":"delete","rawTerm":"drop table","reason":"Direct DDL prohibited — use governed delete capabilities","status":"blocked"}
+{"canonicalTerm":"export","rawTerm":"export everything","reason":"Bulk export of every record requires human review before plan-time approval","status":"review_required"}

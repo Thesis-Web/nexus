@@ -1,0 +1,7 @@
+{"schemaVersion":"v1","recordCount":6,"contentDigest":"62700fc83829c25e67828392583077f7a98661dcfb6745c7db66b5bc50bfb8a3","signedAt":"2026-05-12T18:59:13.773Z","signature":"fuXRf5NIBa__L7uGgcenaydtEvYHpbZqIo-QtqGp950KwvnOz1GxNntRNymC2WLlcAbSt2UsWRjVPTnZ1ny_Bw"}
+{"businessTerm":"inventory_row","resourceScope":"single","resourceType":"inventory","system":"warehouse"}
+{"businessTerm":"product_a","resourceScope":"single","resourceType":"inventory","system":"warehouse"}
+{"businessTerm":"product_b","resourceScope":"single","resourceType":"inventory","system":"warehouse"}
+{"businessTerm":"document_text","resourceScope":"single","resourceType":"document","system":"stub"}
+{"businessTerm":"sales_record","resourceScope":"collection","resourceType":"sales_record","system":"sales-finance"}
+{"businessTerm":"customer_record","resourceScope":"single","resourceType":"customer","system":"sales-finance"}

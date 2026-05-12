@@ -1,0 +1,6 @@
+{"schemaVersion":"v1","recordCount":5,"contentDigest":"54e4ab22f0b293a0af9ae1280859a33b8cb0ccd0c6f8baac23617f318d06f82f","signedAt":"2026-05-12T18:59:13.780Z","signature":"7U82nmJFPwBPSyxl1NT3XXSeEc33B04HqbQ87Sj3oVVreAnUR9OFWhjwBcQdDh7pQAQyXRsOV2srjdPUd-ZzAA"}
+{"capability":"read:record:single","expectedOutputSlots":["inventory_current"],"kind":"nxs","nodeKey":"read_inventory","templateId":"workflow_inventory_adjust_from_receiving_v1"}
+{"capability":"read:record:single","expectedOutputSlots":["adjusted_units"],"kind":"nvg","nodeKey":"compute_adjusted_units","templateId":"workflow_inventory_adjust_from_receiving_v1"}
+{"capability":"update:record:internal","expectedOutputSlots":["inventory_updated"],"kind":"nxs","nodeKey":"write_inventory","templateId":"workflow_inventory_adjust_from_receiving_v1"}
+{"capability":"read:record:single","expectedOutputSlots":["summary_text"],"kind":"nvg","nodeKey":"summarize","templateId":"workflow_document_summarize_v1"}
+{"capability":"search:data","expectedOutputSlots":["search_results"],"kind":"nxs","nodeKey":"search","templateId":"workflow_sales_search_records_v1"}

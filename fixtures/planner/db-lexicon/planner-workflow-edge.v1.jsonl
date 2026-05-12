@@ -1,0 +1,3 @@
+{"schemaVersion":"v1","recordCount":2,"contentDigest":"bac294e4a7f5f56d75c1d4cb54e0d69ebefecd384523252c1c878203ee0af009","signedAt":"2026-05-12T18:59:13.782Z","signature":"tugQwcE5qTLMIZZgRY3tn5BgfrHR7Mz5uYCCnsJs2uoLcjvAn85SZKjPB93UGJZzM9qvbYdnIGerehFnqMghAw"}
+{"edgeType":"data_dependency","outputSlotRef":"inventory_current","sourceNodeKey":"read_inventory","targetNodeKey":"compute_adjusted_units","templateId":"workflow_inventory_adjust_from_receiving_v1"}
+{"edgeType":"data_dependency","outputSlotRef":"adjusted_units","sourceNodeKey":"compute_adjusted_units","targetNodeKey":"write_inventory","templateId":"workflow_inventory_adjust_from_receiving_v1"}

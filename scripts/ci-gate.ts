@@ -1829,10 +1829,40 @@ async function main(): Promise<void> {
   enforceMailboxPitExportBoundary();
   pass('decodeActorIdFromMailboxId import boundary clean; no public barrel leak');
 
-  // Step 81: integration test gate — opt-in. Real-DB integration suite
-  // (postgres connector against the dev docker-compose pair). Skipped
-  // unless NEXUS_RUN_INTEGRATION=1 so the gate stays fast in casual runs;
-  // the CI pre-merge invocation sets the flag and gets full coverage.
+  // ─────────────────────────────────────────────────────────────────────────
+  // PLANNER-LEXICON gates — AMEND-nexus-planner-db-lexicon-v0-2-1.md §9.4
+  // (log ADD-PLANNER-LEXICON-006). Five named gates, always run. Step
+  // numbering is script-managed (see totalSteps calculation below) —
+  // spec uses named gate IDs only.
+  // -------------------------------------------------------------------------
+
+  stepLog('PLANNER-LEXICON-01 fixture signature gate');
+  await runPlannerLexiconFixtureSignatureGate();
+  pass('all 8 lexicon JSONL fixtures verified (Ed25519 + contentDigest + recordCount)');
+
+  stepLog('PLANNER-LEXICON-02 cross-fixture invariant gate');
+  await runPlannerLexiconCrossFixtureInvariantGate();
+  pass('ACTION_VERB + CAPABILITY_IDS + connector-system invariants enforced');
+
+  stepLog('PLANNER-LEXICON-03 no-runtime-wordnet gate');
+  enforcePlannerLexiconNoRuntimeWordnet();
+  pass('@nexus/planner-db-lexicon source contains zero wordnet runtime imports');
+
+  stepLog('PLANNER-LEXICON-04 no-learning-write-path gate');
+  enforcePlannerLexiconNoLearningWritePath();
+  pass('planner package has zero RunLedgerWriter refs + zero fixture-write paths');
+
+  stepLog('PLANNER-LEXICON-05 package layer law gate');
+  enforcePlannerLexiconPackageLayerLaw();
+  pass(
+    'planner package imports only allowed @nexus/* boundaries (contracts, runtime-utils, orch-ref)'
+  );
+
+  // Step 81 (or 86 with PLANNER-LEXICON gates): integration test gate — opt-in.
+  // Real-DB integration suite (postgres connector against the dev docker-compose
+  // pair). Skipped unless NEXUS_RUN_INTEGRATION=1 so the gate stays fast in
+  // casual runs; the CI pre-merge invocation sets the flag and gets full
+  // coverage.
   // -------------------------------------------------------------------------
   if (process.env['NEXUS_RUN_INTEGRATION'] === '1') {
     stepLog('INTEG-01 integration test gate (NEXUS_RUN_INTEGRATION=1)');
@@ -1840,7 +1870,7 @@ async function main(): Promise<void> {
     pass('integration suite passed against real Postgres');
   } else {
     console.log(
-      'Step 81: INTEG-01 integration test gate ... [33mSKIPPED[0m  (set NEXUS_RUN_INTEGRATION=1 to run)'
+      `Step ${PLANNER_LEXICON_GATE_COUNT + 81}: INTEG-01 integration test gate ... [33mSKIPPED[0m  (set NEXUS_RUN_INTEGRATION=1 to run)`
     );
   }
 
@@ -1863,8 +1893,208 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  const totalSteps = process.env['NEXUS_RUN_INTEGRATION'] === '1' ? 81 : 80;
+  // Total step count: 80 base + PLANNER_LEXICON_GATE_COUNT new gates + 1 if
+  // integration gate ran. The PLANNER-LEXICON gates are always-run, the
+  // integration gate is opt-in.
+  const totalSteps =
+    80 + PLANNER_LEXICON_GATE_COUNT + (process.env['NEXUS_RUN_INTEGRATION'] === '1' ? 1 : 0);
   console.log(`\n=== ci:gate PASSED — all ${totalSteps} steps ===\n`);
+}
+
+// ===========================================================================
+// PLANNER-LEXICON gate constants
+// AMEND-nexus-planner-db-lexicon-v0-2-1.md §9.4
+// ===========================================================================
+
+const PLANNER_LEXICON_GATE_COUNT = 5;
+const PLANNER_LEXICON_FIXTURE_ROOT = path.join('fixtures', 'planner', 'db-lexicon');
+const PLANNER_LEXICON_PACKAGE_ROOT = path.join('packages', 'planners', 'db-lexicon', 'src');
+
+// Allowed @nexus/* imports for the planner package per
+// AMEND-nexus-planner-db-lexicon-v0-2-1.md §6.5. Forbidden imports are
+// the complement.
+const PLANNER_LEXICON_ALLOWED_NEXUS_IMPORTS: ReadonlySet<string> = new Set([
+  '@nexus/contracts',
+  '@nexus/runtime-utils',
+  '@nexus/orch-ref',
+]);
+
+/** Walk every .ts file under a directory recursively, ignoring dist/ etc. */
+function* walkTsFiles(root: string): Generator<string> {
+  const stack: string[] = [root];
+  while (stack.length > 0) {
+    const dir = stack.pop()!;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name === 'dist' || e.name === 'node_modules') continue;
+        stack.push(full);
+      } else if (e.isFile() && e.name.endsWith('.ts')) {
+        yield full;
+      }
+    }
+  }
+}
+
+async function runPlannerLexiconFixtureSignatureGate(): Promise<void> {
+  // Use the production fixture loader — it verifies Ed25519 signatures,
+  // recomputes contentDigest, asserts recordCount on every file, and
+  // throws fail-closed on any tampering. Loading IS the test.
+  const { loadLexiconFixtures } = await import('../packages/planners/db-lexicon/src/index.js');
+  const keyFile = process.env['NEXUS_KEY_PATH'] ?? path.join('keys', 'dev.keypair.json');
+  let keypair: { publicKey: string };
+  try {
+    keypair = JSON.parse(fs.readFileSync(keyFile, 'utf-8'));
+  } catch (err) {
+    fail(`PLANNER-LEXICON-01: cannot read keypair at ${keyFile}: ${(err as Error).message}`);
+    return;
+  }
+  try {
+    await loadLexiconFixtures({
+      fixtureRoot: PLANNER_LEXICON_FIXTURE_ROOT,
+      controlPlanePublicKey: keypair.publicKey,
+    });
+  } catch (err) {
+    fail(`PLANNER-LEXICON-01: ${(err as Error).message}`);
+  }
+}
+
+async function runPlannerLexiconCrossFixtureInvariantGate(): Promise<void> {
+  // Cross-fixture invariants are enforced inside loadLexiconFixtures()
+  // (verb canonicals must be in ACTION_VERB; capability IDs must be in
+  // CAPABILITY_IDS; systems must be in the known-connector set).
+  // Here we run the loader WITH the connector-systems set populated so
+  // INV-04 fires too.
+  const { loadLexiconFixtures } = await import('../packages/planners/db-lexicon/src/index.js');
+  const keyFile = process.env['NEXUS_KEY_PATH'] ?? path.join('keys', 'dev.keypair.json');
+  let keypair: { publicKey: string };
+  try {
+    keypair = JSON.parse(fs.readFileSync(keyFile, 'utf-8'));
+  } catch (err) {
+    fail(`PLANNER-LEXICON-02: cannot read keypair at ${keyFile}: ${(err as Error).message}`);
+    return;
+  }
+
+  // Parse connector manifest for the known-systems set
+  let knownSystems: Set<string>;
+  try {
+    const connRaw = fs.readFileSync(
+      path.join('config', 'connectors', 'connectors.v1.yaml'),
+      'utf-8'
+    );
+    const connDoc = yaml.load(connRaw) as {
+      body?: { connectors?: Array<{ allowedSystems?: string[] }> };
+    };
+    knownSystems = new Set();
+    for (const c of connDoc.body?.connectors ?? []) {
+      for (const sys of c.allowedSystems ?? []) {
+        knownSystems.add(sys);
+      }
+    }
+  } catch (err) {
+    fail(`PLANNER-LEXICON-02: cannot parse connectors.v1.yaml: ${(err as Error).message}`);
+    return;
+  }
+
+  try {
+    await loadLexiconFixtures({
+      fixtureRoot: PLANNER_LEXICON_FIXTURE_ROOT,
+      controlPlanePublicKey: keypair.publicKey,
+      knownConnectorSystems: knownSystems,
+    });
+  } catch (err) {
+    fail(`PLANNER-LEXICON-02: ${(err as Error).message}`);
+  }
+}
+
+function enforcePlannerLexiconNoRuntimeWordnet(): void {
+  // Forbidden import patterns — match any wordnet-related package as a
+  // value or type import. The planner has its own tokenizer (§3.3.4
+  // Layer B) and MUST NOT pull wordnet at runtime.
+  const FORBIDDEN_PATTERNS = [
+    /from\s+['"](.*wordnet.*)['"]/i,
+    /require\(\s*['"](.*wordnet.*)['"]/i,
+  ];
+  const offenders: string[] = [];
+  for (const file of walkTsFiles(PLANNER_LEXICON_PACKAGE_ROOT)) {
+    const src = fs.readFileSync(file, 'utf-8');
+    for (const re of FORBIDDEN_PATTERNS) {
+      const m = src.match(re);
+      if (m) {
+        offenders.push(`${file}: matched ${m[0]}`);
+      }
+    }
+  }
+  if (offenders.length > 0) {
+    fail(`PLANNER-LEXICON-03: wordnet runtime import detected:\n  ${offenders.join('\n  ')}`);
+  }
+}
+
+function enforcePlannerLexiconNoLearningWritePath(): void {
+  // Two prohibitions per AMEND-nexus-planner-db-lexicon-v0-2-1.md §9.4:
+  //   1. Zero references to RunLedgerWriter (the planner MUST NOT own
+  //      ledger write authority — coordinator writes events).
+  //   2. Zero fixture write paths (the planner is offline-loaded only;
+  //      runtime mutation is forbidden until V3 admin apply).
+  const FORBIDDEN_PATTERNS = [
+    {
+      re: /\bRunLedgerWriter\b/,
+      label: 'RunLedgerWriter reference',
+    },
+    {
+      re: /fs\.writeFile.*['"`].*fixtures\/planner\//,
+      label: 'fixture write path',
+    },
+    {
+      re: /fs\.appendFile.*['"`].*fixtures\/planner\//,
+      label: 'fixture append path',
+    },
+  ];
+  const offenders: string[] = [];
+  for (const file of walkTsFiles(PLANNER_LEXICON_PACKAGE_ROOT)) {
+    // Skip test files — they can document negative invariants in code
+    if (file.endsWith('.test.ts')) continue;
+    const src = fs.readFileSync(file, 'utf-8');
+    for (const { re, label } of FORBIDDEN_PATTERNS) {
+      if (re.test(src)) {
+        offenders.push(`${file}: ${label}`);
+      }
+    }
+  }
+  if (offenders.length > 0) {
+    fail(`PLANNER-LEXICON-04: prohibited construct:\n  ${offenders.join('\n  ')}`);
+  }
+}
+
+function enforcePlannerLexiconPackageLayerLaw(): void {
+  // Walk every .ts file under the planner package source. Collect
+  // every @nexus/* import. Fail-closed on any import not in the
+  // allowlist per §6.5.
+  const IMPORT_RE = /from\s+['"](@nexus\/[^'"]+)['"]/g;
+  const violations: string[] = [];
+  for (const file of walkTsFiles(PLANNER_LEXICON_PACKAGE_ROOT)) {
+    const src = fs.readFileSync(file, 'utf-8');
+    let m: RegExpExecArray | null;
+    while ((m = IMPORT_RE.exec(src)) !== null) {
+      const importPath = m[1]!;
+      // Resolve sub-paths to their root: '@nexus/connectors/postgres'
+      // -> '@nexus/connectors'; the forbidden list per §6.5 uses
+      // sub-namespaced wildcards.
+      const root = importPath.split('/').slice(0, 2).join('/');
+      if (!PLANNER_LEXICON_ALLOWED_NEXUS_IMPORTS.has(root)) {
+        violations.push(`${file}: forbidden import '${importPath}'`);
+      }
+    }
+  }
+  if (violations.length > 0) {
+    fail(`PLANNER-LEXICON-05: package layer law violated:\n  ${violations.join('\n  ')}`);
+  }
 }
 
 // ===========================================================================

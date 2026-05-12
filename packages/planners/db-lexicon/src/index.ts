@@ -5,14 +5,6 @@
 // plannerType 'db-lexicon-transformer-v0' per
 // AMEND-nexus-planner-db-lexicon-v0-2-1.md.
 //
-// SKELETON — populated by §6.2 Commit 4:
-//   - DbLexiconTransformerPlanner (implements Planner + PlannerTraceReader)
-//   - DbLexiconTransformerPlannerFactory (implements PlannerFactory)
-//   - internal/lexical-resolver.ts (own tokenizer; NOT LexicalNormalizer)
-//   - internal/preflight.ts (Branch 3 feasibility check)
-//   - internal/lexical-decomposition.ts (Branch 4 Layer A-E)
-//   - internal/fixture-loader.ts (signed JSONL load — used by bootstrap step 18a)
-//
 // V1 allowed imports (§6.5):
 //   @nexus/contracts, @nexus/runtime-utils, @nexus/orch-ref
 //
@@ -20,4 +12,29 @@
 //   @nexus/core, @nexus/vanguard, @nexus/identity-ref,
 //   @nexus/adapters/*, @nexus/connectors/*, @nexus/interfaces/*,
 //   @nexus/workspace-ref
-export {};
+
+export { DbLexiconTransformerPlanner } from './db-lexicon-planner.js';
+export type { PlannerCheckbackReader } from './db-lexicon-planner.js';
+
+export { DbLexiconTransformerPlannerFactory } from './db-lexicon-planner.factory.js';
+
+export { loadLexiconFixtures } from './internal/fixture-loader.js';
+export type { LoadLexiconOptions } from './internal/fixture-loader.js';
+
+export type {
+  LexiconTablesV1,
+  PlannerLexicalTerm,
+  PlannerAliasRule,
+  PlannerTaskIntent,
+  PlannerTaskCapability,
+  PlannerTargetCatalog,
+  PlannerWorkflowTemplate,
+  PlannerWorkflowNode,
+  PlannerWorkflowEdge,
+  PhraseClass,
+  AliasStatus,
+  WorkflowNodeKind,
+  WorkflowEdgeType,
+  ResourceScope,
+  LexiconFixtureHeader,
+} from './internal/types.js';

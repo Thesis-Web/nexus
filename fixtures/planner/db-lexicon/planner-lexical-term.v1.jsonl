@@ -1,0 +1,23 @@
+{"schemaVersion":"v1","recordCount":22,"contentDigest":"68b418da9458c028222b57eb394ab45489db74a26b3e897bced23ea8f40c165c","signedAt":"2026-05-12T18:59:13.728Z","signature":"wwrJQO69Zn-VHpdKyeKezu8jjiKAmhFqvyRCMFYsmALJGqV4S7OsLweBLXaiQASFpmJN2rjkJdh4RKudRtBxCA"}
+{"canonicalTerm":"read","phraseClass":"verb","rawTerm":"pull","source":"manual_v1"}
+{"canonicalTerm":"read","phraseClass":"verb","rawTerm":"fetch","source":"manual_v1"}
+{"canonicalTerm":"read","phraseClass":"verb","rawTerm":"get","source":"manual_v1"}
+{"canonicalTerm":"read","phraseClass":"verb","rawTerm":"retrieve","source":"manual_v1"}
+{"canonicalTerm":"update","phraseClass":"verb","rawTerm":"adjust","source":"manual_v1"}
+{"canonicalTerm":"update","phraseClass":"verb","rawTerm":"modify","source":"manual_v1"}
+{"canonicalTerm":"update","phraseClass":"verb","rawTerm":"change","source":"manual_v1"}
+{"canonicalTerm":"synthesize","phraseClass":"verb","rawTerm":"summarize","source":"manual_v1"}
+{"canonicalTerm":"synthesize","phraseClass":"verb","rawTerm":"summarise","source":"manual_v1"}
+{"canonicalTerm":"search","phraseClass":"verb","rawTerm":"search","source":"manual_v1"}
+{"canonicalTerm":"search","phraseClass":"verb","rawTerm":"find","source":"manual_v1"}
+{"canonicalTerm":"query","phraseClass":"verb","rawTerm":"query","source":"manual_v1"}
+{"canonicalTerm":"inventory_row","phraseClass":"noun","rawTerm":"warehouse inventory","source":"manual_v1"}
+{"canonicalTerm":"inventory_row","phraseClass":"noun","rawTerm":"inventory","source":"manual_v1"}
+{"canonicalTerm":"product_a","phraseClass":"noun","rawTerm":"product a","source":"manual_v1"}
+{"canonicalTerm":"product_b","phraseClass":"noun","rawTerm":"product b","source":"manual_v1"}
+{"canonicalTerm":"document_text","phraseClass":"noun","rawTerm":"document","source":"manual_v1"}
+{"canonicalTerm":"sales_record","phraseClass":"noun","rawTerm":"sales records","source":"manual_v1"}
+{"canonicalTerm":"customer_record","phraseClass":"noun","rawTerm":"customer","source":"manual_v1"}
+{"canonicalTerm":"receiving_delta","phraseClass":"business_phrase","rawTerm":"from receiving today","source":"manual_v1"}
+{"canonicalTerm":"amount_operand","phraseClass":"business_phrase","rawTerm":"by amount","source":"manual_v1"}
+{"canonicalTerm":"plain_english","phraseClass":"business_phrase","rawTerm":"in plain english","source":"manual_v1"}

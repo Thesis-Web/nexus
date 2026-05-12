@@ -1,0 +1,4 @@
+{"schemaVersion":"v1","recordCount":3,"contentDigest":"9dc8d02699d7f25e9a0b0ad25004e16b728f833be45362eeab5d0412b69ca001","signedAt":"2026-05-12T18:59:13.766Z","signature":"_JyipZoUoZNXCuBCg_Sm5DZVLXudAiPY3_cDn7EDWtFq1IjTLCaQrLsVEmEnt7sUPftpx6CvmwxHdqtBxHlMCw"}
+{"description":"Read current warehouse inventory for the target row, compute an adjustment from the receiving-delta operand, write the new value back.","intentId":"inventory.adjust_from_receiving","name":"read update inventory_row receiving_delta"}
+{"description":"Read a document and produce a synthesized summary.","intentId":"document.summarize","name":"synthesize document_text"}
+{"description":"Search sales records using a deterministic query.","intentId":"sales.search_records","name":"search sales_record"}

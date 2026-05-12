@@ -1,0 +1,588 @@
+// packages/planners/db-lexicon/src/db-lexicon-planner.ts
+// AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.1, §3.2, §3.3, §3.6, log
+// ADD-PLANNER-LEXICON-002, BEST-PLANNER-LEXICON-001.
+//
+// The DbLexiconTransformerPlanner implements:
+//   - `Planner`              — contract return type unchanged
+//     (`Promise<ExecutionPlan | PlanRejection>`)
+//   - `PlannerTraceReader`   — coordinator reads `getLastTrace()` after
+//     each `plan()` call and emits `planner_plan_trace` ledger event
+//   - `getLastRejectionCheckback()` — package-local duck-type method
+//     that the coordinator reads after `plan()` returns a rejection
+//     with usable alternatives; attached to
+//     `OrchestratorPlanPreview.rejection`
+//
+// Four-branch tier dispatch (§3.3):
+//   - Branch 1: `oct_secure` tier   — single-node secure_handoff
+//   - Branch 2: pre-resolved subTasks — reuse plan-assembly.planFromSubTasks
+//   - Branch 3: preferred-agents preflight — feasibility check +
+//                                            counter-suggest
+//   - Branch 4: lexical decomposition — Layer A→E
+//
+// Mutually exclusive by request shape — no fallthrough, no chain.
+
+import type {
+  ExecutionPlan,
+  IsoTimestamp,
+  MetadataPlannerRequest,
+  NonEmpty,
+  NormalPlannerRequest,
+  OctSecurePlannerRequest,
+  PlanRejection,
+  PlanRejectionReason,
+  Planner,
+  PlannerContext,
+  PlannerPlanTrace,
+  PlannerRequest,
+  PlannerTraceReader,
+  RejectionCheckbackPayload,
+  Sha256Hex,
+  Uuid,
+} from '@nexus/contracts';
+import { nowIso } from '@nexus/contracts';
+import { planFromSubTasks, planOctSecure, reject, type PlanAssemblyDeps } from '@nexus/orch-ref';
+import { createHash } from 'node:crypto';
+import { decomposeLexically } from './internal/lexical-decomposition.js';
+import { resolveLexical } from './internal/lexical-resolver.js';
+import { runPreflight } from './internal/preflight.js';
+import type { LexiconTablesV1 } from './internal/types.js';
+
+// ─── Package-local interface for checkback stash ───
+// Symmetric with `PlannerTraceReader` but kept package-local because
+// the spec §13 ratifications enumerated only the contract additions
+// for the trace path; the checkback stash is a duck-typed method on
+// the planner instance read by the coordinator post-plan().
+
+export interface PlannerCheckbackReader {
+  getLastRejectionCheckback(): RejectionCheckbackPayload | null;
+}
+
+// ─── Helper ───
+
+function sha256Hex(input: string): Sha256Hex {
+  return createHash('sha256').update(input, 'utf-8').digest('hex') as Sha256Hex;
+}
+
+function buildPromptDigest(prompt: string): Sha256Hex {
+  return sha256Hex(prompt);
+}
+
+// ─── DbLexiconTransformerPlanner ───
+
+export class DbLexiconTransformerPlanner
+  implements Planner, PlannerTraceReader, PlannerCheckbackReader
+{
+  readonly plannerType: NonEmpty = 'db-lexicon-transformer-v0' as NonEmpty;
+  readonly plannerVersion: NonEmpty = '0.1.0' as NonEmpty;
+
+  private lastTrace: PlannerPlanTrace | null = null;
+  private lastRejectionCheckback: RejectionCheckbackPayload | null = null;
+
+  constructor(
+    private readonly lexiconTables: LexiconTablesV1,
+    private readonly computeDigest: (obj: unknown) => Sha256Hex,
+    private readonly orchestratorActorId: Uuid
+  ) {}
+
+  async plan(
+    request: PlannerRequest,
+    context: PlannerContext
+  ): Promise<ExecutionPlan | PlanRejection> {
+    // Reset stash for this call. Coordinator reads immediately after
+    // plan() returns; another plan() call MUST NOT be interleaved.
+    this.lastTrace = null;
+    this.lastRejectionCheckback = null;
+
+    const deps: PlanAssemblyDeps = {
+      computeDigest: this.computeDigest,
+      plannerType: this.plannerType,
+      plannerVersion: this.plannerVersion,
+      orchestratorActorId: this.orchestratorActorId,
+    };
+
+    // ── Branch 1: oct_secure tier ──
+    if (request.tier === 'oct_secure') {
+      const result = await planOctSecure(request, context, deps);
+      this.lastTrace = this.buildOctSecureTrace(request, result);
+      return result;
+    }
+
+    const reqNM = request as NormalPlannerRequest | MetadataPlannerRequest;
+
+    // ── Branch 2: pre-resolved subTasks DAG ──
+    if (reqNM.subTasks && reqNM.subTasks.length > 0) {
+      const result = await planFromSubTasks(reqNM, context, deps);
+      this.lastTrace = this.buildPreResolvedTrace(reqNM, result);
+      return result;
+    }
+
+    // ── Branch 3: preferred-agents preflight ──
+    if (reqNM.selectedAgentIds.length > 0) {
+      const pre = await runPreflight({
+        request: reqNM,
+        context,
+        tables: this.lexiconTables,
+        computeDigest: this.computeDigest,
+        plannerType: this.plannerType,
+        plannerVersion: this.plannerVersion,
+        orchestratorActorId: this.orchestratorActorId,
+      });
+
+      switch (pre.kind) {
+        case 'pass':
+          this.lastTrace = this.buildPreflightTrace(reqNM, pre, 'plan_created', null, null);
+          return pre.plan;
+        case 'reject_with_suggestions':
+          this.lastRejectionCheckback = pre.checkback;
+          this.lastTrace = this.buildPreflightTrace(
+            reqNM,
+            pre,
+            'plan_rejected_no_capable_agent',
+            'no_capable_agent',
+            pre.rejection.reasonDetail
+          );
+          return pre.rejection;
+        case 'reject_malformed':
+          this.lastTrace = this.buildPreflightMalformedTrace(reqNM, pre.rejection);
+          return pre.rejection;
+        case 'reject_from_assembly':
+          this.lastTrace = this.buildPreflightAssemblyRejectTrace(reqNM, pre.rejection);
+          return pre.rejection;
+      }
+    }
+
+    // ── Branch 4: lexical decomposition (normal tier with prompt) ──
+    if (reqNM.tier === 'normal' && reqNM.prompt) {
+      return this.lexicalDecompositionBranch(reqNM, context, deps);
+    }
+
+    // No branch matched — malformed request
+    const malformed = reject(
+      'malformed_request',
+      'metadata-tier request without subTasks or selectedAgentIds is malformed in V1'
+    );
+    this.lastTrace = this.buildMalformedRequestTrace(reqNM, malformed);
+    return malformed;
+  }
+
+  getLastTrace(): PlannerPlanTrace | null {
+    return this.lastTrace;
+  }
+
+  getLastRejectionCheckback(): RejectionCheckbackPayload | null {
+    return this.lastRejectionCheckback;
+  }
+
+  // ─── Branch 4 implementation ───
+
+  private async lexicalDecompositionBranch(
+    request: NormalPlannerRequest,
+    context: PlannerContext,
+    deps: PlanAssemblyDeps
+  ): Promise<ExecutionPlan | PlanRejection> {
+    const resolution = resolveLexical(request.prompt, this.lexiconTables);
+    const decomposed = await decomposeLexically(
+      request.prompt,
+      resolution,
+      this.lexiconTables,
+      context
+    );
+
+    switch (decomposed.kind) {
+      case 'plan': {
+        // Synthesize a derived request with subTasks + subTaskEdges
+        // populated, then delegate to plan-assembly.planFromSubTasks
+        // for full 14+1 validation + ExecutionPlan emission.
+        const derivedRequest: NormalPlannerRequest = {
+          ...request,
+          subTasks: decomposed.subTasks,
+          subTaskEdges: decomposed.subTaskEdges,
+        };
+        const result = await planFromSubTasks(derivedRequest, context, deps);
+        this.lastTrace = this.buildLexicalTrace(
+          request,
+          resolution,
+          decomposed,
+          'rejected' in result ? mapAssemblyRejectionToPlanOutcome(result) : 'plan_created',
+          'rejected' in result ? result.reason : null,
+          'rejected' in result ? result.reasonDetail : null
+        );
+        return result;
+      }
+      case 'ambiguous': {
+        const rejection = reject(
+          'unmappable_request',
+          `ambiguous_intent: ${decomposed.reasonDetail}`
+        );
+        this.lastTrace = this.buildLexicalTraceAmbiguous(
+          request,
+          resolution,
+          decomposed,
+          rejection
+        );
+        return rejection;
+      }
+      case 'no_intent': {
+        const rejection = reject('unmappable_request', decomposed.reasonDetail);
+        this.lastTrace = this.buildLexicalTraceNoIntent(request, resolution, decomposed, rejection);
+        return rejection;
+      }
+      case 'no_agent': {
+        const rejection = reject('no_capable_agent', decomposed.reasonDetail);
+        // Also stash a checkback payload from Branch 4's no-agent
+        // result so coordinator can surface a checkback even on the
+        // lexical-decomposition branch when alternatives exist.
+        this.lastRejectionCheckback = {
+          reason: 'no_capable_agent',
+          reasonDetail: rejection.reasonDetail,
+          missingCapabilities: decomposed.missingCapabilities,
+          rejectedSelectedAgentIds: [],
+          recommendedSelectedAgentIds: [],
+          alternativesByCapability: {},
+        };
+        this.lastTrace = this.buildLexicalTraceNoAgent(request, resolution, decomposed, rejection);
+        return rejection;
+      }
+      case 'blocked': {
+        const rejection = reject('unmappable_request', decomposed.reasonDetail);
+        this.lastTrace = this.buildLexicalTraceBlocked(request, resolution, rejection);
+        return rejection;
+      }
+    }
+  }
+
+  // ─── Trace builders ───
+  // Centralized so the shape of PlannerPlanTrace stays one place. Each
+  // branch produces a trace with the right `branch` discriminator and
+  // populates the fields it has data for; absent fields use the empty
+  // / null sentinels declared in the contract.
+
+  private baseTrace(promptDigest: Sha256Hex | null, emittedAt: IsoTimestamp): PlannerPlanTrace {
+    return {
+      runId: '00000000-0000-0000-0000-000000000000' as Uuid, // overwritten below
+      plannerType: this.plannerType,
+      plannerVersion: this.plannerVersion,
+      promptDigest,
+      branch: 'oct_secure', // overwritten below
+      operatorPreference: null,
+      preflightOutcome: null,
+      lexicalMatches: [],
+      candidateIntents: [],
+      selectedIntent: null,
+      candidateTemplates: [],
+      selectedTemplate: null,
+      requiredCapabilities: [],
+      candidateAgents: [],
+      planOutcome: 'plan_created',
+      rejectionReason: null,
+      rejectionDetail: null,
+      emittedAt,
+    };
+  }
+
+  private buildOctSecureTrace(
+    request: OctSecurePlannerRequest,
+    result: ExecutionPlan | PlanRejection
+  ): PlannerPlanTrace {
+    const trace = this.baseTrace(null, nowIso() as IsoTimestamp);
+    trace.runId = request.runId;
+    trace.branch = 'oct_secure';
+    trace.preflightOutcome = 'not_applicable';
+    if ('rejected' in result) {
+      trace.planOutcome = 'plan_rejected_malformed';
+      trace.rejectionReason = result.reason;
+      trace.rejectionDetail = result.reasonDetail;
+    }
+    return trace;
+  }
+
+  private buildPreResolvedTrace(
+    request: NormalPlannerRequest | MetadataPlannerRequest,
+    result: ExecutionPlan | PlanRejection
+  ): PlannerPlanTrace {
+    const trace = this.baseTrace(
+      request.tier === 'normal' ? buildPromptDigest(request.prompt) : null,
+      nowIso() as IsoTimestamp
+    );
+    trace.runId = request.runId;
+    trace.branch = 'pre_resolved_sub_tasks';
+    trace.preflightOutcome = 'not_applicable';
+    if ('rejected' in result) {
+      trace.planOutcome = mapAssemblyRejectionToPlanOutcome(result);
+      trace.rejectionReason = result.reason;
+      trace.rejectionDetail = result.reasonDetail;
+    }
+    return trace;
+  }
+
+  private buildPreflightTrace(
+    request: NormalPlannerRequest | MetadataPlannerRequest,
+    pre: {
+      requiredCapabilities: NonEmpty[];
+      candidateAgents: ReadonlyArray<{ capability: NonEmpty; agentIds: Uuid[] }>;
+    },
+    planOutcome: PlannerPlanTrace['planOutcome'],
+    rejectionReason: PlanRejectionReason | null,
+    rejectionDetail: NonEmpty | null
+  ): PlannerPlanTrace {
+    const trace = this.baseTrace(
+      request.tier === 'normal' ? buildPromptDigest(request.prompt) : null,
+      nowIso() as IsoTimestamp
+    );
+    trace.runId = request.runId;
+    trace.branch = 'preflight_preferred_agents';
+    trace.operatorPreference = {
+      selectedAgentIds: [...request.selectedAgentIds],
+      preferredEndpointId:
+        request.tier === 'normal' || request.tier === 'metadata'
+          ? request.preferredEndpointId
+          : null,
+    };
+    trace.preflightOutcome =
+      planOutcome === 'plan_created'
+        ? 'preferred_agents_satisfy'
+        : 'preferred_agents_insufficient_alternatives_suggested';
+    trace.requiredCapabilities = [...pre.requiredCapabilities];
+    trace.candidateAgents = [...pre.candidateAgents];
+    trace.planOutcome = planOutcome;
+    trace.rejectionReason = rejectionReason;
+    trace.rejectionDetail = rejectionDetail;
+    return trace;
+  }
+
+  private buildPreflightMalformedTrace(
+    request: NormalPlannerRequest | MetadataPlannerRequest,
+    rejection: PlanRejection
+  ): PlannerPlanTrace {
+    const trace = this.baseTrace(
+      request.tier === 'normal' ? buildPromptDigest(request.prompt) : null,
+      nowIso() as IsoTimestamp
+    );
+    trace.runId = request.runId;
+    trace.branch = 'preflight_preferred_agents';
+    trace.operatorPreference = {
+      selectedAgentIds: [...request.selectedAgentIds],
+      preferredEndpointId:
+        request.tier === 'normal' || request.tier === 'metadata'
+          ? request.preferredEndpointId
+          : null,
+    };
+    trace.preflightOutcome = 'not_applicable';
+    trace.planOutcome = 'plan_rejected_malformed';
+    trace.rejectionReason = rejection.reason;
+    trace.rejectionDetail = rejection.reasonDetail;
+    return trace;
+  }
+
+  private buildPreflightAssemblyRejectTrace(
+    request: NormalPlannerRequest | MetadataPlannerRequest,
+    rejection: PlanRejection
+  ): PlannerPlanTrace {
+    const trace = this.baseTrace(
+      request.tier === 'normal' ? buildPromptDigest(request.prompt) : null,
+      nowIso() as IsoTimestamp
+    );
+    trace.runId = request.runId;
+    trace.branch = 'preflight_preferred_agents';
+    trace.operatorPreference = {
+      selectedAgentIds: [...request.selectedAgentIds],
+      preferredEndpointId:
+        request.tier === 'normal' || request.tier === 'metadata'
+          ? request.preferredEndpointId
+          : null,
+    };
+    trace.preflightOutcome = 'preferred_agents_satisfy';
+    trace.planOutcome = mapAssemblyRejectionToPlanOutcome(rejection);
+    trace.rejectionReason = rejection.reason;
+    trace.rejectionDetail = rejection.reasonDetail;
+    return trace;
+  }
+
+  private buildLexicalTrace(
+    request: NormalPlannerRequest,
+    resolution: ReturnType<typeof resolveLexical>,
+    decomposed: {
+      candidateIntents: NonEmpty[];
+      selectedIntent: NonEmpty;
+      candidateTemplates: NonEmpty[];
+      selectedTemplate: NonEmpty;
+      requiredCapabilities: NonEmpty[];
+      candidateAgents: ReadonlyArray<{ capability: NonEmpty; agentIds: Uuid[] }>;
+    },
+    planOutcome: PlannerPlanTrace['planOutcome'],
+    rejectionReason: PlanRejectionReason | null,
+    rejectionDetail: NonEmpty | null
+  ): PlannerPlanTrace {
+    const trace = this.baseTrace(buildPromptDigest(request.prompt), nowIso() as IsoTimestamp);
+    trace.runId = request.runId;
+    trace.branch = 'lexical_decomposition';
+    trace.operatorPreference = null;
+    trace.preflightOutcome = 'not_applicable';
+    trace.lexicalMatches = lexicalMatchesFromResolution(resolution);
+    trace.candidateIntents = [...decomposed.candidateIntents];
+    trace.selectedIntent = decomposed.selectedIntent;
+    trace.candidateTemplates = [...decomposed.candidateTemplates];
+    trace.selectedTemplate = decomposed.selectedTemplate;
+    trace.requiredCapabilities = [...decomposed.requiredCapabilities];
+    trace.candidateAgents = [...decomposed.candidateAgents];
+    trace.planOutcome = planOutcome;
+    trace.rejectionReason = rejectionReason;
+    trace.rejectionDetail = rejectionDetail;
+    return trace;
+  }
+
+  private buildLexicalTraceAmbiguous(
+    request: NormalPlannerRequest,
+    resolution: ReturnType<typeof resolveLexical>,
+    decomposed: {
+      candidateIntents: NonEmpty[];
+      candidateTemplates: NonEmpty[];
+      reasonDetail: string;
+    },
+    rejection: PlanRejection
+  ): PlannerPlanTrace {
+    const trace = this.baseTrace(buildPromptDigest(request.prompt), nowIso() as IsoTimestamp);
+    trace.runId = request.runId;
+    trace.branch = 'lexical_decomposition';
+    trace.preflightOutcome = 'not_applicable';
+    trace.lexicalMatches = lexicalMatchesFromResolution(resolution);
+    trace.candidateIntents = [...decomposed.candidateIntents];
+    trace.candidateTemplates = [...decomposed.candidateTemplates];
+    trace.planOutcome = 'plan_rejected_ambiguous';
+    trace.rejectionReason = rejection.reason;
+    trace.rejectionDetail = rejection.reasonDetail;
+    return trace;
+  }
+
+  private buildLexicalTraceNoIntent(
+    request: NormalPlannerRequest,
+    resolution: ReturnType<typeof resolveLexical>,
+    _decomposed: { reasonDetail: string },
+    rejection: PlanRejection
+  ): PlannerPlanTrace {
+    const trace = this.baseTrace(buildPromptDigest(request.prompt), nowIso() as IsoTimestamp);
+    trace.runId = request.runId;
+    trace.branch = 'lexical_decomposition';
+    trace.preflightOutcome = 'not_applicable';
+    trace.lexicalMatches = lexicalMatchesFromResolution(resolution);
+    trace.planOutcome = 'plan_rejected_ambiguous'; // closest available enum for "no intent matched"
+    trace.rejectionReason = rejection.reason;
+    trace.rejectionDetail = rejection.reasonDetail;
+    return trace;
+  }
+
+  private buildLexicalTraceNoAgent(
+    request: NormalPlannerRequest,
+    resolution: ReturnType<typeof resolveLexical>,
+    decomposed: {
+      candidateIntents: NonEmpty[];
+      selectedIntent: NonEmpty;
+      candidateTemplates: NonEmpty[];
+      selectedTemplate: NonEmpty;
+      requiredCapabilities: NonEmpty[];
+    },
+    rejection: PlanRejection
+  ): PlannerPlanTrace {
+    const trace = this.baseTrace(buildPromptDigest(request.prompt), nowIso() as IsoTimestamp);
+    trace.runId = request.runId;
+    trace.branch = 'lexical_decomposition';
+    trace.preflightOutcome = 'not_applicable';
+    trace.lexicalMatches = lexicalMatchesFromResolution(resolution);
+    trace.candidateIntents = [...decomposed.candidateIntents];
+    trace.selectedIntent = decomposed.selectedIntent;
+    trace.candidateTemplates = [...decomposed.candidateTemplates];
+    trace.selectedTemplate = decomposed.selectedTemplate;
+    trace.requiredCapabilities = [...decomposed.requiredCapabilities];
+    trace.planOutcome = 'plan_rejected_no_capable_agent';
+    trace.rejectionReason = rejection.reason;
+    trace.rejectionDetail = rejection.reasonDetail;
+    return trace;
+  }
+
+  private buildLexicalTraceBlocked(
+    request: NormalPlannerRequest,
+    resolution: ReturnType<typeof resolveLexical>,
+    rejection: PlanRejection
+  ): PlannerPlanTrace {
+    const trace = this.baseTrace(buildPromptDigest(request.prompt), nowIso() as IsoTimestamp);
+    trace.runId = request.runId;
+    trace.branch = 'lexical_decomposition';
+    trace.preflightOutcome = 'not_applicable';
+    trace.lexicalMatches = lexicalMatchesFromResolution(resolution);
+    trace.planOutcome = 'plan_rejected_ambiguous';
+    trace.rejectionReason = rejection.reason;
+    trace.rejectionDetail = rejection.reasonDetail;
+    return trace;
+  }
+
+  private buildMalformedRequestTrace(
+    request: NormalPlannerRequest | MetadataPlannerRequest,
+    rejection: PlanRejection
+  ): PlannerPlanTrace {
+    const trace = this.baseTrace(
+      request.tier === 'normal' ? buildPromptDigest(request.prompt) : null,
+      nowIso() as IsoTimestamp
+    );
+    trace.runId = request.runId;
+    trace.branch = 'lexical_decomposition'; // closest available enum
+    trace.preflightOutcome = 'not_applicable';
+    trace.planOutcome = 'plan_rejected_malformed';
+    trace.rejectionReason = rejection.reason;
+    trace.rejectionDetail = rejection.reasonDetail;
+    return trace;
+  }
+}
+
+// ─── Helpers ───
+
+function mapAssemblyRejectionToPlanOutcome(
+  rejection: PlanRejection
+): PlannerPlanTrace['planOutcome'] {
+  switch (rejection.reason) {
+    case 'no_capable_agent':
+      return 'plan_rejected_no_capable_agent';
+    case 'capability_outside_ceiling':
+      return 'plan_rejected_capability_outside_ceiling';
+    case 'max_split_exceeded':
+      return 'plan_rejected_max_split_exceeded';
+    case 'malformed_request':
+    case 'structural_constraint':
+    case 'unmappable_request':
+      return 'plan_rejected_malformed';
+  }
+}
+
+function lexicalMatchesFromResolution(
+  resolution: ReturnType<typeof resolveLexical>
+): PlannerPlanTrace['lexicalMatches'] {
+  // `aliasRule` is an OPTIONAL field on the trace match shape — under
+  // `exactOptionalPropertyTypes: true` we must omit it entirely when
+  // the rule isn't present (not set to undefined).
+  const out: PlannerPlanTrace['lexicalMatches'] = [
+    ...resolution.verbs.map(v =>
+      v.aliasRule !== null
+        ? {
+            rawTerm: v.rawTerm,
+            canonicalTerm: v.canonicalVerb,
+            phraseClass: 'verb' as const,
+            aliasRule: v.aliasRule,
+          }
+        : {
+            rawTerm: v.rawTerm,
+            canonicalTerm: v.canonicalVerb,
+            phraseClass: 'verb' as const,
+          }
+    ),
+    ...resolution.targets.map(t => ({
+      rawTerm: t.rawTerm,
+      canonicalTerm: t.targetTerm,
+      phraseClass: 'noun' as const,
+    })),
+    ...resolution.operands.map(o => ({
+      rawTerm: o.rawTerm,
+      canonicalTerm: o.operand,
+      phraseClass: 'business_phrase' as const,
+    })),
+  ];
+  return out;
+}
