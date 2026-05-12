@@ -14,12 +14,14 @@
  * Deterministic ordering guaranteed by all sub-components.
  */
 import type {
+  BypassPartial,
   CompileTemplate,
   CompileFormat,
   MailboxItem,
   PayloadResolver,
   NonEmpty,
   Sha256Hex,
+  Uuid,
 } from '@nexus/contracts';
 import { DENIAL_CODE } from '@nexus/contracts';
 import { sha256Hex } from '../output/output-digest.js';
@@ -29,7 +31,7 @@ import type { GuardEvaluator, GuardEvaluationResult } from './guard-evaluator.js
 import type { DenialMarkerInserter } from './denial-marker-inserter.js';
 import type { FormatRenderer } from './format-renderer.js';
 import { assertNotFileBundleFormat } from './format-renderer.js';
-import { CompileAssemblyError, CompileGuardHaltError } from './compile-errors.js';
+import { CompileAssemblyError } from './compile-errors.js';
 
 // ─── Result Types [spec §8.7] ───
 
@@ -47,6 +49,12 @@ export interface AssemblyResult {
   validationFailures: ValidationFailure[];
   format: CompileFormat;
   partial: boolean;
+  /** AMEND-nexus-mailbox-pit-v0-2-1 §5.2 — per-item bypass partials
+   *  collected during assembly (slot validation failures, guard halts,
+   *  etc.). Empty when assembly was clean. The assembler returns these
+   *  for the renderer to emit ledger events and include on the
+   *  FinalResponseArtifact. */
+  bypassPartials: readonly BypassPartial[];
 }
 
 // ─── Interface ───
@@ -96,6 +104,10 @@ export class CompileAssemblerImpl implements CompileAssembler {
     // ── Phase 2: Resolve fills + validate ──
     const validatedFills = new Map<string, unknown>();
     const validationFailures: ValidationFailure[] = [];
+    // AMEND-nexus-mailbox-pit-v0-2-1 §5.2 — bypass partials accumulated
+    // during assembly. Validation failures (required + optional) become
+    // render_partial bypasses; guard halts become withhold_quarantine.
+    const bypassPartials: BypassPartial[] = [];
 
     for (const [locationId, matchedSlot] of matchResult.matched) {
       for (const item of matchedSlot.items) {
@@ -106,14 +118,12 @@ export class CompileAssemblerImpl implements CompileAssembler {
         const validationResult = await this.slotValidator.validate(matchedSlot.location, fillValue);
 
         if (!validationResult.valid) {
-          if (matchedSlot.location.required) {
-            // Required invalid → throw
-            throw new CompileAssemblyError(
-              DENIAL_CODE.SLOT_VALIDATION_FAILED,
-              `Required slot validation failed at '${locationId}': ${validationResult.errors.map(e => e.reason).join('; ')}`
-            );
-          }
-          // Optional invalid → track failure, skip
+          // AMEND-nexus-mailbox-pit-v0-2-1 §5.2 disposition table:
+          //   "Slot type validator rejects → slot_type_mismatch / render_partial"
+          // Required + optional both become bypass partials. Required
+          // slots ALSO leave the slot unfilled (denial marker emitted by
+          // phase 4). Optional slots are skipped. The run does NOT die
+          // (no throw) — the bypass surfaces to the workspace.
           for (const err of validationResult.errors) {
             validationFailures.push({
               locationId: err.locationId,
@@ -121,6 +131,14 @@ export class CompileAssemblerImpl implements CompileAssembler {
               reason: err.reason as NonEmpty,
             });
           }
+          bypassPartials.push({
+            mailboxItemId: item.mailboxItemId,
+            sourceMailboxId: item.mailboxId,
+            sourceActorId: item.agentId as Uuid,
+            bypassReason: 'slot_type_mismatch',
+            bypassDisposition: 'render_partial',
+            workspacePartialRef: item.resultRef,
+          });
           continue;
         }
 
@@ -133,14 +151,37 @@ export class CompileAssemblerImpl implements CompileAssembler {
     const guardResult = this.guardEvaluator.evaluate(template, matchResult, items);
 
     if (!guardResult.passed && guardResult.haltGuard !== null) {
+      // AMEND-nexus-mailbox-pit-v0-2-1 §5.2 disposition table:
+      //   "guard.halt fired on the item's OCT class → guard_halt /
+      //    withhold_quarantine"
+      // V1 behavior: every item in the matched slots that the halt
+      // condition touches is bypass-quarantined; the slots stay
+      // unfilled (denial markers in phase 4); the run does NOT die.
+      // Per-item granularity beyond "all items touched by the halt"
+      // requires a guard-evaluator enrichment — captured as future
+      // work; today we conservatively quarantine the set of items the
+      // halt guard would have killed the run for.
       const halt = guardResult.haltGuard;
-      throw new CompileGuardHaltError(
-        halt.guardId,
-        halt.guardName,
-        halt.condition.locationPath,
-        halt.condition.operator,
-        halt.action.targetLocationPath
-      );
+      const haltedLocPath = halt.condition.locationPath;
+      // Find items that landed in slot(s) the halt condition references.
+      // For V1, conservatively bypass every item in every matched slot
+      // — guard halts already indicate an artifact-level rejection.
+      void haltedLocPath;
+      for (const [, matched] of matchResult.matched) {
+        for (const item of matched.items) {
+          bypassPartials.push({
+            mailboxItemId: item.mailboxItemId,
+            sourceMailboxId: item.mailboxId,
+            sourceActorId: item.agentId as Uuid,
+            bypassReason: 'guard_halt',
+            bypassDisposition: 'withhold_quarantine',
+            workspacePartialRef: null,
+          });
+        }
+      }
+      // Clear validatedFills so the renderer produces denial markers
+      // for the affected slots rather than substituting unsafe content.
+      validatedFills.clear();
     }
 
     // Apply auto_fix modifications
@@ -193,7 +234,8 @@ export class CompileAssemblerImpl implements CompileAssembler {
       guardResult,
       validationFailures,
       format: template.format,
-      partial,
+      partial: partial || bypassPartials.length > 0,
+      bypassPartials,
     };
   }
 

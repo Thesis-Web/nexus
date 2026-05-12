@@ -49,6 +49,47 @@ export interface CompileRequest {
   preferences?: CompilePreferences;
 }
 
+// ─── Bypass partial types (AMEND-nexus-mailbox-pit-v0-2-1 §5.2) ───
+//
+// Compile-time bypass disposition for items that fail one of the
+// per-item verification checks during assembly. Two dispositions:
+//
+//   - render_partial: content is included on the artifact (labeled)
+//     so the workspace can render a "Agent X produced a malformed
+//     contribution; raw text shown below for reference" block.
+//   - withhold_quarantine: content is referenced (by mailboxItemId +
+//     provenance) but NOT included as renderable bytes. Used when
+//     the content is untrusted or unsafe (digest mismatch, guard halt).
+//
+// Spec §5.2 disposition table:
+//   slot_type_mismatch (slot not in template OR validator rejects) → render_partial
+//   malformed_output   (item.agentId ≠ mailbox-derived actorId)    → withhold_quarantine
+//   digest_mismatch    (compile-time re-verify failed)              → withhold_quarantine
+//   guard_halt         (a halt-action guard fired on the item)      → withhold_quarantine
+
+export type BypassReason =
+  | 'malformed_output'
+  | 'slot_type_mismatch'
+  | 'guard_halt'
+  | 'digest_mismatch';
+
+export type BypassDisposition = 'render_partial' | 'withhold_quarantine';
+
+export interface BypassPartial {
+  /** mailboxItemId of the bypassed item. */
+  mailboxItemId: Uuid;
+  /** The mailbox the item lives in — authoritative provenance. */
+  sourceMailboxId: NonEmpty;
+  /** Producing actor (derived from the item, cross-checked with the
+   *  source mailbox when the renderer has mailbox provenance info). */
+  sourceActorId: Uuid;
+  bypassReason: BypassReason;
+  bypassDisposition: BypassDisposition;
+  /** Workspace-renderable ref for render_partial bypasses. NULL for
+   *  withhold_quarantine — the raw bytes are NOT in the artifact body. */
+  workspacePartialRef: NonEmpty | null;
+}
+
 // ─── FinalResponseArtifact ───
 
 export interface FinalResponseArtifact {
@@ -65,6 +106,10 @@ export interface FinalResponseArtifact {
   routingTrailRefs: Uuid[];
   runLedgerRefs: Uuid[];
   createdAt: IsoTimestamp;
+  /** AMEND-nexus-mailbox-pit-v0-2-1 §5.2 — per-item bypass partials
+   *  collected during assembly. Empty when assembly was clean. The
+   *  signature covers this field. */
+  bypassPartials: readonly BypassPartial[];
   signature: Base64Url;
 }
 

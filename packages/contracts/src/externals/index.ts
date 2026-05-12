@@ -147,6 +147,10 @@ export type {
 
 export type { MailboxAllocation, MailboxWriteContext } from './mailbox.js';
 
+// ── AMEND-nexus-mailbox-pit-v0-2-1 §5.2 — Compile bypass partial types ──
+
+export type { BypassPartial, BypassReason, BypassDisposition } from './compiler.js';
+
 // ── AMEND-nexus-spec-workspace §1.4 — workspace-governed.ts exports ──
 
 export type {

@@ -33,7 +33,6 @@ import { signArtifact } from './final-response-signer.js';
 import type { TemplateLoader } from './template-loader.js';
 import type { DefaultTemplateGenerator } from './default-template-generator.js';
 import type { CompileAssembler } from './compile-assembler.js';
-import { CompileGuardHaltError } from './compile-errors.js';
 
 export class DeterministicRenderer implements Compiler {
   readonly compilerSocketId: NonEmpty;
@@ -113,39 +112,39 @@ export class DeterministicRenderer implements Compiler {
     });
 
     // ── Step 3: Assemble ──
-    let result;
-    try {
-      result = await this.compileAssembler.assemble(template, items, this.payloadResolvers);
-    } catch (error) {
-      if (error instanceof CompileGuardHaltError) {
-        // Emit guard events before re-throwing
-        await this.runLedgerWriter.writeEvent({
-          runId: request.runId,
-          eventType: 'compile_guard_fired',
-          timestamp: nowIso(),
-          actorId: null,
-          detail: {
-            guardId: error.guardId,
-            guardName: error.guardName,
-            severity: 'halt',
-            conditionLocationPath: error.conditionLocationPath,
-            conditionOperator: error.conditionOperator,
-            actionEffect: 'halt',
-            actionTarget: error.actionTarget,
-          },
-        });
-        await this.runLedgerWriter.writeEvent({
-          runId: request.runId,
-          eventType: 'compile_guard_halt',
-          timestamp: nowIso(),
-          actorId: null,
-          detail: {
-            guardId: error.guardId,
-            guardName: error.guardName,
-          },
-        });
-      }
-      throw error;
+    // AMEND-nexus-mailbox-pit-v0-2-1 §5.2 — assembler no longer throws
+    // on slot-validation failure or guard halt; per-item failures are
+    // collected in result.bypassPartials and event emission happens
+    // here from the typed result. The run does NOT die.
+    const result = await this.compileAssembler.assemble(template, items, this.payloadResolvers);
+
+    if (!result.guardResult.passed && result.guardResult.haltGuard !== null) {
+      const halt = result.guardResult.haltGuard;
+      await this.runLedgerWriter.writeEvent({
+        runId: request.runId,
+        eventType: 'compile_guard_fired',
+        timestamp: nowIso(),
+        actorId: null,
+        detail: {
+          guardId: halt.guardId,
+          guardName: halt.guardName,
+          severity: 'halt',
+          conditionLocationPath: halt.condition.locationPath,
+          conditionOperator: halt.condition.operator,
+          actionEffect: 'halt',
+          actionTarget: halt.action.targetLocationPath,
+        },
+      });
+      await this.runLedgerWriter.writeEvent({
+        runId: request.runId,
+        eventType: 'compile_guard_halt',
+        timestamp: nowIso(),
+        actorId: null,
+        detail: {
+          guardId: halt.guardId,
+          guardName: halt.guardName,
+        },
+      });
     }
 
     // ── Step 4: Emit per-slot events ──
@@ -243,6 +242,27 @@ export class DeterministicRenderer implements Compiler {
     await fs.writeFile(bodyPath, bodyBytes);
     const bodyRef = `file://${bodyPath}` as NonEmpty;
 
+    // AMEND-nexus-mailbox-pit-v0-2-1 §3.4.3 / §5.2 — emit one
+    // compile_mailbox_item_bypassed ledger event per bypass partial so
+    // the audit trail records each item that did not flow into the
+    // assembled body.
+    for (const bp of result.bypassPartials) {
+      await this.runLedgerWriter.writeEvent({
+        runId: request.runId,
+        eventType: 'compile_mailbox_item_bypassed',
+        timestamp: nowIso(),
+        actorId: bp.sourceActorId,
+        detail: {
+          mailboxItemId: bp.mailboxItemId,
+          sourceMailboxId: bp.sourceMailboxId,
+          sourceActorId: bp.sourceActorId,
+          bypassReason: bp.bypassReason,
+          bypassDisposition: bp.bypassDisposition,
+          workspacePartialRef: bp.workspacePartialRef,
+        },
+      });
+    }
+
     await this.runLedgerWriter.writeEvent({
       runId: request.runId,
       eventType: 'compile_assembly_complete',
@@ -256,6 +276,7 @@ export class DeterministicRenderer implements Compiler {
         unmatchedCount: result.matchResult.unmatched.length,
         orphanedCount: result.matchResult.orphaned.length,
         validationFailureCount: result.validationFailures.length,
+        bypassPartialCount: result.bypassPartials.length,
         guardsFired: result.guardResult.firedGuards.length,
         warningCount: result.guardResult.warnings.length,
         partial: result.partial,
@@ -278,6 +299,7 @@ export class DeterministicRenderer implements Compiler {
       routingTrailRefs: contract.routingTrailRefs,
       runLedgerRefs: contract.runLedgerRefs,
       createdAt: nowIso(),
+      bypassPartials: result.bypassPartials,
     };
 
     const signature = await signArtifact(artifactBase, this.signingKey);
@@ -355,6 +377,9 @@ export class DeterministicRenderer implements Compiler {
       routingTrailRefs: contract.routingTrailRefs,
       runLedgerRefs: contract.runLedgerRefs,
       createdAt: nowIso(),
+      // Pass-through has no template + no slot validation, so no
+      // bypass partials are possible at this layer.
+      bypassPartials: [],
     };
 
     const signature = await signArtifact(artifactBase, this.signingKey);
