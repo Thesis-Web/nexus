@@ -466,6 +466,28 @@ export class RefDeterministicPlanner implements Planner {
       }
     }
 
+    // ── 3b. slotBindings consistency — every nxs actionTemplate
+    //        slot binding MUST also appear in the sub-task's
+    //        inputSlotReads. Without this the audit trail at plan
+    //        time disagrees with what orch reads at dispatch time. ──
+    for (const st of subTasks) {
+      if (st.kind !== 'nxs') continue;
+      const bindings = st.actionTemplate?.slotBindings;
+      if (!bindings || bindings.length === 0) continue;
+      const readsByKeySlot = new Set(
+        st.inputSlotReads.map(r => `${r.fromSubTaskKey}::${r.slotId}`)
+      );
+      for (const b of bindings) {
+        const key = `${b.fromSubTaskKey}::${b.slotId}`;
+        if (!readsByKeySlot.has(key)) {
+          return reject(
+            'malformed_request',
+            `subTask '${st.subTaskKey}' slotBinding (fromSubTaskKey='${b.fromSubTaskKey}', slotId='${b.slotId}') has no matching inputSlotReads entry`
+          );
+        }
+      }
+    }
+
     // ── 4. agent existence + visibility (per sub-task, NO dedup) ──
     for (const st of subTasks) {
       const agent = await context.registry.getById(st.agentId);

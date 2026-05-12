@@ -93,13 +93,22 @@ function makeItem(overrides: {
   };
 }
 
+function noopLedgerWriter() {
+  return {
+    writeEvent: async () => undefined,
+    getByRunId: async () => [],
+    tail: async () => [],
+    getLatestRunId: async () => null,
+  };
+}
+
 describe('MailboxServiceImpl.findBySlot', () => {
   let backend: MailboxBackend;
   let service: MailboxServiceImpl;
 
   beforeEach(() => {
     backend = fakeBackend();
-    service = new MailboxServiceImpl(backend, manifest);
+    service = new MailboxServiceImpl(backend, manifest, noopLedgerWriter());
   });
 
   it('returns the unique matching item when one is available', async () => {

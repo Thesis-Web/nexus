@@ -140,7 +140,12 @@ export type {
   RunDagState,
   SlotReadRef,
   NxsActionTemplate,
+  NxsSlotBinding,
 } from './execution-plan.js';
+
+// ── AMEND-nexus-mailbox-pit-v0-2-1 §3.1 — MailboxAllocation ──
+
+export type { MailboxAllocation } from './mailbox.js';
 
 // ── AMEND-nexus-spec-workspace §1.4 — workspace-governed.ts exports ──
 

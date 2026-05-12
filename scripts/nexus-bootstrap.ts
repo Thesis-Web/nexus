@@ -705,7 +705,10 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   console.log('[bootstrap] Step 19: constructing MailboxBackend + MailboxService');
   const primaryMailbox = socketRegistry.getPrimaryMailbox();
   const mailboxBackend = new LocalJsonlMailboxBackend(primaryMailbox.storageRoot);
-  const mailboxService = new MailboxServiceImpl(mailboxBackend, primaryMailbox);
+  // AMEND-nexus-mailbox-pit-v0-2-1 §3.3 — MailboxService takes the
+  // RunLedgerWriter for allocation persistence via the ledger event
+  // reconstruction path.
+  const mailboxService = new MailboxServiceImpl(mailboxBackend, primaryMailbox, runLedgerWriter);
   console.log(
     `[bootstrap] Step 19 complete: mailbox '${primaryMailbox.mailboxId}' (${primaryMailbox.mailboxType})`
   );

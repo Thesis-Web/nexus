@@ -265,6 +265,8 @@ export const DENIAL_CODE = {
   PAYLOAD_RESOLVER_NOT_FOUND: 'payload_resolver_not_found',
   COMPILER_SIGNATURE_KEY_UNRESOLVED: 'compiler_signature_key_unresolved',
   COMPILE_RETURN_DISPATCH_FAILED: 'compile_return_dispatch_failed',
+  // ─── Mailbox Pit Denial Codes (AMEND-nexus-mailbox-pit-v0-2-1 §3.6) ────
+  MAILBOX_OWNERSHIP_MISMATCH: 'mailbox_ownership_mismatch',
   // ─── Compile-Ref Denial Codes (AMEND-spec-nexus-compile §2.2) ──────────
   TEMPLATE_NOT_FOUND: 'template_not_found',
   TEMPLATE_SIGNATURE_INVALID: 'template_signature_invalid',

@@ -239,5 +239,25 @@ export function validateExecutionPlan(
     );
   }
 
+  // Check 15: every nxs_dispatch slotBinding has a matching inputSlotReads
+  //           entry. Keeps the slot-substitution audit trail explicit on
+  //           both sides — the planner declared the read AND the binding,
+  //           the dispatcher resolves only what was declared.
+  for (const node of plan.nodes) {
+    if (node.nodeType !== 'nxs_dispatch') continue;
+    const bindings = node.actionTemplate?.slotBindings;
+    if (!bindings || bindings.length === 0) continue;
+    const reads = node.inputSlotReads ?? [];
+    const readsByKeySlot = new Set(reads.map(r => `${r.fromSubTaskKey}::${r.slotId}`));
+    for (const b of bindings) {
+      const key = `${b.fromSubTaskKey}::${b.slotId}`;
+      if (!readsByKeySlot.has(key)) {
+        return fail(
+          `Check 15: node '${node.nodeId}' slotBinding (fromSubTaskKey='${b.fromSubTaskKey}', slotId='${b.slotId}') has no matching inputSlotReads entry`
+        );
+      }
+    }
+  }
+
   return OK;
 }

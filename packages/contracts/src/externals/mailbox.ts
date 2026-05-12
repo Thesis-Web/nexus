@@ -1,5 +1,6 @@
 // packages/contracts/src/externals/mailbox.ts
 // AMEND-spec-nexus-infra-externals-v0-2-5 §3.5, §3.6 — Mailbox Contracts
+// AMEND-nexus-mailbox-pit-v0-2-1 §3.1 + §3.2 — Mailbox Pit (per-actor isolation)
 // Layer 2 — mailbox item schema, backend contract, baked service interface.
 //
 // MailboxBackend is the replaceable storage abstraction — the only mailbox-
@@ -16,6 +17,10 @@
 //   a second backend interface.
 // - Backend implementations must not call LLMs, NXS, NVG, connectors,
 //   approval channels, or workspace endpoints.
+// - Per AMEND-nexus-mailbox-pit-v0-2-1 §0.3: R2-WIRE-008 "exactly one
+//   enabled required mailbox" is SUPERSEDED at the runtime allocation
+//   layer. One MailboxManifestRecord still describes one backend
+//   instance; that backend hosts many per-actor mailboxIds per run.
 
 import type { Uuid, IsoTimestamp, Sha256Hex, NonEmpty } from '../types/index.js';
 import type { DataClass, OctLevel, DenialCode } from '../constants/index.js';
@@ -56,6 +61,34 @@ export interface MailboxItem {
   compileEligible: boolean;
   consumedAt: IsoTimestamp | null;
   blockedReason: DenialCode | null;
+}
+
+// ─── MailboxAllocation ───
+// AMEND-nexus-mailbox-pit-v0-2-1 §3.1.
+// Authoritative provenance record for a per-(runId, actorId) mailbox.
+// Compile derives provenance from this record (or from the inverted
+// listMailboxesForRun map). Compile MUST NOT parse mailboxId strings
+// on the hot path — the deterministic decode function lives in
+// packages/core/src/mailbox/mailbox-audit-utils.ts and is NOT exported
+// through any public barrel (see spec §3.1.1).
+
+export interface MailboxAllocation {
+  allocationId: Uuid;
+  runId: Uuid;
+  actorId: Uuid;
+  mailboxId: NonEmpty;
+  /** V1 — future amendments may add 'orch_inbox', 'compile_inbox', etc.
+   *  V1 ONLY assigns 'agent_output' (per spec §2.5 / §2.6: no orch or
+   *  compile mailbox pre-allocation). */
+  mailboxRole: 'agent_output';
+  /** Which MailboxBackend instance hosts this mailbox. V1 always
+   *  matches the single configured backend's backendId; reserved for
+   *  multi-backend amendments. */
+  backendId: NonEmpty;
+  allocatedAt: IsoTimestamp;
+  /** Schema version of the allocation record. Pinned for forward-
+   *  compatible migrations. V1 value MUST be 'mailbox-pit/v1'. */
+  allocationVersion: 'mailbox-pit/v1';
 }
 
 // ─── Backend write/read contracts ───
@@ -111,4 +144,43 @@ export interface MailboxService {
     taskId: Uuid,
     slotId: NonEmpty
   ): Promise<MailboxItem | null>;
+
+  // ── Mailbox-pit V1 (AMEND-nexus-mailbox-pit-v0-2-1 §3.2) ─────────────
+  // Per-actor mailbox allocation + provenance + ownership-assertion
+  // surface. The single-primary-mailbox dispatch path (R2-WIRE-008) is
+  // superseded by the per-actor allocation model — every NXS / NVG write
+  // and every cross-actor slot read goes through one of these methods.
+
+  /** Allocate one per-actor mailbox for each unique actorId in the
+   *  actors set. Idempotent: same input → same mailboxIds, no duplicate
+   *  events. Persists each new allocation per spec §3.3 (allocation
+   *  index OR reconstructable from Run Ledger `mailbox_allocated`
+   *  events). Emits `mailbox_allocated` to the run ledger for each
+   *  newly-allocated mailbox. Returns the canonical mailboxId per
+   *  actorId. */
+  allocateForRun(runId: Uuid, actors: readonly Uuid[]): Promise<ReadonlyMap<Uuid, NonEmpty>>;
+
+  /** Return the canonical mailboxId for a (runId, actorId) pair.
+   *  Returns null when no allocation exists. Does NOT auto-allocate —
+   *  allocateForRun must have run first. */
+  getMailboxForActor(runId: Uuid, actorId: Uuid): Promise<NonEmpty | null>;
+
+  /** Enumerate every mailbox allocated for the run, keyed by actorId.
+   *  Compile reads this to build its list of source targets; the
+   *  inverted map (mailboxId → actorId) is compile's hot-path
+   *  provenance index. */
+  listMailboxesForRun(runId: Uuid): Promise<ReadonlyMap<Uuid, NonEmpty>>;
+
+  /** Resolve the typed MailboxAllocation record for a (runId, mailboxId)
+   *  pair. Returns null when the mailboxId is unknown for the run.
+   *  Hot-path consumer: a future audit-aware compile mode. Compile's
+   *  default hot path uses the inverted listMailboxesForRun map. */
+  resolveMailboxProvenance(runId: Uuid, mailboxId: NonEmpty): Promise<MailboxAllocation | null>;
+
+  /** Assert the mailboxId belongs to the actorId under the runId.
+   *  Throws NexusSecurityViolation (with a typed denial code) on
+   *  mismatch. Called by writeFromOutput before persisting any item
+   *  (spec §3.6 write-time ownership validation); may be called by
+   *  any defensive callsite that wants the structural assertion. */
+  assertMailboxBelongsToActor(runId: Uuid, actorId: Uuid, mailboxId: NonEmpty): Promise<void>;
 }

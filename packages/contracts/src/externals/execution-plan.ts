@@ -44,9 +44,52 @@ export interface NxsActionTemplate {
     resourceType: NonEmpty;
     resourceScope: NonEmpty;
   };
-  /** Literal payload handed to the connector. Phase 1: opaque, no slot
-   *  substitution. Phase 2 may add structured slot/jsonpath refs. */
+  /** Literal payload handed to the connector — the part of the action
+   *  the planner can pre-resolve at plan-time. Values that only exist
+   *  at runtime (e.g. an LLM-computed parameter for an UPDATE) are
+   *  filled in by orch via `slotBindings` before dispatch. */
   rawPayload: unknown;
+  /** Phase 2 — runtime slot substitution. Each binding declares
+   *  "the payload field at `payloadPath` is supplied by upstream slot
+   *  (fromSubTaskKey, slotId), optionally drilled into via
+   *  sourceJsonPath." Orch resolves each binding at dispatch time by
+   *  reading the upstream mailbox item and writing the value into a
+   *  deep clone of `rawPayload` before building the `AgentAction`.
+   *  NXS itself never sees the bindings — it only sees the resolved
+   *  payload. Every binding's (fromSubTaskKey, slotId) MUST also appear
+   *  in the node's `inputSlotReads` (plan validation Check 15 + planner
+   *  consistency check). Empty / undefined → no substitution. */
+  slotBindings?: readonly NxsSlotBinding[];
+}
+
+// ─── NxsSlotBinding ───
+// Declarative parameter substitution from an upstream mailbox slot into
+// `NxsActionTemplate.rawPayload`. Constrained on purpose:
+//   - `payloadPath` and `sourceJsonPath` are dotted segment paths only
+//     (e.g. "set.units", "rows.0.value"). Numeric segments index into
+//     arrays. No wildcards, no filters, no JSONPath-spec syntax.
+//   - The upstream slot's file body is read once. When `sourceJsonPath`
+//     is null/undefined the entire utf-8 text body is the value;
+//     otherwise the body is JSON.parsed and the dotted path is walked.
+//   - On resolve failure (slot missing, JSON parse error, source/target
+//     path miss) the dispatch fails the node with a typed reason. No
+//     "best effort" fallback.
+
+export interface NxsSlotBinding {
+  /** subTaskKey of the upstream sub-task whose mailbox item supplies
+   *  the value. MUST also appear in the node's inputSlotReads. */
+  fromSubTaskKey: NonEmpty;
+  /** slotId on the upstream sub-task's expectedOutputSlots. MUST also
+   *  appear in the node's inputSlotReads with this same slotId. */
+  slotId: NonEmpty;
+  /** Dotted path in `rawPayload` where the resolved value is written.
+   *  Intermediate segments MUST already exist in `rawPayload` (the
+   *  planner places placeholder objects/scalars at the path); the
+   *  binding only overwrites the leaf. Reject on path miss. */
+  payloadPath: NonEmpty;
+  /** Optional dotted path into the upstream JSON body. When null /
+   *  undefined the full utf-8 file body is used verbatim (string). */
+  sourceJsonPath?: NonEmpty | null;
 }
 
 // ─── PlanNode ───

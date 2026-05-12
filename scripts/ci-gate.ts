@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * scripts/ci-gate.ts
- * Nexus CI Gate — 79 steps: 21 base (§6.4 + PKG-PORTABLE-001) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 17 WS (AMEND-nexus-spec-workspace §10).
+ * Nexus CI Gate — 80 steps: 21 base (§6.4 + PKG-PORTABLE-001) + 22 EXT (AMEND-spec §12.1) + 17 CMP (AMEND-spec-nexus-compile §13) + 1 ORCH (AMEND-spec-nexus-orch §11) + 17 WS (AMEND-nexus-spec-workspace §10) + 1 MAILBOX-PIT (AMEND-nexus-mailbox-pit-v0-2-1 §3.1.1.3).
  *
  * Governing law:
  *   §6.4   — 19-step ci:gate sequence (F-02a)
@@ -1817,7 +1817,19 @@ async function main(): Promise<void> {
   await runDeploymentGate();
   pass('server boots, health + auth + /workspace/me verified');
 
-  // Step 80: integration test gate — opt-in. Real-DB integration suite
+  // Step 80: MAILBOX-PIT-EXPORT-BOUNDARY — AMEND-nexus-mailbox-pit-v0-2-1
+  // §3.1.1.3 (ADD-MAILBOX-PIT-002). The audit-utils decode function is
+  // offline-only by design; the export PATH is the enforcement, not the
+  // comment. Allowed importers (spec §3.1.1.2): `tools/audit/**` +
+  // `packages/core/src/mailbox/mailbox-audit-utils.test.ts`. Plus the
+  // audit-utils source file itself (which declares the symbol). Any other
+  // importer is a violation. The decode symbol must also NOT appear in
+  // any public barrel re-export.
+  stepLog('MAILBOX-PIT-EXPORT-BOUNDARY gate');
+  enforceMailboxPitExportBoundary();
+  pass('decodeActorIdFromMailboxId import boundary clean; no public barrel leak');
+
+  // Step 81: integration test gate — opt-in. Real-DB integration suite
   // (postgres connector against the dev docker-compose pair). Skipped
   // unless NEXUS_RUN_INTEGRATION=1 so the gate stays fast in casual runs;
   // the CI pre-merge invocation sets the flag and gets full coverage.
@@ -1828,7 +1840,7 @@ async function main(): Promise<void> {
     pass('integration suite passed against real Postgres');
   } else {
     console.log(
-      'Step 80: INTEG-01 integration test gate ... [33mSKIPPED[0m  (set NEXUS_RUN_INTEGRATION=1 to run)'
+      'Step 81: INTEG-01 integration test gate ... [33mSKIPPED[0m  (set NEXUS_RUN_INTEGRATION=1 to run)'
     );
   }
 
@@ -1851,8 +1863,153 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  const totalSteps = process.env['NEXUS_RUN_INTEGRATION'] === '1' ? 80 : 79;
+  const totalSteps = process.env['NEXUS_RUN_INTEGRATION'] === '1' ? 81 : 80;
   console.log(`\n=== ci:gate PASSED — all ${totalSteps} steps ===\n`);
+}
+
+// ===========================================================================
+// MAILBOX-PIT-EXPORT-BOUNDARY — AMEND-nexus-mailbox-pit-v0-2-1 §3.1.1.3
+// (ADD-MAILBOX-PIT-002)
+// Enforces the structural audit-utils import boundary so the "offline only"
+// intent is not a comment that decays — the export PATH is the enforcement.
+// Verifies:
+//   (a) Every importer of `decodeActorIdFromMailboxId` is on the spec-named
+//       allowed-importer list (spec §3.1.1.2).
+//   (b) The symbol is NOT re-exported from any public barrel — namely
+//       packages/core/src/mailbox/index.ts, packages/core/src/index.ts,
+//       packages/contracts/src/**.
+// Fail-closed on any violation.
+// ===========================================================================
+function enforceMailboxPitExportBoundary(): void {
+  const AUDIT_SYMBOL = 'decodeActorIdFromMailboxId';
+  const SOURCE_FILE = path.posix.normalize('packages/core/src/mailbox/mailbox-audit-utils.ts');
+
+  // Spec §3.1.1.2 allowed importers (POSIX paths from repo root):
+  const allowedImporterPaths: ReadonlyArray<string> = [
+    'packages/core/src/mailbox/mailbox-audit-utils.test.ts',
+    // tools/audit/** — reserved path, none today.
+  ];
+  const allowedImporterPrefixes: ReadonlyArray<string> = ['tools/audit/'];
+
+  // Public barrels that MUST NOT re-export the symbol:
+  const forbiddenBarrelPaths: ReadonlyArray<string> = [
+    'packages/core/src/mailbox/index.ts',
+    'packages/core/src/index.ts',
+  ];
+  const forbiddenBarrelPrefixes: ReadonlyArray<string> = [
+    // The whole contracts public surface.
+    'packages/contracts/src/',
+  ];
+
+  const repoFiles = listTsFilesUnder(['packages', 'scripts', 'tests', 'tools']);
+
+  const violatingImporters: string[] = [];
+  const violatingReExports: string[] = [];
+
+  for (const filePath of repoFiles) {
+    const normalized = path.posix.normalize(filePath.split(path.sep).join('/'));
+    if (normalized === SOURCE_FILE) continue;
+
+    let body: string;
+    try {
+      body = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      continue;
+    }
+
+    // 1. Detect actual import statements (not comment text or string
+    //    literals embedded in another check's source). Comments are
+    //    stripped first so docstring examples like `import ... from
+    //    '...mailbox-audit-utils...'` in this very file don't self-flag.
+    const stripped = stripTsComments(body);
+    const importStmtRe =
+      /(?:^|[;{}\n])\s*(?:import|export)\s+(?:[^'";]+\s+from\s+)?['"][^'"]*mailbox-audit-utils[^'"]*['"]/m;
+    const dynamicImportRe = /\bimport\(\s*['"][^'"]*mailbox-audit-utils[^'"]*['"]\s*\)/m;
+    const importsAuditSymbol = importStmtRe.test(stripped) || dynamicImportRe.test(stripped);
+
+    if (importsAuditSymbol) {
+      const allowed =
+        allowedImporterPaths.includes(normalized) ||
+        allowedImporterPrefixes.some(prefix => normalized.startsWith(prefix));
+      if (!allowed) {
+        violatingImporters.push(normalized);
+      }
+    }
+
+    // 2. Detect re-export of the audit symbol from a forbidden barrel.
+    //    Re-exports take the shape `export { decodeActorIdFromMailboxId }`
+    //    or `export * from './mailbox-audit-utils...';` etc.
+    const isForbiddenBarrel =
+      forbiddenBarrelPaths.includes(normalized) ||
+      forbiddenBarrelPrefixes.some(prefix => normalized.startsWith(prefix));
+
+    if (isForbiddenBarrel) {
+      const reExportsSymbol =
+        new RegExp(`export\\s*\\{[^}]*\\b${AUDIT_SYMBOL}\\b[^}]*\\}`, 'm').test(body) ||
+        new RegExp(`export\\s*\\*\\s*from\\s*['"][^'"]*mailbox-audit-utils[^'"]*['"]`, 'm').test(
+          body
+        );
+      if (reExportsSymbol) {
+        violatingReExports.push(normalized);
+      }
+    }
+  }
+
+  if (violatingImporters.length > 0) {
+    fail(
+      `MAILBOX-PIT-EXPORT-BOUNDARY: disallowed importer(s) of ${AUDIT_SYMBOL}: ` +
+        violatingImporters.join(', ') +
+        ` — allowed paths: ${allowedImporterPaths.join(', ')}, allowed prefixes: ${allowedImporterPrefixes.join(', ')}. Spec §3.1.1.2.`
+    );
+  }
+  if (violatingReExports.length > 0) {
+    fail(
+      `MAILBOX-PIT-EXPORT-BOUNDARY: ${AUDIT_SYMBOL} re-exported from forbidden public barrel(s): ` +
+        violatingReExports.join(', ') +
+        ` — spec §3.1.1.1 forbids re-export from these paths.`
+    );
+  }
+}
+
+/**
+ * Strip TypeScript line and block comments from a source body. Used
+ * by the export-boundary check so docstring example text containing
+ * `import ... from '...';` does not register as a real import. Does
+ * NOT handle every pathological case (e.g. comment chars inside
+ * strings) — but that's fine for the boundary scan, which only needs
+ * to ignore obvious documentation.
+ */
+function stripTsComments(src: string): string {
+  // Remove /* ... */ block comments (non-greedy, multi-line).
+  let cleaned = src.replace(/\/\*[\s\S]*?\*\//g, '');
+  // Remove // line comments (keep newlines so line numbers stay sane).
+  cleaned = cleaned.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  return cleaned;
+}
+
+/**
+ * Recursively list .ts/.tsx files under the given top-level directories.
+ * Filters out node_modules and dist. POSIX-normalized paths returned.
+ */
+function listTsFilesUnder(roots: ReadonlyArray<string>): string[] {
+  const out: string[] = [];
+  const visit = (dir: string): void => {
+    if (!fs.existsSync(dir)) return;
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === 'dist') continue;
+        visit(full);
+      } else if (entry.isFile()) {
+        if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) {
+          out.push(full);
+        }
+      }
+    }
+  };
+  for (const root of roots) visit(root);
+  return out;
 }
 
 // ===========================================================================

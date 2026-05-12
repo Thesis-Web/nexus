@@ -125,6 +125,7 @@ import {
 } from './dispatch-round-trip.js';
 import { checkSecureHandoffSlotRead } from './secure-handoff-guard.js';
 import { buildToolDescriptorsForAgent, type ConnectorLookup } from './build-tool-schemas.js';
+import { resolveNxsSlotBindings } from './nxs-slot-binding-resolver.js';
 import type { ExtractedToolCall } from '@nexus/core';
 import type { ToolSchemaDescriptor } from '@nexus/contracts';
 
@@ -466,7 +467,8 @@ const program = createCli({
       const dispatchNxsNode = async (
         node: PlanNode,
         delegationId: Uuid,
-        agent: Actor
+        agent: Actor,
+        plan: ExecutionPlan
       ): Promise<NodeDispatchResult> => {
         const tmpl = node.actionTemplate;
         if (!tmpl) {
@@ -477,6 +479,27 @@ const program = createCli({
             governanceDenied: false,
           };
         }
+
+        // Resolve slotBindings — orch supplies runtime values into the
+        // pre-resolved actionTemplate before NXS sees it. NXS never sees
+        // a binding; it only sees the substituted payload. Phase 2 of
+        // multi-node planning (execution-plan.ts NxsSlotBinding).
+        const resolved = await resolveNxsSlotBindings({
+          node,
+          plan,
+          mailboxService: br.externals.mailboxService,
+          mailboxId: br.externals.socketRegistry.getPrimaryMailbox().mailboxId,
+          runId: request.runId,
+        });
+        if (!resolved.resolved) {
+          return {
+            success: false,
+            completionMetadata: null,
+            failureReason: ('slot_binding_resolve_failed: ' + resolved.reason) as NonEmpty,
+            governanceDenied: false,
+          };
+        }
+        const resolvedPayload = resolved.payload;
 
         const sessionId = crypto.randomUUID() as Uuid;
         const sessionTtlSeconds = 10 * 60;
@@ -512,7 +535,7 @@ const program = createCli({
           tool: `${verbFromCap}_${rawTarget}` as NonEmpty,
           rawVerb: verbFromCap as NonEmpty,
           rawTarget,
-          rawPayload: tmpl.rawPayload,
+          rawPayload: resolvedPayload,
           intent: {
             objectiveSummary: node.taskSummary,
             triggeringSource: 'planner-nxs-dispatch' as NonEmpty,
@@ -629,7 +652,7 @@ const program = createCli({
           // sub-tasks can read it via inputSlotReads. No round-trip loop;
           // no model spend.
           if (node.nodeType === 'nxs_dispatch') {
-            return await dispatchNxsNode(node, _delegationId, agent);
+            return await dispatchNxsNode(node, _delegationId, agent, plan);
           }
 
           // ── nvg_dispatch / secure_agent_handoff path ─────────────────

@@ -960,7 +960,27 @@ export type RunEventType =
   //          toolCount, toolNames[], capabilityRefs[], targetSystems[],
   //          schemaDigest } — never the input values, never the
   //          resulting tool_calls.
-  | 'tool_schemas_attached';
+  | 'tool_schemas_attached'
+  // ── Mailbox Pit (AMEND-nexus-mailbox-pit-v0-2-1 §3.4) ─────────────────
+  // Per-actor mailbox allocation, compile-time mailbox enumeration,
+  // cross-actor slot resolution, and bypass partials. ADD-MAILBOX-PIT-001.
+  // Fired once per (runId, actorId) pair the first time allocateForRun
+  // records it. Detail: { mailboxId, runId, actorId, mailboxRole,
+  //                       allocatedAt }
+  | 'mailbox_allocated'
+  // Fired once when compile begins assembly and enumerates source
+  // mailboxes. Detail: { runId, mailboxCount, mailboxIds[] }
+  | 'compile_mailboxes_listed'
+  // Fired per mailbox item compile bypasses during assembly. Detail:
+  //   { mailboxItemId, sourceMailboxId, sourceActorId, bypassReason,
+  //     bypassDisposition: 'render_partial' | 'withhold_quarantine',
+  //     workspacePartialRef }
+  | 'compile_mailbox_item_bypassed'
+  // Fired every time orch resolves a downstream node's inputSlotReads
+  // entry into a concrete mailbox item. Cross-actor data movement
+  // audit. Detail: { runId, readerActorId, sourceActorId, sourceMailboxId,
+  //                  sourceTaskId, slotId, mailboxItemId, resolvedAt }
+  | 'mailbox_slot_resolved_for_dispatch';
 
 export interface RunLedgerEntry {
   entryId: Uuid;
