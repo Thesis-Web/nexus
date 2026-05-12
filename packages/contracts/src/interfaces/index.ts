@@ -912,6 +912,14 @@ export type RunEventType =
   | 'compile_assembly_complete'
   // ── Orch-Ref Run Ledger Events (AMEND-spec-nexus-orch §4.6) ──────
   | 'plan_created'
+  // ── DB Lexicon Planner — explainability trace
+  // (AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.6, log
+  //  ADD-PLANNER-LEXICON-001). Coordinator-written via the
+  //  PlannerTraceReader interface after each Planner.plan() call.
+  //  Detail shape: PlannerPlanTrace (planner.ts). Fires once per plan
+  //  attempt (success OR rejection). Carries promptDigest only — never
+  //  raw prompt text.
+  | 'planner_plan_trace'
   | 'plan_checkback_sent'
   | 'plan_checkback_required'
   | 'plan_checkback_resolved'

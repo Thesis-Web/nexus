@@ -830,6 +830,11 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         // AMEND-spec-nexus-orch §5 extension — null on legacy submits.
         subTasks: subTasks as WorkspaceRunRequest['subTasks'],
         subTaskEdges: subTaskEdges as WorkspaceRunRequest['subTaskEdges'],
+        // AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7 — additive
+        // field. Null on fresh runs. Workspace re-issue (Commit 5)
+        // sets this to the originally-rejected runId when the operator
+        // accepts the planner's counter-suggestion.
+        checkbackSourceRunId: null,
       };
 
       // §8.1/§8.2: secure rail events (gate 14) — write if promptMode === 'secure_rails'

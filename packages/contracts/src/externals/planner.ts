@@ -9,10 +9,11 @@
 // - Planner uses identity-provider ceiling as catalog visibility filter,
 //   not authorization [blueprint-K §11.7.1]
 
-import type { Uuid, NonEmpty, IsoTimestamp } from '../types/index.js';
+import type { Sha256Hex, Uuid, NonEmpty, IsoTimestamp } from '../types/index.js';
 import type {
   ExecutionPlan,
   PlanRejection,
+  PlanRejectionReason,
   SlotReadRef,
   NxsActionTemplate,
 } from './execution-plan.js';
@@ -230,4 +231,98 @@ export interface Planner {
   readonly plannerType: NonEmpty;
   readonly plannerVersion: NonEmpty;
   plan(request: PlannerRequest, context: PlannerContext): Promise<ExecutionPlan | PlanRejection>;
+}
+
+// ─── PlannerPlanTrace — explainability event detail ───
+// AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.6, log
+// ADD-PLANNER-LEXICON-001. Written as the `planner_plan_trace`
+// `RunEventType` event by the coordinator (NOT by the planner) after
+// reading via `PlannerTraceReader.getLastTrace()`.
+//
+// Two-enum distinction (DIFF-PLANNER-LEXICON-001):
+//   - `rejectionReason` is the CONTRACT-level `PlanRejectionReason` enum
+//     (6 values) and matches whatever the planner returned on the
+//     `PlanRejection.reason` wire field.
+//   - `planOutcome` is a SEPARATE, richer ledger-internal enum that we
+//     own; it can carry `'plan_rejected_ambiguous'` even though
+//     `PlanRejectionReason` collapses ambiguity to `'unmappable_request'`.
+//
+// Carries `promptDigest` only — NEVER raw prompt text.
+
+export interface PlannerPlanTrace {
+  runId: Uuid;
+  plannerType: NonEmpty;
+  plannerVersion: NonEmpty;
+  /** Hash of the prompt that drove the plan attempt. `null` for the
+   *  `oct_secure` branch (no prompt is visible at planner-tier). */
+  promptDigest: Sha256Hex | null;
+  branch:
+    | 'oct_secure'
+    | 'pre_resolved_sub_tasks'
+    | 'preflight_preferred_agents'
+    | 'lexical_decomposition';
+  /** Operator intent — preference data flowed through the trace for audit
+   *  even when the branch did not adjudicate it. Null when neither
+   *  selectedAgentIds nor preferredEndpointId were supplied. */
+  operatorPreference: {
+    selectedAgentIds: Uuid[];
+    preferredEndpointId: NonEmpty | null;
+  } | null;
+  /** Result of the preflight branch (Branch 3) feasibility check. */
+  preflightOutcome:
+    | 'preferred_agents_satisfy'
+    | 'preferred_agents_insufficient_alternatives_suggested'
+    | 'not_applicable'
+    | null;
+  /** Lexical chain that produced the candidate intents — empty for
+   *  branches that did not run lexical resolution. */
+  lexicalMatches: ReadonlyArray<{
+    rawTerm: string;
+    canonicalTerm: string;
+    phraseClass: 'verb' | 'noun' | 'business_phrase';
+    aliasRule?: 'approved' | 'blocked' | 'review_required';
+  }>;
+  candidateIntents: NonEmpty[];
+  selectedIntent: NonEmpty | null;
+  candidateTemplates: NonEmpty[];
+  selectedTemplate: NonEmpty | null;
+  requiredCapabilities: NonEmpty[];
+  candidateAgents: ReadonlyArray<{ capability: NonEmpty; agentIds: Uuid[] }>;
+  /** Ledger-internal richer enum (see two-enum distinction above). */
+  planOutcome:
+    | 'plan_created'
+    | 'plan_rejected_ambiguous'
+    | 'plan_rejected_no_capable_agent'
+    | 'plan_rejected_capability_outside_ceiling'
+    | 'plan_rejected_max_split_exceeded'
+    | 'plan_rejected_malformed';
+  /** Contract-level rejection reason (matches `PlanRejection.reason`). */
+  rejectionReason: PlanRejectionReason | null;
+  rejectionDetail: NonEmpty | null;
+  emittedAt: IsoTimestamp;
+}
+
+// ─── PlannerTraceReader — additive, optional co-implementation ───
+// AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.2, log
+// DIFF-PLANNER-LEXICON-CONTRACT-001.
+//
+// Planner implementations that produce explainability traces MAY also
+// implement this interface. The coordinator detects via duck-type
+// check (`'getLastTrace' in planner`) immediately after `plan()`
+// returns and emits the `planner_plan_trace` event when the reader is
+// present and returns non-null.
+//
+// Planners that do not produce traces (e.g., the legacy
+// `RefDeterministicPlanner`) simply do not implement this interface;
+// the coordinator skips ledger emission silently.
+
+export interface PlannerTraceReader {
+  /**
+   * Returns the trace payload from the most recent `plan()` call.
+   * Returns null if no plan has been issued yet (planner just
+   * constructed) OR if the most recent plan() invocation chose not to
+   * emit a trace. The coordinator reads this immediately after
+   * `plan()` returns; another `plan()` call MUST NOT be interleaved.
+   */
+  getLastTrace(): PlannerPlanTrace | null;
 }

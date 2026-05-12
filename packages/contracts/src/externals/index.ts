@@ -14,6 +14,7 @@ export type {
   OrchestratorSelectedAgent,
   OrchestratorPlanPreview,
   Orchestrator,
+  RejectionCheckbackPayload,
 } from './orchestrator.js';
 
 export type {
@@ -120,6 +121,8 @@ export type {
   SubTaskEdgeHint,
   PlannerContext,
   Planner,
+  PlannerPlanTrace,
+  PlannerTraceReader,
 } from './planner.js';
 
 // ── AMEND-spec-nexus-orch §4.5 — execution-plan.ts exports ──

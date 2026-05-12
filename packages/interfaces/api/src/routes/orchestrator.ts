@@ -120,6 +120,7 @@ export function registerOrchestratorRoutes(
         requiresUserApproval: false,
         planDigest,
         plan: null, // legacy flat preview — no DAG plan in ref harness route
+        rejection: null, // populated by Commit 5 coordinator wiring
       };
 
       // §6.3 step 5: write Run Ledger orchestrator_dispatched

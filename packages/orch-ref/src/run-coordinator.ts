@@ -559,6 +559,12 @@ export class RefRunCoordinator implements RunCoordinator {
       requiresUserApproval: false,
       planDigest: '' as Sha256Hex,
       plan: null,
+      // Commit 5 will populate this with a RejectionCheckbackPayload
+      // built from `rejection` when the planner returns suggestions
+      // (preferred-agents preflight reject path). Until then the
+      // coordinator carries `null` and the existing flat-preview wire
+      // shape is preserved.
+      rejection: null,
     };
   }
 
@@ -585,6 +591,7 @@ export class RefRunCoordinator implements RunCoordinator {
       requiresUserApproval: false,
       planDigest: plan.planDigest,
       plan,
+      rejection: null, // success path — no checkback needed
     };
   }
 }

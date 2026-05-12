@@ -10,7 +10,12 @@
  *   - orchestratorType must resolve in OrchestratorFactoryRegistry.
  *   - Duplicate orchestratorSocketId fails closed.
  *   - orchestratorActorId must be syntactically UUID.
- *   - maxSplitDepth must be 0 or 1 for V1.
+ *   - maxSplitDepth is gated by a plannertype-scoped allowance table.
+ *     - Default allowance: 1 (legacy V1 cap).
+ *     - 'db-lexicon-transformer-v0' allowance: 3 (worked example is 3
+ *       nodes; AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7.1, log
+ *       ADD-PLANNER-LEXICON-005).
+ *     - Values exceeding the plannertype-specific allowance fail closed.
  *   - OCT-SECURE default must be single_agent_no_helper (schema enforced).
  *   - partialCompletion.compileOnPartial must be false when
  *     partialCompletion.enabled is false [AMEND-spec-nexus-orch §4.8.1].
@@ -28,6 +33,18 @@ import { loadSignedManifest } from '@nexus/runtime-utils';
 import { OrchestratorManifestBodySchema } from './orchestrator-manifest-schema.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ─── maxSplitDepth allowance by plannerType ───
+// AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7.1, log ADD-PLANNER-LEXICON-005.
+// Default V1 cap of 1 remains for any plannertype not listed; the
+// lexicon planner's worked example is 3 nodes (read → adjust → write).
+// New plannertypes append their own allowance rather than widen the
+// default — keeps the legacy ceiling intact and the new ceiling
+// plannertype-scoped.
+const MAX_SPLIT_DEPTH_BY_PLANNER: Record<string, number> = {
+  'db-lexicon-transformer-v0': 3,
+};
+const DEFAULT_MAX_SPLIT_DEPTH = 1;
 
 export interface LoadOrchestratorManifestOptions {
   manifestPath: string;
@@ -72,11 +89,14 @@ export async function loadOrchestratorManifest(
       );
     }
 
-    // maxSplitDepth must be 0 or 1 for V1 (§4.3)
-    if (entry.maxSplitDepth > 1) {
+    // maxSplitDepth is plannertype-scoped per
+    // AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7.1.
+    const allowedMax = MAX_SPLIT_DEPTH_BY_PLANNER[entry.plannerType] ?? DEFAULT_MAX_SPLIT_DEPTH;
+    if (entry.maxSplitDepth > allowedMax) {
       throw new Error(
-        `orchestrator manifest: maxSplitDepth ${entry.maxSplitDepth} exceeds V1 maximum of 1` +
-          ` (orchestrator '${entry.orchestratorSocketId}')`
+        `orchestrator manifest: maxSplitDepth ${entry.maxSplitDepth} exceeds ` +
+          `allowed maximum of ${allowedMax} for plannerType '${entry.plannerType}' ` +
+          `(orchestrator '${entry.orchestratorSocketId}')`
       );
     }
 

@@ -85,6 +85,15 @@ export interface WorkspaceRunRequest {
    */
   subTasks: SubTaskDecl[] | null;
   subTaskEdges: SubTaskEdgeHint[] | null;
+  /**
+   * AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7. Additive optional
+   * field, V1. Non-null when this run was opened via the
+   * Accept-Suggestions flow from a prior preferred-agents preflight
+   * rejection — carries the prior `runId` for audit correlation. Null
+   * on fresh runs. Existing routes pass through; no business logic
+   * depends on it being non-null. DIFF-PLANNER-LEXICON-CONTRACT-001.
+   */
+  checkbackSourceRunId: Uuid | null;
 }
 
 // ─── CompileReturnAck ───
