@@ -36,7 +36,8 @@ import { RefRunCoordinator } from './run-coordinator.js';
 import type { RunCoordinatorDeps, DelegationScope } from './run-coordinator.js';
 import { RefDagExecutor } from './dag-executor.js';
 import type { NodeDispatchResult } from './dag-executor.js';
-import { RefDeterministicPlanner, evaluateCondition } from './ref-deterministic-planner.js';
+import { RefDeterministicPlanner } from './ref-deterministic-planner.js';
+import { evaluateCondition } from './condition-evaluator.js';
 import type { AgentCapabilityEntry } from '@nexus/contracts';
 
 // ─── Helpers ───

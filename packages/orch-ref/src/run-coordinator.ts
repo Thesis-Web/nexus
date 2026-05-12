@@ -36,7 +36,7 @@ import { EVIDENCE_SENTINEL, nowIso } from '@nexus/contracts';
 import type { DagExecutor, DagExecutionResult, NodeDispatchResult } from './dag-executor.js';
 import { classifyDagCompletion } from './dag-executor.js';
 import { validateExecutionPlan } from './validate-plan.js';
-import { evaluateCondition } from './ref-deterministic-planner.js';
+import { evaluateCondition } from './condition-evaluator.js';
 
 // ─── DelegationScope — orch-ref internal [§7.1, HOLE-ORCH-002] ───
 

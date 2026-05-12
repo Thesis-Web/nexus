@@ -22,11 +22,8 @@ import type {
   PlanNode,
 } from '@nexus/contracts';
 import { EVIDENCE_SENTINEL, nowIso } from '@nexus/contracts';
-import {
-  RefDeterministicPlanner,
-  evaluateCondition,
-  determineNodeType,
-} from './ref-deterministic-planner.js';
+import { RefDeterministicPlanner } from './ref-deterministic-planner.js';
+import { evaluateCondition, determineNodeType } from './condition-evaluator.js';
 
 // ─── Test Helpers ───
 

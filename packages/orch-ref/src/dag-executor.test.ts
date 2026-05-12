@@ -27,7 +27,7 @@ import type {
   PartialCompletionConfig,
 } from './dag-executor.js';
 
-import { evaluateCondition } from './ref-deterministic-planner.js';
+import { evaluateCondition } from './condition-evaluator.js';
 
 // ─── Test Helpers ───
 

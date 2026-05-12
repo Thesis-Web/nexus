@@ -4,13 +4,34 @@
 //
 // Imports @nexus/contracts ONLY [ORCH-18].
 
-export {
-  RefDeterministicPlanner,
-  evaluateCondition,
-  determineNodeType,
-} from './ref-deterministic-planner.js';
+export { RefDeterministicPlanner } from './ref-deterministic-planner.js';
 
-export type { ConditionEvalResult, NodeTypeResult } from './ref-deterministic-planner.js';
+export { evaluateCondition, determineNodeType } from './condition-evaluator.js';
+
+export type { ConditionEvalResult, NodeTypeResult } from './condition-evaluator.js';
+
+// Plan-assembly primitives — extracted per
+// AMEND-nexus-planner-db-lexicon-v0-2-1.md §6.2 Commit 1. Consumed
+// directly by RefDeterministicPlanner today and by
+// DbLexiconTransformerPlanner from Commit 4 onward.
+export {
+  planOctSecure,
+  planFromSubTasks,
+  planStandard,
+  hasCycle,
+  compareEdges,
+  reject,
+  buildNodeFromSubTask,
+  validateConditionSpec,
+  isVisible,
+  findAlternatives,
+  buildEdges,
+  buildPlan,
+  buildTaskSummary,
+  NODE_TIMEOUT_MS,
+} from './plan-assembly.js';
+
+export type { PlanAssemblyDeps } from './plan-assembly.js';
 
 export { RefDagExecutor, classifyDagCompletion } from './dag-executor.js';
 
