@@ -810,6 +810,17 @@ Operations:
   phrases by greedy longest-match against `planner_lexical_term.rawTerm`.
 - Per-token/phrase lookup: `planner_lexical_term`.
 - Alias resolution: `planner_alias_rule` (approved/blocked/review_required).
+  Applied AFTER a `planner_lexical_term` match to remap canonical (for
+  approved/review_required) OR suppress the match (for blocked).
+- **Second-pass blocked-alias scan (defense-in-depth, ratified Commit 8):**
+  after the lex-term greedy match misses at a given position, the
+  resolver runs a second greedy match against `planner_alias_rule.rawTerm`
+  values with `status: 'blocked'`. A hit sets `hasBlockedAlias = true`
+  and consumes the matched tokens. This catches blocked phrases that
+  have no corresponding lex-term entry — explicit prohibitions fire
+  regardless of fixture-author completeness on the lex-term side.
+  Approved / review_required aliases without a lex-term are inert
+  (nothing to remap).
 - Verb canonical check: against `ACTION_VERB` const (§2.4 invariant).
 - Tuple split: outputs (verb / target / operand) as three distinct
   streams. No dotted compound canonicals like `read.target`.
@@ -1387,6 +1398,83 @@ without rewriting Commit 4's history.
 - Logs: `DIFF-ORCH-SPEC-PLANNER-IDENTITY-001` CLOSED,
   `DIFF-INFRA-EXTERNALS-SPEC-001` CLOSED,
   `DIFF-INFRA-EXTERNALS-BLUEPRINT-001` CLOSED.
+
+**Commit 8 — UI flow + close endpoint + integration test + test coverage remediation (owner-approved additive after Commit 7 drift audit).**
+
+Discovered during post-Commit-7 drift audit: the §3.7 UI Accept/Cancel
+flows were structurally half-built. Accept-Suggestions passed an empty
+prompt to `createRun()` (Zod schema would reject), skipped the
+mandatory `POST /workspace/runs/:runId/close` of the source run, and
+the `onAccepted` callback in run-display.tsx was a no-op (no
+navigation). Cancel-Run was entirely no-op. The §9.2 integration test
+covering 3 scenarios through real `RefRunCoordinator` was never built.
+Reducer extractor + modal component had zero direct tests. Several
+header comments in extracted files still claimed RefDeterministicPlanner
+as a live consumer.
+
+Net effect: §9.6 acceptance criterion ("Accept Suggestions re-issues
+to a passing plan; Cancel Run closes the original run cleanly") was
+unreachable despite green ci:gate + vitest. Owner triggered hard-stop;
+owner approved this additive Commit 8 for remediation.
+
+Work:
+
+- Server: add `POST /workspace/runs/:runId/close` to
+  `packages/interfaces/api/src/routes/workspace.ts`. Body accepts
+  `{ reason: 'user_cancelled_after_checkback' | 'user_accepted_checkback_reissued' }`.
+  Writes `run_cancelled` ledger event with reason + actor; idempotent
+  (closing an already-closed run is a no-op with 200).
+- Client: add `closeRun(runId, reason)` to
+  `packages/workspace-ref/src/client/api.ts`.
+- Modal `plan-checkback-modal.tsx`:
+    - `acceptSuggestions` calls `closeRun(sourceRunId, 'user_accepted_checkback_reissued')`
+      FIRST, then `createRun(...)` for the re-issued run. Fail-closed on
+      close failure — does not re-issue if the source run can't close.
+    - `cancel` calls `closeRun(sourceRunId, 'user_cancelled_after_checkback')`
+      then `onDismiss()`. Modal closes regardless of API success (defense
+      in depth — UI flips to dismissed; ledger captures the attempt).
+- `run-display.tsx`: extract `prompt` + `preferredEndpointId` from the
+  events array (looking up `run_opened.detail.prompt` and
+  `.preferredEndpointId`). Pass to modal as real values. `onDismiss`
+  flips a local component state flag suppressing re-render of the
+  modal; `onAccepted` does the same (the new run takes over via its
+  own event stream).
+- Integration test
+  `packages/planners/db-lexicon/src/db-lexicon-planner.integration.test.ts`
+  covering three §9.2 scenarios through real `RefRunCoordinator` +
+  `MailboxServiceImpl`:
+    1. Lexical decomposition (Branch 4) — warehouse worked example.
+    2. Preflight pass (Branch 3) — preferred-agents satisfy.
+    3. Preflight reject + counter-suggest (Branch 3) — asserts
+       `plan_rejected`, `planner_plan_trace`, `plan_checkback_sent`
+       with `checkbackPayload` in detail,
+       `OrchestratorPlanPreview.rejection` populated.
+- `run-stage-reducer.test.ts`: add test cases for
+  `extractPendingPlannerCheckback` — happy path (event with
+  `checkbackPayload`), legacy NVG-tier event distinction (event
+  without payload), clearing on `plan_created` / `run_closed` /
+  `run_cancelled`.
+- `plan-checkback-modal.test.tsx`: render test, Accept flow (mock
+  `closeRun` + `createRun`), Cancel flow (mock `closeRun`), error
+  state when `closeRun` fails, disabled state when
+  `recommendedSelectedAgentIds` is empty.
+- Doc-comment cleanup: update the headers in
+  `packages/orch-ref/src/plan-assembly.ts`,
+  `packages/orch-ref/src/condition-evaluator.ts`, and
+  `tests/orchestration/multi-node-slot-binding.test.ts` to reflect the
+  post-Commit-6 state.
+- §3.3.4 Layer B amendment (this spec) — ratify the lexical resolver's
+  second-pass blocked-alias scan: alias rules with `status: 'blocked'`
+  fire `hasBlockedAlias = true` even when no lex-term matches the same
+  phrase. Defense-in-depth — explicit prohibitions catch even orphan
+  phrases. Tested in `lexical-resolver.test.ts`.
+
+Logs (all CLOSED by green gates + landed work in this commit):
+  `DRIFT-UI-CHECKBACK-001` — Cancel + Accept incomplete
+  `DRIFT-API-CLOSE-ENDPOINT-001` — /close route missing
+  `DRIFT-INTEGRATION-TEST-MISSING-001` — §9.2 integration test
+  `DRIFT-TEST-COVERAGE-001` — reducer + modal coverage
+  `DRIFT-LEXICAL-BLOCKED-ALIAS-INVENTION-001` — spec ratified
 
 ci:gate boundary count: starts at 80; 81 with `NEXUS_RUN_INTEGRATION=1`.
 After Commit 4: 80 + 5 = 85 (or 86 with integration). After Commit 5,

@@ -70,6 +70,30 @@ export async function createRun(input: Record<string, unknown>): Promise<ApiResp
   });
 }
 
+/**
+ * AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7 + §6.2 Commit 8.
+ *
+ * Closes a run from the operator side. Used by the
+ * `PlanCheckbackModal` for both the Accept-Suggestions and Cancel-Run
+ * paths after a preferred-agents preflight rejection.
+ *
+ * Server emits a `run_cancelled` ledger event with the supplied reason.
+ * Idempotent (calling twice is harmless — the run is already closed
+ * from the first call's perspective; subsequent ledger events are
+ * audit-only).
+ */
+export type CloseRunReason = 'user_cancelled_after_checkback' | 'user_accepted_checkback_reissued';
+
+export async function closeRun(
+  runId: string,
+  reason: CloseRunReason
+): Promise<ApiResponse<{ ok: true }>> {
+  return apiFetch(`/workspace/runs/${runId}/close`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
 export async function getRunStatus(runId: string): Promise<ApiResponse<RunStatus>> {
   return apiFetch(`/workspace/runs/${runId}`);
 }

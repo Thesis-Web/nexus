@@ -7,8 +7,12 @@
 // needs them to turn validated agent/sub-task data into a well-formed
 // ExecutionPlan. No behavior change vs. the originating file.
 //
-// V1 consumers: RefDeterministicPlanner (until Commit 6),
-// DbLexiconTransformerPlanner (Commit 4 onward).
+// V1 consumers: DbLexiconTransformerPlanner (`@nexus/planner-db-lexicon`)
+// + StubPlanner adapters in orch-ref's own unit tests + the
+// `multi-node-slot-binding.test.ts` integration test under
+// `tests/orchestration/`. RefDeterministicPlanner was the original
+// consumer; deleted in Commit 6 of
+// AMEND-nexus-planner-db-lexicon-v0-2-1.md.
 // V2 cleanup: extract to @nexus/orch-primitives package OR rename
 // @nexus/orch-ref → @nexus/orch-runtime per THREAT-ORCH-REF-LAYER-001.
 

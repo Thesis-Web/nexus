@@ -21,7 +21,7 @@
 
 import { useState } from 'react';
 import type { PlannerCheckbackPayload } from './run-stage-reducer.js';
-import { createRun } from '../api.js';
+import { closeRun, createRun } from '../api.js';
 
 interface PlanCheckbackModalProps {
   /** The original run that produced this counter-suggestion. Carried
@@ -51,13 +51,25 @@ export function PlanCheckbackModal({
   onDismiss,
   onAccepted,
 }: PlanCheckbackModalProps) {
-  const [submitting, setSubmitting] = useState<'accept' | null>(null);
+  const [submitting, setSubmitting] = useState<'accept' | 'cancel' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const acceptSuggestions = async (): Promise<void> => {
     setSubmitting('accept');
     setError(null);
     try {
+      // §3.7 Accept-Suggestions: close the source run first, then open
+      // the re-issued run. Fail-closed on close failure — do NOT
+      // re-issue if the source run can't be closed, because the audit
+      // trail would otherwise show two open runs with checkbackSourceRunId
+      // pointing at a non-closed source.
+      const closeRes = await closeRun(sourceRunId, 'user_accepted_checkback_reissued');
+      if (!closeRes.ok) {
+        setError(closeRes.error ?? 'Failed to close source run before re-issuing');
+        setSubmitting(null);
+        return;
+      }
+
       // Build the re-issued WorkspaceRunRequest. selectedAgentIds is
       // replaced by the executable recommendedSelectedAgentIds; the
       // checkbackSourceRunId field correlates this new run back to the
@@ -84,10 +96,24 @@ export function PlanCheckbackModal({
     }
   };
 
-  const cancel = (): void => {
-    // Cancel Run path is dismissal-only — the original run already
-    // wrote `plan_rejected` so it's terminal. No new API call needed
-    // for V1.
+  const cancel = async (): Promise<void> => {
+    // §3.7 Cancel-Run: close the source run with the cancel reason.
+    // Modal dismisses regardless of API success — defense in depth:
+    // ledger captures the attempt, UI flips to dismissed even if the
+    // API call fails so the operator isn't trapped.
+    setSubmitting('cancel');
+    setError(null);
+    try {
+      const closeRes = await closeRun(sourceRunId, 'user_cancelled_after_checkback');
+      if (!closeRes.ok) {
+        // Surface the error but still dismiss — the operator chose to
+        // cancel; the run will close eventually via timeout or the
+        // server can be retried out-of-band.
+        setError(closeRes.error ?? 'Run close failed; dismissing modal regardless');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Network error during cancel');
+    }
     onDismiss();
   };
 
@@ -167,8 +193,12 @@ export function PlanCheckbackModal({
           >
             {submitting === 'accept' ? 'Re-issuing…' : 'Accept Suggestions'}
           </button>
-          <button className="nx-btn nx-btn--deny" onClick={cancel} disabled={submitting !== null}>
-            Cancel Run
+          <button
+            className="nx-btn nx-btn--deny"
+            onClick={() => void cancel()}
+            disabled={submitting !== null}
+          >
+            {submitting === 'cancel' ? 'Cancelling…' : 'Cancel Run'}
           </button>
         </footer>
       </div>

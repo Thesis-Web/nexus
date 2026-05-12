@@ -1,13 +1,22 @@
 /**
  * Multi-node slot-binding loop — end-to-end test.
  *
- * Composes real RefDeterministicPlanner + validateExecutionPlan +
- * RefRunCoordinator + RefDagExecutor + MailboxServiceImpl + the
+ * Composes a real planner instance (a thin `StubPlanner` adapter over
+ * the extracted `plan-assembly` primitives — `planFromSubTasks`,
+ * `planOctSecure`, `planStandard` — that the production
+ * `DbLexiconTransformerPlanner` also consumes) + `validateExecutionPlan`
+ * + `RefRunCoordinator` + `RefDagExecutor` + `MailboxServiceImpl` + the
  * composition-root resolver (resolveNxsSlotBindings). The only stub is
  * `dispatchToGovernance`, which mirrors what `dispatchNxsNode` does in
  * production (call the resolver, write a mailbox item via the
  * MailboxService) without standing up the full bootstrap, NXS gate
  * pipeline, or real connectors.
+ *
+ * Originally composed `RefDeterministicPlanner`; class deleted in
+ * Commit 6 of AMEND-nexus-planner-db-lexicon-v0-2-1.md. The
+ * `StubPlanner` adapter (defined below) preserves the same Branch 2
+ * (pre-resolved subTasks) semantics that this test exercises without
+ * requiring the lexicon planner package.
  *
  * Proves the warehouse-style worked example shape end-to-end:
  *

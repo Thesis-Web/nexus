@@ -4,10 +4,12 @@
 // MODULAR-CONDITION-EVALUATOR-001.
 //
 // Pure functions; no behavior change vs. the originating file. Used by:
-//   - RefDeterministicPlanner (until Commit 6 deletion)
-//   - DbLexiconTransformerPlanner (Commit 4 onward)
-//   - RefDagExecutor (via run-coordinator)
-//   - Unit tests (ORCH-13, ORCH-14)
+//   - DbLexiconTransformerPlanner (`@nexus/planner-db-lexicon`)
+//   - RefRunCoordinator (via the run-coordinator's resolveCondition helper)
+//   - RefDagExecutor (test surface)
+//   - Unit tests (`condition-evaluator.test.ts` — ORCH-13, ORCH-14)
+// RefDeterministicPlanner was the original consumer; deleted in
+// Commit 6 of AMEND-nexus-planner-db-lexicon-v0-2-1.md.
 
 import type { Uuid, NonEmpty, PlanCondition, PlanNode } from '@nexus/contracts';
 

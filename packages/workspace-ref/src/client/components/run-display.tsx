@@ -37,10 +37,38 @@ export function RunDisplay({ runId, events, status, planRejection }: RunDisplayP
     Record<string, 'pending' | 'approved' | 'denied'>
   >({});
 
+  // AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7 + Commit 8 — local
+  // dismissal flag for the planner-rejection checkback modal. Flips
+  // true when the operator clicks Accept (the new run takes over via
+  // its own event stream) or Cancel (the close API records the
+  // intent). The reducer's `pendingPlannerCheckback` also clears on
+  // `plan_created` / `run_closed` / `run_cancelled`, so this state
+  // is belt-and-suspenders for the brief window before the SSE
+  // delivers the terminal event.
+  const [plannerCheckbackDismissed, setPlannerCheckbackDismissed] = useState(false);
+
   // Recompute the play-by-play whenever a new event lands. The reducer is a
   // pure function — memoising on the array reference keeps it cheap during
   // SSE bursts (each new event is one append → identity changes once).
   const timeline = useMemo(() => computeRunTimeline(events), [events]);
+
+  // Extract the originating run's prompt + preferredEndpointId from the
+  // `run_opened` event so the PlanCheckbackModal can pass them to the
+  // re-issued `createRun(...)` call. Without these the Zod
+  // FreeTextSchema would reject (prompt.min(1) violated).
+  const runOpened = useMemo(() => events.find(e => e.type === 'run_opened'), [events]);
+  const checkbackPrompt = useMemo(() => {
+    const detail = runOpened?.detail;
+    if (!detail || typeof detail !== 'object') return '';
+    const p = (detail as Record<string, unknown>)['prompt'];
+    return typeof p === 'string' ? p : '';
+  }, [runOpened]);
+  const checkbackPreferredEndpointId = useMemo(() => {
+    const detail = runOpened?.detail;
+    if (!detail || typeof detail !== 'object') return null;
+    const v = (detail as Record<string, unknown>)['preferredEndpointId'];
+    return typeof v === 'string' && v.length > 0 ? v : null;
+  }, [runOpened]);
 
   if (!runId) {
     return (
@@ -165,28 +193,30 @@ export function RunDisplay({ runId, events, status, planRejection }: RunDisplayP
           <RunCheckbackCard runId={runId} checkback={timeline.pendingCheckback} />
         )}
 
-        {/* AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7 — planner-level
-            preflight rejection counter-suggestion modal. Renders when the
-            preferred-agents preflight branch (Branch 3) rejected with
-            usable alternatives. Distinct from the NVG-tier checkback
-            above (different mechanism, different payload). */}
-        {timeline.pendingPlannerCheckback && runId && (
+        {/* AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7 + Commit 8 —
+            planner-level preflight rejection counter-suggestion modal.
+            Renders when the preferred-agents preflight branch (Branch 3)
+            rejected with usable alternatives. Distinct from the NVG-tier
+            checkback above (different mechanism, different payload).
+            Suppressed once the operator has dismissed via Accept or
+            Cancel — the local dismissal flag covers the brief window
+            before the SSE delivers the terminal event that clears the
+            reducer's `pendingPlannerCheckback` field. */}
+        {timeline.pendingPlannerCheckback && runId && !plannerCheckbackDismissed && (
           <PlanCheckbackModal
             sourceRunId={runId}
             payload={timeline.pendingPlannerCheckback}
-            prompt={''}
-            preferredEndpointId={null}
-            onDismiss={() => {
-              // V1: dismissal is local — the original run already
-              // wrote `plan_rejected` so it's terminal. The modal
-              // unmounts when the parent re-computes the timeline
-              // (run_closed / run_cancelled clears the field) or when
-              // the user navigates away.
-            }}
+            prompt={checkbackPrompt}
+            preferredEndpointId={checkbackPreferredEndpointId}
+            onDismiss={() => setPlannerCheckbackDismissed(true)}
             onAccepted={(_newRunId: string) => {
-              // V1: navigation handled by the workspace shell after
-              // the new run is created. The new runId is in the
-              // response; routes are owner-app responsibility.
+              // The re-issued run has its own runId + its own event
+              // stream. Workspace shell observes the new run via SSE
+              // independently; for the originating-run view we just
+              // dismiss the modal (the new run's runId is logged in
+              // the source run's run_cancelled detail for audit
+              // correlation).
+              setPlannerCheckbackDismissed(true);
             }}
           />
         )}

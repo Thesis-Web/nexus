@@ -503,3 +503,122 @@ describe('computeRunTimeline', () => {
     });
   });
 });
+
+// ─── AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7 + Commit 8 ───
+// `pendingPlannerCheckback` extraction from `plan_checkback_sent`
+// events that carry `checkbackPayload` (planner-rejection shape).
+// Distinct from the legacy NVG-tier checkback that only carries
+// `{ planId }` in detail.
+
+describe('computeRunTimeline — pendingPlannerCheckback extraction', () => {
+  const PLANNER_CHECKBACK_PAYLOAD = {
+    reason: 'no_capable_agent',
+    reasonDetail: 'preflight_preferred_agents_insufficient: update:record:internal',
+    missingCapabilities: ['update:record:internal'],
+    rejectedSelectedAgentIds: ['00000000-0000-4000-8000-0000000000a2'],
+    recommendedSelectedAgentIds: ['00000000-0000-4000-8000-0000000000a1'],
+    alternativesByCapability: {
+      'update:record:internal': [
+        {
+          agentId: '00000000-0000-4000-8000-0000000000a1',
+          capability: 'update:record:internal',
+          reason: 'warehouse-agent has update:record:internal',
+        },
+      ],
+    },
+  };
+
+  it('extracts the planner-checkback payload when present in plan_checkback_sent.detail', () => {
+    const events: RunEvent[] = [
+      ev('run_opened', { promptDigest: 'abc' }, '2026-05-13T00:00:00.000Z'),
+      ev('plan_rejected', { reason: 'no_capable_agent' }, '2026-05-13T00:00:01.000Z'),
+      ev(
+        'plan_checkback_sent',
+        {
+          reason: 'no_capable_agent',
+          checkbackPayload: PLANNER_CHECKBACK_PAYLOAD,
+        },
+        '2026-05-13T00:00:02.000Z'
+      ),
+    ];
+    const timeline = computeRunTimeline(events);
+    expect(timeline.pendingPlannerCheckback).not.toBeNull();
+    expect(timeline.pendingPlannerCheckback?.reason).toBe('no_capable_agent');
+    expect(timeline.pendingPlannerCheckback?.missingCapabilities).toEqual([
+      'update:record:internal',
+    ]);
+    expect(timeline.pendingPlannerCheckback?.recommendedSelectedAgentIds).toEqual([
+      '00000000-0000-4000-8000-0000000000a1',
+    ]);
+  });
+
+  it('returns null when plan_checkback_sent lacks checkbackPayload (legacy NVG-tier shape)', () => {
+    // Legacy NVG-tier checkback events only carry `{ planId }` in
+    // detail. The extractor MUST NOT mistake these for planner-level
+    // checkbacks (they go through the `pendingCheckback` path instead).
+    const events: RunEvent[] = [
+      ev('run_opened', { promptDigest: 'abc' }, '2026-05-13T00:00:00.000Z'),
+      ev('plan_created', { planId: 'p1' }, '2026-05-13T00:00:01.000Z'),
+      ev('plan_checkback_sent', { planId: 'p1' }, '2026-05-13T00:00:02.000Z'),
+    ];
+    const timeline = computeRunTimeline(events);
+    expect(timeline.pendingPlannerCheckback).toBeNull();
+  });
+
+  it('clears the pending planner checkback when plan_created arrives after', () => {
+    const events: RunEvent[] = [
+      ev('run_opened', { promptDigest: 'abc' }, '2026-05-13T00:00:00.000Z'),
+      ev('plan_rejected', { reason: 'no_capable_agent' }, '2026-05-13T00:00:01.000Z'),
+      ev(
+        'plan_checkback_sent',
+        { reason: 'no_capable_agent', checkbackPayload: PLANNER_CHECKBACK_PAYLOAD },
+        '2026-05-13T00:00:02.000Z'
+      ),
+      // Operator accepts suggestions → new run opens → plan_created
+      // on the new run flows back into the SAME events array via the
+      // workspace shell. The extractor clears the pending state.
+      ev('plan_created', { planId: 'p2' }, '2026-05-13T00:00:03.000Z'),
+    ];
+    const timeline = computeRunTimeline(events);
+    expect(timeline.pendingPlannerCheckback).toBeNull();
+  });
+
+  it('clears when run_closed arrives after the checkback', () => {
+    const events: RunEvent[] = [
+      ev('run_opened', { promptDigest: 'abc' }, '2026-05-13T00:00:00.000Z'),
+      ev('plan_rejected', { reason: 'no_capable_agent' }, '2026-05-13T00:00:01.000Z'),
+      ev(
+        'plan_checkback_sent',
+        { reason: 'no_capable_agent', checkbackPayload: PLANNER_CHECKBACK_PAYLOAD },
+        '2026-05-13T00:00:02.000Z'
+      ),
+      ev('run_closed', { closeReason: 'user_cancelled' }, '2026-05-13T00:00:03.000Z'),
+    ];
+    const timeline = computeRunTimeline(events);
+    expect(timeline.pendingPlannerCheckback).toBeNull();
+  });
+
+  it('clears when run_cancelled arrives after the checkback (Cancel-Run path)', () => {
+    const events: RunEvent[] = [
+      ev('run_opened', { promptDigest: 'abc' }, '2026-05-13T00:00:00.000Z'),
+      ev('plan_rejected', { reason: 'no_capable_agent' }, '2026-05-13T00:00:01.000Z'),
+      ev(
+        'plan_checkback_sent',
+        { reason: 'no_capable_agent', checkbackPayload: PLANNER_CHECKBACK_PAYLOAD },
+        '2026-05-13T00:00:02.000Z'
+      ),
+      ev('run_cancelled', { reason: 'user_cancelled_after_checkback' }, '2026-05-13T00:00:03.000Z'),
+    ];
+    const timeline = computeRunTimeline(events);
+    expect(timeline.pendingPlannerCheckback).toBeNull();
+  });
+
+  it('returns null when no plan_checkback_sent has ever fired', () => {
+    const events: RunEvent[] = [
+      ev('run_opened', { promptDigest: 'abc' }, '2026-05-13T00:00:00.000Z'),
+      ev('plan_created', { planId: 'p1' }, '2026-05-13T00:00:01.000Z'),
+    ];
+    const timeline = computeRunTimeline(events);
+    expect(timeline.pendingPlannerCheckback).toBeNull();
+  });
+});

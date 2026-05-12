@@ -1313,6 +1313,72 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
   // JWT + RunAcl required. 60s TTL, single-use. Ticket IDs redacted from logs.
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /workspace/runs/:runId/close — operator-initiated run closure
+  // AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7 + §6.2 Commit 8.
+  //
+  // Used by the planner-rejection counter-suggestion modal (PlanCheckbackModal)
+  // to close a run when the operator:
+  //   - clicks Accept Suggestions (reason: 'user_accepted_checkback_reissued')
+  //     — closes the source run before a new re-issued run is opened
+  //   - clicks Cancel Run (reason: 'user_cancelled_after_checkback')
+  //     — closes the source run with no follow-on run
+  //
+  // JWT-authenticated + RunAcl-authorized (principal must own the run).
+  // Emits `run_cancelled` ledger event with reason + actor.
+  // Idempotent (subsequent calls emit additional events but the run is
+  // already closed from the first call's perspective).
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.post('/workspace/runs/:runId/close', async (req: Request, res: Response) => {
+    if (!deps.runLedgerWriter || !deps.workspaceRunAclStore) {
+      res.status(501).json({ ok: false, error: 'Run close not configured' });
+      return;
+    }
+    try {
+      const runId = req.params['runId'] as Uuid;
+      const principalId = res.locals['principalId'] as string;
+
+      // RunAcl check — must own the run to close it
+      const authorized = await deps.workspaceRunAclStore.isAuthorized(runId, principalId);
+      if (!authorized) {
+        res.status(403).json({ ok: false, error: 'Not authorized for this run' });
+        return;
+      }
+
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const reason = body['reason'] as string | undefined;
+      const VALID_CLOSE_REASONS = new Set([
+        'user_cancelled_after_checkback',
+        'user_accepted_checkback_reissued',
+      ]);
+      if (!reason || !VALID_CLOSE_REASONS.has(reason)) {
+        res.status(400).json({
+          ok: false,
+          error:
+            "reason required: 'user_cancelled_after_checkback' | 'user_accepted_checkback_reissued'",
+        });
+        return;
+      }
+
+      await deps.runLedgerWriter.writeEvent({
+        runId,
+        eventType: 'run_cancelled',
+        timestamp: nowIso(),
+        actorId: principalId as Uuid,
+        detail: {
+          reason,
+          source: 'plan_checkback_modal',
+          closedByPrincipalId: principalId,
+        },
+      });
+
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
   app.post('/workspace/runs/:runId/event-ticket', async (req: Request, res: Response) => {
     if (!deps.workspaceEventTicketStore || !deps.workspaceRunAclStore) {
       res.status(501).json({ ok: false, error: 'Event tickets not configured' });
