@@ -88,6 +88,11 @@ import {
   RefDagExecutor,
 } from '@nexus/orch-ref';
 import type { NodeDispatchResult, DelegationScope } from '@nexus/orch-ref';
+// AMEND-nexus-planner-db-lexicon-v0-2-1.md §6.2 Commit 5 — registry-based
+// planner resolution. The lexicon planner factory is registered + the
+// active planner is created via the registry per orchManifest.plannerType.
+import { DbLexiconTransformerPlannerFactory, loadLexiconFixtures } from '@nexus/planner-db-lexicon';
+import { PlannerFactoryRegistryImpl } from '../packages/core/src/manifest/planners/planner-factory-registry.js';
 // NXS Pipeline gates + classification — relative imports (composition root cross-layer).
 // The full pipeline stays constructed so admin tooling can route AgentActions
 // through it; the workspace prompt path now goes through NVG instead.
@@ -435,8 +440,67 @@ const program = createCli({
     // 22b. AgentRegistryReader — projection over canonical NXS ActorRegistry
     const agentRegistry = new ActorRegistryAgentReader(coreDeps.actorRegistry);
 
-    // 22c. Planner + DAG executor
-    const planner = new RefDeterministicPlanner(computeDigest, orchManifest.orchestratorActorId);
+    // ── 17b. PlannerFactoryRegistry construction ───────────────────────
+    // AMEND-nexus-planner-db-lexicon-v0-2-1.md §4.1 step 17b. The
+    // registry is constructed before fixture load so we can register
+    // factories as they become available (step 18a registers the
+    // lexicon factory after fixture load).
+    const plannerFactoryRegistry = new PlannerFactoryRegistryImpl();
+
+    // ── 18a. Lexicon fixture load + factory registration ──────────────
+    // Only fires when the active orchestrator manifest selects the
+    // lexicon planner. Fixture I/O is bootstrap-step ownership (row 9
+    // ratification) — the factory takes pre-loaded tables and does NOT
+    // re-load or re-verify.
+    if (orchManifest.plannerType === ('db-lexicon-transformer-v0' as NonEmpty)) {
+      const lexiconFixtureRoot =
+        (orchManifest.plannerConfiguration?.['lexiconFixtureRoot'] as string | undefined) ??
+        'fixtures/planner/db-lexicon';
+      // Project the connector-system set from the loaded manifest so
+      // the lexicon loader can assert INV-04 (every target catalog
+      // system MUST be a known connector system).
+      const knownConnectorSystems = new Set<string>();
+      for (const c of br.externals.connectorRecords) {
+        for (const sys of c.allowedSystems) {
+          knownConnectorSystems.add(sys);
+        }
+      }
+      console.log(`[orch-wire] Step 18a: loading lexicon fixtures from ${lexiconFixtureRoot}`);
+      const lexiconTables = await loadLexiconFixtures({
+        fixtureRoot: lexiconFixtureRoot,
+        controlPlanePublicKey: controlPlaneKey.publicKey,
+        knownConnectorSystems,
+      });
+      console.log(
+        `[orch-wire] Step 18a: lexicon loaded (${lexiconTables.lexicalTerms.length} terms, ` +
+          `${lexiconTables.taskIntents.length} intents, ${lexiconTables.workflowTemplates.length} templates)`
+      );
+      plannerFactoryRegistry.register(
+        new DbLexiconTransformerPlannerFactory(lexiconTables, computeDigest)
+      );
+    }
+
+    // ── 22c. Planner + DAG executor — resolve planner via registry ────
+    // AMEND-nexus-planner-db-lexicon-v0-2-1.md §4.1 step 22c. Fail-closed
+    // on missing factory per factories.ts law ("Missing factory resolution
+    // fails closed before API traffic starts").
+    const plannerFactory = plannerFactoryRegistry.get(orchManifest.plannerType);
+    let planner;
+    if (plannerFactory) {
+      planner = await plannerFactory.create(orchManifest);
+      console.log(
+        `[orch-wire] Step 22c: planner resolved via registry — plannerType '${orchManifest.plannerType}', version '${planner.plannerVersion}'`
+      );
+    } else {
+      // Transitional path — legacy RefDeterministicPlanner is still
+      // constructible during Commits 5-6 of the AMEND migration. After
+      // Commit 6 (RefDeterministicPlanner deletion) this branch fails
+      // closed when the manifest references an unregistered plannertype.
+      console.log(
+        `[orch-wire] Step 22c: no registered factory for plannerType '${orchManifest.plannerType}' — falling back to RefDeterministicPlanner (transitional, removed in Commit 6)`
+      );
+      planner = new RefDeterministicPlanner(computeDigest, orchManifest.orchestratorActorId);
+    }
     const dagExecutor = new RefDagExecutor(orchManifest.partialCompletion);
 
     // 22d. Factory: makeDispatchToGovernance — closes over the originating

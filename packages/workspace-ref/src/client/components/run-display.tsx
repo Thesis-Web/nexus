@@ -15,6 +15,7 @@ import { RunTimeline } from './run-timeline.js';
 import { RunDagSection } from './run-dag-section.js';
 import { RunDenialCard } from './run-denial-card.js';
 import { RunCheckbackCard } from './run-checkback-card.js';
+import { PlanCheckbackModal } from './plan-checkback-modal.js';
 import { computeRunTimeline, type RunTimelineState } from './run-stage-reducer.js';
 
 interface RunDisplayProps {
@@ -162,6 +163,32 @@ export function RunDisplay({ runId, events, status, planRejection }: RunDisplayP
             orchestrator is awaiting the user's allow/deny decision. */}
         {timeline.pendingCheckback && (
           <RunCheckbackCard runId={runId} checkback={timeline.pendingCheckback} />
+        )}
+
+        {/* AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7 — planner-level
+            preflight rejection counter-suggestion modal. Renders when the
+            preferred-agents preflight branch (Branch 3) rejected with
+            usable alternatives. Distinct from the NVG-tier checkback
+            above (different mechanism, different payload). */}
+        {timeline.pendingPlannerCheckback && runId && (
+          <PlanCheckbackModal
+            sourceRunId={runId}
+            payload={timeline.pendingPlannerCheckback}
+            prompt={''}
+            preferredEndpointId={null}
+            onDismiss={() => {
+              // V1: dismissal is local — the original run already
+              // wrote `plan_rejected` so it's terminal. The modal
+              // unmounts when the parent re-computes the timeline
+              // (run_closed / run_cancelled clears the field) or when
+              // the user navigates away.
+            }}
+            onAccepted={(_newRunId: string) => {
+              // V1: navigation handled by the workspace shell after
+              // the new run is created. The new runId is in the
+              // response; routes are owner-app responsibility.
+            }}
+          />
         )}
 
         {/* Denial card — shown when the timeline detected a failure stage.

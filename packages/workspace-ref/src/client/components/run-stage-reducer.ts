@@ -90,6 +90,17 @@ export interface RunTimelineState {
    */
   pendingCheckback: PendingCheckback | null;
   /**
+   * AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7 — when the planner
+   * rejected a preferred-agents preflight with usable alternatives, the
+   * coordinator emits `plan_checkback_sent` carrying the full
+   * `RejectionCheckbackPayload` in detail.checkbackPayload. This field
+   * carries the payload so the `PlanCheckbackModal` can render the
+   * Accept-Suggestions / Cancel-Run UI. Null on success paths and on
+   * the legacy NVG-tier checkback path (which uses `pendingCheckback`
+   * above).
+   */
+  pendingPlannerCheckback: PlannerCheckbackPayload | null;
+  /**
    * AMEND-spec-nexus-orch §5 extension — multi-node planner DAG. Populated
    * from `orchestrator_dispatched.detail.selectedAgents[]` + `edges[]` and
    * the per-node lifecycle events. Null until the dispatch event lands;
@@ -167,6 +178,28 @@ export interface PendingCheckback {
   alternativeEndpoint: { endpointId: string; modelName: string; tier: string } | null;
   message: string;
   denialReason: string | null;
+}
+
+// ─── PlannerCheckbackPayload — planner-level preflight rejection ───
+// AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7.
+// Mirrors the RejectionCheckbackPayload contract type in
+// @nexus/contracts; declared locally here so workspace-ref's client
+// code doesn't import from server-only contract types. Wire-level
+// match is enforced by tests.
+
+export interface PlannerCheckbackSuggestedAgent {
+  agentId: string;
+  capability: string;
+  reason: string;
+}
+
+export interface PlannerCheckbackPayload {
+  reason: string;
+  reasonDetail: string;
+  missingCapabilities: string[];
+  rejectedSelectedAgentIds: string[];
+  recommendedSelectedAgentIds: string[];
+  alternativesByCapability: Record<string, PlannerCheckbackSuggestedAgent[]>;
 }
 
 // ─── Stage definitions — strict event → stage map ──────────────────────────
@@ -355,6 +388,54 @@ function describePlanReview(events: RunEvent[]): string[] {
     if (reason) lines.push(`Reason: ${reason}`);
   }
   return lines;
+}
+
+function extractPendingPlannerCheckback(events: RunEvent[]): PlannerCheckbackPayload | null {
+  // AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7.
+  //
+  // The "pending" planner checkback is the most recent
+  // `plan_checkback_sent` event whose detail carries the planner-shape
+  // payload (distinguishable from the legacy NVG-tier `plan_checkback_sent`
+  // by the presence of `checkbackPayload`). Cleared by the next
+  // `plan_created` (operator accepted suggestions → new run took over),
+  // `run_closed`, or `run_cancelled`.
+  let lastPlannerCheckback: RunEvent | null = null;
+  for (const ev of events) {
+    if (
+      ev.type === 'plan_checkback_sent' &&
+      ev.detail &&
+      ev.detail['checkbackPayload'] !== undefined
+    ) {
+      lastPlannerCheckback = ev;
+    } else if (
+      ev.type === 'plan_created' ||
+      ev.type === 'run_closed' ||
+      ev.type === 'run_cancelled'
+    ) {
+      lastPlannerCheckback = null;
+    }
+  }
+  if (!lastPlannerCheckback || !lastPlannerCheckback.detail) return null;
+  const payload = lastPlannerCheckback.detail['checkbackPayload'] as Record<string, unknown>;
+  if (!payload || typeof payload !== 'object') return null;
+  return {
+    reason: String(payload['reason'] ?? ''),
+    reasonDetail: String(payload['reasonDetail'] ?? ''),
+    missingCapabilities: Array.isArray(payload['missingCapabilities'])
+      ? (payload['missingCapabilities'] as string[]).filter(s => typeof s === 'string')
+      : [],
+    rejectedSelectedAgentIds: Array.isArray(payload['rejectedSelectedAgentIds'])
+      ? (payload['rejectedSelectedAgentIds'] as string[]).filter(s => typeof s === 'string')
+      : [],
+    recommendedSelectedAgentIds: Array.isArray(payload['recommendedSelectedAgentIds'])
+      ? (payload['recommendedSelectedAgentIds'] as string[]).filter(s => typeof s === 'string')
+      : [],
+    alternativesByCapability:
+      typeof payload['alternativesByCapability'] === 'object' &&
+      payload['alternativesByCapability'] !== null
+        ? (payload['alternativesByCapability'] as Record<string, PlannerCheckbackSuggestedAgent[]>)
+        : {},
+  };
 }
 
 function extractPendingCheckback(events: RunEvent[]): PendingCheckback | null {
@@ -1024,6 +1105,7 @@ export function computeRunTimeline(events: RunEvent[]): RunTimelineState {
     finalResponseBody: finalDescribe.body,
     finalArtifactId: finalDescribe.artifactId,
     pendingCheckback: extractPendingCheckback(events),
+    pendingPlannerCheckback: extractPendingPlannerCheckback(events),
     dag: extractDagState(events),
   };
 }

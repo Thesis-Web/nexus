@@ -297,6 +297,15 @@ const FreeTextSchema = z
      */
     subTasks: z.array(SubTaskDeclSchema).optional(),
     subTaskEdges: z.array(SubTaskEdgeHintSchema).optional(),
+    /**
+     * AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7 — additive optional
+     * field. Non-null when this run was opened via the
+     * Accept-Suggestions flow on a prior preferred-agents preflight
+     * rejection; carries the prior runId for audit correlation. Null
+     * on fresh runs. Server-side passes through to
+     * `WorkspaceRunRequest.checkbackSourceRunId` without business logic.
+     */
+    checkbackSourceRunId: z.string().uuid().optional(),
   })
   .strict();
 
@@ -831,10 +840,15 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         subTasks: subTasks as WorkspaceRunRequest['subTasks'],
         subTaskEdges: subTaskEdges as WorkspaceRunRequest['subTaskEdges'],
         // AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7 — additive
-        // field. Null on fresh runs. Workspace re-issue (Commit 5)
-        // sets this to the originally-rejected runId when the operator
-        // accepts the planner's counter-suggestion.
-        checkbackSourceRunId: null,
+        // field. Non-null when the operator accepted a counter-suggestion
+        // from a prior run's preferred-agents preflight rejection; the
+        // value is the originally-rejected runId for audit correlation.
+        // Only `free_text` mode currently carries the field in the input
+        // schema; other modes default to null.
+        checkbackSourceRunId:
+          input.promptMode === 'free_text' && input.checkbackSourceRunId
+            ? (input.checkbackSourceRunId as Uuid)
+            : null,
       };
 
       // §8.1/§8.2: secure rail events (gate 14) — write if promptMode === 'secure_rails'

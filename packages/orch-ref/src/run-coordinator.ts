@@ -24,6 +24,9 @@ import type {
   PlannerRequest,
   WorkspaceRunRequest,
   RunEventType,
+  RejectionCheckbackPayload,
+  PlannerPlanTrace,
+  PlannerTraceReader,
 } from '@nexus/contracts';
 
 import type { Planner, PlannerContext, AgentRegistryReader } from '@nexus/contracts';
@@ -175,6 +178,25 @@ export class RefRunCoordinator implements RunCoordinator {
     };
     const planResult = await deps.planner.plan(plannerRequest, plannerContext);
 
+    // AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.2 — read trace via
+    // PlannerTraceReader duck-type. Planners that don't implement (legacy
+    // RefDeterministicPlanner) simply return null and the event is
+    // skipped. Trace emission MUST happen BEFORE the rejection branch so
+    // the trace is preserved for both success + rejection paths.
+    const trace = readPlannerTrace(deps.planner);
+    if (trace !== null) {
+      // `writeLedger` expects Record<string, unknown> for detail; the
+      // PlannerPlanTrace interface has named fields. The cast is safe
+      // because every PlannerPlanTrace field value is JSON-serializable
+      // by construction (Uuid / NonEmpty / number / null / nested
+      // primitives).
+      await this.writeLedger(
+        request.runId,
+        'planner_plan_trace',
+        trace as unknown as Record<string, unknown>
+      );
+    }
+
     if ('rejected' in planResult && (planResult as PlanRejection).rejected) {
       const rejection = planResult as PlanRejection;
       await this.writeLedger(request.runId, 'plan_rejected', {
@@ -182,7 +204,29 @@ export class RefRunCoordinator implements RunCoordinator {
         reasonDetail: rejection.reasonDetail,
         suggestedCount: rejection.suggestedAlternatives.length,
       });
-      return this.planPreviewFromRejection(request, rejection);
+
+      // AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.3.3 + §3.7 — read the
+      // RejectionCheckbackPayload via duck-type. When non-null, emit
+      // `plan_checkback_sent` (existing event, reused) and attach the
+      // payload to `OrchestratorPlanPreview.rejection` so workspace UI
+      // can drive the Accept-Suggestions / Cancel-Run modal.
+      const checkback = readPlannerRejectionCheckback(deps.planner);
+      if (checkback !== null) {
+        await this.writeLedger(request.runId, 'plan_checkback_sent', {
+          reason: checkback.reason,
+          reasonDetail: checkback.reasonDetail,
+          missingCount: checkback.missingCapabilities.length,
+          recommendedCount: checkback.recommendedSelectedAgentIds.length,
+          // Full payload embedded for workspace UI consumption per
+          // AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.7. The reducer
+          // recognizes the planner-style shape by the
+          // `checkbackPayload` field's presence (legacy NVG-tier
+          // checkbacks emit only `{ planId }`).
+          checkbackPayload: checkback as unknown as Record<string, unknown>,
+        });
+      }
+
+      return this.planPreviewFromRejection(request, rejection, checkback);
     }
 
     const plan = planResult as ExecutionPlan;
@@ -545,8 +589,15 @@ export class RefRunCoordinator implements RunCoordinator {
 
   private planPreviewFromRejection(
     request: WorkspaceRunRequest,
-    rejection: PlanRejection
+    rejection: PlanRejection,
+    checkback: RejectionCheckbackPayload | null = null
   ): OrchestratorPlanPreview {
+    // When the planner produced a counter-suggestion (Branch 3 reject
+    // path), the coordinator attaches the executable RejectionCheckbackPayload
+    // to `preview.rejection`. Workspace UI consumes this to drive the
+    // Accept-Suggestions / Cancel-Run modal. `requiresUserApproval` flips
+    // to true so the workspace shell treats this as a user-decision
+    // state rather than a terminal rejection.
     return {
       runId: request.runId,
       orchestratorSocketId: this.manifest.orchestratorSocketId,
@@ -556,15 +607,10 @@ export class RefRunCoordinator implements RunCoordinator {
           ? 'deterministic'
           : this.manifest.plannerMode,
       selectedAgents: [],
-      requiresUserApproval: false,
+      requiresUserApproval: checkback !== null,
       planDigest: '' as Sha256Hex,
       plan: null,
-      // Commit 5 will populate this with a RejectionCheckbackPayload
-      // built from `rejection` when the planner returns suggestions
-      // (preferred-agents preflight reject path). Until then the
-      // coordinator carries `null` and the existing flat-preview wire
-      // shape is preserved.
-      rejection: null,
+      rejection: checkback,
     };
   }
 
@@ -594,4 +640,40 @@ export class RefRunCoordinator implements RunCoordinator {
       rejection: null, // success path — no checkback needed
     };
   }
+}
+
+// ─── PlannerTraceReader / PlannerCheckbackReader duck-type readers ───
+// AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.2 + §3.3.3.
+//
+// The coordinator detects whether the configured planner exposes
+// `getLastTrace()` / `getLastRejectionCheckback()` via property-existence
+// duck-type. Planners that don't implement these methods (e.g. legacy
+// RefDeterministicPlanner) simply skip the ledger emission. The
+// PlannerTraceReader interface is in `@nexus/contracts`;
+// `getLastRejectionCheckback` is package-local on the
+// DbLexiconTransformerPlanner (per spec §13 ratifications — only the
+// trace reader was elevated to a contract surface).
+
+function readPlannerTrace(planner: Planner): PlannerPlanTrace | null {
+  if (
+    'getLastTrace' in planner &&
+    typeof (planner as unknown as PlannerTraceReader).getLastTrace === 'function'
+  ) {
+    return (planner as unknown as PlannerTraceReader).getLastTrace();
+  }
+  return null;
+}
+
+function readPlannerRejectionCheckback(planner: Planner): RejectionCheckbackPayload | null {
+  if (
+    'getLastRejectionCheckback' in planner &&
+    typeof (planner as unknown as { getLastRejectionCheckback: () => unknown })
+      .getLastRejectionCheckback === 'function'
+  ) {
+    const value = (
+      planner as unknown as { getLastRejectionCheckback: () => RejectionCheckbackPayload | null }
+    ).getLastRejectionCheckback();
+    return value;
+  }
+  return null;
 }
