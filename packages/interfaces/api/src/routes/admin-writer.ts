@@ -305,6 +305,48 @@ const OrchestratorUpdateSchema = z
   })
   .strict();
 
+// ── AMEND-nexus-admin-dashboard-full-buildout §3.4 — Workspaces ────────────
+//
+// Schema mirrors WorkspaceManifestEntrySchema. entryMode is locked to
+// 'governed_only' via z.literal — writer rejects any other value.
+// capabilities keys match the loader (promptEntry/planReview/finalDisplay/
+// fileSpace); the spec's looser names (prompts/runDisplay/...) are
+// reconciled to the loader's law (/mem2). workspaceType remains an open
+// string so factory-registered types beyond http/cli/mcp stay editable.
+const WorkspaceCapabilitiesSchema = z
+  .object({
+    promptEntry: z.boolean(),
+    planReview: z.boolean(),
+    finalDisplay: z.boolean(),
+    fileSpace: z.boolean(),
+  })
+  .strict();
+
+const WorkspaceCreateSchema = z
+  .object({
+    workspaceSocketId: z.string().min(1),
+    workspaceType: z.string().min(1),
+    enabled: z.boolean(),
+    entryMode: z.literal('governed_only'),
+    baseUrl: z.string().url(),
+    returnEndpointId: z.string().min(1),
+    capabilities: WorkspaceCapabilitiesSchema,
+    configuration: z.record(z.unknown()),
+  })
+  .strict();
+
+const WorkspaceUpdateSchema = z
+  .object({
+    workspaceType: z.string().min(1).optional(),
+    enabled: z.boolean().optional(),
+    entryMode: z.literal('governed_only').optional(),
+    baseUrl: z.string().url().optional(),
+    returnEndpointId: z.string().min(1).optional(),
+    capabilities: WorkspaceCapabilitiesSchema.optional(),
+    configuration: z.record(z.unknown()).optional(),
+  })
+  .strict();
+
 /**
  * Secret schemas. Hand-rolled checks for keyName format (UPPER_SNAKE_CASE,
  * length, regex) and keyValue length stay below — Zod handles type/shape;
@@ -1076,6 +1118,42 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
         entries,
         'providerId',
         'cannot remove last enabled identity provider'
+      ),
+  });
+
+  // ═══ SURFACE 8: Workspaces — AMEND-nexus-admin-dashboard §3.4 ═══
+  // entryMode is z.literal('governed_only') — writer rejects any other
+  // value naturally via Zod; preUpdate adds a clearer error message in
+  // case a payload sneaks past with another entryMode key.
+  registerManifestCrud(app, deps, {
+    basePath: '/workspace/admin/setup/workspaces',
+    manifestPath: MANIFEST_WORKSPACES,
+    arrayKey: 'workspaces',
+    idKey: 'workspaceSocketId',
+    paramName: 'socketId',
+    createSchema: WorkspaceCreateSchema,
+    updateSchema: WorkspaceUpdateSchema,
+    preCreate: body => {
+      if ((body as { entryMode?: string }).entryMode !== 'governed_only') {
+        throw Object.assign(new Error('entryMode is fixed to governed_only in this version'), {
+          statusCode: 400,
+        });
+      }
+    },
+    preUpdate: (_id, body) => {
+      const m = (body as { entryMode?: string }).entryMode;
+      if (m !== undefined && m !== 'governed_only') {
+        throw Object.assign(new Error('entryMode is fixed to governed_only in this version'), {
+          statusCode: 400,
+        });
+      }
+    },
+    preDelete: (id, entries) =>
+      assertNotLastEnabled(
+        id,
+        entries,
+        'workspaceSocketId',
+        'cannot remove last enabled workspace'
       ),
   });
 

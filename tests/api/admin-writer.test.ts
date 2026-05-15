@@ -1232,6 +1232,94 @@ describe('admin-writer routes', () => {
     expect(body.error).toMatch(/last enabled orchestrator/i);
   });
 
+  // ── Workspaces (AMEND-admin-dashboard §3.4) ─────────────────────────────
+
+  const fullWorkspaceBody = (overrides: Record<string, unknown> = {}) => ({
+    workspaceSocketId: 'http-2',
+    workspaceType: 'reference_http',
+    enabled: true,
+    entryMode: 'governed_only',
+    baseUrl: 'http://localhost:4200',
+    returnEndpointId: 'http-return',
+    capabilities: {
+      promptEntry: true,
+      planReview: true,
+      finalDisplay: true,
+      fileSpace: false,
+    },
+    configuration: {},
+    ...overrides,
+  });
+
+  it('POST /workspaces — adds a workspace', async () => {
+    const res = await fetch(url('/workspace/admin/setup/workspaces'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(fullWorkspaceBody()),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      data: { workspaceSocketId: string; requiresRestart: boolean };
+    };
+    expect(body.data.workspaceSocketId).toBe('http-2');
+  });
+
+  it('POST /workspaces — rejects entryMode != governed_only (Zod literal)', async () => {
+    const res = await fetch(url('/workspace/admin/setup/workspaces'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(fullWorkspaceBody({ entryMode: 'direct' })),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('PUT /workspaces/:id — refuses to change entryMode away from governed_only', async () => {
+    manifestWriter._store.set('config/workspace/workspaces.v1.yaml:workspaces', [
+      fullWorkspaceBody({ workspaceSocketId: 'wsx' }),
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/workspaces/wsx'), {
+      method: 'PUT',
+      headers: adminHeaders(),
+      body: JSON.stringify({ entryMode: 'direct' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('PUT /workspaces/:id — updates baseUrl + capabilities', async () => {
+    manifestWriter._store.set('config/workspace/workspaces.v1.yaml:workspaces', [
+      fullWorkspaceBody({ workspaceSocketId: 'wsy' }),
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/workspaces/wsy'), {
+      method: 'PUT',
+      headers: adminHeaders(),
+      body: JSON.stringify({
+        baseUrl: 'http://localhost:5000',
+        capabilities: {
+          promptEntry: true,
+          planReview: false,
+          finalDisplay: true,
+          fileSpace: true,
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const stored = manifestWriter._store.get('config/workspace/workspaces.v1.yaml:workspaces')?.[0];
+    expect(stored?.['baseUrl']).toBe('http://localhost:5000');
+    expect((stored?.['capabilities'] as Record<string, boolean>)?.['fileSpace']).toBe(true);
+  });
+
+  it('DELETE /workspaces/:id — refuses last enabled workspace', async () => {
+    manifestWriter._store.set('config/workspace/workspaces.v1.yaml:workspaces', [
+      fullWorkspaceBody({ workspaceSocketId: 'only-ws' }),
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/workspaces/only-ws'), {
+      method: 'DELETE',
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(409);
+  });
+
   // ── Lock status ─────────────────────────────────────────────────────────
 
   it('GET /lock/endpoints — reports unlocked when no writes pending', async () => {

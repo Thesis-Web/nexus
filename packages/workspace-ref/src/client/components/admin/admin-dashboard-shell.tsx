@@ -123,7 +123,14 @@ function renderSurface(
         />
       );
     case 'workspace':
-      return <WorkspaceSetupPanel {...(data ? { data } : {})} />;
+      return (
+        <WorkspaceSetupPanel
+          {...(data ? { data } : {})}
+          elevatedSessionId={elevatedSessionId}
+          {...(catalog ? { catalog } : {})}
+          onCatalogReload={onCatalogReload}
+        />
+      );
     case 'orchestrator':
       return (
         <OrchestratorSetupPanel

@@ -287,6 +287,46 @@ export async function removeOrchestrator(
   );
 }
 
+// ── Surface 8: Workspaces (AMEND-admin-dashboard §3.4) ──────────────────────
+
+export interface WorkspaceWriteResult {
+  workspaceSocketId: string;
+  requiresRestart: boolean;
+}
+
+export async function addWorkspace(
+  elevatedSessionId: string,
+  payload: Record<string, unknown>
+): Promise<WriterResponse<WorkspaceWriteResult>> {
+  return writerFetch('/workspace/admin/setup/workspaces', elevatedSessionId, 'POST', payload);
+}
+
+export async function updateWorkspace(
+  elevatedSessionId: string,
+  workspaceSocketId: string,
+  payload: Record<string, unknown>
+): Promise<WriterResponse<WorkspaceWriteResult>> {
+  return writerFetch(
+    `/workspace/admin/setup/workspaces/${encodeURIComponent(workspaceSocketId)}`,
+    elevatedSessionId,
+    'PUT',
+    payload
+  );
+}
+
+export async function removeWorkspace(
+  elevatedSessionId: string,
+  workspaceSocketId: string
+): Promise<
+  WriterResponse<{ workspaceSocketId: string; removed: boolean; requiresRestart: boolean }>
+> {
+  return writerFetch(
+    `/workspace/admin/setup/workspaces/${encodeURIComponent(workspaceSocketId)}`,
+    elevatedSessionId,
+    'DELETE'
+  );
+}
+
 // ── Surface 4: Admin Secret Onboarding ─────────────────────────────────────
 // CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — operator pastes API keys directly
 // into the dashboard; backing store is keys/secrets.json (gitignored).
