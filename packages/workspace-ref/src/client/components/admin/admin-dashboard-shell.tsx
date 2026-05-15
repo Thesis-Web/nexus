@@ -84,7 +84,13 @@ function renderSurface(
 ) {
   switch (surfaceId) {
     case 'identity':
-      return <IdentityProviderSetupPanel {...(data ? { data } : {})} />;
+      return (
+        <IdentityProviderSetupPanel
+          {...(data ? { data } : {})}
+          elevatedSessionId={elevatedSessionId}
+          onCatalogReload={onCatalogReload}
+        />
+      );
     case 'actors_agents':
       return (
         <ActorAgentSetupPanel

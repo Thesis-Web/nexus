@@ -974,6 +974,106 @@ describe('admin-writer routes', () => {
     }
   });
 
+  // ── Identity providers (AMEND-admin-dashboard §3.1) ─────────────────────
+
+  it('POST /identity-providers — adds a provider and reports restart required', async () => {
+    const res = await fetch(url('/workspace/admin/setup/identity-providers'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify({
+        providerId: 'corp-oidc',
+        providerType: 'oidc',
+        configuration: {
+          issuerUrl: 'https://idp.example.com',
+          clientId: 'nexus',
+          clientSecretRef: 'file:OIDC_CLIENT_SECRET',
+          redirectUri: 'https://nexus.local/cb',
+          scopes: ['openid'],
+        },
+        enabled: true,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      data: { providerId: string; requiresRestart: boolean };
+    };
+    expect(body.ok).toBe(true);
+    expect(body.data.providerId).toBe('corp-oidc');
+    expect(body.data.requiresRestart).toBe(true);
+    expect(manifestWriter._store.get('config/identity/providers.v1.yaml:providers')).toHaveLength(
+      1
+    );
+  });
+
+  it('PUT /identity-providers/:id — updates configuration', async () => {
+    manifestWriter._store.set('config/identity/providers.v1.yaml:providers', [
+      { providerId: 'local-1', providerType: 'local', configuration: {}, enabled: true },
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/identity-providers/local-1'), {
+      method: 'PUT',
+      headers: adminHeaders(),
+      body: JSON.stringify({ configuration: { sessionTtlMinutes: 120 } }),
+    });
+    expect(res.status).toBe(200);
+    const updated = manifestWriter._store.get('config/identity/providers.v1.yaml:providers')?.[0];
+    expect(updated?.['configuration']).toEqual({ sessionTtlMinutes: 120 });
+  });
+
+  it('DELETE /identity-providers/:id — refuses to remove the last enabled provider', async () => {
+    manifestWriter._store.set('config/identity/providers.v1.yaml:providers', [
+      { providerId: 'only-1', providerType: 'local', configuration: {}, enabled: true },
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/identity-providers/only-1'), {
+      method: 'DELETE',
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { ok: boolean; error: string };
+    expect(body.error).toMatch(/last enabled identity provider/i);
+  });
+
+  it('DELETE /identity-providers/:id — succeeds when other enabled providers exist', async () => {
+    manifestWriter._store.set('config/identity/providers.v1.yaml:providers', [
+      { providerId: 'p1', providerType: 'local', configuration: {}, enabled: true },
+      { providerId: 'p2', providerType: 'oidc', configuration: {}, enabled: true },
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/identity-providers/p1'), {
+      method: 'DELETE',
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(200);
+    expect(manifestWriter._store.get('config/identity/providers.v1.yaml:providers')).toHaveLength(
+      1
+    );
+  });
+
+  it('DELETE /identity-providers/:id — allows removing a disabled provider even if it is last', async () => {
+    manifestWriter._store.set('config/identity/providers.v1.yaml:providers', [
+      { providerId: 'disabled-only', providerType: 'local', configuration: {}, enabled: false },
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/identity-providers/disabled-only'), {
+      method: 'DELETE',
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('POST /identity-providers — rejects unknown extra fields (.strict)', async () => {
+    const res = await fetch(url('/workspace/admin/setup/identity-providers'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify({
+        providerId: 'x',
+        providerType: 'local',
+        configuration: {},
+        enabled: true,
+        someUnknownField: 'reject me',
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
   // ── Lock status ─────────────────────────────────────────────────────────
 
   it('GET /lock/endpoints — reports unlocked when no writes pending', async () => {

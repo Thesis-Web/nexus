@@ -170,6 +170,32 @@ const DiscoverSchema = z
   })
   .strict();
 
+// ── AMEND-nexus-admin-dashboard-full-buildout §3.1 — Identity providers ────
+//
+// Schema mirrors IdentityProviderManifestEntrySchema (loader-side) so the
+// writer never produces a manifest the loader can't parse. providerType is
+// an open NonEmpty string per the loader's factory-registry-validated
+// convention; the spec's discriminated union (local/oidc/saml/api-token)
+// lives in the UI as form-shape guidance, not as a writer-side type narrowing
+// (a stricter writer schema would reject the existing seed `reference_adapter`
+// entry that the loader already accepts).
+const IdentityProviderCreateSchema = z
+  .object({
+    providerId: z.string().min(1),
+    providerType: z.string().min(1),
+    configuration: z.record(z.unknown()),
+    enabled: z.boolean(),
+  })
+  .strict();
+
+const IdentityProviderUpdateSchema = z
+  .object({
+    providerType: z.string().min(1).optional(),
+    configuration: z.record(z.unknown()).optional(),
+    enabled: z.boolean().optional(),
+  })
+  .strict();
+
 /**
  * Secret schemas. Hand-rolled checks for keyName format (UPPER_SNAKE_CASE,
  * length, regex) and keyValue length stay below — Zod handles type/shape;
@@ -338,6 +364,196 @@ export interface AdminWriterRouteDeps {
    * treat that as a misconfiguration. Same shape as templates.ts wiring.
    */
   readonly runLedgerWriter?: RunLedgerWriter;
+}
+
+// ── Generic manifest CRUD route helper ──────────────────────────────────────
+//
+// AMEND-nexus-admin-dashboard-full-buildout §3.1–§3.5 — seven new manifest
+// surfaces share the same shape (Zod-validate body → acquire lock → mutate
+// via injected ManifestWriter → release lock → respond). Without this
+// helper, each surface would be ~150 lines of near-duplicate route code.
+//
+// Surfaces with cross-surface or last-enabled invariants pass a guard via
+// `extraCheck` / `extraDeleteCheck`; everything else uses the default.
+interface ManifestCrudConfig<TCreate, TUpdate> {
+  /** REST path prefix, e.g. '/workspace/admin/setup/identity-providers'. */
+  readonly basePath: string;
+  /** Manifest YAML path, e.g. 'config/identity/providers.v1.yaml'. */
+  readonly manifestPath: string;
+  /** Body array key, e.g. 'providers'. */
+  readonly arrayKey: string;
+  /** Path-segment id and entry primary key, e.g. 'providerId'. */
+  readonly idKey: string;
+  /** URL path-param name (defaults to idKey). */
+  readonly paramName?: string;
+  /** Zod schema for POST body. */
+  readonly createSchema: z.ZodType<TCreate>;
+  /** Zod schema for PUT body. */
+  readonly updateSchema: z.ZodType<TUpdate>;
+  /**
+   * Pre-write hook for CREATE. Receives the validated body + current
+   * entries; throws an Error (optionally with .statusCode) to reject.
+   */
+  readonly preCreate?: (body: TCreate, entries: Record<string, unknown>[]) => void | Promise<void>;
+  /**
+   * Pre-write hook for UPDATE. Receives the path id, validated body, and
+   * current entries. Throws to reject.
+   */
+  readonly preUpdate?: (
+    id: string,
+    body: TUpdate,
+    entries: Record<string, unknown>[]
+  ) => void | Promise<void>;
+  /**
+   * Pre-write hook for DELETE — used for last-enabled and cross-surface
+   * referential-integrity guards. Throws to reject.
+   */
+  readonly preDelete?: (id: string, entries: Record<string, unknown>[]) => void | Promise<void>;
+}
+
+function registerManifestCrud<
+  TCreate extends Record<string, unknown>,
+  TUpdate extends Record<string, unknown>,
+>(app: Express, deps: AdminWriterRouteDeps, cfg: ManifestCrudConfig<TCreate, TUpdate>): void {
+  const paramName = cfg.paramName ?? cfg.idKey;
+
+  app.post(cfg.basePath, async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    if (!deps.manifestWriter) {
+      res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
+      return;
+    }
+    const parsed = cfg.createSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+    const lock = acquireLock(cfg.manifestPath, auth.principalId);
+    if (!lock.ok) {
+      res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
+      return;
+    }
+    try {
+      const current = await deps.manifestWriter
+        .readEntries(cfg.manifestPath, cfg.arrayKey)
+        .catch(() => [] as Record<string, unknown>[]);
+      if (cfg.preCreate) await cfg.preCreate(parsed.data, current);
+      const entry = parsed.data as Record<string, unknown>;
+      await deps.manifestWriter.addEntry(cfg.manifestPath, cfg.arrayKey, entry, cfg.idKey);
+      releaseLock(cfg.manifestPath, auth.principalId);
+      res.json({
+        ok: true,
+        data: { [cfg.idKey]: entry[cfg.idKey], requiresRestart: true },
+      });
+    } catch (err) {
+      releaseLock(cfg.manifestPath, auth.principalId);
+      const sc = (err as { statusCode?: number }).statusCode ?? 500;
+      res.status(sc).json({ ok: false, error: san(err) });
+    }
+  });
+
+  app.put(`${cfg.basePath}/:${paramName}`, async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    if (!deps.manifestWriter) {
+      res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
+      return;
+    }
+    const parsed = cfg.updateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+    const lock = acquireLock(cfg.manifestPath, auth.principalId);
+    if (!lock.ok) {
+      res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
+      return;
+    }
+    try {
+      const id = String(req.params[paramName]);
+      const current = await deps.manifestWriter
+        .readEntries(cfg.manifestPath, cfg.arrayKey)
+        .catch(() => [] as Record<string, unknown>[]);
+      if (cfg.preUpdate) await cfg.preUpdate(id, parsed.data, current);
+      await deps.manifestWriter.updateEntry(
+        cfg.manifestPath,
+        cfg.arrayKey,
+        id,
+        parsed.data,
+        cfg.idKey
+      );
+      releaseLock(cfg.manifestPath, auth.principalId);
+      res.json({ ok: true, data: { [cfg.idKey]: id, requiresRestart: true } });
+    } catch (err) {
+      releaseLock(cfg.manifestPath, auth.principalId);
+      const sc = (err as { statusCode?: number }).statusCode ?? 500;
+      res.status(sc).json({ ok: false, error: san(err) });
+    }
+  });
+
+  app.delete(`${cfg.basePath}/:${paramName}`, async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    if (!deps.manifestWriter) {
+      res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
+      return;
+    }
+    const lock = acquireLock(cfg.manifestPath, auth.principalId);
+    if (!lock.ok) {
+      res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
+      return;
+    }
+    try {
+      const id = String(req.params[paramName]);
+      const current = await deps.manifestWriter
+        .readEntries(cfg.manifestPath, cfg.arrayKey)
+        .catch(() => [] as Record<string, unknown>[]);
+      if (cfg.preDelete) await cfg.preDelete(id, current);
+      await deps.manifestWriter.removeEntry(cfg.manifestPath, cfg.arrayKey, id, cfg.idKey);
+      releaseLock(cfg.manifestPath, auth.principalId);
+      res.json({
+        ok: true,
+        data: { [cfg.idKey]: id, removed: true, requiresRestart: true },
+      });
+    } catch (err) {
+      releaseLock(cfg.manifestPath, auth.principalId);
+      const sc = (err as { statusCode?: number }).statusCode ?? 500;
+      res.status(sc).json({ ok: false, error: san(err) });
+    }
+  });
+}
+
+/**
+ * Last-enabled-of-kind guard helper. Throws a 409 if removing this entry
+ * would leave zero enabled entries. Used by identity-provider (must always
+ * have at least one provider an admin can sign in through), approval-channel
+ * (under NXS enforcing — but applied unconditionally per §3.2: at least one
+ * approval surface must exist), orchestrator (server must have an orch
+ * socket), workspace (server must accept some workspace traffic), mailbox
+ * (per-actor allocation requires a file-backed mailbox).
+ */
+function assertNotLastEnabled(
+  id: string,
+  entries: Record<string, unknown>[],
+  idKey: string,
+  errMsg: string
+): void {
+  const target = entries.find(e => e[idKey] === id);
+  if (!target || target['enabled'] !== true) return; // already disabled or missing — no guard
+  const enabledCount = entries.filter(e => e['enabled'] === true).length;
+  if (enabledCount <= 1) {
+    throw Object.assign(new Error(errMsg), { statusCode: 409 });
+  }
 }
 
 async function probeEndpointHealth(url: string): Promise<boolean> {
@@ -736,6 +952,23 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       }
     }
   );
+
+  // ═══ SURFACE 5: Identity providers — AMEND-nexus-admin-dashboard §3.1 ═══
+  registerManifestCrud(app, deps, {
+    basePath: '/workspace/admin/setup/identity-providers',
+    manifestPath: MANIFEST_IDENTITY_PROVIDERS,
+    arrayKey: 'providers',
+    idKey: 'providerId',
+    createSchema: IdentityProviderCreateSchema,
+    updateSchema: IdentityProviderUpdateSchema,
+    preDelete: (id, entries) =>
+      assertNotLastEnabled(
+        id,
+        entries,
+        'providerId',
+        'cannot remove last enabled identity provider'
+      ),
+  });
 
   // ═══ CATALOG (governed constants + raw manifest entries) ═══
   // SPEC-ADMIN-CATALOG-EDITABLE-FORMS §3 — drives every dynamic dropdown in the

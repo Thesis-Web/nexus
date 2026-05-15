@@ -161,6 +161,49 @@ export async function removeConnector(
   );
 }
 
+// ── Surface 5: Identity providers (AMEND-admin-dashboard §3.1) ──────────────
+
+export interface IdentityProviderWriteResult {
+  providerId: string;
+  requiresRestart: boolean;
+}
+
+export async function addIdentityProvider(
+  elevatedSessionId: string,
+  payload: Record<string, unknown>
+): Promise<WriterResponse<IdentityProviderWriteResult>> {
+  return writerFetch(
+    '/workspace/admin/setup/identity-providers',
+    elevatedSessionId,
+    'POST',
+    payload
+  );
+}
+
+export async function updateIdentityProvider(
+  elevatedSessionId: string,
+  providerId: string,
+  payload: Record<string, unknown>
+): Promise<WriterResponse<IdentityProviderWriteResult>> {
+  return writerFetch(
+    `/workspace/admin/setup/identity-providers/${encodeURIComponent(providerId)}`,
+    elevatedSessionId,
+    'PUT',
+    payload
+  );
+}
+
+export async function removeIdentityProvider(
+  elevatedSessionId: string,
+  providerId: string
+): Promise<WriterResponse<{ providerId: string; removed: boolean; requiresRestart: boolean }>> {
+  return writerFetch(
+    `/workspace/admin/setup/identity-providers/${encodeURIComponent(providerId)}`,
+    elevatedSessionId,
+    'DELETE'
+  );
+}
+
 // ── Surface 4: Admin Secret Onboarding ─────────────────────────────────────
 // CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — operator pastes API keys directly
 // into the dashboard; backing store is keys/secrets.json (gitignored).
