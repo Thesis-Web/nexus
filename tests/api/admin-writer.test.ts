@@ -1074,6 +1074,71 @@ describe('admin-writer routes', () => {
     expect(res.status).toBe(400);
   });
 
+  // ── Approval channels (AMEND-admin-dashboard §3.2) ──────────────────────
+
+  it('POST /approval-channels — adds a slack channel', async () => {
+    const res = await fetch(url('/workspace/admin/setup/approval-channels'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify({
+        channelId: 'ops-slack',
+        channelType: 'slack',
+        configuration: {
+          workspaceUrl: 'https://example.slack.com',
+          channel: '#approvals',
+          botTokenRef: 'file:SLACK_BOT_TOKEN',
+        },
+        enabled: true,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      data: { channelId: string; requiresRestart: boolean };
+    };
+    expect(body.data.channelId).toBe('ops-slack');
+    expect(body.data.requiresRestart).toBe(true);
+  });
+
+  it('PUT /approval-channels/:id — updates configuration', async () => {
+    manifestWriter._store.set('config/channels/channels.v1.yaml:channels', [
+      { channelId: 'webhook-1', channelType: 'webhook', configuration: {}, enabled: true },
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/approval-channels/webhook-1'), {
+      method: 'PUT',
+      headers: adminHeaders(),
+      body: JSON.stringify({ configuration: { url: 'https://hook.example/cb', timeoutMs: 8000 } }),
+    });
+    expect(res.status).toBe(200);
+    const updated = manifestWriter._store.get('config/channels/channels.v1.yaml:channels')?.[0];
+    expect((updated?.['configuration'] as Record<string, unknown>)?.['timeoutMs']).toBe(8000);
+  });
+
+  it('DELETE /approval-channels/:id — refuses last enabled channel', async () => {
+    manifestWriter._store.set('config/channels/channels.v1.yaml:channels', [
+      { channelId: 'cli', channelType: 'cli', configuration: {}, enabled: true },
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/approval-channels/cli'), {
+      method: 'DELETE',
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/last enabled approval channel/i);
+  });
+
+  it('DELETE /approval-channels/:id — succeeds with multiple enabled channels', async () => {
+    manifestWriter._store.set('config/channels/channels.v1.yaml:channels', [
+      { channelId: 'cli', channelType: 'cli', configuration: {}, enabled: true },
+      { channelId: 'webhook-1', channelType: 'webhook', configuration: {}, enabled: true },
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/approval-channels/webhook-1'), {
+      method: 'DELETE',
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(200);
+  });
+
   // ── Lock status ─────────────────────────────────────────────────────────
 
   it('GET /lock/endpoints — reports unlocked when no writes pending', async () => {

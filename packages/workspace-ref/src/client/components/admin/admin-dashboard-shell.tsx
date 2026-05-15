@@ -115,7 +115,13 @@ function renderSurface(
         />
       );
     case 'channels_approval':
-      return <ChannelSetupPanel {...(data ? { data } : {})} />;
+      return (
+        <ChannelSetupPanel
+          {...(data ? { data } : {})}
+          elevatedSessionId={elevatedSessionId}
+          onCatalogReload={onCatalogReload}
+        />
+      );
     case 'workspace':
       return <WorkspaceSetupPanel {...(data ? { data } : {})} />;
     case 'orchestrator':

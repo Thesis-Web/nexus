@@ -204,6 +204,49 @@ export async function removeIdentityProvider(
   );
 }
 
+// ── Surface 6: Approval channels (AMEND-admin-dashboard §3.2) ───────────────
+
+export interface ApprovalChannelWriteResult {
+  channelId: string;
+  requiresRestart: boolean;
+}
+
+export async function addApprovalChannel(
+  elevatedSessionId: string,
+  payload: Record<string, unknown>
+): Promise<WriterResponse<ApprovalChannelWriteResult>> {
+  return writerFetch(
+    '/workspace/admin/setup/approval-channels',
+    elevatedSessionId,
+    'POST',
+    payload
+  );
+}
+
+export async function updateApprovalChannel(
+  elevatedSessionId: string,
+  channelId: string,
+  payload: Record<string, unknown>
+): Promise<WriterResponse<ApprovalChannelWriteResult>> {
+  return writerFetch(
+    `/workspace/admin/setup/approval-channels/${encodeURIComponent(channelId)}`,
+    elevatedSessionId,
+    'PUT',
+    payload
+  );
+}
+
+export async function removeApprovalChannel(
+  elevatedSessionId: string,
+  channelId: string
+): Promise<WriterResponse<{ channelId: string; removed: boolean; requiresRestart: boolean }>> {
+  return writerFetch(
+    `/workspace/admin/setup/approval-channels/${encodeURIComponent(channelId)}`,
+    elevatedSessionId,
+    'DELETE'
+  );
+}
+
 // ── Surface 4: Admin Secret Onboarding ─────────────────────────────────────
 // CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — operator pastes API keys directly
 // into the dashboard; backing store is keys/secrets.json (gitignored).

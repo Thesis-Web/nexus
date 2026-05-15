@@ -196,6 +196,29 @@ const IdentityProviderUpdateSchema = z
   })
   .strict();
 
+// ── AMEND-nexus-admin-dashboard-full-buildout §3.2 — Approval channels ─────
+//
+// channelType is an open NonEmpty string (loader uses a factory registry).
+// Panel renders the four canonical discriminator types cli/webhook/slack/
+// dashboard; configuration is record(unknown) at the writer boundary so
+// other factory-registered types stay editable.
+const ApprovalChannelCreateSchema = z
+  .object({
+    channelId: z.string().min(1),
+    channelType: z.string().min(1),
+    configuration: z.record(z.unknown()),
+    enabled: z.boolean(),
+  })
+  .strict();
+
+const ApprovalChannelUpdateSchema = z
+  .object({
+    channelType: z.string().min(1).optional(),
+    configuration: z.record(z.unknown()).optional(),
+    enabled: z.boolean().optional(),
+  })
+  .strict();
+
 /**
  * Secret schemas. Hand-rolled checks for keyName format (UPPER_SNAKE_CASE,
  * length, regex) and keyValue length stay below — Zod handles type/shape;
@@ -968,6 +991,21 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
         'providerId',
         'cannot remove last enabled identity provider'
       ),
+  });
+
+  // ═══ SURFACE 6: Approval channels — AMEND-nexus-admin-dashboard §3.2 ═══
+  // §8 decision (best-solve): the last-enabled-channel guard applies
+  // unconditionally, not only under NXS enforcing. Enforcing requires
+  // human approval; zero enabled channels would deadlock approvals.
+  registerManifestCrud(app, deps, {
+    basePath: '/workspace/admin/setup/approval-channels',
+    manifestPath: MANIFEST_CHANNELS,
+    arrayKey: 'channels',
+    idKey: 'channelId',
+    createSchema: ApprovalChannelCreateSchema,
+    updateSchema: ApprovalChannelUpdateSchema,
+    preDelete: (id, entries) =>
+      assertNotLastEnabled(id, entries, 'channelId', 'cannot remove last enabled approval channel'),
   });
 
   // ═══ CATALOG (governed constants + raw manifest entries) ═══
