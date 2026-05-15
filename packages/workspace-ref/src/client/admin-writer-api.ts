@@ -247,6 +247,46 @@ export async function removeApprovalChannel(
   );
 }
 
+// ── Surface 7: Orchestrators (AMEND-admin-dashboard §3.3) ───────────────────
+
+export interface OrchestratorWriteResult {
+  orchestratorSocketId: string;
+  requiresRestart: boolean;
+}
+
+export async function addOrchestrator(
+  elevatedSessionId: string,
+  payload: Record<string, unknown>
+): Promise<WriterResponse<OrchestratorWriteResult>> {
+  return writerFetch('/workspace/admin/setup/orchestrators', elevatedSessionId, 'POST', payload);
+}
+
+export async function updateOrchestrator(
+  elevatedSessionId: string,
+  orchestratorSocketId: string,
+  payload: Record<string, unknown>
+): Promise<WriterResponse<OrchestratorWriteResult>> {
+  return writerFetch(
+    `/workspace/admin/setup/orchestrators/${encodeURIComponent(orchestratorSocketId)}`,
+    elevatedSessionId,
+    'PUT',
+    payload
+  );
+}
+
+export async function removeOrchestrator(
+  elevatedSessionId: string,
+  orchestratorSocketId: string
+): Promise<
+  WriterResponse<{ orchestratorSocketId: string; removed: boolean; requiresRestart: boolean }>
+> {
+  return writerFetch(
+    `/workspace/admin/setup/orchestrators/${encodeURIComponent(orchestratorSocketId)}`,
+    elevatedSessionId,
+    'DELETE'
+  );
+}
+
 // ── Surface 4: Admin Secret Onboarding ─────────────────────────────────────
 // CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — operator pastes API keys directly
 // into the dashboard; backing store is keys/secrets.json (gitignored).

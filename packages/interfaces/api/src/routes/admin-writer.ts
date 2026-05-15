@@ -219,6 +219,92 @@ const ApprovalChannelUpdateSchema = z
   })
   .strict();
 
+// ── AMEND-nexus-admin-dashboard-full-buildout §3.3 — Orchestrators ─────────
+//
+// Schema mirrors OrchestratorManifestEntrySchema fully — the loader is
+// .strict() on every nested object so a thinner writer schema would
+// produce manifests the loader rejects. Spec §3.3 calls out
+// maxToolTurnsPerNode (0-10) and plannerMode enum('deterministic'); the
+// loader requires int ≥ 1 and the existing enum
+// (deterministic_first|policy_template|llm_assisted). Spec values are
+// best-solve overridden by loader law (/mem2 names literal).
+const OrchestratorSecureModeSchema = z
+  .object({
+    octSecureDefault: z.literal('single_agent_no_helper'),
+    allowSecureMultiAgentOnlyBySignedPolicy: z.boolean(),
+  })
+  .strict();
+const OrchestratorRetryPolicySchema = z
+  .object({ transientAutoRetryCount: z.number().int().min(0) })
+  .strict();
+const OrchestratorTimeoutsSchema = z
+  .object({
+    systemActionMs: z.number().int().min(1),
+    modelCallMs: z.number().int().min(1),
+  })
+  .strict();
+const OrchestratorPlanAmendmentSchema = z
+  .object({
+    enabled: z.boolean(),
+    maxAmendments: z.number().int().min(0),
+    requiresCheckback: z.boolean(),
+  })
+  .strict();
+const OrchestratorPartialCompletionSchema = z
+  .object({
+    enabled: z.boolean(),
+    minRequiredCompletedNodes: z.number().int().min(0),
+    compileOnPartial: z.boolean(),
+  })
+  .strict();
+
+const OrchestratorCreateSchema = z
+  .object({
+    orchestratorSocketId: z.string().min(1),
+    orchestratorType: z.string().min(1),
+    enabled: z.boolean(),
+    orchestratorActorId: z.string().min(1),
+    plannerMode: z.enum(['deterministic_first', 'policy_template', 'llm_assisted']),
+    maxSplitDepth: z.number().int().min(0),
+    planCheckbackDefault: z.boolean(),
+    secureMode: OrchestratorSecureModeSchema,
+    retryPolicy: OrchestratorRetryPolicySchema,
+    timeouts: OrchestratorTimeoutsSchema,
+    outputSlotPolicy: z.enum(['strict_declared_slots', 'advisory_declared_slots', 'open_slots']),
+    configuration: z.record(z.unknown()),
+    plannerType: z.string().min(1),
+    plannerVersion: z.string().min(1),
+    plannerConfiguration: z.record(z.unknown()),
+    planAmendment: OrchestratorPlanAmendmentSchema,
+    partialCompletion: OrchestratorPartialCompletionSchema,
+    maxToolTurnsPerNode: z.number().int().min(1),
+  })
+  .strict();
+
+const OrchestratorUpdateSchema = z
+  .object({
+    orchestratorType: z.string().min(1).optional(),
+    enabled: z.boolean().optional(),
+    orchestratorActorId: z.string().min(1).optional(),
+    plannerMode: z.enum(['deterministic_first', 'policy_template', 'llm_assisted']).optional(),
+    maxSplitDepth: z.number().int().min(0).optional(),
+    planCheckbackDefault: z.boolean().optional(),
+    secureMode: OrchestratorSecureModeSchema.optional(),
+    retryPolicy: OrchestratorRetryPolicySchema.optional(),
+    timeouts: OrchestratorTimeoutsSchema.optional(),
+    outputSlotPolicy: z
+      .enum(['strict_declared_slots', 'advisory_declared_slots', 'open_slots'])
+      .optional(),
+    configuration: z.record(z.unknown()).optional(),
+    plannerType: z.string().min(1).optional(),
+    plannerVersion: z.string().min(1).optional(),
+    plannerConfiguration: z.record(z.unknown()).optional(),
+    planAmendment: OrchestratorPlanAmendmentSchema.optional(),
+    partialCompletion: OrchestratorPartialCompletionSchema.optional(),
+    maxToolTurnsPerNode: z.number().int().min(1).optional(),
+  })
+  .strict();
+
 /**
  * Secret schemas. Hand-rolled checks for keyName format (UPPER_SNAKE_CASE,
  * length, regex) and keyValue length stay below — Zod handles type/shape;
@@ -990,6 +1076,24 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
         entries,
         'providerId',
         'cannot remove last enabled identity provider'
+      ),
+  });
+
+  // ═══ SURFACE 7: Orchestrators — AMEND-nexus-admin-dashboard §3.3 ═══
+  registerManifestCrud(app, deps, {
+    basePath: '/workspace/admin/setup/orchestrators',
+    manifestPath: MANIFEST_ORCHESTRATORS,
+    arrayKey: 'orchestrators',
+    idKey: 'orchestratorSocketId',
+    paramName: 'socketId',
+    createSchema: OrchestratorCreateSchema,
+    updateSchema: OrchestratorUpdateSchema,
+    preDelete: (id, entries) =>
+      assertNotLastEnabled(
+        id,
+        entries,
+        'orchestratorSocketId',
+        'cannot remove last enabled orchestrator'
       ),
   });
 

@@ -1139,6 +1139,99 @@ describe('admin-writer routes', () => {
     expect(res.status).toBe(200);
   });
 
+  // ── Orchestrators (AMEND-admin-dashboard §3.3) ──────────────────────────
+
+  const fullOrchestratorBody = (overrides: Record<string, unknown> = {}) => ({
+    orchestratorSocketId: 'ref-2',
+    orchestratorType: 'reference_deterministic',
+    enabled: true,
+    orchestratorActorId: '00000000-0000-4000-a000-000000000002',
+    plannerMode: 'deterministic_first',
+    maxSplitDepth: 3,
+    planCheckbackDefault: true,
+    secureMode: {
+      octSecureDefault: 'single_agent_no_helper',
+      allowSecureMultiAgentOnlyBySignedPolicy: true,
+    },
+    retryPolicy: { transientAutoRetryCount: 1 },
+    timeouts: { systemActionMs: 30000, modelCallMs: 60000 },
+    outputSlotPolicy: 'strict_declared_slots',
+    configuration: {},
+    plannerType: 'db-lexicon-transformer-v0',
+    plannerVersion: '0.1.0',
+    plannerConfiguration: {},
+    planAmendment: { enabled: true, maxAmendments: 3, requiresCheckback: false },
+    partialCompletion: {
+      enabled: true,
+      minRequiredCompletedNodes: 1,
+      compileOnPartial: true,
+    },
+    maxToolTurnsPerNode: 6,
+    ...overrides,
+  });
+
+  it('POST /orchestrators — adds an orchestrator with full nested config', async () => {
+    const res = await fetch(url('/workspace/admin/setup/orchestrators'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(fullOrchestratorBody()),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      data: { orchestratorSocketId: string; requiresRestart: boolean };
+    };
+    expect(body.data.orchestratorSocketId).toBe('ref-2');
+    expect(body.data.requiresRestart).toBe(true);
+  });
+
+  it('POST /orchestrators — rejects maxToolTurnsPerNode < 1', async () => {
+    const res = await fetch(url('/workspace/admin/setup/orchestrators'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(fullOrchestratorBody({ maxToolTurnsPerNode: 0 })),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /orchestrators — rejects bogus plannerMode', async () => {
+    const res = await fetch(url('/workspace/admin/setup/orchestrators'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(fullOrchestratorBody({ plannerMode: 'bogus' })),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('PUT /orchestrators/:socketId — updates maxToolTurnsPerNode', async () => {
+    manifestWriter._store.set('config/orchestrators/orchestrators.v1.yaml:orchestrators', [
+      fullOrchestratorBody({ orchestratorSocketId: 'ref-1' }),
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/orchestrators/ref-1'), {
+      method: 'PUT',
+      headers: adminHeaders(),
+      body: JSON.stringify({ maxToolTurnsPerNode: 3 }),
+    });
+    expect(res.status).toBe(200);
+    const updated = manifestWriter._store.get(
+      'config/orchestrators/orchestrators.v1.yaml:orchestrators'
+    )?.[0];
+    expect(updated?.['maxToolTurnsPerNode']).toBe(3);
+  });
+
+  it('DELETE /orchestrators/:socketId — refuses last enabled orchestrator', async () => {
+    manifestWriter._store.set('config/orchestrators/orchestrators.v1.yaml:orchestrators', [
+      fullOrchestratorBody({ orchestratorSocketId: 'only-orch' }),
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/orchestrators/only-orch'), {
+      method: 'DELETE',
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/last enabled orchestrator/i);
+  });
+
   // ── Lock status ─────────────────────────────────────────────────────────
 
   it('GET /lock/endpoints — reports unlocked when no writes pending', async () => {

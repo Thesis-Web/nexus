@@ -125,7 +125,13 @@ function renderSurface(
     case 'workspace':
       return <WorkspaceSetupPanel {...(data ? { data } : {})} />;
     case 'orchestrator':
-      return <OrchestratorSetupPanel {...(data ? { data } : {})} />;
+      return (
+        <OrchestratorSetupPanel
+          {...(data ? { data } : {})}
+          elevatedSessionId={elevatedSessionId}
+          onCatalogReload={onCatalogReload}
+        />
+      );
     case 'mailbox_compile_return':
       return <CompileMailboxSetupPanel {...(data ? { data } : {})} />;
     case 'modes_policy_oct':
