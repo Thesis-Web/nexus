@@ -1320,6 +1320,177 @@ describe('admin-writer routes', () => {
     expect(res.status).toBe(409);
   });
 
+  // ── Mailboxes (AMEND-admin-dashboard §3.5.a) ────────────────────────────
+
+  const fullMailboxBody = (overrides: Record<string, unknown> = {}) => ({
+    mailboxId: 'mb-2',
+    mailboxType: 'jsonl-file',
+    enabled: true,
+    required: false,
+    storageRoot: 'runs/mailbox',
+    retentionPolicy: { payloadTtlSeconds: 3600, metadataRetention: 'run_ledger' },
+    classificationRequired: true,
+    digestRequired: true,
+    configuration: {},
+    ...overrides,
+  });
+
+  it('POST /mailboxes — adds a file-backed mailbox', async () => {
+    const res = await fetch(url('/workspace/admin/setup/mailboxes'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(fullMailboxBody()),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('DELETE /mailboxes/:id — refuses to leave zero enabled file-backed mailboxes', async () => {
+    manifestWriter._store.set('config/mailbox/mailboxes.v1.yaml:mailboxes', [
+      fullMailboxBody({ mailboxId: 'only-fb' }),
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/mailboxes/only-fb'), {
+      method: 'DELETE',
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/file-backed mailboxes/i);
+  });
+
+  it('PUT /mailboxes/:id — refuses to disable when only enabled file-backed mailbox', async () => {
+    manifestWriter._store.set('config/mailbox/mailboxes.v1.yaml:mailboxes', [
+      fullMailboxBody({ mailboxId: 'only-fb' }),
+      fullMailboxBody({ mailboxId: 'mem-1', mailboxType: 'memory' }),
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/mailboxes/only-fb'), {
+      method: 'PUT',
+      headers: adminHeaders(),
+      body: JSON.stringify({ enabled: false }),
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it('PUT /mailboxes/:id — allows disable when another file-backed mailbox remains enabled', async () => {
+    manifestWriter._store.set('config/mailbox/mailboxes.v1.yaml:mailboxes', [
+      fullMailboxBody({ mailboxId: 'mb-a' }),
+      fullMailboxBody({ mailboxId: 'mb-b' }),
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/mailboxes/mb-a'), {
+      method: 'PUT',
+      headers: adminHeaders(),
+      body: JSON.stringify({ enabled: false }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  // ── Compilers (AMEND-admin-dashboard §3.5.b) ────────────────────────────
+
+  const fullCompilerBody = (overrides: Record<string, unknown> = {}) => ({
+    compilerSocketId: 'comp-2',
+    compilerType: 'reference_deterministic_renderer',
+    enabled: true,
+    actorRegistration: 'exempt_reference_deterministic_renderer',
+    compilerActorId: null,
+    octMode: 'OCT-COMPILE',
+    allowedModes: ['deterministic_render'],
+    readsFromMailboxId: 'core-return-mailbox',
+    outputContractVersion: 'v1',
+    artifactSigning: { kind: 'control_plane' },
+    configuration: {},
+    ...overrides,
+  });
+
+  it('POST /compilers — adds a deterministic compiler', async () => {
+    const res = await fetch(url('/workspace/admin/setup/compilers'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(fullCompilerBody()),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('POST /compilers — rejects octMode != OCT-COMPILE', async () => {
+    const res = await fetch(url('/workspace/admin/setup/compilers'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(fullCompilerBody({ octMode: 'OCT-OPEN' })),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('DELETE /compilers/:id — refuses last enabled compiler', async () => {
+    manifestWriter._store.set('config/compile/compilers.v1.yaml:compilers', [
+      fullCompilerBody({ compilerSocketId: 'only-c' }),
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/compilers/only-c'), {
+      method: 'DELETE',
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(409);
+  });
+
+  // ── Return endpoints (AMEND-admin-dashboard §3.5.c) ─────────────────────
+
+  const fullReturnEndpointBody = (overrides: Record<string, unknown> = {}) => ({
+    returnEndpointId: 'ret-2',
+    endpointType: 'http_callback',
+    enabled: true,
+    targetWorkspaceSocketId: 'reference-workspace',
+    url: 'http://127.0.0.1:7701/compile-return/ret-2',
+    auth: { kind: 'signed_callback', keyId: 'dev-compile-return-key' },
+    acceptedArtifactTypes: ['final_response.v1'],
+    configuration: {},
+    ...overrides,
+  });
+
+  it('POST /return-endpoints — refuses when target workspace not present', async () => {
+    const res = await fetch(url('/workspace/admin/setup/return-endpoints'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(fullReturnEndpointBody()),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/workspace .* not found/i);
+  });
+
+  it('POST /return-endpoints — refuses when target workspace exists but disabled', async () => {
+    manifestWriter._store.set('config/workspace/workspaces.v1.yaml:workspaces', [
+      { workspaceSocketId: 'reference-workspace', enabled: false },
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/return-endpoints'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(fullReturnEndpointBody()),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/not enabled/i);
+  });
+
+  it('POST /return-endpoints — adds when target workspace exists and enabled', async () => {
+    manifestWriter._store.set('config/workspace/workspaces.v1.yaml:workspaces', [
+      { workspaceSocketId: 'reference-workspace', enabled: true },
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/return-endpoints'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(fullReturnEndpointBody()),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('DELETE /return-endpoints/:id — refuses last enabled return endpoint', async () => {
+    manifestWriter._store.set('config/output/compile-return.v1.yaml:returnEndpoints', [
+      fullReturnEndpointBody({ returnEndpointId: 'only-ret' }),
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/return-endpoints/only-ret'), {
+      method: 'DELETE',
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(409);
+  });
+
   // ── Lock status ─────────────────────────────────────────────────────────
 
   it('GET /lock/endpoints — reports unlocked when no writes pending', async () => {

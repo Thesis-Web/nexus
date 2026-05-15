@@ -327,6 +327,124 @@ export async function removeWorkspace(
   );
 }
 
+// ── Surface 9: Mailboxes (AMEND-admin-dashboard §3.5.a) ─────────────────────
+
+export interface MailboxWriteResult {
+  mailboxId: string;
+  requiresRestart: boolean;
+}
+
+export async function addMailbox(
+  elevatedSessionId: string,
+  payload: Record<string, unknown>
+): Promise<WriterResponse<MailboxWriteResult>> {
+  return writerFetch('/workspace/admin/setup/mailboxes', elevatedSessionId, 'POST', payload);
+}
+
+export async function updateMailbox(
+  elevatedSessionId: string,
+  mailboxId: string,
+  payload: Record<string, unknown>
+): Promise<WriterResponse<MailboxWriteResult>> {
+  return writerFetch(
+    `/workspace/admin/setup/mailboxes/${encodeURIComponent(mailboxId)}`,
+    elevatedSessionId,
+    'PUT',
+    payload
+  );
+}
+
+export async function removeMailbox(
+  elevatedSessionId: string,
+  mailboxId: string
+): Promise<WriterResponse<{ mailboxId: string; removed: boolean; requiresRestart: boolean }>> {
+  return writerFetch(
+    `/workspace/admin/setup/mailboxes/${encodeURIComponent(mailboxId)}`,
+    elevatedSessionId,
+    'DELETE'
+  );
+}
+
+// ── Surface 10: Compilers (AMEND-admin-dashboard §3.5.b) ────────────────────
+
+export interface CompilerWriteResult {
+  compilerSocketId: string;
+  requiresRestart: boolean;
+}
+
+export async function addCompiler(
+  elevatedSessionId: string,
+  payload: Record<string, unknown>
+): Promise<WriterResponse<CompilerWriteResult>> {
+  return writerFetch('/workspace/admin/setup/compilers', elevatedSessionId, 'POST', payload);
+}
+
+export async function updateCompiler(
+  elevatedSessionId: string,
+  compilerSocketId: string,
+  payload: Record<string, unknown>
+): Promise<WriterResponse<CompilerWriteResult>> {
+  return writerFetch(
+    `/workspace/admin/setup/compilers/${encodeURIComponent(compilerSocketId)}`,
+    elevatedSessionId,
+    'PUT',
+    payload
+  );
+}
+
+export async function removeCompiler(
+  elevatedSessionId: string,
+  compilerSocketId: string
+): Promise<
+  WriterResponse<{ compilerSocketId: string; removed: boolean; requiresRestart: boolean }>
+> {
+  return writerFetch(
+    `/workspace/admin/setup/compilers/${encodeURIComponent(compilerSocketId)}`,
+    elevatedSessionId,
+    'DELETE'
+  );
+}
+
+// ── Surface 11: Return endpoints (AMEND-admin-dashboard §3.5.c) ─────────────
+
+export interface ReturnEndpointWriteResult {
+  returnEndpointId: string;
+  requiresRestart: boolean;
+}
+
+export async function addReturnEndpoint(
+  elevatedSessionId: string,
+  payload: Record<string, unknown>
+): Promise<WriterResponse<ReturnEndpointWriteResult>> {
+  return writerFetch('/workspace/admin/setup/return-endpoints', elevatedSessionId, 'POST', payload);
+}
+
+export async function updateReturnEndpoint(
+  elevatedSessionId: string,
+  returnEndpointId: string,
+  payload: Record<string, unknown>
+): Promise<WriterResponse<ReturnEndpointWriteResult>> {
+  return writerFetch(
+    `/workspace/admin/setup/return-endpoints/${encodeURIComponent(returnEndpointId)}`,
+    elevatedSessionId,
+    'PUT',
+    payload
+  );
+}
+
+export async function removeReturnEndpoint(
+  elevatedSessionId: string,
+  returnEndpointId: string
+): Promise<
+  WriterResponse<{ returnEndpointId: string; removed: boolean; requiresRestart: boolean }>
+> {
+  return writerFetch(
+    `/workspace/admin/setup/return-endpoints/${encodeURIComponent(returnEndpointId)}`,
+    elevatedSessionId,
+    'DELETE'
+  );
+}
+
 // ── Surface 4: Admin Secret Onboarding ─────────────────────────────────────
 // CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — operator pastes API keys directly
 // into the dashboard; backing store is keys/secrets.json (gitignored).

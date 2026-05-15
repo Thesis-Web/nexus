@@ -347,6 +347,153 @@ const WorkspaceUpdateSchema = z
   })
   .strict();
 
+// ── AMEND-nexus-admin-dashboard-full-buildout §3.5.a — Mailboxes ───────────
+//
+// Schema mirrors MailboxManifestEntrySchema. mailboxType is open NonEmpty
+// (loader convention); the spec's enum jsonl-file/sqlite/memory is
+// reconciled to include the existing seed 'local_jsonl_reference'.
+// At-least-one-file-backed-mailbox invariant enforced server-side: removing
+// or disabling the last file-backed mailbox would silently break per-actor
+// allocation in RefRunCoordinator step 3.6 (mailbox-pit law).
+const MailboxRetentionPolicySchema = z
+  .object({
+    payloadTtlSeconds: z.number().int().min(60).max(86400),
+    metadataRetention: z.literal('run_ledger'),
+  })
+  .strict();
+
+const MailboxCreateSchema = z
+  .object({
+    mailboxId: z.string().min(1),
+    mailboxType: z.string().min(1),
+    enabled: z.boolean(),
+    required: z.boolean(),
+    storageRoot: z.string().min(1),
+    retentionPolicy: MailboxRetentionPolicySchema,
+    classificationRequired: z.boolean(),
+    digestRequired: z.boolean(),
+    configuration: z.record(z.unknown()),
+  })
+  .strict();
+
+const MailboxUpdateSchema = z
+  .object({
+    mailboxType: z.string().min(1).optional(),
+    enabled: z.boolean().optional(),
+    required: z.boolean().optional(),
+    storageRoot: z.string().min(1).optional(),
+    retentionPolicy: MailboxRetentionPolicySchema.optional(),
+    classificationRequired: z.boolean().optional(),
+    digestRequired: z.boolean().optional(),
+    configuration: z.record(z.unknown()).optional(),
+  })
+  .strict();
+
+/**
+ * File-backed mailbox types. Bootstrap step 3.6 (RefRunCoordinator) allocates
+ * per-actor mailboxes; an in-memory-only manifest would break isolation. The
+ * existing seed uses 'local_jsonl_reference'; the spec defines 'jsonl-file' /
+ * 'sqlite'. Either ancestor counts as file-backed.
+ */
+const FILE_BACKED_MAILBOX_TYPES = new Set(['jsonl-file', 'sqlite', 'local_jsonl_reference']);
+
+function assertAtLeastOneFileBackedMailboxRemains(
+  mutatingId: string,
+  entries: Record<string, unknown>[],
+  willBeEnabled: boolean
+): void {
+  // Compute the post-mutation set: replace the mutating entry's enabled state
+  // (delete = enabled false), then count file-backed-enabled entries.
+  const remainingFileBacked = entries.filter(e => {
+    const isTarget = e['mailboxId'] === mutatingId;
+    const enabledAfter = isTarget ? willBeEnabled : e['enabled'] === true;
+    return enabledAfter && FILE_BACKED_MAILBOX_TYPES.has(String(e['mailboxType']));
+  });
+  if (remainingFileBacked.length === 0) {
+    throw Object.assign(
+      new Error(
+        'cannot leave zero enabled file-backed mailboxes — per-actor allocation requires at least one jsonl-file/sqlite mailbox'
+      ),
+      { statusCode: 409 }
+    );
+  }
+}
+
+// ── AMEND-nexus-admin-dashboard-full-buildout §3.5.b — Compilers ───────────
+const CompilerArtifactSigningSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('control_plane') }).strict(),
+  z.object({ kind: z.literal('actor_registry_key'), keyId: z.string().min(1) }).strict(),
+]);
+
+const CompilerCreateSchema = z
+  .object({
+    compilerSocketId: z.string().min(1),
+    compilerType: z.string().min(1),
+    enabled: z.boolean(),
+    actorRegistration: z.enum(['exempt_reference_deterministic_renderer', 'required']),
+    compilerActorId: z.union([z.string().min(1), z.null()]),
+    octMode: z.literal('OCT-COMPILE'),
+    allowedModes: z
+      .array(z.enum(['deterministic_render', 'on_prem_synthesis', 'frontier_synthesis']))
+      .min(1),
+    readsFromMailboxId: z.string().min(1),
+    outputContractVersion: z.literal('v1'),
+    artifactSigning: CompilerArtifactSigningSchema,
+    configuration: z.record(z.unknown()),
+  })
+  .strict();
+
+const CompilerUpdateSchema = z
+  .object({
+    compilerType: z.string().min(1).optional(),
+    enabled: z.boolean().optional(),
+    actorRegistration: z.enum(['exempt_reference_deterministic_renderer', 'required']).optional(),
+    compilerActorId: z.union([z.string().min(1), z.null()]).optional(),
+    octMode: z.literal('OCT-COMPILE').optional(),
+    allowedModes: z
+      .array(z.enum(['deterministic_render', 'on_prem_synthesis', 'frontier_synthesis']))
+      .min(1)
+      .optional(),
+    readsFromMailboxId: z.string().min(1).optional(),
+    outputContractVersion: z.literal('v1').optional(),
+    artifactSigning: CompilerArtifactSigningSchema.optional(),
+    configuration: z.record(z.unknown()).optional(),
+  })
+  .strict();
+
+// ── AMEND-nexus-admin-dashboard-full-buildout §3.5.c — Return endpoints ────
+// Schema mirrors CompileReturnEndpointEntrySchema. endpointType is locked
+// to 'http_callback' (the only loader-supported variant today); spec's
+// 'http'/'cli'/'mcp' values are reconciled to the loader's literal.
+const ReturnEndpointAuthSchema = z
+  .object({ kind: z.literal('signed_callback'), keyId: z.string().min(1) })
+  .strict();
+
+const ReturnEndpointCreateSchema = z
+  .object({
+    returnEndpointId: z.string().min(1),
+    endpointType: z.literal('http_callback'),
+    enabled: z.boolean(),
+    targetWorkspaceSocketId: z.string().min(1),
+    url: z.string().url(),
+    auth: ReturnEndpointAuthSchema,
+    acceptedArtifactTypes: z.array(z.string().min(1)).min(1),
+    configuration: z.record(z.unknown()),
+  })
+  .strict();
+
+const ReturnEndpointUpdateSchema = z
+  .object({
+    endpointType: z.literal('http_callback').optional(),
+    enabled: z.boolean().optional(),
+    targetWorkspaceSocketId: z.string().min(1).optional(),
+    url: z.string().url().optional(),
+    auth: ReturnEndpointAuthSchema.optional(),
+    acceptedArtifactTypes: z.array(z.string().min(1)).min(1).optional(),
+    configuration: z.record(z.unknown()).optional(),
+  })
+  .strict();
+
 /**
  * Secret schemas. Hand-rolled checks for keyName format (UPPER_SNAKE_CASE,
  * length, regex) and keyValue length stay below — Zod handles type/shape;
@@ -1119,6 +1266,122 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
         'providerId',
         'cannot remove last enabled identity provider'
       ),
+  });
+
+  // ═══ SURFACE 10: Compilers — AMEND-nexus-admin-dashboard §3.5.b ═══
+  // Last-enabled-compiler guard: at least one enabled compiler must remain.
+  registerManifestCrud(app, deps, {
+    basePath: '/workspace/admin/setup/compilers',
+    manifestPath: MANIFEST_COMPILERS,
+    arrayKey: 'compilers',
+    idKey: 'compilerSocketId',
+    paramName: 'socketId',
+    createSchema: CompilerCreateSchema,
+    updateSchema: CompilerUpdateSchema,
+    preDelete: (id, entries) =>
+      assertNotLastEnabled(id, entries, 'compilerSocketId', 'cannot remove last enabled compiler'),
+  });
+
+  // ═══ SURFACE 11: Return endpoints — AMEND-nexus-admin-dashboard §3.5.c ═══
+  // Cross-surface FK validation: targetWorkspaceSocketId must reference an
+  // enabled workspace in MANIFEST_WORKSPACES. Per §8 best-solve decision,
+  // cardinality is N:1 (multiple workspaces can share one return endpoint;
+  // multiple return endpoints can also target the same workspace).
+  const assertTargetWorkspaceExists = async (
+    body: { targetWorkspaceSocketId?: string },
+    label: 'create' | 'update'
+  ): Promise<void> => {
+    if (!body.targetWorkspaceSocketId) return;
+    if (!deps.manifestWriter) return;
+    const workspaces = await deps.manifestWriter
+      .readEntries(MANIFEST_WORKSPACES, 'workspaces')
+      .catch(() => [] as Record<string, unknown>[]);
+    const target = workspaces.find(w => w['workspaceSocketId'] === body.targetWorkspaceSocketId);
+    if (!target) {
+      throw Object.assign(
+        new Error(
+          `cannot ${label}: workspace ${body.targetWorkspaceSocketId} not found in workspace manifest`
+        ),
+        { statusCode: 409 }
+      );
+    }
+    if (target['enabled'] !== true) {
+      throw Object.assign(
+        new Error(`cannot ${label}: workspace ${body.targetWorkspaceSocketId} is not enabled`),
+        { statusCode: 409 }
+      );
+    }
+  };
+  registerManifestCrud(app, deps, {
+    basePath: '/workspace/admin/setup/return-endpoints',
+    manifestPath: MANIFEST_RETURN_ENDPOINTS,
+    arrayKey: 'returnEndpoints',
+    idKey: 'returnEndpointId',
+    paramName: 'returnEndpointId',
+    createSchema: ReturnEndpointCreateSchema,
+    updateSchema: ReturnEndpointUpdateSchema,
+    preCreate: body =>
+      assertTargetWorkspaceExists(body as { targetWorkspaceSocketId?: string }, 'create'),
+    preUpdate: (_id, body) =>
+      assertTargetWorkspaceExists(body as { targetWorkspaceSocketId?: string }, 'update'),
+    preDelete: (id, entries) =>
+      assertNotLastEnabled(
+        id,
+        entries,
+        'returnEndpointId',
+        'cannot remove last enabled return endpoint'
+      ),
+  });
+
+  // ═══ SURFACE 9: Mailboxes — AMEND-nexus-admin-dashboard §3.5.a ═══
+  // Per-actor allocation requires at least one enabled file-backed mailbox.
+  // The invariant guard fires on UPDATE (when disabling or changing type
+  // away from file-backed) and on DELETE.
+  registerManifestCrud(app, deps, {
+    basePath: '/workspace/admin/setup/mailboxes',
+    manifestPath: MANIFEST_MAILBOXES,
+    arrayKey: 'mailboxes',
+    idKey: 'mailboxId',
+    paramName: 'mailboxId',
+    createSchema: MailboxCreateSchema,
+    updateSchema: MailboxUpdateSchema,
+    preUpdate: (id, body, entries) => {
+      const next = body as {
+        enabled?: boolean;
+        mailboxType?: string;
+      };
+      if (next.enabled === undefined && next.mailboxType === undefined) return;
+      const target = entries.find(e => e['mailboxId'] === id);
+      if (!target) return;
+      const wasFileBacked = FILE_BACKED_MAILBOX_TYPES.has(String(target['mailboxType']));
+      const willBeFileBacked =
+        next.mailboxType !== undefined
+          ? FILE_BACKED_MAILBOX_TYPES.has(next.mailboxType)
+          : wasFileBacked;
+      const willBeEnabled = next.enabled !== undefined ? next.enabled : target['enabled'] === true;
+      // Build the post-mutation projection
+      const projected = entries.map(e =>
+        e['mailboxId'] === id
+          ? {
+              ...e,
+              enabled: willBeEnabled,
+              mailboxType: next.mailboxType ?? e['mailboxType'],
+            }
+          : e
+      );
+      const remaining = projected.filter(
+        e => e['enabled'] === true && FILE_BACKED_MAILBOX_TYPES.has(String(e['mailboxType']))
+      );
+      if (remaining.length === 0) {
+        throw Object.assign(
+          new Error('cannot disable/retype: would leave zero enabled file-backed mailboxes'),
+          { statusCode: 409 }
+        );
+      }
+      // Suppress unused-variable warning
+      void willBeFileBacked;
+    },
+    preDelete: (id, entries) => assertAtLeastOneFileBackedMailboxRemains(id, entries, false),
   });
 
   // ═══ SURFACE 8: Workspaces — AMEND-nexus-admin-dashboard §3.4 ═══

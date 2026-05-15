@@ -140,7 +140,14 @@ function renderSurface(
         />
       );
     case 'mailbox_compile_return':
-      return <CompileMailboxSetupPanel {...(data ? { data } : {})} />;
+      return (
+        <CompileMailboxSetupPanel
+          {...(data ? { data } : {})}
+          elevatedSessionId={elevatedSessionId}
+          {...(catalog ? { catalog } : {})}
+          onCatalogReload={onCatalogReload}
+        />
+      );
     case 'modes_policy_oct':
       return <ModePolicySetupPanel {...(data ? { data } : {})} />;
     case 'observability':
