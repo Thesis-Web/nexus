@@ -1858,6 +1858,19 @@ async function main(): Promise<void> {
     'planner package imports only allowed @nexus/* boundaries (contracts, runtime-utils, orch-ref)'
   );
 
+  // ── AMEND-nexus-admin-dashboard-full-buildout §4.7 — Step 81/82 (admin) ──
+  // Spec called them Step 81 + 82; in practice ci:gate is at 85 steps when
+  // this lands (5 planner-lexicon steps already in flight). The numbering
+  // here matches the spec's intent: catch reintroduction of the deleted
+  // primitive (AdminAddNewButton) and forbid console.* in panel sources.
+  stepLog('ADMIN-DASH-01 deleted-AdminAddNewButton gate');
+  enforceAdminAddNewButtonDeleted();
+  pass('AdminAddNewButton primitive deleted; no callsite reintroduction');
+
+  stepLog('ADMIN-DASH-02 no-console-in-panels gate');
+  enforceNoConsoleInAdminPanels();
+  pass('admin panels contain no console.log / console.warn / console.error');
+
   // Step 81 (or 86 with PLANNER-LEXICON gates): integration test gate — opt-in.
   // Real-DB integration suite (postgres connector against the dev docker-compose
   // pair). Skipped unless NEXUS_RUN_INTEGRATION=1 so the gate stays fast in
@@ -1870,7 +1883,7 @@ async function main(): Promise<void> {
     pass('integration suite passed against real Postgres');
   } else {
     console.log(
-      `Step ${PLANNER_LEXICON_GATE_COUNT + 81}: INTEG-01 integration test gate ... [33mSKIPPED[0m  (set NEXUS_RUN_INTEGRATION=1 to run)`
+      `Step ${PLANNER_LEXICON_GATE_COUNT + ADMIN_DASHBOARD_GATE_COUNT + 81}: INTEG-01 integration test gate ... [33mSKIPPED[0m  (set NEXUS_RUN_INTEGRATION=1 to run)`
     );
   }
 
@@ -1893,11 +1906,13 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Final result
   // -------------------------------------------------------------------------
-  // Total step count: 80 base + PLANNER_LEXICON_GATE_COUNT new gates + 1 if
-  // integration gate ran. The PLANNER-LEXICON gates are always-run, the
-  // integration gate is opt-in.
+  // Total step count: 80 base + PLANNER_LEXICON_GATE_COUNT new gates +
+  // ADMIN_DASHBOARD_GATE_COUNT new gates + 1 if integration gate ran.
   const totalSteps =
-    80 + PLANNER_LEXICON_GATE_COUNT + (process.env['NEXUS_RUN_INTEGRATION'] === '1' ? 1 : 0);
+    80 +
+    PLANNER_LEXICON_GATE_COUNT +
+    ADMIN_DASHBOARD_GATE_COUNT +
+    (process.env['NEXUS_RUN_INTEGRATION'] === '1' ? 1 : 0);
   console.log(`\n=== ci:gate PASSED — all ${totalSteps} steps ===\n`);
 }
 
@@ -1907,6 +1922,86 @@ async function main(): Promise<void> {
 // ===========================================================================
 
 const PLANNER_LEXICON_GATE_COUNT = 5;
+const ADMIN_DASHBOARD_GATE_COUNT = 2;
+
+// ===========================================================================
+// ADMIN-DASH gates — AMEND-nexus-admin-dashboard-full-buildout §4.7
+// ===========================================================================
+
+const ADMIN_PANEL_ROOT = path.join(
+  'packages',
+  'workspace-ref',
+  'src',
+  'client',
+  'components',
+  'admin'
+);
+
+function enforceAdminAddNewButtonDeleted(): void {
+  // The primitive file itself must be gone.
+  const primitivePath = path.join(ADMIN_PANEL_ROOT, 'primitives', 'admin-add-new-button.tsx');
+  if (fs.existsSync(primitivePath)) {
+    fail(
+      `ADMIN-DASH-01: ${primitivePath} still exists — it must be deleted per §4.6 once all surfaces are writer-enabled`
+    );
+  }
+  // No source file under admin/ may import or reference AdminAddNewButton.
+  const adminFiles = walkFiles(ADMIN_PANEL_ROOT, ['.tsx', '.ts']);
+  const violations: string[] = [];
+  for (const f of adminFiles) {
+    const txt = fs.readFileSync(f, 'utf-8');
+    if (/AdminAddNewButton\b/.test(txt)) {
+      violations.push(f);
+    }
+  }
+  if (violations.length > 0) {
+    fail(`ADMIN-DASH-01: AdminAddNewButton still referenced in:\n  ${violations.join('\n  ')}`);
+  }
+}
+
+function enforceNoConsoleInAdminPanels(): void {
+  // Panel sources must use the typed feedback toast / structured logger;
+  // console.* leaks into the browser devtools without classification.
+  const panelDir = path.join(ADMIN_PANEL_ROOT, 'panels');
+  if (!fs.existsSync(panelDir)) return;
+  const panelFiles = walkFiles(panelDir, ['.tsx', '.ts']).filter(f => !f.endsWith('.test.tsx'));
+  const violations: Array<{ file: string; line: number; snippet: string }> = [];
+  const consoleRe = /\bconsole\.(log|warn|error|debug|info)\b/;
+  for (const f of panelFiles) {
+    const text = fs.readFileSync(f, 'utf-8');
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i] ?? '';
+      if (consoleRe.test(line)) {
+        violations.push({ file: f, line: i + 1, snippet: line.trim().slice(0, 120) });
+      }
+    }
+  }
+  if (violations.length > 0) {
+    fail(
+      'ADMIN-DASH-02: console.* found in admin panel sources:\n  ' +
+        violations.map(v => `${v.file}:${v.line} ${v.snippet}`).join('\n  ')
+    );
+  }
+}
+
+function walkFiles(root: string, exts: readonly string[]): string[] {
+  const out: string[] = [];
+  if (!fs.existsSync(root)) return out;
+  const stack: string[] = [root];
+  while (stack.length > 0) {
+    const dir = stack.pop()!;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+      } else if (entry.isFile() && exts.some(e => entry.name.endsWith(e))) {
+        out.push(full);
+      }
+    }
+  }
+  return out;
+}
 const PLANNER_LEXICON_FIXTURE_ROOT = path.join('fixtures', 'planner', 'db-lexicon');
 const PLANNER_LEXICON_PACKAGE_ROOT = path.join('packages', 'planners', 'db-lexicon', 'src');
 

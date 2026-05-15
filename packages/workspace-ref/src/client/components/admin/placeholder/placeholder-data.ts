@@ -629,5 +629,9 @@ export const PLACEHOLDER_SETUP_STATUS_RESPONSE: DashboardSetupStatusResponse = {
   },
 };
 
-export const PLACEHOLDER_BANNER_REASON =
-  'Read-only — placeholder data pending Claude C projection at GET /workspace/admin/setup/surfaces/<id>. Save/apply disabled until writer windows are ratified.';
+// PLACEHOLDER_BANNER_REASON removed per AMEND-nexus-admin-dashboard-full-buildout §1.D.
+// All seven previously-placeholder surfaces (identity, channels, orchestrators,
+// workspaces, mailbox/compile/return triple, modes/policy/oct, toolchain) are now
+// writer-enabled across Commits 1–10. The `*_PLACEHOLDER` constants in this file
+// survive only as fallback DashboardSurfaceStatus shapes for the
+// no-data-yet-loaded initial-render state.
