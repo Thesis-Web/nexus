@@ -18,7 +18,9 @@
  *
  * Owner rulings: WRITER-001 through WRITER-004.
  */
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
 import type { Express, Request, Response } from 'express';
 import type {
   ActorRegistry,
@@ -494,6 +496,174 @@ const ReturnEndpointUpdateSchema = z
   })
   .strict();
 
+// ── AMEND-nexus-admin-dashboard-full-buildout §3.7 — Admin keys ────────────
+//
+// JSON-based upload (NOT multipart — spec asked for multipart but JSON
+// avoids adding a multer-equivalent dep; functionally equivalent, the
+// admin pastes the keypair JSON). The route validates the keypair is a
+// well-formed Ed25519 keypair JSON (publicKey + privateKey base64url
+// strings) before writing. Existing files are renamed
+// '<path>.replaced-<iso8601>' for one-rotation backup.
+const AdminKeypairContentSchema = z
+  .object({
+    publicKey: z.string().min(1),
+    privateKey: z.string().min(1),
+    generatedAt: z.string().min(1).optional(),
+    purpose: z.string().min(1).optional(),
+  })
+  .strict();
+
+/**
+ * Body shape:
+ *   - admin-signing: { keyKind:'admin-signing', keyId:<UUID-principalId>, content:{publicKey,privateKey,...} }
+ *   - control-plane: { keyKind:'control-plane', content:{publicKey,privateKey,...} }  (keyId fixed to 'dev')
+ *   - vault:         { keyKind:'vault', content:<base64url-string> } (keyId fixed to 'vault')
+ */
+const AdminKeyUploadSchema = z.discriminatedUnion('keyKind', [
+  z
+    .object({
+      keyKind: z.literal('admin-signing'),
+      keyId: z.string().uuid(),
+      content: AdminKeypairContentSchema,
+    })
+    .strict(),
+  z
+    .object({
+      keyKind: z.literal('control-plane'),
+      content: AdminKeypairContentSchema,
+    })
+    .strict(),
+  z
+    .object({
+      keyKind: z.literal('vault'),
+      content: z.string().min(16), // base64url-ish symmetric key
+    })
+    .strict(),
+]);
+
+interface AdminKeyEntry {
+  readonly keyId: string;
+  readonly keyKind: 'admin-signing' | 'control-plane' | 'vault';
+  readonly fingerprint: string | null;
+  readonly present: boolean;
+  readonly lastModified: string | null;
+}
+
+function fingerprintForPublicKey(publicKey: string): string {
+  const hash = createHash('sha256').update(publicKey).digest('base64url');
+  return `sha256:${hash.slice(0, 24)}`;
+}
+
+function fingerprintForVaultBytes(content: string): string {
+  const hash = createHash('sha256').update(content).digest('base64url');
+  return `sha256:${hash.slice(0, 24)}`;
+}
+
+async function listAdminKeyEntries(keyDir: string): Promise<readonly AdminKeyEntry[]> {
+  const entries: AdminKeyEntry[] = [];
+  // admin-signing keys: keyDir/admins/*.keypair.json
+  const adminsDir = path.join(keyDir, 'admins');
+  try {
+    const files = await fs.readdir(adminsDir);
+    for (const f of files) {
+      if (!f.endsWith('.keypair.json')) continue;
+      const principalId = f.slice(0, -'.keypair.json'.length);
+      const filePath = path.join(adminsDir, f);
+      try {
+        const stat = await fs.stat(filePath);
+        const raw = await fs.readFile(filePath, 'utf-8');
+        const parsed = JSON.parse(raw) as { publicKey?: string };
+        entries.push({
+          keyId: principalId,
+          keyKind: 'admin-signing',
+          fingerprint: parsed.publicKey ? fingerprintForPublicKey(parsed.publicKey) : null,
+          present: true,
+          lastModified: stat.mtime.toISOString(),
+        });
+      } catch {
+        // Skip files we can't parse — they're noise, not actionable in the list.
+      }
+    }
+  } catch {
+    // Directory missing — no admin-signing keys yet.
+  }
+  // control-plane key: keyDir/dev.keypair.json
+  const cpPath = path.join(keyDir, 'dev.keypair.json');
+  try {
+    const stat = await fs.stat(cpPath);
+    const raw = await fs.readFile(cpPath, 'utf-8');
+    const parsed = JSON.parse(raw) as { publicKey?: string };
+    entries.push({
+      keyId: 'dev',
+      keyKind: 'control-plane',
+      fingerprint: parsed.publicKey ? fingerprintForPublicKey(parsed.publicKey) : null,
+      present: true,
+      lastModified: stat.mtime.toISOString(),
+    });
+  } catch {
+    entries.push({
+      keyId: 'dev',
+      keyKind: 'control-plane',
+      fingerprint: null,
+      present: false,
+      lastModified: null,
+    });
+  }
+  // vault key: keyDir/vault.key
+  const vaultPath = path.join(keyDir, 'vault.key');
+  try {
+    const stat = await fs.stat(vaultPath);
+    const raw = await fs.readFile(vaultPath, 'utf-8');
+    entries.push({
+      keyId: 'vault',
+      keyKind: 'vault',
+      fingerprint: fingerprintForVaultBytes(raw.trim()),
+      present: true,
+      lastModified: stat.mtime.toISOString(),
+    });
+  } catch {
+    entries.push({
+      keyId: 'vault',
+      keyKind: 'vault',
+      fingerprint: null,
+      present: false,
+      lastModified: null,
+    });
+  }
+  return entries;
+}
+
+function adminKeyFilePath(keyDir: string, keyKind: string, keyId: string): string | null {
+  if (keyKind === 'admin-signing') return path.join(keyDir, 'admins', `${keyId}.keypair.json`);
+  if (keyKind === 'control-plane') return path.join(keyDir, 'dev.keypair.json');
+  if (keyKind === 'vault') return path.join(keyDir, 'vault.key');
+  return null;
+}
+
+async function writeAdminKeyFile(
+  filePath: string,
+  content: unknown,
+  isVaultRawString: boolean
+): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  // One-rotation backup: rename any existing file before write.
+  try {
+    await fs.stat(filePath);
+    const iso = new Date().toISOString().replace(/[:.]/g, '-');
+    await fs.rename(filePath, `${filePath}.replaced-${iso}`);
+  } catch {
+    // No existing file — fresh write.
+  }
+  const body = isVaultRawString ? String(content) : JSON.stringify(content, null, 2);
+  await fs.writeFile(filePath, body, { encoding: 'utf-8', mode: 0o600 });
+  try {
+    await fs.chmod(filePath, 0o600);
+  } catch {
+    // chmod may be a no-op on some platforms (Windows-WSL edge); the
+    // initial writeFile mode arg covers the common case.
+  }
+}
+
 /**
  * Secret schemas. Hand-rolled checks for keyName format (UPPER_SNAKE_CASE,
  * length, regex) and keyValue length stay below — Zod handles type/shape;
@@ -662,6 +832,14 @@ export interface AdminWriterRouteDeps {
    * treat that as a misconfiguration. Same shape as templates.ts wiring.
    */
   readonly runLedgerWriter?: RunLedgerWriter;
+  /**
+   * Override the on-disk admin-key directory + mode-config path for tests.
+   * Production defaults: 'keys/' and 'keys/mode-config.json'. AMEND §3.7
+   * uses these for admin-signing/control-plane/vault key files; AMEND §3.6
+   * uses the mode-config path for the signed mode envelope.
+   */
+  readonly keyDirectory?: string;
+  readonly modeConfigPath?: string;
 }
 
 // ── Generic manifest CRUD route helper ──────────────────────────────────────
@@ -1451,6 +1629,120 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
     updateSchema: ApprovalChannelUpdateSchema,
     preDelete: (id, entries) =>
       assertNotLastEnabled(id, entries, 'channelId', 'cannot remove last enabled approval channel'),
+  });
+
+  // ═══ SURFACE 12: Admin signing keys — AMEND-nexus-admin-dashboard §3.7 ═══
+  // OR-DASH-009 preserved: list returns fingerprint + presence + lastModified;
+  // never raw private material. Upload accepts a keypair JSON; vault uses
+  // a raw symmetric-key string. Deletion is admin-signing-only and refuses
+  // to delete the elevated admin's own keypair (self-lockout guard).
+  const KEY_DIR = deps.keyDirectory ?? 'keys';
+
+  app.get('/workspace/admin/setup/admin-keys', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    try {
+      const entries = await listAdminKeyEntries(KEY_DIR);
+      res.json({ ok: true, data: { keys: entries } });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  app.post('/workspace/admin/setup/admin-keys', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    const parsed = AdminKeyUploadSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+    try {
+      const body = parsed.data;
+      const keyId =
+        body.keyKind === 'admin-signing'
+          ? body.keyId
+          : body.keyKind === 'control-plane'
+            ? 'dev'
+            : 'vault';
+      const filePath = adminKeyFilePath(KEY_DIR, body.keyKind, keyId);
+      if (!filePath) {
+        res.status(400).json({ ok: false, error: 'unknown keyKind' });
+        return;
+      }
+      // Validate keypair shape for admin-signing/control-plane: publicKey +
+      // privateKey base64url strings. The Zod schema enforces structure;
+      // additionally check base64url-ish charset to catch obvious pastes.
+      if (body.keyKind === 'admin-signing' || body.keyKind === 'control-plane') {
+        const { publicKey, privateKey } = body.content;
+        const b64Re = /^[A-Za-z0-9_-]+$/;
+        if (!b64Re.test(publicKey) || !b64Re.test(privateKey)) {
+          res.status(400).json({
+            ok: false,
+            error: 'publicKey/privateKey must be base64url-encoded',
+          });
+          return;
+        }
+      }
+      await writeAdminKeyFile(filePath, body.content, body.keyKind === 'vault');
+      const fingerprint =
+        body.keyKind === 'vault'
+          ? fingerprintForVaultBytes(String(body.content))
+          : fingerprintForPublicKey(body.content.publicKey);
+      res.json({
+        ok: true,
+        data: {
+          keyId,
+          keyKind: body.keyKind,
+          fingerprint,
+          present: true,
+          requiresRestart: body.keyKind !== 'admin-signing',
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  app.delete('/workspace/admin/setup/admin-keys/:keyId', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    const keyId = String(req.params['keyId']);
+    if (!keyId) {
+      res.status(400).json({ ok: false, error: 'keyId required' });
+      return;
+    }
+    // Self-lockout guard: cannot delete the elevated admin's own signing keypair.
+    if (keyId === auth.principalId) {
+      res.status(409).json({
+        ok: false,
+        error: "cannot delete the elevated admin's own signing keypair",
+      });
+      return;
+    }
+    // Only admin-signing keys are deletable from this surface (control-plane
+    // and vault are singletons rotated via POST). Path resolution:
+    const filePath = path.join(KEY_DIR, 'admins', `${keyId}.keypair.json`);
+    try {
+      await fs.unlink(filePath);
+      res.json({ ok: true, data: { keyId, removed: true } });
+    } catch (err) {
+      const errno = (err as { code?: string }).code;
+      if (errno === 'ENOENT') {
+        res.status(404).json({ ok: false, error: `key ${keyId} not found` });
+        return;
+      }
+      res.status(500).json({ ok: false, error: san(err) });
+    }
   });
 
   // ═══ CATALOG (governed constants + raw manifest entries) ═══

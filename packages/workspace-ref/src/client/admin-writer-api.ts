@@ -445,6 +445,48 @@ export async function removeReturnEndpoint(
   );
 }
 
+// ── Surface 12: Admin signing keys (AMEND-admin-dashboard §3.7) ─────────────
+
+export interface AdminKeyListEntry {
+  keyId: string;
+  keyKind: 'admin-signing' | 'control-plane' | 'vault';
+  fingerprint: string | null;
+  present: boolean;
+  lastModified: string | null;
+}
+
+export interface AdminKeyUploadResult {
+  keyId: string;
+  keyKind: 'admin-signing' | 'control-plane' | 'vault';
+  fingerprint: string;
+  present: true;
+  requiresRestart: boolean;
+}
+
+export async function listAdminKeys(
+  elevatedSessionId: string
+): Promise<WriterResponse<{ keys: readonly AdminKeyListEntry[] }>> {
+  return writerFetch('/workspace/admin/setup/admin-keys', elevatedSessionId, 'GET');
+}
+
+export async function uploadAdminKey(
+  elevatedSessionId: string,
+  payload: Record<string, unknown>
+): Promise<WriterResponse<AdminKeyUploadResult>> {
+  return writerFetch('/workspace/admin/setup/admin-keys', elevatedSessionId, 'POST', payload);
+}
+
+export async function deleteAdminKey(
+  elevatedSessionId: string,
+  keyId: string
+): Promise<WriterResponse<{ keyId: string; removed: boolean }>> {
+  return writerFetch(
+    `/workspace/admin/setup/admin-keys/${encodeURIComponent(keyId)}`,
+    elevatedSessionId,
+    'DELETE'
+  );
+}
+
 // ── Surface 4: Admin Secret Onboarding ─────────────────────────────────────
 // CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — operator pastes API keys directly
 // into the dashboard; backing store is keys/secrets.json (gitignored).

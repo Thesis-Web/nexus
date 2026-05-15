@@ -155,7 +155,14 @@ function renderSurface(
         <LedgerViewerPanel {...(data ? { data } : {})} elevatedSessionId={elevatedSessionId} />
       );
     case 'toolchain':
-      return <ToolchainKeysPanel {...(data ? { data } : {})} />;
+      return (
+        <ToolchainKeysPanel
+          {...(data ? { data } : {})}
+          elevatedSessionId={elevatedSessionId}
+          adminPrincipalId={adminPrincipalId}
+          onCatalogReload={onCatalogReload}
+        />
+      );
     default:
       return <AdminCategoryPage surfaceId={surfaceId} title={title} />;
   }

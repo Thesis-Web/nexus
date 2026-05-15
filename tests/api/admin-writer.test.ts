@@ -304,6 +304,7 @@ function buildApp(opts: {
   includePrincipalRegistry?: boolean;
   includeSecretWriter?: boolean;
   includeRunLedgerWriter?: boolean;
+  keyDirectory?: string;
 }): {
   app: express.Express;
   start: () => Promise<{ port: number; server: Server }>;
@@ -330,6 +331,7 @@ function buildApp(opts: {
     ...(opts.includePrincipalRegistry !== false ? { principalRegistry } : {}),
     ...(opts.includeSecretWriter !== false ? { secretWriter } : {}),
     ...(opts.includeRunLedgerWriter !== false ? { runLedgerWriter } : {}),
+    ...(opts.keyDirectory !== undefined ? { keyDirectory: opts.keyDirectory } : {}),
   });
 
   const start = async (): Promise<{ port: number; server: Server }> =>
@@ -1908,5 +1910,168 @@ describe('admin-writer without secretWriter', () => {
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.data.storageLabel).toBeNull();
+  });
+});
+
+// ─── Admin signing key routes (AMEND-admin-dashboard §3.7) ─────────────────
+
+describe('admin-writer admin-keys routes', () => {
+  let server: Server;
+  let port: number;
+  let tmpKeyDir: string;
+
+  beforeAll(async () => {
+    const { mkdtemp } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    tmpKeyDir = await mkdtemp(join(tmpdir(), 'nexus-admin-keys-'));
+    const fixture = buildApp({ keyDirectory: tmpKeyDir });
+    const r = await fixture.start();
+    port = r.port;
+    server = r.server;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    const { rm } = await import('node:fs/promises');
+    await rm(tmpKeyDir, { recursive: true, force: true });
+  });
+
+  const url = (p: string): string => `http://127.0.0.1:${port}${p}`;
+  const ADMIN_PID_LOCAL = '22222222-2222-2222-2222-222222222222';
+  const headers = (): Record<string, string> => ({
+    'Content-Type': 'application/json',
+    'X-Test-Identity': JSON.stringify({
+      kind: 'admin',
+      principalId: ADMIN_PID_LOCAL,
+      actorId: '33333333-3333-3333-3333-333333333333',
+    }),
+    'X-Elevated-Session': '11111111-1111-1111-1111-111111111111',
+  });
+
+  const SAMPLE_KEYPAIR = {
+    publicKey: 'zlwFwfovYQTY85H2DIy1jbFgBpNP868RH0As5bbLb4A',
+    privateKey: 'I_ZlwoYFo-tN3HdOdc-6JHzzWrZL4YtK69cbsE7H0UE',
+    generatedAt: '2026-05-15T00:00:00.000Z',
+    purpose: 'test',
+  };
+
+  it('GET /admin-keys — empty admin-signing list with control-plane/vault as missing', async () => {
+    const res = await fetch(url('/workspace/admin/setup/admin-keys'), { headers: headers() });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      data: { keys: { keyKind: string; present: boolean }[] };
+    };
+    expect(body.ok).toBe(true);
+    const kinds = body.data.keys.map(k => `${k.keyKind}:${k.present}`).sort();
+    expect(kinds).toContain('control-plane:false');
+    expect(kinds).toContain('vault:false');
+  });
+
+  it('POST /admin-keys admin-signing — uploads keypair and returns fingerprint', async () => {
+    const otherPrincipal = '44444444-4444-4444-4444-444444444444';
+    const res = await fetch(url('/workspace/admin/setup/admin-keys'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        keyKind: 'admin-signing',
+        keyId: otherPrincipal,
+        content: SAMPLE_KEYPAIR,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      data: { keyId: string; fingerprint: string; present: boolean };
+    };
+    expect(body.data.keyId).toBe(otherPrincipal);
+    expect(body.data.fingerprint).toMatch(/^sha256:/);
+    expect(body.data.present).toBe(true);
+  });
+
+  it('POST /admin-keys — rejects malformed base64url in publicKey', async () => {
+    const res = await fetch(url('/workspace/admin/setup/admin-keys'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        keyKind: 'admin-signing',
+        keyId: '55555555-5555-5555-5555-555555555555',
+        content: { publicKey: 'has spaces!', privateKey: SAMPLE_KEYPAIR.privateKey },
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/base64url/i);
+  });
+
+  it('POST /admin-keys control-plane — rotates singleton and creates backup file', async () => {
+    // First write
+    const r1 = await fetch(url('/workspace/admin/setup/admin-keys'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ keyKind: 'control-plane', content: SAMPLE_KEYPAIR }),
+    });
+    expect(r1.status).toBe(200);
+    // Second write (rotation)
+    const r2 = await fetch(url('/workspace/admin/setup/admin-keys'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        keyKind: 'control-plane',
+        content: { ...SAMPLE_KEYPAIR, generatedAt: '2026-05-15T01:00:00.000Z' },
+      }),
+    });
+    expect(r2.status).toBe(200);
+    const { readdir } = await import('node:fs/promises');
+    const files = await readdir(tmpKeyDir);
+    const backups = files.filter(f => f.startsWith('dev.keypair.json.replaced-'));
+    expect(backups.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('DELETE /admin-keys/:keyId — refuses self-delete', async () => {
+    // Seed the elevated admin's own keypair
+    await fetch(url('/workspace/admin/setup/admin-keys'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        keyKind: 'admin-signing',
+        keyId: ADMIN_PID_LOCAL,
+        content: SAMPLE_KEYPAIR,
+      }),
+    });
+    const res = await fetch(
+      url(`/workspace/admin/setup/admin-keys/${encodeURIComponent(ADMIN_PID_LOCAL)}`),
+      { method: 'DELETE', headers: headers() }
+    );
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/own signing keypair/i);
+  });
+
+  it('DELETE /admin-keys/:keyId — succeeds for other admin keys', async () => {
+    const otherPrincipal = '66666666-6666-6666-6666-666666666666';
+    await fetch(url('/workspace/admin/setup/admin-keys'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        keyKind: 'admin-signing',
+        keyId: otherPrincipal,
+        content: SAMPLE_KEYPAIR,
+      }),
+    });
+    const res = await fetch(
+      url(`/workspace/admin/setup/admin-keys/${encodeURIComponent(otherPrincipal)}`),
+      { method: 'DELETE', headers: headers() }
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it('DELETE /admin-keys/:keyId — 404 for unknown key', async () => {
+    const res = await fetch(
+      url('/workspace/admin/setup/admin-keys/77777777-7777-7777-7777-777777777777'),
+      { method: 'DELETE', headers: headers() }
+    );
+    expect(res.status).toBe(404);
   });
 });
