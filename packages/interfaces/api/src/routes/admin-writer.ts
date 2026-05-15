@@ -303,6 +303,22 @@ function checkLockStatus(filePath: string): FileLock | null {
 
 const MANIFEST_ENDPOINTS = 'config/nvg/endpoints.v1.yaml';
 const MANIFEST_CONNECTORS = 'config/connectors/connectors.v1.yaml';
+// ── AMEND-nexus-admin-dashboard-full-buildout §4.2 — catalog all* arrays ────
+// The catalog handler reads these seven manifests so panels can drive their
+// own dropdowns / cross-surface FK validation without round-trips per panel.
+//
+// Note on §3.5.c path: spec calls the path `return-endpoints.v1.yaml`; the
+// codebase has used `compile-return.v1.yaml` since AMEND-spec §4.6 — the
+// loader + signed manifest live there. Keeping the existing path here keeps
+// the manifest loadable; the catalog field name (`allReturnEndpoints`) and
+// array key (`returnEndpoints`) match the spec.
+const MANIFEST_IDENTITY_PROVIDERS = 'config/identity/providers.v1.yaml';
+const MANIFEST_CHANNELS = 'config/channels/channels.v1.yaml';
+const MANIFEST_ORCHESTRATORS = 'config/orchestrators/orchestrators.v1.yaml';
+const MANIFEST_WORKSPACES = 'config/workspace/workspaces.v1.yaml';
+const MANIFEST_MAILBOXES = 'config/mailbox/mailboxes.v1.yaml';
+const MANIFEST_COMPILERS = 'config/compile/compilers.v1.yaml';
+const MANIFEST_RETURN_ENDPOINTS = 'config/output/compile-return.v1.yaml';
 
 export interface AdminWriterRouteDeps {
   readonly elevatedAuthProvider?: ElevatedAuthProvider;
@@ -759,13 +775,34 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
         { id: 'api_key', label: 'api_key', requiresSecret: true },
         { id: 'bearer', label: 'bearer', requiresSecret: true },
       ];
-      const [allEndpoints, allConnectors, allActors, principals] = await Promise.all([
-        deps.manifestWriter.readEntries(MANIFEST_ENDPOINTS, 'endpoints'),
+      const readOrEmpty = (path: string, key: string): Promise<Record<string, unknown>[]> =>
         deps.manifestWriter
-          .readEntries(MANIFEST_CONNECTORS, 'connectors')
-          .catch(() => [] as Record<string, unknown>[]),
+          ? deps.manifestWriter.readEntries(path, key).catch(() => [] as Record<string, unknown>[])
+          : Promise.resolve([]);
+      const [
+        allEndpoints,
+        allConnectors,
+        allActors,
+        principals,
+        allIdentityProviders,
+        allChannels,
+        allOrchestrators,
+        allWorkspaces,
+        allMailboxes,
+        allCompilers,
+        allReturnEndpoints,
+      ] = await Promise.all([
+        deps.manifestWriter.readEntries(MANIFEST_ENDPOINTS, 'endpoints'),
+        readOrEmpty(MANIFEST_CONNECTORS, 'connectors'),
         deps.actorRegistry ? deps.actorRegistry.list() : Promise.resolve([]),
         deps.principalRegistry ? deps.principalRegistry.list() : Promise.resolve([]),
+        readOrEmpty(MANIFEST_IDENTITY_PROVIDERS, 'providers'),
+        readOrEmpty(MANIFEST_CHANNELS, 'channels'),
+        readOrEmpty(MANIFEST_ORCHESTRATORS, 'orchestrators'),
+        readOrEmpty(MANIFEST_WORKSPACES, 'workspaces'),
+        readOrEmpty(MANIFEST_MAILBOXES, 'mailboxes'),
+        readOrEmpty(MANIFEST_COMPILERS, 'compilers'),
+        readOrEmpty(MANIFEST_RETURN_ENDPOINTS, 'returnEndpoints'),
       ]);
       res.json({
         ok: true,
@@ -780,6 +817,13 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
           allConnectors,
           allActors,
           principals,
+          allIdentityProviders,
+          allChannels,
+          allOrchestrators,
+          allWorkspaces,
+          allMailboxes,
+          allCompilers,
+          allReturnEndpoints,
         },
       });
     } catch (err) {

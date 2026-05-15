@@ -75,6 +75,16 @@ export interface AdminCatalog {
   allConnectors: ReadonlyArray<Record<string, unknown>>;
   allActors: readonly AdminCatalogActorEntry[];
   principals: readonly AdminCatalogPrincipal[];
+  // AMEND-nexus-admin-dashboard-full-buildout §4.2 — manifest entries used
+  // by panels for cross-surface validation (e.g. workspace.returnEndpointId
+  // dropdown driven by allReturnEndpoints).
+  allIdentityProviders: ReadonlyArray<Record<string, unknown>>;
+  allChannels: ReadonlyArray<Record<string, unknown>>;
+  allOrchestrators: ReadonlyArray<Record<string, unknown>>;
+  allWorkspaces: ReadonlyArray<Record<string, unknown>>;
+  allMailboxes: ReadonlyArray<Record<string, unknown>>;
+  allCompilers: ReadonlyArray<Record<string, unknown>>;
+  allReturnEndpoints: ReadonlyArray<Record<string, unknown>>;
 }
 
 export interface DiscoveredModel {

@@ -727,6 +727,30 @@ describe('admin-writer routes', () => {
     manifestWriter._store.set('config/connectors/connectors.v1.yaml:connectors', [
       { connectorId: 'stub-conn', connectorType: 'stub', enabled: true },
     ]);
+    // AMEND-nexus-admin-dashboard-full-buildout §4.2 — seed all seven new
+    // manifest surfaces so the catalog response exposes them for panel
+    // dropdowns + cross-surface FK validation.
+    manifestWriter._store.set('config/identity/providers.v1.yaml:providers', [
+      { providerId: 'local-default', providerType: 'local', enabled: true, configuration: {} },
+    ]);
+    manifestWriter._store.set('config/channels/channels.v1.yaml:channels', [
+      { channelId: 'cli-approval', channelType: 'cli', enabled: true, configuration: {} },
+    ]);
+    manifestWriter._store.set('config/orchestrators/orchestrators.v1.yaml:orchestrators', [
+      { orchestratorSocketId: 'ref-orch', orchestratorType: 'ref-deterministic', enabled: true },
+    ]);
+    manifestWriter._store.set('config/workspace/workspaces.v1.yaml:workspaces', [
+      { workspaceSocketId: 'http-ws', workspaceType: 'http', enabled: true },
+    ]);
+    manifestWriter._store.set('config/mailbox/mailboxes.v1.yaml:mailboxes', [
+      { mailboxId: 'primary', mailboxType: 'jsonl-file', enabled: true, required: true },
+    ]);
+    manifestWriter._store.set('config/compile/compilers.v1.yaml:compilers', [
+      { compilerSocketId: 'ref-compile', compilerType: 'deterministic', enabled: true },
+    ]);
+    manifestWriter._store.set('config/output/compile-return.v1.yaml:returnEndpoints', [
+      { returnEndpointId: 'http-return', endpointType: 'http_callback', enabled: true },
+    ]);
     // Seed an actor + a principal so allActors and principals come back populated.
     const seedActorId = '99999999-9999-4999-a999-999999999999' as Uuid;
     const seedPrincipalId = '00000000-0000-4000-a000-000000000001' as Uuid;
@@ -770,6 +794,13 @@ describe('admin-writer routes', () => {
         allConnectors: Record<string, unknown>[];
         allActors: Record<string, unknown>[];
         principals: Record<string, unknown>[];
+        allIdentityProviders: Record<string, unknown>[];
+        allChannels: Record<string, unknown>[];
+        allOrchestrators: Record<string, unknown>[];
+        allWorkspaces: Record<string, unknown>[];
+        allMailboxes: Record<string, unknown>[];
+        allCompilers: Record<string, unknown>[];
+        allReturnEndpoints: Record<string, unknown>[];
       };
     };
     expect(body.ok).toBe(true);
@@ -792,6 +823,49 @@ describe('admin-writer routes', () => {
     expect(body.data.allActors[0]?.['displayName']).toBe('seed-agent');
     expect(body.data.principals).toHaveLength(1);
     expect(body.data.principals[0]?.['principalId']).toBe(seedPrincipalId);
+    // AMEND-nexus-admin-dashboard-full-buildout §4.2 — seven new arrays
+    // exposed for panel dropdowns and cross-surface FK validation.
+    expect(body.data.allIdentityProviders).toHaveLength(1);
+    expect(body.data.allIdentityProviders[0]?.['providerId']).toBe('local-default');
+    expect(body.data.allChannels).toHaveLength(1);
+    expect(body.data.allChannels[0]?.['channelId']).toBe('cli-approval');
+    expect(body.data.allOrchestrators).toHaveLength(1);
+    expect(body.data.allOrchestrators[0]?.['orchestratorSocketId']).toBe('ref-orch');
+    expect(body.data.allWorkspaces).toHaveLength(1);
+    expect(body.data.allWorkspaces[0]?.['workspaceSocketId']).toBe('http-ws');
+    expect(body.data.allMailboxes).toHaveLength(1);
+    expect(body.data.allMailboxes[0]?.['mailboxId']).toBe('primary');
+    expect(body.data.allCompilers).toHaveLength(1);
+    expect(body.data.allCompilers[0]?.['compilerSocketId']).toBe('ref-compile');
+    expect(body.data.allReturnEndpoints).toHaveLength(1);
+    expect(body.data.allReturnEndpoints[0]?.['returnEndpointId']).toBe('http-return');
+  });
+
+  it('GET /catalog — missing manifests degrade to empty arrays for all seven new surfaces', async () => {
+    // No manifests seeded — every all* array should come back as []
+    // (readEntries is wrapped in .catch(() => []) per spec §4.2).
+    const res = await fetch(url('/workspace/admin/setup/catalog'), { headers: adminHeaders() });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      data: {
+        allIdentityProviders: unknown[];
+        allChannels: unknown[];
+        allOrchestrators: unknown[];
+        allWorkspaces: unknown[];
+        allMailboxes: unknown[];
+        allCompilers: unknown[];
+        allReturnEndpoints: unknown[];
+      };
+    };
+    expect(body.ok).toBe(true);
+    expect(body.data.allIdentityProviders).toEqual([]);
+    expect(body.data.allChannels).toEqual([]);
+    expect(body.data.allOrchestrators).toEqual([]);
+    expect(body.data.allWorkspaces).toEqual([]);
+    expect(body.data.allMailboxes).toEqual([]);
+    expect(body.data.allCompilers).toEqual([]);
+    expect(body.data.allReturnEndpoints).toEqual([]);
   });
 
   it('GET /catalog — 401 without claims', async () => {
