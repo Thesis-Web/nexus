@@ -99,7 +99,7 @@ export { subscribeToRun, broadcastRunEvent, wrapWriterWithFanout } from './route
 // Tests and the composition root may import this type from either location;
 // they are the same symbol. Keeping the definition adjacent to the route
 // handler prevents the two from drifting under TypeScript strict.
-export type { SecretWriter } from './routes/admin-writer.js';
+export type { SecretWriter, ModeSigner, ModeSignerState } from './routes/admin-writer.js';
 import type { SecretWriter } from './routes/admin-writer.js';
 
 // ── §23.1 + §11.1 ApiDependencies — constructor injection contract ──────────
@@ -361,6 +361,14 @@ export interface ApiDependencies {
   // ── CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — admin secret onboarding ─────────
   /** File-backed secret store. Bootstrap supplies a FileSecretSource adapter. */
   secretWriter?: SecretWriter;
+
+  // ── AMEND-nexus-admin-dashboard-full-buildout §3.6 / §3.7 / §4.1 ────────
+  /** Mode signer port for /workspace/admin/setup/mode and /mode/unlock. */
+  modeSigner?: import('./routes/admin-writer.js').ModeSigner;
+  /** Probe whether an admin signing keypair exists for the elevated admin. */
+  hasAdminSigningKeypair?: () => Promise<boolean>;
+  /** Override the keys/ directory (admin-key uploads). Defaults to 'keys/'. */
+  keyDirectory?: string;
 }
 
 // ── §23.1 createApiServer — DI factory ───────────────────────────────────────

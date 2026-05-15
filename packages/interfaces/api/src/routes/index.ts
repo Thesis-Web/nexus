@@ -145,6 +145,9 @@ export function registerAllRoutes(
     ...(deps.loadModeConfig !== undefined ? { loadModeConfig: deps.loadModeConfig } : {}),
     ...(deps.nxsPolicySummary !== undefined ? { nxsPolicySummary: deps.nxsPolicySummary } : {}),
     ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
+    ...(deps.hasAdminSigningKeypair !== undefined
+      ? { hasAdminSigningKeypair: deps.hasAdminSigningKeypair }
+      : {}),
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -162,6 +165,9 @@ export function registerAllRoutes(
     ...(deps.principalRegistry !== undefined ? { principalRegistry: deps.principalRegistry } : {}),
     ...(deps.secretWriter !== undefined ? { secretWriter: deps.secretWriter } : {}),
     ...(deps.runLedgerWriter !== undefined ? { runLedgerWriter: deps.runLedgerWriter } : {}),
+    // AMEND-nexus-admin-dashboard-full-buildout §3.6/§3.7
+    ...(deps.modeSigner !== undefined ? { modeSigner: deps.modeSigner } : {}),
+    ...(deps.keyDirectory !== undefined ? { keyDirectory: deps.keyDirectory } : {}),
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

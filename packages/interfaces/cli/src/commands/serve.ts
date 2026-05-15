@@ -29,8 +29,16 @@ import {
   decideApproval,
   loadModeConfig,
   saveModeConfig,
+  changeMode,
+  disableEnforcingLock,
+  sign as signEd25519,
+  canonicalize,
   ManifestWriterService,
 } from '@nexus/core';
+import { promises as fsPromises } from 'node:fs';
+import * as fsPath from 'node:path';
+import { createHash } from 'node:crypto';
+import type { ModeSigner, ModeSignerState } from '@nexus/api';
 import { createApiServer, wrapWriterWithFanout, type ApiDependencies } from '@nexus/api';
 // ── WS-BOOTSTRAP type seam ──────────────────────────────────────────────────
 export type WorkspaceApiDeps = Partial<
@@ -167,6 +175,122 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
     issuer: 'nexus-dev',
   });
 
+  // ── AMEND-nexus-admin-dashboard-full-buildout §3.6: ModeSigner ───────────
+  // File-backed implementation: loads the admin's signing keypair from
+  // keys/admins/<principalId>.keypair.json, invokes core's changeMode /
+  // disableEnforcingLock, and saves the new envelope. Used by the dashboard
+  // POST /workspace/admin/setup/mode + /mode/unlock routes.
+  const keyDirectory = fsPath.join(process.cwd(), 'keys');
+  const adminKeypairPath = (principalId: string): string =>
+    fsPath.join(keyDirectory, 'admins', `${principalId}.keypair.json`);
+  async function loadAdminKeypair(
+    principalId: string
+  ): Promise<{ publicKey: string; privateKey: string } | null> {
+    try {
+      const raw = await fsPromises.readFile(adminKeypairPath(principalId), 'utf-8');
+      const parsed = JSON.parse(raw) as { publicKey?: string; privateKey?: string };
+      if (typeof parsed.publicKey !== 'string' || typeof parsed.privateKey !== 'string') {
+        return null;
+      }
+      return { publicKey: parsed.publicKey, privateKey: parsed.privateKey };
+    } catch {
+      return null;
+    }
+  }
+  function fingerprintSignature(signature: string): string {
+    const h = createHash('sha256').update(signature).digest('base64url');
+    return `sha256:${h.slice(0, 24)}`;
+  }
+  const runLedgerWriterShared = wrapWriterWithFanout(new JsonlRunLedgerWriter(runLedgerPath));
+  const modeSigner: ModeSigner = {
+    async hasSigningKeypair(adminPrincipalId: string): Promise<boolean> {
+      const kp = await loadAdminKeypair(adminPrincipalId);
+      return kp !== null;
+    },
+    async loadCurrentState(): Promise<ModeSignerState> {
+      const cfg = await loadModeConfig(modeConfigPath);
+      return {
+        nxsMode: cfg.nxsMode as ModeSignerState['nxsMode'],
+        nvgMode: cfg.nvgMode as ModeSignerState['nvgMode'],
+        enforcingLocked: cfg.enforcingLocked,
+        updatedAt: cfg.updatedAt,
+        updatedBy: {
+          adminId: cfg.updatedBy.adminId,
+          publicKey: cfg.updatedBy.publicKey,
+        },
+        signatureFingerprint: fingerprintSignature(cfg.signature),
+      };
+    },
+    async changeMode({ engine, mode, adminPrincipalId }) {
+      const kp = await loadAdminKeypair(adminPrincipalId);
+      if (!kp) {
+        throw Object.assign(new Error('admin signing keypair missing'), { statusCode: 412 });
+      }
+      const current = await loadModeConfig(modeConfigPath);
+      const next = await changeMode(
+        engine,
+        mode,
+        adminPrincipalId as unknown as NonEmpty,
+        kp as unknown as Parameters<typeof changeMode>[3],
+        current,
+        runLedgerWriterShared
+      );
+      await saveModeConfig(next, modeConfigPath);
+      return {
+        nxsMode: next.nxsMode as ModeSignerState['nxsMode'],
+        nvgMode: next.nvgMode as ModeSignerState['nvgMode'],
+        enforcingLocked: next.enforcingLocked,
+        updatedAt: next.updatedAt,
+        updatedBy: {
+          adminId: next.updatedBy.adminId,
+          publicKey: next.updatedBy.publicKey,
+        },
+        signatureFingerprint: fingerprintSignature(next.signature),
+      };
+    },
+    async unlockEnforcing(adminPrincipalId) {
+      const kp = await loadAdminKeypair(adminPrincipalId);
+      if (!kp) {
+        throw Object.assign(new Error('admin signing keypair missing'), { statusCode: 412 });
+      }
+      const current = await loadModeConfig(modeConfigPath);
+      // §8 decision (best-solve): single-admin dashboard unlock via
+      // minRequired=1; multi-party CLI flow remains available with the
+      // existing default minRequired=2.
+      const requestedAt = new Date().toISOString();
+      const unlockPayload = canonicalize({
+        action: 'disable_enforcing_lock',
+        configSignature: current.signature,
+        requestedAt,
+      });
+      const signature = await signEd25519(
+        unlockPayload,
+        kp as unknown as Parameters<typeof signEd25519>[1]
+      );
+      const next = await disableEnforcingLock(
+        [{ adminId: adminPrincipalId as unknown as NonEmpty, signature }],
+        current,
+        adminPrincipalId as unknown as NonEmpty,
+        kp as unknown as Parameters<typeof disableEnforcingLock>[3],
+        runLedgerWriterShared,
+        1,
+        requestedAt as unknown as Parameters<typeof disableEnforcingLock>[6]
+      );
+      await saveModeConfig(next, modeConfigPath);
+      return {
+        nxsMode: next.nxsMode as ModeSignerState['nxsMode'],
+        nvgMode: next.nvgMode as ModeSignerState['nvgMode'],
+        enforcingLocked: next.enforcingLocked,
+        updatedAt: next.updatedAt,
+        updatedBy: {
+          adminId: next.updatedBy.adminId,
+          publicKey: next.updatedBy.publicKey,
+        },
+        signatureFingerprint: fingerprintSignature(next.signature),
+      };
+    },
+  };
+
   const baseDeps: ApiDependencies = {
     actorRegistry: new SqliteActorRegistry(db),
     principalRegistry: new SqlitePrincipalRegistry(db),
@@ -181,7 +305,7 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
     adminToken,
     // Wrap so every workspace + orchestrator-coordinator writeEvent fans
     // out to any open SSE subscriber for that runId.
-    runLedgerWriter: wrapWriterWithFanout(new JsonlRunLedgerWriter(runLedgerPath)),
+    runLedgerWriter: runLedgerWriterShared,
     loadModeConfig: () => loadModeConfig(modeConfigPath),
     saveModeConfig: config => saveModeConfig(config, modeConfigPath),
     nvgService: opts.createNvgService(),
@@ -191,6 +315,20 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
         path.join(process.cwd(), 'fixtures', 'nvg', 'default.routing-policy.yaml')
       ),
     manifestWriter,
+    modeSigner,
+    keyDirectory,
+    // §4.1 — best-effort: report any admin signing keypair as present.
+    // The dashboard panel uses this to show the fallback CLI-instructions
+    // block when missing; per-principal checking happens inside ModeSigner.
+    hasAdminSigningKeypair: async () => {
+      try {
+        const dir = fsPath.join(keyDirectory, 'admins');
+        const files = await fsPromises.readdir(dir);
+        return files.some(f => f.endsWith('.keypair.json'));
+      } catch {
+        return false;
+      }
+    },
   };
 
   let workspaceApiDeps: WorkspaceApiDeps = {};

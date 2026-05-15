@@ -487,6 +487,44 @@ export async function deleteAdminKey(
   );
 }
 
+// ── Surface 13: Mode + unlock (AMEND-admin-dashboard §3.6) ──────────────────
+
+export interface ModeCurrentConfig {
+  nxsMode: 'observe' | 'advisory' | 'enforcing';
+  nvgMode: 'observe' | 'advisory' | 'enforcing';
+  enforcingLocked: boolean;
+  updatedAt: string;
+  updatedBy: { adminId: string; publicKey: string };
+  signatureFingerprint: string;
+}
+
+export interface ModeStateResponse {
+  currentConfig: ModeCurrentConfig;
+  signingKeypairPresent: boolean;
+}
+
+export async function getModeState(
+  elevatedSessionId: string
+): Promise<WriterResponse<ModeStateResponse>> {
+  return writerFetch('/workspace/admin/setup/mode', elevatedSessionId, 'GET');
+}
+
+export async function setMode(
+  elevatedSessionId: string,
+  engine: 'nxs' | 'nvg',
+  mode: 'observe' | 'advisory' | 'enforcing'
+): Promise<WriterResponse<{ currentConfig: ModeCurrentConfig }>> {
+  return writerFetch('/workspace/admin/setup/mode', elevatedSessionId, 'POST', { engine, mode });
+}
+
+export async function unlockEnforcing(
+  elevatedSessionId: string
+): Promise<WriterResponse<{ currentConfig: ModeCurrentConfig }>> {
+  return writerFetch('/workspace/admin/setup/mode/unlock', elevatedSessionId, 'POST', {
+    confirm: true,
+  });
+}
+
 // ── Surface 4: Admin Secret Onboarding ─────────────────────────────────────
 // CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — operator pastes API keys directly
 // into the dashboard; backing store is keys/secrets.json (gitignored).

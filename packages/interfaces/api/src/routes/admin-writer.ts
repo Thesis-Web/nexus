@@ -840,6 +840,57 @@ export interface AdminWriterRouteDeps {
    */
   readonly keyDirectory?: string;
   readonly modeConfigPath?: string;
+  /**
+   * Mode signer for AMEND §3.6. Production: composition root wraps
+   * @nexus/core's changeMode + loadModeConfig + saveModeConfig with the
+   * admin signing keypair loaded from keys/admins/<principalId>.keypair.json.
+   * Tests inject a mock.
+   *
+   * When omitted, mode routes return 501.
+   */
+  readonly modeSigner?: ModeSigner;
+}
+
+// ── AMEND §3.6 — ModeSigner port ────────────────────────────────────────────
+//
+// Layer 7 cannot import @nexus/core directly. The port encapsulates the
+// signing operation (load current → check enforcing-lock → sign envelope →
+// save + emit run-ledger event) behind a minimal interface.
+export interface ModeSignerState {
+  readonly nxsMode: 'observe' | 'advisory' | 'enforcing';
+  readonly nvgMode: 'observe' | 'advisory' | 'enforcing';
+  readonly enforcingLocked: boolean;
+  readonly updatedAt: string;
+  readonly updatedBy: { adminId: string; publicKey: string };
+  /** First 32 chars of the signature (display only — never the private key). */
+  readonly signatureFingerprint: string;
+}
+
+export interface ModeSigner {
+  /**
+   * Whether keys/admins/<principalId>.keypair.json exists. Drives the
+   * panel's fallback CLI-instructions block when the elevated admin has
+   * not provisioned a keypair.
+   */
+  hasSigningKeypair(adminPrincipalId: string): Promise<boolean>;
+  /** Read + verify the current mode envelope. */
+  loadCurrentState(): Promise<ModeSignerState>;
+  /**
+   * Change a mode using the admin's signing keypair. Throws with
+   * .statusCode=412 if the keypair is missing, 409 if enforcing-lock
+   * blocks the downgrade, or 400 if mode is invalid.
+   */
+  changeMode(input: {
+    engine: 'nxs' | 'nvg';
+    mode: 'observe' | 'advisory' | 'enforcing';
+    adminPrincipalId: string;
+  }): Promise<ModeSignerState>;
+  /**
+   * Single-admin unlock of enforcing-lock from the dashboard
+   * (minRequired=1). The multi-party CLI flow (minRequired=2) remains
+   * available via the existing nexus CLI.
+   */
+  unlockEnforcing(adminPrincipalId: string): Promise<ModeSignerState>;
 }
 
 // ── Generic manifest CRUD route helper ──────────────────────────────────────
@@ -1741,6 +1792,122 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
         res.status(404).json({ ok: false, error: `key ${keyId} not found` });
         return;
       }
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ═══ SURFACE 13: Mode (signed envelope) — AMEND-nexus-admin-dashboard §3.6
+  // The legacy POST /mode route stays 501; mode mutations always go through
+  // /workspace/admin/setup/mode (elevated session + server-side admin
+  // keypair). The browser NEVER holds the signing key
+  // (feedback_signing_keys_server_side memory).
+  const ModeChangeSchema = z
+    .object({
+      engine: z.enum(['nxs', 'nvg']),
+      mode: z.enum(['observe', 'advisory', 'enforcing']),
+    })
+    .strict();
+  const ModeUnlockSchema = z.object({ confirm: z.literal(true) }).strict();
+
+  app.post('/workspace/admin/setup/mode', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    if (!deps.modeSigner) {
+      res.status(501).json({ ok: false, error: 'Mode signer not configured' });
+      return;
+    }
+    const parsed = ModeChangeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+    try {
+      const hasKey = await deps.modeSigner.hasSigningKeypair(auth.principalId);
+      if (!hasKey) {
+        res.status(412).json({
+          ok: false,
+          error:
+            'missing admin signing keypair — provision via Toolchain & Keys (admin-signing kind) or run nexus init',
+        });
+        return;
+      }
+      const next = await deps.modeSigner.changeMode({
+        engine: parsed.data.engine,
+        mode: parsed.data.mode,
+        adminPrincipalId: auth.principalId,
+      });
+      res.json({ ok: true, data: { currentConfig: next } });
+    } catch (err) {
+      const sc = (err as { statusCode?: number }).statusCode ?? 500;
+      const msg = san(err);
+      // Surface enforcing-lock-blocks-downgrade as 409 with the spec-required
+      // error hint pointing at the unlock route.
+      if (/enforcing-lock/i.test(msg) || /MODE_DOWNGRADE_BLOCKED/.test(msg)) {
+        res.status(409).json({
+          ok: false,
+          error: 'enforcing-lock active; POST /workspace/admin/setup/mode/unlock first',
+        });
+        return;
+      }
+      res.status(sc).json({ ok: false, error: msg });
+    }
+  });
+
+  app.post('/workspace/admin/setup/mode/unlock', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    if (!deps.modeSigner) {
+      res.status(501).json({ ok: false, error: 'Mode signer not configured' });
+      return;
+    }
+    const parsed = ModeUnlockSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+    try {
+      const hasKey = await deps.modeSigner.hasSigningKeypair(auth.principalId);
+      if (!hasKey) {
+        res.status(412).json({
+          ok: false,
+          error: 'missing admin signing keypair — provision via Toolchain & Keys',
+        });
+        return;
+      }
+      const next = await deps.modeSigner.unlockEnforcing(auth.principalId);
+      res.json({ ok: true, data: { currentConfig: next } });
+    } catch (err) {
+      const sc = (err as { statusCode?: number }).statusCode ?? 500;
+      res.status(sc).json({ ok: false, error: san(err) });
+    }
+  });
+
+  app.get('/workspace/admin/setup/mode', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    if (!deps.modeSigner) {
+      res.status(501).json({ ok: false, error: 'Mode signer not configured' });
+      return;
+    }
+    try {
+      const [state, signingKeypairPresent] = await Promise.all([
+        deps.modeSigner.loadCurrentState(),
+        deps.modeSigner.hasSigningKeypair(auth.principalId),
+      ]);
+      res.json({
+        ok: true,
+        data: { currentConfig: state, signingKeypairPresent },
+      });
+    } catch (err) {
       res.status(500).json({ ok: false, error: san(err) });
     }
   });

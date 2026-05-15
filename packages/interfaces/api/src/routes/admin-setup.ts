@@ -143,6 +143,15 @@ export interface AdminSetupRouteDeps {
    * file. Null when the policy hasn't loaded.
    */
   readonly nxsPolicySummary?: NxsPolicySummary | null;
+  /**
+   * AMEND-nexus-admin-dashboard-full-buildout §4.1 — whether the
+   * elevated admin's signing keypair file exists on disk. Drives the
+   * mode-policy panel's fallback CLI-instructions block when missing.
+   * The hook receives no arguments — composition root closes over the
+   * elevated admin principal id resolution. Tests pass a constant
+   * predicate. Best-effort; absence is not a blocker.
+   */
+  readonly hasAdminSigningKeypair?: () => Promise<boolean>;
 
   // ── Observability surface ──
   readonly runLedgerWriter?: RunLedgerWriter;
@@ -742,8 +751,19 @@ async function composeModesPolicyOctSurface(
     blockers.push('NVG routing policy loader not wired');
   }
 
-  // OR-DASH-007: dashboard mutation deferred — `POST /mode` returns 501.
-  blockers.push('OR-DASH-007: HTTP mode mutation not dashboard-safe — CLI only for Beta1');
+  // AMEND-nexus-admin-dashboard-full-buildout §3.6 — dashboard mode
+  // mutation IS now writer-enabled through /workspace/admin/setup/mode
+  // (server-side signed envelope). OR-DASH-007 superseded; the legacy
+  // /mode HTTP route stays 501 as a deliberate dead end for third-party
+  // clients.
+
+  // §4.1 — surface whether the elevated admin's signing keypair is
+  // present on disk. Drives the panel's fallback CLI-instructions block
+  // when missing. Hook is best-effort; absence does not promote the
+  // surface to 'partial'.
+  const signingKeypairPresent = deps.hasAdminSigningKeypair
+    ? await deps.hasAdminSigningKeypair().catch(() => false)
+    : false;
 
   const state: DashboardReadinessState =
     modeConfig === null || !policyLoadable ? 'partial' : 'configured';
@@ -773,6 +793,7 @@ async function composeModesPolicyOctSurface(
       // policy the engine is enforcing without reading the JSON file.
       // Null when the policy hasn't loaded.
       nxsPolicySummary: deps.nxsPolicySummary ?? null,
+      signingKeypairPresent,
     },
     secretFields: [],
     blockers,

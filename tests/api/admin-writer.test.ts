@@ -25,6 +25,8 @@ import type { Server } from 'node:http';
 import { registerAdminWriterRoutes } from '../../packages/interfaces/api/src/routes/admin-writer.js';
 import type {
   ManifestWriter,
+  ModeSigner,
+  ModeSignerState,
   SecretWriter,
 } from '../../packages/interfaces/api/src/routes/admin-writer.js';
 import type {
@@ -2073,5 +2075,249 @@ describe('admin-writer admin-keys routes', () => {
       { method: 'DELETE', headers: headers() }
     );
     expect(res.status).toBe(404);
+  });
+});
+
+// ─── Mode signing routes (AMEND-admin-dashboard §3.6) ──────────────────────
+
+interface MockModeSigner extends ModeSigner {
+  _state: ModeSignerState;
+  _hasKey: Set<string>;
+}
+
+function createMockModeSigner(): MockModeSigner {
+  const state: ModeSignerState = {
+    nxsMode: 'observe',
+    nvgMode: 'observe',
+    enforcingLocked: false,
+    updatedAt: '2026-05-15T00:00:00.000Z',
+    updatedBy: { adminId: 'seed', publicKey: 'seed-pk' },
+    signatureFingerprint: 'fp-initial',
+  };
+  const keys = new Set<string>();
+  const obj: MockModeSigner = {
+    _state: state,
+    _hasKey: keys,
+    async hasSigningKeypair(adminPrincipalId: string) {
+      return keys.has(adminPrincipalId);
+    },
+    async loadCurrentState() {
+      return obj._state;
+    },
+    async changeMode(input) {
+      if (
+        obj._state.enforcingLocked &&
+        input.mode !== 'enforcing' &&
+        obj._state[input.engine === 'nxs' ? 'nxsMode' : 'nvgMode'] === 'enforcing'
+      ) {
+        throw Object.assign(new Error('MODE_DOWNGRADE_BLOCKED: enforcing-lock is active'), {
+          statusCode: 409,
+        });
+      }
+      obj._state = {
+        ...obj._state,
+        [input.engine === 'nxs' ? 'nxsMode' : 'nvgMode']: input.mode,
+        updatedAt: new Date().toISOString(),
+        updatedBy: {
+          adminId: input.adminPrincipalId,
+          publicKey: 'pk-' + input.adminPrincipalId,
+        },
+        signatureFingerprint: 'fp-after-' + input.engine + '-' + input.mode,
+      };
+      return obj._state;
+    },
+    async unlockEnforcing(adminPrincipalId) {
+      obj._state = {
+        ...obj._state,
+        enforcingLocked: false,
+        updatedAt: new Date().toISOString(),
+        updatedBy: { adminId: adminPrincipalId, publicKey: 'pk-' + adminPrincipalId },
+        signatureFingerprint: 'fp-after-unlock',
+      };
+      return obj._state;
+    },
+  };
+  return obj;
+}
+
+describe('admin-writer mode signing routes', () => {
+  let server: Server;
+  let port: number;
+  let modeSigner: MockModeSigner;
+  const ADMIN_PID_LOCAL = '22222222-2222-2222-2222-222222222222';
+  const headers = (): Record<string, string> => ({
+    'Content-Type': 'application/json',
+    'X-Test-Identity': JSON.stringify({
+      kind: 'admin',
+      principalId: ADMIN_PID_LOCAL,
+      actorId: '33333333-3333-3333-3333-333333333333',
+    }),
+    'X-Elevated-Session': '11111111-1111-1111-1111-111111111111',
+  });
+
+  beforeAll(async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/workspace', fakeJwtMiddleware);
+    modeSigner = createMockModeSigner();
+    registerAdminWriterRoutes(app, {
+      elevatedAuthProvider: mockElevatedAuth,
+      modeSigner,
+    });
+    server = await new Promise<Server>(resolve => {
+      const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    });
+    port = (server.address() as AddressInfo).port;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  });
+
+  const url = (p: string): string => `http://127.0.0.1:${port}${p}`;
+
+  it('POST /mode — 412 when admin signing keypair is missing', async () => {
+    modeSigner._hasKey.clear();
+    const res = await fetch(url('/workspace/admin/setup/mode'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ engine: 'nxs', mode: 'advisory' }),
+    });
+    expect(res.status).toBe(412);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/missing admin signing keypair/i);
+  });
+
+  it('POST /mode — 200 with keypair present; updates current state', async () => {
+    modeSigner._hasKey.add(ADMIN_PID_LOCAL);
+    const res = await fetch(url('/workspace/admin/setup/mode'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ engine: 'nxs', mode: 'advisory' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      data: { currentConfig: ModeSignerState };
+    };
+    expect(body.data.currentConfig.nxsMode).toBe('advisory');
+  });
+
+  it('POST /mode — 409 when enforcing-lock blocks downgrade', async () => {
+    modeSigner._hasKey.add(ADMIN_PID_LOCAL);
+    modeSigner._state = {
+      ...modeSigner._state,
+      nxsMode: 'enforcing',
+      enforcingLocked: true,
+    };
+    const res = await fetch(url('/workspace/admin/setup/mode'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ engine: 'nxs', mode: 'observe' }),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/enforcing-lock active/i);
+    expect(body.error).toMatch(/unlock/i);
+  });
+
+  it('POST /mode/unlock — applies, then mode downgrade succeeds', async () => {
+    modeSigner._hasKey.add(ADMIN_PID_LOCAL);
+    modeSigner._state = {
+      ...modeSigner._state,
+      nxsMode: 'enforcing',
+      enforcingLocked: true,
+    };
+    const unlockRes = await fetch(url('/workspace/admin/setup/mode/unlock'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ confirm: true }),
+    });
+    expect(unlockRes.status).toBe(200);
+    const downgradeRes = await fetch(url('/workspace/admin/setup/mode'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ engine: 'nxs', mode: 'observe' }),
+    });
+    expect(downgradeRes.status).toBe(200);
+  });
+
+  it('POST /mode — 400 on invalid mode value', async () => {
+    modeSigner._hasKey.add(ADMIN_PID_LOCAL);
+    const res = await fetch(url('/workspace/admin/setup/mode'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ engine: 'nxs', mode: 'bogus' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /mode/unlock — 400 on confirm:false', async () => {
+    const res = await fetch(url('/workspace/admin/setup/mode/unlock'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ confirm: false }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /mode — returns state + signingKeypairPresent', async () => {
+    modeSigner._hasKey.add(ADMIN_PID_LOCAL);
+    const res = await fetch(url('/workspace/admin/setup/mode'), { headers: headers() });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      data: { currentConfig: ModeSignerState; signingKeypairPresent: boolean };
+    };
+    expect(body.data.signingKeypairPresent).toBe(true);
+  });
+});
+
+describe('admin-writer without modeSigner', () => {
+  let server: Server;
+  let port: number;
+  const headers = (): Record<string, string> => ({
+    'Content-Type': 'application/json',
+    'X-Test-Identity': JSON.stringify({
+      kind: 'admin',
+      principalId: '22222222-2222-2222-2222-222222222222',
+      actorId: '33333333-3333-3333-3333-333333333333',
+    }),
+    'X-Elevated-Session': '11111111-1111-1111-1111-111111111111',
+  });
+
+  beforeAll(async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/workspace', fakeJwtMiddleware);
+    registerAdminWriterRoutes(app, { elevatedAuthProvider: mockElevatedAuth });
+    server = await new Promise<Server>(resolve => {
+      const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    });
+    port = (server.address() as AddressInfo).port;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  });
+
+  const url = (p: string): string => `http://127.0.0.1:${port}${p}`;
+
+  it('POST /mode — 501 when modeSigner is not configured', async () => {
+    const res = await fetch(url('/workspace/admin/setup/mode'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ engine: 'nxs', mode: 'observe' }),
+    });
+    expect(res.status).toBe(501);
+  });
+
+  it('POST /mode/unlock — 501 when modeSigner is not configured', async () => {
+    const res = await fetch(url('/workspace/admin/setup/mode/unlock'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ confirm: true }),
+    });
+    expect(res.status).toBe(501);
   });
 });
