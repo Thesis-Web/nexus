@@ -51,6 +51,9 @@ coverage/
 # Logs
 *.log
 
+# scripts/dev/up.sh runtime state (background nexus serve)
+.nexus-serve.pid
+
 # Archived docs (v0 superseded files)
 docs/archive-v0/
 .pnpm-store/
