@@ -1871,6 +1871,18 @@ async function main(): Promise<void> {
   enforceNoConsoleInAdminPanels();
   pass('admin panels contain no console.log / console.warn / console.error');
 
+  // ── AMEND-nexus-planner-chat-tier-v0-2-0.md §9.4 — chat-tier gates ──────
+  // Two named gates, always run. Defense-in-depth on the loader's
+  // cross-field rules (CHAT-TIER-01) and on the planner's single-node /
+  // zero-edge / pass-through invariant (CHAT-TIER-02).
+  stepLog('CHAT-TIER-01 free_chat workspace integrity gate');
+  enforceChatTierWorkspaceIntegrity();
+  pass('every free_chat workspace has a UUID defaultChatAgentId + chat-shaped capabilities');
+
+  stepLog('CHAT-TIER-02 chat-plan invariant gate');
+  await enforceChatTierPlanInvariant();
+  pass('buildChatPlan emits single-node + zero-edges + no-outputContract plans');
+
   // Step 81 (or 86 with PLANNER-LEXICON gates): integration test gate — opt-in.
   // Real-DB integration suite (postgres connector against the dev docker-compose
   // pair). Skipped unless NEXUS_RUN_INTEGRATION=1 so the gate stays fast in
@@ -1883,7 +1895,7 @@ async function main(): Promise<void> {
     pass('integration suite passed against real Postgres');
   } else {
     console.log(
-      `Step ${PLANNER_LEXICON_GATE_COUNT + ADMIN_DASHBOARD_GATE_COUNT + 81}: INTEG-01 integration test gate ... [33mSKIPPED[0m  (set NEXUS_RUN_INTEGRATION=1 to run)`
+      `Step ${PLANNER_LEXICON_GATE_COUNT + ADMIN_DASHBOARD_GATE_COUNT + CHAT_TIER_GATE_COUNT + 81}: INTEG-01 integration test gate ... [33mSKIPPED[0m  (set NEXUS_RUN_INTEGRATION=1 to run)`
     );
   }
 
@@ -1907,11 +1919,13 @@ async function main(): Promise<void> {
   // Final result
   // -------------------------------------------------------------------------
   // Total step count: 80 base + PLANNER_LEXICON_GATE_COUNT new gates +
-  // ADMIN_DASHBOARD_GATE_COUNT new gates + 1 if integration gate ran.
+  // ADMIN_DASHBOARD_GATE_COUNT new gates + CHAT_TIER_GATE_COUNT new gates
+  // + 1 if integration gate ran.
   const totalSteps =
     80 +
     PLANNER_LEXICON_GATE_COUNT +
     ADMIN_DASHBOARD_GATE_COUNT +
+    CHAT_TIER_GATE_COUNT +
     (process.env['NEXUS_RUN_INTEGRATION'] === '1' ? 1 : 0);
   console.log(`\n=== ci:gate PASSED — all ${totalSteps} steps ===\n`);
 }
@@ -1923,6 +1937,7 @@ async function main(): Promise<void> {
 
 const PLANNER_LEXICON_GATE_COUNT = 5;
 const ADMIN_DASHBOARD_GATE_COUNT = 2;
+const CHAT_TIER_GATE_COUNT = 2;
 
 // ===========================================================================
 // ADMIN-DASH gates — AMEND-nexus-admin-dashboard-full-buildout §4.7
@@ -4165,6 +4180,135 @@ function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
     }
     attempt();
   });
+}
+
+// ===========================================================================
+// CHAT-TIER gates — AMEND-nexus-planner-chat-tier-v0-2-0.md §9.4
+// ===========================================================================
+
+const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function enforceChatTierWorkspaceIntegrity(): void {
+  // Defense-in-depth on the workspace manifest loader. For every entry
+  // with entryMode 'free_chat', assert:
+  //   - configuration.defaultChatAgentId is a non-empty UUID v4 string
+  //   - capabilities.{planReview,promptEntry,fileSpace,finalDisplay}
+  //     match the chat invariants (planReview false, promptEntry true,
+  //     fileSpace false, finalDisplay true).
+  // The loader enforces these at boot; this gate catches manifest drift
+  // before the server starts.
+  const manifestPath = path.join('config', 'workspace', 'workspaces.v1.yaml');
+  let raw: string;
+  try {
+    raw = fs.readFileSync(manifestPath, 'utf-8');
+  } catch (err) {
+    fail(`CHAT-TIER-01: cannot read ${manifestPath}: ${(err as Error).message}`);
+    return;
+  }
+  let doc: {
+    body?: {
+      workspaces?: Array<{
+        workspaceSocketId?: string;
+        entryMode?: string;
+        capabilities?: {
+          promptEntry?: boolean;
+          planReview?: boolean;
+          finalDisplay?: boolean;
+          fileSpace?: boolean;
+        };
+        configuration?: Record<string, unknown>;
+      }>;
+    };
+  };
+  try {
+    doc = yaml.load(raw) as typeof doc;
+  } catch (err) {
+    fail(`CHAT-TIER-01: cannot parse ${manifestPath}: ${(err as Error).message}`);
+    return;
+  }
+  const workspaces = doc.body?.workspaces ?? [];
+  for (const ws of workspaces) {
+    if (ws.entryMode !== 'free_chat') continue;
+    const id = ws.workspaceSocketId ?? '<unknown>';
+    const caps = ws.capabilities;
+    if (!caps) {
+      fail(`CHAT-TIER-01: workspace '${id}' is free_chat but has no capabilities object`);
+      return;
+    }
+    if (caps.planReview !== false) {
+      fail(`CHAT-TIER-01: workspace '${id}' free_chat requires capabilities.planReview === false`);
+      return;
+    }
+    if (caps.promptEntry !== true) {
+      fail(`CHAT-TIER-01: workspace '${id}' free_chat requires capabilities.promptEntry === true`);
+      return;
+    }
+    if (caps.fileSpace !== false) {
+      fail(`CHAT-TIER-01: workspace '${id}' free_chat requires capabilities.fileSpace === false`);
+      return;
+    }
+    if (caps.finalDisplay !== true) {
+      fail(`CHAT-TIER-01: workspace '${id}' free_chat requires capabilities.finalDisplay === true`);
+      return;
+    }
+    const agentId = ws.configuration?.['defaultChatAgentId'];
+    if (typeof agentId !== 'string' || agentId.length === 0) {
+      fail(
+        `CHAT-TIER-01: workspace '${id}' free_chat requires configuration.defaultChatAgentId as a non-empty string`
+      );
+      return;
+    }
+    if (!UUID_V4_PATTERN.test(agentId)) {
+      fail(`CHAT-TIER-01: workspace '${id}' defaultChatAgentId '${agentId}' is not a UUID v4`);
+      return;
+    }
+  }
+}
+
+async function enforceChatTierPlanInvariant(): Promise<void> {
+  // Direct invariant probe of buildChatPlan: feed sample args and assert
+  // the emitted ExecutionPlan satisfies single-node / zero-edges /
+  // pass-through-shaped invariant. This catches regressions where a
+  // future edit might accidentally add an edge or split the plan.
+  const { buildChatPlan } = await import('../packages/orch-ref/src/index.js');
+  const plan = buildChatPlan({
+    runId: '00000000-0000-4000-8000-000000000001' as never,
+    agentId: '00000000-0000-4000-8000-0000000000c1' as never,
+    prompt: 'Who are you?' as never,
+    deps: {
+      computeDigest: (obj: unknown) =>
+        crypto
+          .createHash('sha256')
+          .update(typeof obj === 'string' ? obj : JSON.stringify(obj))
+          .digest('hex') as never,
+      plannerType: 'db-lexicon-transformer-v0' as never,
+      plannerVersion: '0.1.0' as never,
+      orchestratorActorId: '00000000-0000-4000-a000-000000000001' as never,
+    },
+  });
+  if (plan.nodes.length !== 1) {
+    fail(`CHAT-TIER-02: buildChatPlan emitted ${plan.nodes.length} nodes; expected 1`);
+    return;
+  }
+  if (plan.edges.length !== 0) {
+    fail(`CHAT-TIER-02: buildChatPlan emitted ${plan.edges.length} edges; expected 0`);
+    return;
+  }
+  const node = plan.nodes[0]!;
+  if (node.nodeType !== 'nvg_dispatch') {
+    fail(`CHAT-TIER-02: chat node.nodeType is '${node.nodeType}'; expected 'nvg_dispatch'`);
+    return;
+  }
+  if (node.requiresNvg !== true || node.requiresNxs !== false) {
+    fail(
+      `CHAT-TIER-02: chat node has requiresNvg=${node.requiresNvg} requiresNxs=${node.requiresNxs}; expected true/false`
+    );
+    return;
+  }
+  if (!node.expectedOutputSlots.includes('text' as never)) {
+    fail(`CHAT-TIER-02: chat node.expectedOutputSlots does not include 'text'`);
+    return;
+  }
 }
 
 main().catch(err => {

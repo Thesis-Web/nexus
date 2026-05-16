@@ -621,4 +621,43 @@ describe('computeRunTimeline — pendingPlannerCheckback extraction', () => {
     const timeline = computeRunTimeline(events);
     expect(timeline.pendingPlannerCheckback).toBeNull();
   });
+
+  // AMEND-nexus-planner-chat-tier-v0-2-0.md §3.10 — chat-tier rejections
+  // surface the same RejectionCheckbackPayload shape Branch 3 uses. The
+  // reducer is payload-shape-agnostic; this test pins that behavior so a
+  // future change can't accidentally specialize the chat path.
+  it('extracts chat-tier checkback (synthesize:content missing) the same way as Branch 3', () => {
+    const CHAT_CHECKBACK_PAYLOAD = {
+      reason: 'no_capable_agent',
+      reasonDetail:
+        'chat tier requires agent with synthesize capability; agent <id> capabilities: [read:record:single]',
+      missingCapabilities: ['synthesize:content'],
+      rejectedSelectedAgentIds: ['00000000-0000-4000-a000-000000000031'],
+      recommendedSelectedAgentIds: ['00000000-0000-4000-a000-000000000004'],
+      alternativesByCapability: {
+        'synthesize:content': [
+          {
+            agentId: '00000000-0000-4000-a000-000000000004',
+            capability: 'synthesize:content',
+            reason: 'agent 00000000-0000-4000-a000-000000000004 has synthesize in capabilities',
+          },
+        ],
+      },
+    };
+    const events: RunEvent[] = [
+      ev('run_opened', { promptDigest: 'abc' }, '2026-05-13T00:00:00.000Z'),
+      ev('plan_rejected', { reason: 'no_capable_agent' }, '2026-05-13T00:00:01.000Z'),
+      ev(
+        'plan_checkback_sent',
+        { reason: 'no_capable_agent', checkbackPayload: CHAT_CHECKBACK_PAYLOAD },
+        '2026-05-13T00:00:02.000Z'
+      ),
+    ];
+    const timeline = computeRunTimeline(events);
+    expect(timeline.pendingPlannerCheckback).not.toBeNull();
+    expect(timeline.pendingPlannerCheckback?.missingCapabilities).toEqual(['synthesize:content']);
+    expect(timeline.pendingPlannerCheckback?.recommendedSelectedAgentIds).toEqual([
+      '00000000-0000-4000-a000-000000000004',
+    ]);
+  });
 });
