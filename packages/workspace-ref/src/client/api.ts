@@ -139,6 +139,14 @@ export async function listConnectors(): Promise<ApiResponse<CatalogItem[]>> {
   return apiFetch('/workspace/catalogs/connectors');
 }
 
+// AMEND-nexus-admin-arc4-fixups §1.2 — workspace selector client.
+// Mirrors listAgents / listModels exactly. Server route returns only
+// enabled workspaces; UI defaults to "" (Auto = server falls back to
+// first-enabled, preserving current behavior).
+export async function listWorkspaces(): Promise<ApiResponse<CatalogItem[]>> {
+  return apiFetch('/workspace/catalogs/workspaces');
+}
+
 export async function listRails(elevatedSessionId: string): Promise<ApiResponse<unknown[]>> {
   return apiFetch('/workspace/catalogs/rails', {
     headers: { 'X-Elevated-Session': elevatedSessionId } as Record<string, string>,

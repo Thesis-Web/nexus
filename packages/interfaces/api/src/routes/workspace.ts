@@ -1332,6 +1332,32 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
     }
   });
 
+  // AMEND-nexus-admin-arc4-fixups §1.2 — workspace catalog for the
+  // workspace-user-facing selector. Reads `deps.workspaceSockets` directly
+  // (same array the run-creation route resolves against) and surfaces every
+  // enabled workspace as a CatalogItem. No per-claim filtering for v0.1.0;
+  // future amendments may scope visibility if the workspace surface grows.
+  app.get('/workspace/catalogs/workspaces', (_req: Request, res: Response) => {
+    if (!deps.workspaceSockets) {
+      res.status(501).json({ ok: false, error: 'Workspace sockets not configured' });
+      return;
+    }
+    try {
+      const items: CatalogItem[] = deps.workspaceSockets
+        .filter(ws => ws.enabled)
+        .map(ws => ({
+          id: ws.workspaceSocketId,
+          name: ws.workspaceSocketId,
+          description: `${ws.workspaceType} · entryMode: ${ws.entryMode}`,
+          visible: true,
+          selectable: true,
+        }));
+      res.json({ ok: true, data: items });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
   // Rails catalog: JWT + X-Elevated-Session required [§7.2]
   app.get('/workspace/catalogs/rails', async (req: Request, res: Response) => {
     if (!deps.secureRailStore || !deps.elevatedAuthProvider) {

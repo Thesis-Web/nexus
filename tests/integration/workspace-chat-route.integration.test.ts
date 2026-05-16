@@ -328,6 +328,38 @@ describe('ROUTE-CHAT-04: disabled workspaceSocketId → HTTP 400', () => {
   });
 });
 
+describe('ROUTE-CHAT-CATALOG: GET /workspace/catalogs/workspaces surfaces enabled entries', () => {
+  it('returns only enabled workspaces as CatalogItem[] with selectable=true', async () => {
+    const res = await fetch(`${harness.baseUrl}/workspace/catalogs/workspaces`, {
+      headers: { Authorization: `Bearer ${harness.token}` },
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      ok: boolean;
+      data: Array<{
+        id: string;
+        name: string;
+        description: string;
+        visible: boolean;
+        selectable: boolean;
+      }>;
+    };
+    expect(json.ok).toBe(true);
+    const ids = json.data.map(item => item.id).sort();
+    // harness wires three workspace records; the disabled one MUST be omitted.
+    expect(ids).toEqual(['nexus-chat-default', 'reference-workspace']);
+    for (const item of json.data) {
+      expect(item.visible).toBe(true);
+      expect(item.selectable).toBe(true);
+      expect(item.description).toMatch(/entryMode:/);
+    }
+    const chat = json.data.find(i => i.id === 'nexus-chat-default');
+    expect(chat?.description).toContain('free_chat');
+    const gov = json.data.find(i => i.id === 'reference-workspace');
+    expect(gov?.description).toContain('governed_only');
+  });
+});
+
 describe('ROUTE-CHAT-05: chat workspace + wrong cardinality → HTTP 400', () => {
   it('rejects free_chat selectedAgentIds.length !== 1 before any ledger write', async () => {
     const ledgerBefore = harness.ledger.events.length;

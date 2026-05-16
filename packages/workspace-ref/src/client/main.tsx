@@ -24,7 +24,14 @@ import { RunDisplay } from './components/run-display.js';
 import { AdminEntryButton } from './components/admin/admin-entry-button.js';
 import { AdminReauthGate } from './components/admin/admin-reauth-gate.js';
 import { AdminDashboardShell } from './components/admin/admin-dashboard-shell.js';
-import { createRun, listAgents, listModels, uploadFile, type CatalogItem } from './api.js';
+import {
+  createRun,
+  listAgents,
+  listModels,
+  listWorkspaces,
+  uploadFile,
+  type CatalogItem,
+} from './api.js';
 import { computeRunTimeline } from './components/run-stage-reducer.js';
 
 // ── Run entry for sidebar ─────────────────────────────────────────────────
@@ -59,9 +66,11 @@ function App() {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [agents, setAgents] = useState<CatalogItem[]>([]);
   const [models, setModels] = useState<CatalogItem[]>([]);
+  const [workspaces, setWorkspaces] = useState<CatalogItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
+  const [selectedWorkspace, setSelectedWorkspace] = useState('');
   const [planRejection, setPlanRejection] = useState<{
     reason: string;
     reasonDetail: string;
@@ -72,9 +81,14 @@ function App() {
   useEffect(() => {
     if (!auth.authenticated) return;
     void (async () => {
-      const [agentRes, modelRes] = await Promise.all([listAgents(), listModels()]);
+      const [agentRes, modelRes, workspaceRes] = await Promise.all([
+        listAgents(),
+        listModels(),
+        listWorkspaces(),
+      ]);
       if (agentRes.ok && agentRes.data) setAgents(agentRes.data);
       if (modelRes.ok && modelRes.data) setModels(modelRes.data);
+      if (workspaceRes.ok && workspaceRes.data) setWorkspaces(workspaceRes.data);
     })();
   }, [auth.authenticated]);
 
@@ -119,6 +133,13 @@ function App() {
         if (selectedModel && !submission.preferredEndpointId) {
           submission.preferredEndpointId = selectedModel;
         }
+        // AMEND-nexus-admin-arc4-fixups §1.2 — workspace selector. Empty
+        // string means "Auto (first-enabled)" so the server keeps its
+        // legacy fallback behavior; set explicitly when the user picks
+        // a specific workspace (e.g. nexus-chat-default for chat tier).
+        if (selectedWorkspace && !submission.workspaceSocketId) {
+          submission.workspaceSocketId = selectedWorkspace;
+        }
 
         const res = await createRun(submission as unknown as Record<string, unknown>);
         if (res.ok && res.data) {
@@ -162,7 +183,7 @@ function App() {
         setSubmitting(false);
       }
     },
-    [runEvents, selectedAgent, selectedModel]
+    [runEvents, selectedAgent, selectedModel, selectedWorkspace]
   );
 
   // Handle file upload
@@ -279,6 +300,24 @@ function App() {
                 <option key={m.id} value={m.id} disabled={!m.selectable}>
                   {m.name}
                   {m.selectable ? '' : ' (unhealthy)'}
+                </option>
+              ))}
+          </select>
+          {/* AMEND-nexus-admin-arc4-fixups §1.2 — workspace selector. Empty
+              value defaults to "Auto" so the server's existing first-enabled
+              fallback runs unchanged. Pick a workspace explicitly to target
+              chat tier (nexus-chat-default) or any future workspace shape. */}
+          <select
+            className="nx-select"
+            value={selectedWorkspace}
+            onChange={e => setSelectedWorkspace(e.target.value)}
+          >
+            <option value="">Auto (first-enabled)</option>
+            {workspaces
+              .filter(w => w.selectable)
+              .map(w => (
+                <option key={w.id} value={w.id} title={w.description}>
+                  {w.name}
                 </option>
               ))}
           </select>

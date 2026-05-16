@@ -16,6 +16,14 @@ export interface PromptSubmission {
    * Omitted when the user chose "Auto (policy)".
    */
   preferredEndpointId?: string;
+  /**
+   * AMEND-nexus-admin-arc4-fixups §1.2 — workspaceSocketId selected from
+   * the workspace dropdown. Omitted when the user chose "Auto
+   * (first-enabled)" — server falls back to legacy lookup. Set explicitly
+   * when targeting a specific workspace (e.g. nexus-chat-default for
+   * Branch 0 chat tier).
+   */
+  workspaceSocketId?: string;
   attachmentIds?: string[];
   templateId?: string;
   templateVersion?: string;
