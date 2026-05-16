@@ -1403,6 +1403,52 @@ describe('admin-writer routes', () => {
     expect(res.status).toBe(409);
   });
 
+  // AMEND-nexus-admin-dashboard §7 R2 mitigation completion (Arc 2 fixup) —
+  // workspace deletion must reverse-FK-check return endpoints. §3.5.c only
+  // prevents new orphan endpoints (forward direction); without this guard the
+  // operator can delete the workspace, leaving previously-created return
+  // endpoints with dangling targetWorkspaceSocketId.
+  it('DELETE /workspaces/:id — refuses when a return endpoint targets it', async () => {
+    manifestWriter._store.set('config/workspace/workspaces.v1.yaml:workspaces', [
+      fullWorkspaceBody({ workspaceSocketId: 'ws-with-return' }),
+      fullWorkspaceBody({ workspaceSocketId: 'spare-ws' }), // satisfies last-enabled guard
+    ]);
+    manifestWriter._store.set('config/output/compile-return.v1.yaml:returnEndpoints', [
+      {
+        returnEndpointId: 're-pointing-at-ws',
+        endpointType: 'http_callback',
+        enabled: true,
+        targetWorkspaceSocketId: 'ws-with-return',
+        url: 'http://x/y',
+        auth: { kind: 'signed_callback', keyId: 'k' },
+        acceptedArtifactTypes: ['final_response.v1'],
+        configuration: {},
+      },
+    ]);
+    const res = await fetch(url('/workspace/admin/setup/workspaces/ws-with-return'), {
+      method: 'DELETE',
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/in use by return endpoint/i);
+    expect(body.error).toMatch(/re-pointing-at-ws/);
+  });
+
+  it('DELETE /workspaces/:id — succeeds once dependent return endpoints are removed', async () => {
+    manifestWriter._store.set('config/workspace/workspaces.v1.yaml:workspaces', [
+      fullWorkspaceBody({ workspaceSocketId: 'now-orphanable' }),
+      fullWorkspaceBody({ workspaceSocketId: 'spare-ws' }),
+    ]);
+    // No return endpoints reference 'now-orphanable' — empty array.
+    manifestWriter._store.set('config/output/compile-return.v1.yaml:returnEndpoints', []);
+    const res = await fetch(url('/workspace/admin/setup/workspaces/now-orphanable'), {
+      method: 'DELETE',
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(200);
+  });
+
   // ── Mailboxes (AMEND-admin-dashboard §3.5.a) ────────────────────────────
 
   const fullMailboxBody = (overrides: Record<string, unknown> = {}) => ({

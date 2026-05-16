@@ -1871,6 +1871,22 @@ async function main(): Promise<void> {
   enforceNoConsoleInAdminPanels();
   pass('admin panels contain no console.log / console.warn / console.error');
 
+  // AMEND-nexus-admin-dashboard §4.4 (Arc 2 fixup) — banner containment.
+  // Spec §4.4 said "outside ledger-viewer-panel.tsx" but the by-design
+  // read-only contexts (ledger viewer, evidence chain, routing trail —
+  // §2.3) all share the AdminManifestReadForm primitive, and the admin
+  // chrome (overview, category page) shows the banner for genuine reasons
+  // too. The intent of §4.4 was to prevent the banner from re-creeping
+  // into surfaces that should be writer-enabled — i.e. anything under
+  // `panels/`. This gate enforces that intent: panels MAY transitively
+  // use the read-form primitive (which carries a banner), but no panel
+  // file may directly import AdminDisabledMutationBanner.
+  stepLog('ADMIN-DASH-03 no-direct-banner-import-in-panels gate');
+  enforceNoDirectBannerInPanels();
+  pass(
+    'no admin panel directly imports AdminDisabledMutationBanner (transitive use via primitives is permitted)'
+  );
+
   // ── AMEND-nexus-planner-chat-tier-v0-2-0.md §9.4 — chat-tier gates ──────
   // Two named gates, always run. Defense-in-depth on the loader's
   // cross-field rules (CHAT-TIER-01) and on the planner's single-node /
@@ -1936,7 +1952,7 @@ async function main(): Promise<void> {
 // ===========================================================================
 
 const PLANNER_LEXICON_GATE_COUNT = 5;
-const ADMIN_DASHBOARD_GATE_COUNT = 2;
+const ADMIN_DASHBOARD_GATE_COUNT = 3;
 const CHAT_TIER_GATE_COUNT = 2;
 
 // ===========================================================================
@@ -1971,6 +1987,36 @@ function enforceAdminAddNewButtonDeleted(): void {
   }
   if (violations.length > 0) {
     fail(`ADMIN-DASH-01: AdminAddNewButton still referenced in:\n  ${violations.join('\n  ')}`);
+  }
+}
+
+function enforceNoDirectBannerInPanels(): void {
+  // Forbid direct AdminDisabledMutationBanner imports in panel sources.
+  // Panels are expected to be writer-enabled (per AMEND-admin-dashboard);
+  // the disabled-banner belongs in chrome (overview, category page) or
+  // in the read-form primitive that the by-design read-only contexts
+  // (ledger viewer, evidence chain, routing trail per §2.3) compose with.
+  const panelDir = path.join(ADMIN_PANEL_ROOT, 'panels');
+  if (!fs.existsSync(panelDir)) return;
+  const panelFiles = walkFiles(panelDir, ['.tsx', '.ts']).filter(f => !f.endsWith('.test.tsx'));
+  const violations: string[] = [];
+  // Match the import regardless of path (so a future move doesn't smuggle
+  // a path-specific allow). Catches `import { AdminDisabledMutationBanner }`
+  // and `import {... AdminDisabledMutationBanner ...}` patterns.
+  const importRe = /import\s*\{[^}]*\bAdminDisabledMutationBanner\b[^}]*\}\s*from\s*['"]/;
+  for (const f of panelFiles) {
+    const text = fs.readFileSync(f, 'utf-8');
+    if (importRe.test(text)) {
+      violations.push(f);
+    }
+  }
+  if (violations.length > 0) {
+    fail(
+      'ADMIN-DASH-03: AdminDisabledMutationBanner directly imported in writer-enabled panel(s):\n  ' +
+        violations.join('\n  ') +
+        '\n  Move the banner usage into the read-form primitive or remove it; ' +
+        'panels are writer-enabled surfaces per AMEND-admin-dashboard §4.4.'
+    );
   }
 }
 

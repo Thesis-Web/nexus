@@ -1712,13 +1712,37 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
         }
       );
     },
-    preDelete: (id, entries) =>
+    preDelete: async (id, entries) => {
       assertNotLastEnabled(
         id,
         entries,
         'workspaceSocketId',
         'cannot remove last enabled workspace'
-      ),
+      );
+
+      // AMEND-nexus-admin-dashboard §7 R2 mitigation completion (Arc 2 fixup).
+      // Reverse direction of §3.5.c FK validation: §3.5.c rejects new return
+      // endpoints whose targetWorkspaceSocketId is missing/disabled, but the
+      // workspace-side delete left existing return endpoints orphaned. This
+      // check refuses workspace deletion when any return endpoint targets it,
+      // listing the dependents so the operator can clean up first.
+      if (deps.manifestWriter) {
+        const returnEndpoints = await deps.manifestWriter
+          .readEntries(MANIFEST_RETURN_ENDPOINTS, 'returnEndpoints')
+          .catch(() => [] as Record<string, unknown>[]);
+        const dependents = returnEndpoints
+          .filter(re => re['targetWorkspaceSocketId'] === id)
+          .map(re => String(re['returnEndpointId']));
+        if (dependents.length > 0) {
+          throw Object.assign(
+            new Error(
+              `cannot delete workspace ${id}: in use by return endpoint${dependents.length === 1 ? '' : 's'} [${dependents.join(', ')}]`
+            ),
+            { statusCode: 409 }
+          );
+        }
+      }
+    },
   });
 
   // ═══ SURFACE 7: Orchestrators — AMEND-nexus-admin-dashboard §3.3 ═══
