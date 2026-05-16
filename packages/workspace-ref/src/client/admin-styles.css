@@ -76,18 +76,6 @@
   font-style: italic;
 }
 
-/* ── disabled-mutation banner ─────────────────────────────────────────── */
-.nx-admin-disabled-mutation-banner {
-  background: #3a2f1a;
-  color: #e6d4a3;
-  border: 1px solid #5c4a2a;
-  border-left-width: 4px;
-  padding: 10px 14px;
-  margin: 12px 0;
-  border-radius: 3px;
-  font-size: 13px;
-}
-
 /* ── surface card ─────────────────────────────────────────────────────── */
 .nx-admin-surface-card {
   display: flex;
@@ -497,21 +485,6 @@
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
-.nx-admin-manifest-read-form__actions {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
-}
-.nx-admin-manifest-read-form__save {
-  background: #2a2a2a;
-  color: #888;
-  border: 1px solid #3a3a3a;
-  padding: 6px 14px;
-  border-radius: 4px;
-  font: inherit;
-  cursor: not-allowed;
-}
-
 /* ── secret field ─────────────────────────────────────────────────────── */
 .nx-admin-secret-field {
   display: flex;
