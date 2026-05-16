@@ -723,6 +723,27 @@ async function writeAdminKeyFile(
 }
 
 /**
+ * AMEND-nexus-admin-arc4-fixups §1.1 — admin-signing companion public.json.
+ *
+ * Writes a `{ publicKey }` JSON file at 0644 alongside the keypair so
+ * `loadAdminPublicKey` (mode-manager.ts:184-192) can resolve the signer
+ * without loading private material. One-rotation backup matches the
+ * keypair file behavior so the two files stay in sync across rotation.
+ */
+async function writeAdminPublicKeyFile(filePath: string, publicKey: string): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  try {
+    await fs.stat(filePath);
+    const iso = new Date().toISOString().replace(/[:.]/g, '-');
+    await fs.rename(filePath, `${filePath}.replaced-${iso}`);
+  } catch {
+    // No existing file — fresh write.
+  }
+  const body = JSON.stringify({ publicKey }, null, 2);
+  await fs.writeFile(filePath, body, { encoding: 'utf-8', mode: 0o644 });
+}
+
+/**
  * Secret schemas. Hand-rolled checks for keyName format (UPPER_SNAKE_CASE,
  * length, regex) and keyValue length stay below — Zod handles type/shape;
  * the route handler enforces value-shape rules that aren't pure structural.
@@ -1838,6 +1859,16 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
         }
       }
       await writeAdminKeyFile(filePath, body.content, body.keyKind === 'vault');
+      // AMEND-nexus-admin-arc4-fixups §1.1 — admin-signing keypair MUST also
+      // write a sibling `<keyId>.public.json` so `loadAdminPublicKey`
+      // (mode-manager.ts:184-192, used by the unlock route's multi-party
+      // verify) can resolve the signer without loading private material.
+      // public.json is 0644 by definition — pubkeys are publishable;
+      // only the keypair file stays 0600.
+      if (body.keyKind === 'admin-signing') {
+        const publicPath = path.join(KEY_DIR, 'admins', `${keyId}.public.json`);
+        await writeAdminPublicKeyFile(publicPath, body.content.publicKey);
+      }
       const fingerprint =
         body.keyKind === 'vault'
           ? fingerprintForVaultBytes(String(body.content))

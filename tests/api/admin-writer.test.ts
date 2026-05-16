@@ -2117,6 +2117,38 @@ describe('admin-writer admin-keys routes', () => {
     expect(body.data.present).toBe(true);
   });
 
+  // AMEND-nexus-admin-arc4-fixups §1.1 + §2 — admin-signing upload MUST also
+  // write a `<keyId>.public.json` companion so `loadAdminPublicKey` (used by
+  // the multi-party unlock route) can resolve the signer without loading
+  // private material. Live audit caught the missing companion as the cause
+  // of UNKNOWN_ADMIN on unlock attempts.
+  it('POST /admin-keys admin-signing — writes <keyId>.public.json companion with same publicKey', async () => {
+    const otherPrincipal = '66666666-6666-6666-6666-666666666666';
+    const res = await fetch(url('/workspace/admin/setup/admin-keys'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        keyKind: 'admin-signing',
+        keyId: otherPrincipal,
+        content: SAMPLE_KEYPAIR,
+      }),
+    });
+    expect(res.status).toBe(200);
+
+    const { join } = await import('node:path');
+    const { existsSync, readFileSync } = await import('node:fs');
+    const keypairPath = join(tmpKeyDir, 'admins', `${otherPrincipal}.keypair.json`);
+    const publicPath = join(tmpKeyDir, 'admins', `${otherPrincipal}.public.json`);
+    expect(existsSync(keypairPath)).toBe(true);
+    expect(existsSync(publicPath)).toBe(true);
+
+    const publicBody = JSON.parse(readFileSync(publicPath, 'utf-8')) as { publicKey: string };
+    expect(publicBody.publicKey).toBe(SAMPLE_KEYPAIR.publicKey);
+
+    // Defensive: companion file must NOT carry the private key.
+    expect(JSON.stringify(publicBody)).not.toContain('privateKey');
+  });
+
   it('POST /admin-keys — rejects malformed base64url in publicKey', async () => {
     const res = await fetch(url('/workspace/admin/setup/admin-keys'), {
       method: 'POST',
