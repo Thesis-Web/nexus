@@ -222,9 +222,6 @@ export function OrchestratorSetupPanel({ data, elevatedSessionId, onCatalogReloa
           entry={selected}
           title={selected ? `Orchestrator — ${selected.orchestratorSocketId}` : undefined}
           secretFields={surface.secretFields}
-          {...(canWrite
-            ? {}
-            : { disabledReason: 'Writer not available — elevated session required' })}
         />
         {selected && canWrite ? (
           <div className="nx-admin-panel__quick-edit">

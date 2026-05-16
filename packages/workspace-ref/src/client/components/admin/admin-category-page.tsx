@@ -1,8 +1,13 @@
 // packages/workspace-ref/src/client/components/admin/admin-category-page.tsx
-// SPEC-addendum §6 — generic per-category placeholder page.
-// Renders until per-surface detail panels (Claude B) ship.
-
-import { AdminDisabledMutationBanner } from './admin-disabled-mutation-banner.js';
+// AMEND-nexus-admin-dashboard-full-buildout (Arc 3 fixup) — defensive fallback
+// for unknown surfaceIds.
+//
+// All registered NAV surfaces in admin-dashboard-shell.tsx have real,
+// writer-enabled panels. This page renders only when an unknown surfaceId
+// reaches the shell's switch fallback (defensive against future drift —
+// e.g. a typo in NAV or a new surface added to NAV before its panel
+// lands). The previous "Claude B/C/D phase" body copy + "Read-only"
+// banner were dead state from before the admin buildout completed.
 
 interface Props {
   surfaceId: string;
@@ -16,17 +21,10 @@ export function AdminCategoryPage({ surfaceId, title }: Props) {
       <p className="nx-admin-category-page__breadcrumb">
         surface id: <code>{surfaceId}</code>
       </p>
-      <AdminDisabledMutationBanner
-        reason={`Detail panel for "${title}" pending Claude B implementation. Read-only data pending Claude C projection at GET /workspace/admin/setup/surfaces/${surfaceId}.`}
-      />
-      <div className="nx-admin-category-page__placeholder">
-        <p>This panel is part of the Beta1 admin dashboard scope (SPEC §6).</p>
-        <ul>
-          <li>UI fields → Claude B (dashboard-forms window).</li>
-          <li>Read projection → Claude C (admin-read-projections window).</li>
-          <li>Mutation writers → ratified separately (writer-scope-A01).</li>
-        </ul>
-      </div>
+      <p className="nx-admin-category-page__placeholder">
+        No panel registered for this surface. Add a case to <code>admin-dashboard-shell.tsx</code>{' '}
+        to wire one.
+      </p>
     </div>
   );
 }

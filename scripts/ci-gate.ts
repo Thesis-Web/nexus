@@ -1871,21 +1871,16 @@ async function main(): Promise<void> {
   enforceNoConsoleInAdminPanels();
   pass('admin panels contain no console.log / console.warn / console.error');
 
-  // AMEND-nexus-admin-dashboard §4.4 (Arc 2 fixup) — banner containment.
-  // Spec §4.4 said "outside ledger-viewer-panel.tsx" but the by-design
-  // read-only contexts (ledger viewer, evidence chain, routing trail —
-  // §2.3) all share the AdminManifestReadForm primitive, and the admin
-  // chrome (overview, category page) shows the banner for genuine reasons
-  // too. The intent of §4.4 was to prevent the banner from re-creeping
-  // into surfaces that should be writer-enabled — i.e. anything under
-  // `panels/`. This gate enforces that intent: panels MAY transitively
-  // use the read-form primitive (which carries a banner), but no panel
-  // file may directly import AdminDisabledMutationBanner.
-  stepLog('ADMIN-DASH-03 no-direct-banner-import-in-panels gate');
-  enforceNoDirectBannerInPanels();
-  pass(
-    'no admin panel directly imports AdminDisabledMutationBanner (transitive use via primitives is permitted)'
-  );
+  // AMEND-nexus-admin-dashboard (Arc 3 fixup) — AdminDisabledMutationBanner
+  // is fully deleted. The dashboard is double-gated (admin role + elevated
+  // session) and observe mode is the read-only operational mode; a "writes
+  // not yet wired" banner is dead state code now that every NAV surface has
+  // a writer-enabled panel. The Arc 2 narrower gate (forbid direct imports
+  // inside panels/) is replaced by the harder, file-deletion-style gate
+  // (model after ADMIN-DASH-01 for AdminAddNewButton).
+  stepLog('ADMIN-DASH-03 deleted-AdminDisabledMutationBanner gate');
+  enforceAdminDisabledMutationBannerDeleted();
+  pass('AdminDisabledMutationBanner component deleted; no source reference remains in admin tree');
 
   // ── AMEND-nexus-planner-chat-tier-v0-2-0.md §9.4 — chat-tier gates ──────
   // Two named gates, always run. Defense-in-depth on the loader's
@@ -1990,32 +1985,26 @@ function enforceAdminAddNewButtonDeleted(): void {
   }
 }
 
-function enforceNoDirectBannerInPanels(): void {
-  // Forbid direct AdminDisabledMutationBanner imports in panel sources.
-  // Panels are expected to be writer-enabled (per AMEND-admin-dashboard);
-  // the disabled-banner belongs in chrome (overview, category page) or
-  // in the read-form primitive that the by-design read-only contexts
-  // (ledger viewer, evidence chain, routing trail per §2.3) compose with.
-  const panelDir = path.join(ADMIN_PANEL_ROOT, 'panels');
-  if (!fs.existsSync(panelDir)) return;
-  const panelFiles = walkFiles(panelDir, ['.tsx', '.ts']).filter(f => !f.endsWith('.test.tsx'));
+function enforceAdminDisabledMutationBannerDeleted(): void {
+  // The component file itself must be gone.
+  const bannerPath = path.join(ADMIN_PANEL_ROOT, 'admin-disabled-mutation-banner.tsx');
+  if (fs.existsSync(bannerPath)) {
+    fail(
+      `ADMIN-DASH-03: ${bannerPath} still exists — it must be deleted now that every NAV surface is writer-enabled (Arc 3 fixup; dashboard is double-gated, no read-only mode needed in chrome).`
+    );
+  }
+  // No source file under admin/ may reference the deleted symbol.
+  const adminFiles = walkFiles(ADMIN_PANEL_ROOT, ['.tsx', '.ts']);
   const violations: string[] = [];
-  // Match the import regardless of path (so a future move doesn't smuggle
-  // a path-specific allow). Catches `import { AdminDisabledMutationBanner }`
-  // and `import {... AdminDisabledMutationBanner ...}` patterns.
-  const importRe = /import\s*\{[^}]*\bAdminDisabledMutationBanner\b[^}]*\}\s*from\s*['"]/;
-  for (const f of panelFiles) {
-    const text = fs.readFileSync(f, 'utf-8');
-    if (importRe.test(text)) {
+  for (const f of adminFiles) {
+    const txt = fs.readFileSync(f, 'utf-8');
+    if (/AdminDisabledMutationBanner\b/.test(txt)) {
       violations.push(f);
     }
   }
   if (violations.length > 0) {
     fail(
-      'ADMIN-DASH-03: AdminDisabledMutationBanner directly imported in writer-enabled panel(s):\n  ' +
-        violations.join('\n  ') +
-        '\n  Move the banner usage into the read-form primitive or remove it; ' +
-        'panels are writer-enabled surfaces per AMEND-admin-dashboard §4.4.'
+      `ADMIN-DASH-03: AdminDisabledMutationBanner still referenced in:\n  ${violations.join('\n  ')}`
     );
   }
 }

@@ -1,11 +1,14 @@
 // packages/workspace-ref/src/client/components/admin/admin-setup-overview.tsx
-// SPEC-addendum §6 — AdminSetupOverview.
+// AMEND-nexus-admin-dashboard-full-buildout (Arc 3 fixup) — AdminSetupOverview.
 // Default landing page for the dashboard. Lists all setup surfaces with
-// status badges. Backed by /workspace/admin/setup/status (Claude C projection).
-// Claude D: switches between placeholder and real data based on props.
+// status badges. Backed by /workspace/admin/setup/status. The previous
+// "writes-not-yet-wired" banner was removed: every surface in NAV now
+// has a writer-enabled panel; per-panel save buttons surface their own
+// requiresRestart toast on success. The dashboard is double-gated
+// (admin role + elevated session) so a chrome-level "Read-only" banner
+// is dead state code.
 
 import { AdminSurfaceCard } from './admin-surface-card.js';
-import { AdminDisabledMutationBanner } from './admin-disabled-mutation-banner.js';
 import type { DashboardReadinessState, DashboardSurfaceStatus } from '@nexus/contracts';
 
 interface SurfaceListItem {
@@ -95,17 +98,11 @@ interface Props {
 export function AdminSetupOverview({ onSelectSurface, surfaces, loading, error }: Props) {
   const usePlaceholder = !surfaces || surfaces.length === 0;
 
-  // Banner text depends on data source.
-  const bannerReason = usePlaceholder
-    ? 'Save/apply on detail panels requires writer endpoints. Configuration changes are available for endpoints, actors, and connectors.'
-    : 'Configuration saved through the dashboard requires a server restart for manifest surfaces (endpoints, connectors). Actor changes take effect immediately.';
-
   return (
     <div className="nx-admin-setup-overview">
       <h2>Setup overview</h2>
       {loading && <p className="nx-admin-setup-overview__loading">Loading setup status…</p>}
       {error && <p className="nx-admin-setup-overview__error">Error: {error}</p>}
-      <AdminDisabledMutationBanner reason={bannerReason} />
       <div className="nx-admin-setup-overview__grid">
         {usePlaceholder
           ? PLACEHOLDER_SURFACES.map(s => (

@@ -444,9 +444,6 @@ export function CompileMailboxSetupPanel({
           entry={selectedEntry}
           title={selectedTitle}
           secretFields={surface.secretFields}
-          {...(canWrite
-            ? {}
-            : { disabledReason: 'Writer not available — elevated session required' })}
         />
       </div>
 

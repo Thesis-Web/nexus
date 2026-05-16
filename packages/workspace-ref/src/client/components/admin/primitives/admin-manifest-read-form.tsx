@@ -1,19 +1,20 @@
 // packages/workspace-ref/src/client/components/admin/primitives/admin-manifest-read-form.tsx
 //
-// SPEC-addendum-beta1-admin-dashboard-v0-1 §6 — AdminManifestReadForm primitive.
-// HANDOFF-CLAUDE-B §8 acceptance gate: save/apply MUST be disabled.
-// OR-DASH-011 (owner ruling): no raw YAML editor for Beta1.
+// AMEND-nexus-admin-dashboard-full-buildout (Arc 3 fixup) — pure entry-row
+// renderer. The previous "disabled save + Read-only banner" affordance was
+// dead code: the dashboard is double-gated (admin role + elevated session)
+// and observe mode is the read-only operational mode. There is no
+// "writes-not-yet-wired" state for any panel that uses this primitive
+// (every writer-enabled panel composes its own Add/Edit/Delete forms
+// alongside this details pane).
 //
-// Renders a manifest entry as a list of label/value rows. Nested objects are
-// rendered as indented sub-rows. Array values render as count-prefixed
+// Renders a manifest entry as a list of label/value rows. Nested objects
+// render as indented sub-rows. Array values render as count-prefixed
 // previews. Secret-bearing fields must be passed via a separate
-// AdminSecretField (not rendered here) — this form refuses to display anything
-// keyed `secretRef`, `apiKey`, `bearer`, etc., to enforce no-raw-secrets.
-//
-// The footer holds a disabled save button + reason banner. The save button is
-// the canonical insertion point for future writer wiring (when ratified).
+// AdminSecretField (not rendered here) — this form refuses to display
+// anything keyed `secretRef`, `apiKey`, `bearer`, etc., to enforce
+// no-raw-secrets.
 
-import { AdminDisabledMutationBanner } from '../admin-disabled-mutation-banner.js';
 import { AdminSecretField } from './admin-secret-field.js';
 import type { DashboardSecretField } from '@nexus/contracts';
 
@@ -24,10 +25,6 @@ interface Props {
   title?: string | undefined;
   /** Secret fields associated with this entry (rendered via AdminSecretField). */
   secretFields?: readonly DashboardSecretField[] | undefined;
-  /** Save button label — defaults to "Save (disabled)". */
-  saveLabel?: string | undefined;
-  /** Reason text on disabled mutation banner. */
-  disabledReason?: string | undefined;
 }
 
 const REDACT_KEYS = new Set([
@@ -124,13 +121,7 @@ function Row({ k, v, depth }: RowProps) {
   );
 }
 
-export function AdminManifestReadForm({
-  entry,
-  title,
-  secretFields,
-  saveLabel,
-  disabledReason,
-}: Props) {
+export function AdminManifestReadForm({ entry, title, secretFields }: Props) {
   if (!entry) {
     return (
       <div className="nx-admin-manifest-read-form nx-admin-manifest-read-form--empty">
@@ -156,22 +147,6 @@ export function AdminManifestReadForm({
           ))}
         </div>
       )}
-
-      <AdminDisabledMutationBanner
-        {...(disabledReason !== undefined ? { reason: disabledReason } : {})}
-      />
-
-      <div className="nx-admin-manifest-read-form__actions">
-        <button
-          type="button"
-          className="nx-admin-manifest-read-form__save"
-          disabled
-          aria-disabled="true"
-          title={disabledReason ?? 'Save disabled — writer endpoints not yet ratified'}
-        >
-          {saveLabel ?? 'Save (disabled)'}
-        </button>
-      </div>
     </div>
   );
 }

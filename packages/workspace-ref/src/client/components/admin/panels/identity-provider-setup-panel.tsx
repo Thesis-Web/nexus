@@ -185,9 +185,6 @@ export function IdentityProviderSetupPanel({ data, elevatedSessionId, onCatalogR
           entry={selected}
           title={selected ? `Identity provider — ${selected.providerId}` : undefined}
           secretFields={surface.secretFields}
-          {...(canWrite
-            ? {}
-            : { disabledReason: 'Writer not available — elevated session required' })}
         />
       </div>
       <div className="nx-admin-panel__actions">

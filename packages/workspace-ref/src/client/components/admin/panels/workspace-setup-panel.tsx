@@ -243,9 +243,6 @@ export function WorkspaceSetupPanel({ data, elevatedSessionId, catalog, onCatalo
           entry={selected}
           title={selected ? `Workspace — ${selected.workspaceSocketId}` : undefined}
           secretFields={surface.secretFields}
-          {...(canWrite
-            ? {}
-            : { disabledReason: 'Writer not available — elevated session required' })}
         />
         {selected ? (
           <p className="nx-admin-panel__hint">

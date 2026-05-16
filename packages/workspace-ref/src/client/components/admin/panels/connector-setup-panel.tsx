@@ -180,9 +180,6 @@ export function ConnectorSetupPanel({ data, elevatedSessionId }: Props) {
             selected ? `Connector — ${selected.connectorId} (${selected.connectorType})` : undefined
           }
           secretFields={surface.secretFields}
-          {...(canWrite
-            ? {}
-            : { disabledReason: 'Writer not available — elevated session required' })}
         />
         {/* CLAUDE-CODE-ADMIN-PANELS-PHASE-D §1b — capabilities the
             runtime connector instance reports. Differs from the

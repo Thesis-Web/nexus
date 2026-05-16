@@ -195,9 +195,6 @@ export function ChannelSetupPanel({ data, elevatedSessionId, onCatalogReload }: 
           entry={selected}
           title={selected ? `Channel — ${selected.channelId} (${selected.channelType})` : undefined}
           secretFields={surface.secretFields}
-          {...(canWrite
-            ? {}
-            : { disabledReason: 'Writer not available — elevated session required' })}
         />
         {isCliChannel ? (
           <div className="nx-admin-channel-cli" data-testid="cli-channel-instructions">
