@@ -81,7 +81,12 @@ import { ACTION_VERB } from '@nexus/contracts';
 import { nowIso, riskTierExceeds, CAPABILITY_IDS } from '@nexus/contracts';
 import { bootstrap, bootstrapWorkspace, type BootstrapResult } from './nexus-bootstrap.js';
 import { ActorRegistryAgentReader } from './ref-agent-registry-reader.js';
-import { RefOrchestrator, RefRunCoordinator, RefDagExecutor } from '@nexus/orch-ref';
+import {
+  RefOrchestrator,
+  RefRunCoordinator,
+  RefDagExecutor,
+  buildPlannerRequestForWorkspace,
+} from '@nexus/orch-ref';
 import type { NodeDispatchResult, DelegationScope } from '@nexus/orch-ref';
 // AMEND-nexus-planner-db-lexicon-v0-2-1.md §6.2 Commit 5 — registry-based
 // planner resolution. The lexicon planner factory is registered + the
@@ -1873,29 +1878,23 @@ const program = createCli({
         '[orch-wire] handleRun called without per-run sendPlanCheckback — request prompt unknown'
       );
     };
-    const buildPlannerRequest = (request: WorkspaceRunRequest): PlannerRequest => ({
-      tier: 'normal' as const,
-      runId: request.runId,
-      userId: request.userId,
-      principalId: request.principalId,
-      prompt: request.prompt,
-      selectedAgentIds: request.selectedAgentIds,
-      requiredCapabilities: [],
-      edgeHints: [],
-      workspaceSocketId: request.workspaceSocketId,
-      planCheckbackRequested: request.planCheckbackRequested,
-      enteredAt: nowIso(),
-      // CLAUDE-CODE-MODEL-SELECTION-SPEC §2a — carry the user's preference
-      // through the planner request so downstream node dispatch can pass it
-      // on to NVG for biased endpoint selection.
-      preferredEndpointId: request.preferredEndpointId,
-      // AMEND-spec-nexus-orch §5 extension — thread structured sub-task
-      // DAGs through to the planner. When null/absent the planner takes
-      // its legacy single-prompt path; when non-empty it emits one
-      // PlanNode per sub-task with kind-driven nodeType branching.
-      subTasks: request.subTasks ?? null,
-      subTaskEdges: request.subTaskEdges ?? null,
-    });
+    // AMEND-nexus-planner-chat-tier-v0-2-0.md §3.6 — server-side tier
+    // derivation. The workspace.entryMode (signed manifest) drives the
+    // PlannerRequest discriminator: 'free_chat' → ChatPlannerRequest with
+    // tier 'chat'; 'governed_only' → NormalPlannerRequest with tier
+    // 'normal'. UI-supplied tier values are ignored. CLAUDE-CODE-MODEL-
+    // SELECTION-SPEC §2a (preferredEndpointId) and AMEND-spec-nexus-orch
+    // §5 (subTasks DAG) are preserved on the governed branch unchanged.
+    const buildPlannerRequest = (request: WorkspaceRunRequest): PlannerRequest => {
+      const workspace = br.externals.workspaceSockets.find(
+        ws => ws.workspaceSocketId === request.workspaceSocketId
+      );
+      return buildPlannerRequestForWorkspace({
+        request,
+        workspace,
+        nowIso: () => nowIso() as IsoTimestamp,
+      });
+    };
 
     // 22g. Assemble coordinator + orchestrator.
     //

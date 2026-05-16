@@ -616,6 +616,18 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         return;
       }
 
+      // AMEND-nexus-planner-chat-tier-v0-2-0.md §3.6 — chat-tier runs require
+      // exactly one selectedAgentId. Reject before run_opened so no ledger
+      // event is written for a malformed chat run. Other tiers retain their
+      // existing validation paths (Branch 2/3 in the planner).
+      if (workspace.entryMode === 'free_chat' && selectedAgentIds.length !== 1) {
+        res.status(400).json({
+          ok: false,
+          error: `free_chat workspace requires exactly one selectedAgentId; received ${selectedAgentIds.length}`,
+        });
+        return;
+      }
+
       // §6.1 steps 2-4
       const runId = randomUUID() as Uuid;
       const enteredAt = nowIso();

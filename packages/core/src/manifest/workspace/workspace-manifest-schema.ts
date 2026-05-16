@@ -24,7 +24,11 @@ export const WorkspaceManifestEntrySchema = z
     workspaceSocketId: NonEmptyStringSchema,
     workspaceType: NonEmptyStringSchema,
     enabled: z.boolean(),
-    entryMode: z.literal('governed_only'),
+    // AMEND-nexus-planner-chat-tier-v0-2-0.md §2.4 — entryMode widens to
+    // 'governed_only' | 'free_chat'. Cross-field validation (capabilities
+    // shape, defaultChatAgentId) lives in the loader because it depends
+    // on `free_chat` being selected.
+    entryMode: z.enum(['governed_only', 'free_chat']),
     baseUrl: z.string().url(),
     returnEndpointId: NonEmptyStringSchema,
     capabilities: z

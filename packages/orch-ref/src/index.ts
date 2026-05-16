@@ -59,6 +59,13 @@ export type { AmendmentDeps, AmendmentResult, MergeValidationResult } from './pl
 
 export { RefRunCoordinator } from './run-coordinator.js';
 
+// AMEND-nexus-planner-chat-tier-v0-2-0.md §3.6 — server-side tier
+// derivation. Composition root uses this to build PlannerRequest from
+// WorkspaceRunRequest with `tier` derived from the workspace's signed
+// `entryMode`, not from any UI-supplied value.
+export { buildPlannerRequestForWorkspace } from './planner-request-builder.js';
+export type { BuildPlannerRequestArgs } from './planner-request-builder.js';
+
 export type {
   DelegationScope,
   RunCoordinatorDeps,
