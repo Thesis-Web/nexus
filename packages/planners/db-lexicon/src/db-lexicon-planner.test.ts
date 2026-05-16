@@ -18,6 +18,7 @@ import { canonicalize } from '@nexus/runtime-utils';
 import type {
   AgentCapabilityEntry,
   AgentRegistryReader,
+  ChatPlannerRequest,
   EdgeHint,
   ExecutionPlan,
   IsoTimestamp,
@@ -370,6 +371,249 @@ describe('DbLexiconTransformerPlanner — malformed requests', () => {
 });
 
 // ─── Trace + checkback stash discipline ───
+
+// ─── Branch 0: chat tier (AMEND-nexus-planner-chat-tier-v0-2-0.md §9.1) ───
+
+const CHAT_AGENT_ID = '00000000-0000-4000-8000-0000000000d1' as Uuid;
+const CHAT_AGENT_2_ID = '00000000-0000-4000-8000-0000000000d2' as Uuid;
+
+const CHAT_AGENT: AgentCapabilityEntry = {
+  agentId: CHAT_AGENT_ID,
+  actorClass: 'SUPERVISED_AGENT' as NonEmpty,
+  capabilities: ['synthesize' as NonEmpty],
+  octTier: 'OCT-OPEN' as NonEmpty,
+  environment: 'reference' as NonEmpty,
+  enabled: true,
+};
+
+const CHAT_AGENT_2: AgentCapabilityEntry = {
+  agentId: CHAT_AGENT_2_ID,
+  actorClass: 'SUPERVISED_AGENT' as NonEmpty,
+  capabilities: ['synthesize' as NonEmpty],
+  octTier: 'OCT-OPEN' as NonEmpty,
+  environment: 'reference' as NonEmpty,
+  enabled: true,
+};
+
+// Registry with chat-capable agents alongside the existing fixtures.
+// Used for CHAT-01..10. CHAT-11 uses TEST_REGISTRY directly (which
+// contains zero synthesize-capable agents).
+const ALL_AGENTS_WITH_CHAT: AgentCapabilityEntry[] = [...ALL_AGENTS, CHAT_AGENT, CHAT_AGENT_2];
+const CHAT_REGISTRY: AgentRegistryReader = {
+  async findByCapability(capability: NonEmpty): Promise<AgentCapabilityEntry[]> {
+    return ALL_AGENTS_WITH_CHAT.filter(a => a.capabilities.includes(capability));
+  },
+  async getById(agentId: Uuid): Promise<AgentCapabilityEntry | null> {
+    return ALL_AGENTS_WITH_CHAT.find(a => a.agentId === agentId) ?? null;
+  },
+  async listVisible(_ceiling: NonEmpty[]): Promise<AgentCapabilityEntry[]> {
+    return ALL_AGENTS_WITH_CHAT;
+  },
+};
+
+const CHAT_CONTEXT: PlannerContext = {
+  registry: CHAT_REGISTRY,
+  capabilityCeiling: [],
+  maxSplitDepth: 3,
+};
+
+function baseChatRequest(overrides: Partial<ChatPlannerRequest> = {}): ChatPlannerRequest {
+  return {
+    tier: 'chat',
+    runId: RUN_ID,
+    userId: 'test-user' as NonEmpty,
+    principalId: PRINCIPAL_ID,
+    workspaceSocketId: 'nexus-chat-default' as NonEmpty,
+    prompt: 'Who are you?' as NonEmpty,
+    selectedAgentIds: [CHAT_AGENT_ID],
+    preferredEndpointId: null,
+    checkbackSourceRunId: null,
+    enteredAt: '2026-05-15T00:00:00.000Z' as IsoTimestamp,
+    ...overrides,
+  };
+}
+
+describe('DbLexiconTransformerPlanner — Branch 0 chat tier', () => {
+  it('CHAT-01: happy path — agent with synthesize emits a single-node nvg_dispatch plan', async () => {
+    const request = baseChatRequest();
+    const result = await planner.plan(request, CHAT_CONTEXT);
+    expect('rejected' in result).toBe(false);
+    const plan = result as ExecutionPlan;
+    expect(plan.nodes).toHaveLength(1);
+    expect(plan.edges).toHaveLength(0);
+    expect(plan.nodes[0]!.nodeType).toBe('nvg_dispatch');
+    expect(plan.nodes[0]!.agentId).toBe(CHAT_AGENT_ID);
+    expect(plan.nodes[0]!.taskPrompt).toBe('Who are you?');
+    expect(plan.nodes[0]!.expectedOutputSlots).toEqual(['text']);
+
+    const trace = planner.getLastTrace();
+    expect(trace?.branch).toBe('chat');
+    expect(trace?.preflightOutcome).toBe('preferred_agents_satisfy');
+    expect(trace?.planOutcome).toBe('plan_created');
+    expect(planner.getLastRejectionCheckback()).toBeNull();
+  });
+
+  it('CHAT-02: agent without synthesize → no_capable_agent with checkback payload', async () => {
+    const request = baseChatRequest({
+      selectedAgentIds: [SALES_AGENT_ID],
+    });
+    const result = await planner.plan(request, CHAT_CONTEXT);
+    expect('rejected' in result).toBe(true);
+    const rejection = result as PlanRejection;
+    expect(rejection.reason).toBe('no_capable_agent');
+
+    const checkback = planner.getLastRejectionCheckback();
+    expect(checkback).not.toBeNull();
+    expect(checkback!.missingCapabilities).toEqual(['synthesize']);
+    expect(checkback!.rejectedSelectedAgentIds).toEqual([SALES_AGENT_ID]);
+    expect(checkback!.recommendedSelectedAgentIds.length).toBeGreaterThan(0);
+  });
+
+  it('CHAT-03: selectedAgentIds.length === 0 → malformed_request', async () => {
+    const request = baseChatRequest({
+      // Force empty array via cast — the tuple type would reject this at compile time
+      selectedAgentIds: [] as unknown as readonly [Uuid],
+    });
+    const result = await planner.plan(request, CHAT_CONTEXT);
+    expect('rejected' in result).toBe(true);
+    const rejection = result as PlanRejection;
+    expect(rejection.reason).toBe('malformed_request');
+    expect(rejection.reasonDetail).toContain('exactly one selectedAgentId');
+    expect(planner.getLastRejectionCheckback()).toBeNull();
+  });
+
+  it('CHAT-04: selectedAgentIds.length === 2 → malformed_request', async () => {
+    const request = baseChatRequest({
+      // Force two agents via cast — the tuple type would reject this at compile time
+      selectedAgentIds: [CHAT_AGENT_ID, CHAT_AGENT_2_ID] as unknown as readonly [Uuid],
+    });
+    const result = await planner.plan(request, CHAT_CONTEXT);
+    expect('rejected' in result).toBe(true);
+    const rejection = result as PlanRejection;
+    expect(rejection.reason).toBe('malformed_request');
+    expect(rejection.reasonDetail).toContain('exactly one selectedAgentId');
+  });
+
+  it('CHAT-05: non-existent agentId → no_capable_agent (no checkback — UI staleness)', async () => {
+    const GHOST_AGENT = '00000000-0000-4000-8000-00000000ffff' as Uuid;
+    const request = baseChatRequest({
+      selectedAgentIds: [GHOST_AGENT],
+    });
+    const result = await planner.plan(request, CHAT_CONTEXT);
+    expect('rejected' in result).toBe(true);
+    const rejection = result as PlanRejection;
+    expect(rejection.reason).toBe('no_capable_agent');
+    expect(rejection.reasonDetail).toContain('not found in registry');
+    expect(planner.getLastRejectionCheckback()).toBeNull();
+  });
+
+  it("CHAT-06: 'synthesize' not in capabilityCeiling → capability_outside_ceiling", async () => {
+    const request = baseChatRequest();
+    const ceilingContext: PlannerContext = {
+      registry: CHAT_REGISTRY,
+      capabilityCeiling: ['read:record:single' as NonEmpty],
+      maxSplitDepth: 3,
+    };
+    const result = await planner.plan(request, ceilingContext);
+    expect('rejected' in result).toBe(true);
+    const rejection = result as PlanRejection;
+    expect(rejection.reason).toBe('capability_outside_ceiling');
+    expect(planner.getLastRejectionCheckback()).toBeNull();
+  });
+
+  it('CHAT-07: trace shape — lexicalMatches empty, candidateIntents empty, selectedTemplate null', async () => {
+    const request = baseChatRequest();
+    await planner.plan(request, CHAT_CONTEXT);
+    const trace = planner.getLastTrace();
+    expect(trace).not.toBeNull();
+    expect(trace!.branch).toBe('chat');
+    expect(trace!.lexicalMatches).toEqual([]);
+    expect(trace!.candidateIntents).toEqual([]);
+    expect(trace!.selectedIntent).toBeNull();
+    expect(trace!.candidateTemplates).toEqual([]);
+    expect(trace!.selectedTemplate).toBeNull();
+    expect(trace!.requiredCapabilities).toEqual(['synthesize']);
+    expect(trace!.candidateAgents).toEqual([
+      { capability: 'synthesize', agentIds: [CHAT_AGENT_ID] },
+    ]);
+    expect(trace!.operatorPreference).toEqual({
+      selectedAgentIds: [CHAT_AGENT_ID],
+      preferredEndpointId: null,
+    });
+  });
+
+  it('CHAT-08: dispatch order — chat tier hits Branch 0 even with foreign fields on the request', async () => {
+    // Defensive — discriminate on tier === 'chat' before any other branch.
+    // Cast lets us synthesize a malformed request shape that would otherwise
+    // be caught at the type level.
+    const malformed = {
+      ...baseChatRequest(),
+      subTasks: [
+        {
+          kind: 'nvg',
+          subTaskKey: 'should-be-ignored' as NonEmpty,
+          agentId: WAREHOUSE_AGENT_ID,
+          taskSummary: 'should-be-ignored' as NonEmpty,
+          expectedOutputSlots: ['x' as NonEmpty],
+          inputSlotReads: [],
+          taskPrompt: 'should-be-ignored' as NonEmpty,
+        },
+      ],
+    } as unknown as ChatPlannerRequest;
+    const result = await planner.plan(malformed, CHAT_CONTEXT);
+    expect('rejected' in result).toBe(false);
+    const plan = result as ExecutionPlan;
+    expect(plan.nodes).toHaveLength(1);
+    expect(plan.nodes[0]!.agentId).toBe(CHAT_AGENT_ID);
+    expect(planner.getLastTrace()?.branch).toBe('chat');
+  });
+
+  it('CHAT-09: buildChatPlan produces single-node plan with no edges and no output contract', async () => {
+    const request = baseChatRequest();
+    const result = await planner.plan(request, CHAT_CONTEXT);
+    expect('rejected' in result).toBe(false);
+    const plan = result as ExecutionPlan;
+    // Pass-through compile semantics: single node + zero edges. No
+    // outputContract field exists on ExecutionPlan (the compile path
+    // detects pass-through from the absent compile template).
+    expect(plan.nodes).toHaveLength(1);
+    expect(plan.edges).toHaveLength(0);
+    expect(plan.nodes[0]!.requiresNvg).toBe(true);
+    expect(plan.nodes[0]!.requiresNxs).toBe(false);
+  });
+
+  it('CHAT-10: agent missing synthesize → checkback carries every synthesize-capable alternative', async () => {
+    const request = baseChatRequest({
+      selectedAgentIds: [SALES_AGENT_ID],
+    });
+    await planner.plan(request, CHAT_CONTEXT);
+    const checkback = planner.getLastRejectionCheckback();
+    expect(checkback).not.toBeNull();
+    const alternatives = checkback!.alternativesByCapability['synthesize'];
+    expect(alternatives).toBeDefined();
+    expect(alternatives!.length).toBe(2);
+    const altIds = alternatives!.map(a => a.agentId).sort();
+    expect(altIds).toEqual([CHAT_AGENT_ID, CHAT_AGENT_2_ID].sort());
+    // recommendedSelectedAgentIds is the first viable alternative
+    expect(checkback!.recommendedSelectedAgentIds).toHaveLength(1);
+    expect([CHAT_AGENT_ID, CHAT_AGENT_2_ID]).toContain(checkback!.recommendedSelectedAgentIds[0]);
+  });
+
+  it('CHAT-11: checkback recommendedSelectedAgentIds is [] when no synthesize-capable agent exists', async () => {
+    // TEST_REGISTRY contains zero synthesize-capable agents — exactly
+    // the registry shape that proves the empty-recommendations path.
+    const request = baseChatRequest({
+      selectedAgentIds: [SALES_AGENT_ID],
+    });
+    await planner.plan(request, TEST_CONTEXT);
+    const checkback = planner.getLastRejectionCheckback();
+    expect(checkback).not.toBeNull();
+    expect(checkback!.recommendedSelectedAgentIds).toEqual([]);
+    expect(checkback!.alternativesByCapability['synthesize']).toEqual([]);
+    expect(checkback!.missingCapabilities).toEqual(['synthesize']);
+    expect(checkback!.rejectedSelectedAgentIds).toEqual([SALES_AGENT_ID]);
+  });
+});
 
 describe('DbLexiconTransformerPlanner — stash reset between plan() calls', () => {
   it('resets stash on each plan() invocation', async () => {

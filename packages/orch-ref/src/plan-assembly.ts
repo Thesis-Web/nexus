@@ -39,6 +39,12 @@ import type {
   SubTaskDecl,
   SuggestedAgent,
 } from '@nexus/contracts';
+// AMEND-nexus-planner-chat-tier-v0-2-0.md §3.3 — buildChatPlan helper.
+// Single-node nvg_dispatch plan for Branch 0 chat tier; no edges, no
+// output contract (single-agent + no contract = pass-through compile per
+// project_compile_passthrough.md). Sync because there's no registry I/O
+// at construction time — planChatBranch performs all validation before
+// calling this.
 import { EVIDENCE_SENTINEL, nowIso } from '@nexus/contracts';
 
 // Per-node execution budget. The DAG executor races this against the
@@ -397,6 +403,40 @@ export async function planOctSecure(
   };
 
   return buildPlan(request.runId, [node], [], deps);
+}
+
+// ─── Chat-tier plan — AMEND-nexus-planner-chat-tier-v0-2-0.md §3.3 ───
+// Single nvg_dispatch node carrying the chat prompt as taskPrompt. No
+// edges, no output contract. The downstream compile pass-through at
+// deterministic-renderer.ts:338-396 returns the agent's text verbatim
+// (single-agent + no contract = pass-through; see
+// project_compile_passthrough.md).
+//
+// All validation (selectedAgentIds cardinality, agent existence,
+// synthesize capability, ceiling) lives in the planner's planChatBranch
+// — by the time buildChatPlan is called the agentId is known to exist
+// and carry synthesize.
+
+export function buildChatPlan(args: {
+  runId: Uuid;
+  agentId: Uuid;
+  prompt: NonEmpty;
+  deps: PlanAssemblyDeps;
+}): ExecutionPlan {
+  const node: PlanNode = {
+    nodeId: randomUUID() as Uuid,
+    planOrderIndex: 0,
+    agentId: args.agentId,
+    taskSummary: 'chat_response' as NonEmpty,
+    requiresNvg: true,
+    requiresNxs: false,
+    nodeType: 'nvg_dispatch',
+    declaredRiskHint: EVIDENCE_SENTINEL,
+    expectedOutputSlots: ['text' as NonEmpty],
+    timeoutMs: NODE_TIMEOUT_MS,
+    taskPrompt: args.prompt,
+  };
+  return buildPlan(args.runId, [node], [], args.deps);
 }
 
 // ─── Multi-node sub-task plan (AMEND-spec-nexus-orch §5 extension) ───

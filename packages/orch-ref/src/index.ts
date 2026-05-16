@@ -21,6 +21,7 @@ export {
   planOctSecure,
   planFromSubTasks,
   planStandard,
+  buildChatPlan,
   hasCycle,
   compareEdges,
   reject,

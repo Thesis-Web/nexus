@@ -22,6 +22,7 @@
 // Mutually exclusive by request shape — no fallthrough, no chain.
 
 import type {
+  ChatPlannerRequest,
   ExecutionPlan,
   IsoTimestamp,
   MetadataPlannerRequest,
@@ -40,7 +41,13 @@ import type {
   Uuid,
 } from '@nexus/contracts';
 import { nowIso } from '@nexus/contracts';
-import { planFromSubTasks, planOctSecure, reject, type PlanAssemblyDeps } from '@nexus/orch-ref';
+import {
+  buildChatPlan,
+  planFromSubTasks,
+  planOctSecure,
+  reject,
+  type PlanAssemblyDeps,
+} from '@nexus/orch-ref';
 import { createHash } from 'node:crypto';
 import { decomposeLexically } from './internal/lexical-decomposition.js';
 import { resolveLexical } from './internal/lexical-resolver.js';
@@ -99,6 +106,14 @@ export class DbLexiconTransformerPlanner
       plannerVersion: this.plannerVersion,
       orchestratorActorId: this.orchestratorActorId,
     };
+
+    // ── Branch 0: chat tier (AMEND-nexus-planner-chat-tier-v0-2-0.md §3.1) ──
+    // Fires before Branch 1. Workspace.entryMode === 'free_chat' is the
+    // signed source of truth that drives this tier; symmetric Branch
+    // 3-style checkback when selected agent lacks synthesize capability.
+    if (request.tier === 'chat') {
+      return this.planChatBranch(request, context, deps);
+    }
 
     // ── Branch 1: oct_secure tier ──
     if (request.tier === 'oct_secure') {
@@ -171,6 +186,179 @@ export class DbLexiconTransformerPlanner
 
   getLastRejectionCheckback(): RejectionCheckbackPayload | null {
     return this.lastRejectionCheckback;
+  }
+
+  // ─── Branch 0 implementation (chat tier) ───
+  // AMEND-nexus-planner-chat-tier-v0-2-0.md §3.2.
+
+  private async planChatBranch(
+    request: ChatPlannerRequest,
+    context: PlannerContext,
+    deps: PlanAssemblyDeps
+  ): Promise<ExecutionPlan | PlanRejection> {
+    const promptDigest = buildPromptDigest(request.prompt);
+    const synthesize: NonEmpty = 'synthesize' as NonEmpty;
+    const operatorPreference: PlannerPlanTrace['operatorPreference'] = {
+      selectedAgentIds: [...request.selectedAgentIds] as Uuid[],
+      preferredEndpointId: request.preferredEndpointId,
+    };
+
+    // 1. Selection cardinality — defensive runtime check even though the
+    //    tuple type narrows length === 1 at the callsite (runtime callers
+    //    can violate the type via cast).
+    if (request.selectedAgentIds.length !== 1) {
+      const rejection = reject(
+        'malformed_request',
+        `chat tier requires exactly one selectedAgentId; received ${request.selectedAgentIds.length}`
+      );
+      this.lastTrace = this.buildChatTrace(
+        request,
+        promptDigest,
+        'not_applicable',
+        'plan_rejected_malformed',
+        rejection.reason,
+        rejection.reasonDetail,
+        operatorPreference,
+        false
+      );
+      return rejection;
+    }
+
+    const agentId = request.selectedAgentIds[0];
+
+    // 2. Agent existence — no checkback (operator's pick references a
+    //    non-existent ID; UI staleness, not a feasibility issue).
+    const agent = await context.registry.getById(agentId);
+    if (!agent) {
+      const rejection = reject(
+        'no_capable_agent',
+        `chat tier selected agent ${agentId} not found in registry`
+      );
+      this.lastTrace = this.buildChatTrace(
+        request,
+        promptDigest,
+        'not_applicable',
+        'plan_rejected_no_capable_agent',
+        rejection.reason,
+        rejection.reasonDetail,
+        operatorPreference,
+        false
+      );
+      return rejection;
+    }
+
+    // 3. Capability preflight — synthesize required; symmetric Branch
+    //    3-style checkback fires when missing.
+    if (!agent.capabilities.includes(synthesize)) {
+      const candidates = await context.registry.findByCapability(synthesize);
+      const ceilingOk =
+        context.capabilityCeiling.length === 0 || context.capabilityCeiling.includes(synthesize);
+      const alternatives = ceilingOk
+        ? candidates.filter(a => a.enabled).filter(a => a.agentId !== agent.agentId)
+        : [];
+
+      const reasonDetail =
+        `chat tier requires agent with synthesize capability; ` +
+        `agent ${agent.agentId} capabilities: [${agent.capabilities.join(', ')}]`;
+      const rejection = reject('no_capable_agent', reasonDetail);
+
+      this.lastRejectionCheckback = {
+        reason: 'no_capable_agent',
+        reasonDetail: reasonDetail as NonEmpty,
+        missingCapabilities: [synthesize],
+        rejectedSelectedAgentIds: [agent.agentId as Uuid],
+        recommendedSelectedAgentIds:
+          alternatives.length > 0 ? [alternatives[0]!.agentId as Uuid] : [],
+        alternativesByCapability: {
+          [synthesize]: alternatives.map(a => ({
+            agentId: a.agentId as Uuid,
+            capability: synthesize,
+            reason: `agent ${a.agentId} has synthesize in capabilities` as NonEmpty,
+          })),
+        },
+      };
+      this.lastTrace = this.buildChatTrace(
+        request,
+        promptDigest,
+        'preferred_agents_insufficient_alternatives_suggested',
+        'plan_rejected_no_capable_agent',
+        rejection.reason,
+        rejection.reasonDetail,
+        operatorPreference,
+        false
+      );
+      return rejection;
+    }
+
+    // 4. Capability ceiling check — only fires when ceiling is non-empty.
+    //    Empty ceiling = no filter (isVisible convention from plan-assembly).
+    if (context.capabilityCeiling.length > 0 && !context.capabilityCeiling.includes(synthesize)) {
+      const rejection = reject(
+        'capability_outside_ceiling',
+        `chat tier requires 'synthesize' but it is not in workspace capability ceiling`
+      );
+      this.lastTrace = this.buildChatTrace(
+        request,
+        promptDigest,
+        'not_applicable',
+        'plan_rejected_capability_outside_ceiling',
+        rejection.reason,
+        rejection.reasonDetail,
+        operatorPreference,
+        false
+      );
+      return rejection;
+    }
+
+    // 5. Single-node plan via plan-assembly helper. No edges, no output
+    //    contract — pass-through compile fires downstream.
+    const plan = buildChatPlan({
+      runId: request.runId,
+      agentId: agent.agentId as Uuid,
+      prompt: request.prompt,
+      deps,
+    });
+    this.lastTrace = this.buildChatTrace(
+      request,
+      promptDigest,
+      'preferred_agents_satisfy',
+      'plan_created',
+      null,
+      null,
+      operatorPreference,
+      true
+    );
+    return plan;
+  }
+
+  private buildChatTrace(
+    request: ChatPlannerRequest,
+    promptDigest: Sha256Hex,
+    preflightOutcome: PlannerPlanTrace['preflightOutcome'],
+    planOutcome: PlannerPlanTrace['planOutcome'],
+    rejectionReason: PlanRejectionReason | null,
+    rejectionDetail: NonEmpty | null,
+    operatorPreference: PlannerPlanTrace['operatorPreference'],
+    candidatePopulated: boolean
+  ): PlannerPlanTrace {
+    const trace = this.baseTrace(promptDigest, nowIso() as IsoTimestamp);
+    trace.runId = request.runId;
+    trace.branch = 'chat';
+    trace.operatorPreference = operatorPreference;
+    trace.preflightOutcome = preflightOutcome;
+    trace.requiredCapabilities = ['synthesize' as NonEmpty];
+    trace.candidateAgents = candidatePopulated
+      ? [
+          {
+            capability: 'synthesize' as NonEmpty,
+            agentIds: [request.selectedAgentIds[0]],
+          },
+        ]
+      : [];
+    trace.planOutcome = planOutcome;
+    trace.rejectionReason = rejectionReason;
+    trace.rejectionDetail = rejectionDetail;
+    return trace;
   }
 
   // ─── Branch 4 implementation ───
