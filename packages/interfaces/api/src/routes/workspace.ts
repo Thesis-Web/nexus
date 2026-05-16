@@ -272,6 +272,15 @@ const SubTaskEdgeHintSchema = z
   })
   .strict();
 
+// AMEND-nexus-planner-chat-tier-v0-2-0.md §3.6 (Arc 1 fixup) — operator-
+// supplied workspace selector. Optional on the wire; when absent the route
+// falls back to the legacy first-enabled lookup (back-compat for the
+// pre-multi-workspace deployments). When present, the route resolves the
+// workspace by id and rejects 400 if the id is unknown or the matching
+// workspace is disabled. The signed manifest's `entryMode` then drives
+// server-side tier derivation per §3.6.
+const WorkspaceSocketIdField = z.string().min(1).optional();
+
 const FreeTextSchema = z
   .object({
     promptMode: z.literal('free_text'),
@@ -306,6 +315,7 @@ const FreeTextSchema = z
      * `WorkspaceRunRequest.checkbackSourceRunId` without business logic.
      */
     checkbackSourceRunId: z.string().uuid().optional(),
+    workspaceSocketId: WorkspaceSocketIdField,
   })
   .strict();
 
@@ -322,6 +332,7 @@ const SectionedSchema = z
     preferredEndpointId: z.string().optional(),
     modelPreferences: z.array(ModelPreferenceSchema).optional(),
     attachmentIds: z.array(z.string()).optional(),
+    workspaceSocketId: WorkspaceSocketIdField,
   })
   .strict();
 
@@ -333,6 +344,7 @@ const SecureRailsSchema = z
     elevatedSessionId: z.string(),
     constrainedInputs: z.record(z.string(), z.string()).optional(),
     attachmentIds: z.array(z.string()).optional(),
+    workspaceSocketId: WorkspaceSocketIdField,
   })
   .strict();
 
@@ -609,8 +621,42 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
       const principalId = res.locals['principalId'] as string;
       const actorId = res.locals['actorId'] as string;
 
-      // Resolve first enabled workspace socket
-      const workspace = deps.workspaceSockets.find(ws => ws.enabled);
+      // AMEND-nexus-planner-chat-tier-v0-2-0.md §3.6 (Arc 1 fixup) — workspace
+      // selection. Operator may target a specific workspace by socketId
+      // (the only way to reach a non-first enabled workspace, e.g. the
+      // seeded `nexus-chat-default` chat workspace). When omitted, fall
+      // back to first-enabled for legacy single-workspace deployments.
+      // Disabled-id and unknown-id both 400 — distinct from the 503
+      // returned when no workspace at all is enabled (server config
+      // problem, not a client mistake).
+      const requestedWorkspaceSocketId =
+        'workspaceSocketId' in input && typeof input.workspaceSocketId === 'string'
+          ? input.workspaceSocketId
+          : null;
+
+      let workspace: WorkspaceManifestRecord | undefined;
+      if (requestedWorkspaceSocketId !== null) {
+        const requested = deps.workspaceSockets.find(
+          ws => ws.workspaceSocketId === requestedWorkspaceSocketId
+        );
+        if (!requested) {
+          res.status(400).json({
+            ok: false,
+            error: `Unknown workspaceSocketId: ${requestedWorkspaceSocketId}`,
+          });
+          return;
+        }
+        if (!requested.enabled) {
+          res.status(400).json({
+            ok: false,
+            error: `Workspace ${requestedWorkspaceSocketId} is disabled`,
+          });
+          return;
+        }
+        workspace = requested;
+      } else {
+        workspace = deps.workspaceSockets.find(ws => ws.enabled);
+      }
       if (!workspace) {
         res.status(503).json({ ok: false, error: 'No enabled workspace socket' });
         return;
