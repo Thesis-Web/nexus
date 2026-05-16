@@ -308,13 +308,19 @@ const OrchestratorUpdateSchema = z
   .strict();
 
 // ── AMEND-nexus-admin-dashboard-full-buildout §3.4 — Workspaces ────────────
+// ── AMEND-nexus-planner-chat-tier-v0-2-0.md §3.7 — entryMode unlock ─────────
 //
-// Schema mirrors WorkspaceManifestEntrySchema. entryMode is locked to
-// 'governed_only' via z.literal — writer rejects any other value.
+// Schema mirrors WorkspaceManifestEntrySchema. entryMode widens to
+// enum(['governed_only', 'free_chat']) per chat-tier amendment. The
+// pre-create / pre-update guards enforce the cross-field rules (chat
+// requires single-node-shaped capabilities + configuration.defaultChatAgentId)
+// before persisting so the loader never sees an invalid manifest.
+//
 // capabilities keys match the loader (promptEntry/planReview/finalDisplay/
 // fileSpace); the spec's looser names (prompts/runDisplay/...) are
 // reconciled to the loader's law (/mem2). workspaceType remains an open
-// string so factory-registered types beyond http/cli/mcp stay editable.
+// string so factory-registered types beyond http/cli/mcp/chat_workspace
+// stay editable.
 const WorkspaceCapabilitiesSchema = z
   .object({
     promptEntry: z.boolean(),
@@ -329,7 +335,7 @@ const WorkspaceCreateSchema = z
     workspaceSocketId: z.string().min(1),
     workspaceType: z.string().min(1),
     enabled: z.boolean(),
-    entryMode: z.literal('governed_only'),
+    entryMode: z.enum(['governed_only', 'free_chat']),
     baseUrl: z.string().url(),
     returnEndpointId: z.string().min(1),
     capabilities: WorkspaceCapabilitiesSchema,
@@ -341,13 +347,65 @@ const WorkspaceUpdateSchema = z
   .object({
     workspaceType: z.string().min(1).optional(),
     enabled: z.boolean().optional(),
-    entryMode: z.literal('governed_only').optional(),
+    entryMode: z.enum(['governed_only', 'free_chat']).optional(),
     baseUrl: z.string().url().optional(),
     returnEndpointId: z.string().min(1).optional(),
     capabilities: WorkspaceCapabilitiesSchema.optional(),
     configuration: z.record(z.unknown()).optional(),
   })
   .strict();
+
+// AMEND-nexus-planner-chat-tier-v0-2-0.md §3.5 — cross-field validation
+// for free_chat workspaces. Mirrors the loader rules so the admin writer
+// rejects bad shapes before the manifest is signed + reloaded.
+function assertFreeChatCrossField(body: {
+  entryMode?: string;
+  capabilities?: {
+    promptEntry?: boolean;
+    planReview?: boolean;
+    finalDisplay?: boolean;
+    fileSpace?: boolean;
+  };
+  configuration?: Record<string, unknown>;
+}): void {
+  if (body.entryMode !== 'free_chat') return;
+  const caps = body.capabilities;
+  if (caps) {
+    if (caps.planReview !== false) {
+      throw Object.assign(
+        new Error('free_chat workspace requires capabilities.planReview === false'),
+        { statusCode: 400 }
+      );
+    }
+    if (caps.promptEntry !== true) {
+      throw Object.assign(
+        new Error('free_chat workspace requires capabilities.promptEntry === true'),
+        { statusCode: 400 }
+      );
+    }
+    if (caps.fileSpace !== false) {
+      throw Object.assign(
+        new Error('free_chat workspace requires capabilities.fileSpace === false'),
+        { statusCode: 400 }
+      );
+    }
+    if (caps.finalDisplay !== true) {
+      throw Object.assign(
+        new Error('free_chat workspace requires capabilities.finalDisplay === true'),
+        { statusCode: 400 }
+      );
+    }
+  }
+  const defaultChatAgentId = body.configuration?.['defaultChatAgentId'];
+  if (typeof defaultChatAgentId !== 'string' || defaultChatAgentId.length === 0) {
+    throw Object.assign(
+      new Error(
+        'free_chat workspace requires configuration.defaultChatAgentId as a non-empty string'
+      ),
+      { statusCode: 400 }
+    );
+  }
+}
 
 // ── AMEND-nexus-admin-dashboard-full-buildout §3.5.a — Mailboxes ───────────
 //
@@ -1614,9 +1672,10 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
   });
 
   // ═══ SURFACE 8: Workspaces — AMEND-nexus-admin-dashboard §3.4 ═══
-  // entryMode is z.literal('governed_only') — writer rejects any other
-  // value naturally via Zod; preUpdate adds a clearer error message in
-  // case a payload sneaks past with another entryMode key.
+  // ═══ AMEND-nexus-planner-chat-tier-v0-2-0.md §3.7 — entryMode unlock ═══
+  // entryMode widens to enum(['governed_only', 'free_chat']); pre-create
+  // / pre-update apply the cross-field rules for free_chat shapes before
+  // the manifest is signed and reloaded.
   registerManifestCrud(app, deps, {
     basePath: '/workspace/admin/setup/workspaces',
     manifestPath: MANIFEST_WORKSPACES,
@@ -1626,19 +1685,32 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
     createSchema: WorkspaceCreateSchema,
     updateSchema: WorkspaceUpdateSchema,
     preCreate: body => {
-      if ((body as { entryMode?: string }).entryMode !== 'governed_only') {
-        throw Object.assign(new Error('entryMode is fixed to governed_only in this version'), {
-          statusCode: 400,
-        });
-      }
+      assertFreeChatCrossField(
+        body as {
+          entryMode?: string;
+          capabilities?: {
+            promptEntry?: boolean;
+            planReview?: boolean;
+            finalDisplay?: boolean;
+            fileSpace?: boolean;
+          };
+          configuration?: Record<string, unknown>;
+        }
+      );
     },
     preUpdate: (_id, body) => {
-      const m = (body as { entryMode?: string }).entryMode;
-      if (m !== undefined && m !== 'governed_only') {
-        throw Object.assign(new Error('entryMode is fixed to governed_only in this version'), {
-          statusCode: 400,
-        });
-      }
+      assertFreeChatCrossField(
+        body as {
+          entryMode?: string;
+          capabilities?: {
+            promptEntry?: boolean;
+            planReview?: boolean;
+            finalDisplay?: boolean;
+            fileSpace?: boolean;
+          };
+          configuration?: Record<string, unknown>;
+        }
+      );
     },
     preDelete: (id, entries) =>
       assertNotLastEnabled(

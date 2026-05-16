@@ -380,7 +380,7 @@ const CHAT_AGENT_2_ID = '00000000-0000-4000-8000-0000000000d2' as Uuid;
 const CHAT_AGENT: AgentCapabilityEntry = {
   agentId: CHAT_AGENT_ID,
   actorClass: 'SUPERVISED_AGENT' as NonEmpty,
-  capabilities: ['synthesize' as NonEmpty],
+  capabilities: ['synthesize:content' as NonEmpty],
   octTier: 'OCT-OPEN' as NonEmpty,
   environment: 'reference' as NonEmpty,
   enabled: true,
@@ -389,7 +389,7 @@ const CHAT_AGENT: AgentCapabilityEntry = {
 const CHAT_AGENT_2: AgentCapabilityEntry = {
   agentId: CHAT_AGENT_2_ID,
   actorClass: 'SUPERVISED_AGENT' as NonEmpty,
-  capabilities: ['synthesize' as NonEmpty],
+  capabilities: ['synthesize:content' as NonEmpty],
   octTier: 'OCT-OPEN' as NonEmpty,
   environment: 'reference' as NonEmpty,
   enabled: true,
@@ -464,7 +464,7 @@ describe('DbLexiconTransformerPlanner — Branch 0 chat tier', () => {
 
     const checkback = planner.getLastRejectionCheckback();
     expect(checkback).not.toBeNull();
-    expect(checkback!.missingCapabilities).toEqual(['synthesize']);
+    expect(checkback!.missingCapabilities).toEqual(['synthesize:content']);
     expect(checkback!.rejectedSelectedAgentIds).toEqual([SALES_AGENT_ID]);
     expect(checkback!.recommendedSelectedAgentIds.length).toBeGreaterThan(0);
   });
@@ -532,9 +532,9 @@ describe('DbLexiconTransformerPlanner — Branch 0 chat tier', () => {
     expect(trace!.selectedIntent).toBeNull();
     expect(trace!.candidateTemplates).toEqual([]);
     expect(trace!.selectedTemplate).toBeNull();
-    expect(trace!.requiredCapabilities).toEqual(['synthesize']);
+    expect(trace!.requiredCapabilities).toEqual(['synthesize:content']);
     expect(trace!.candidateAgents).toEqual([
-      { capability: 'synthesize', agentIds: [CHAT_AGENT_ID] },
+      { capability: 'synthesize:content', agentIds: [CHAT_AGENT_ID] },
     ]);
     expect(trace!.operatorPreference).toEqual({
       selectedAgentIds: [CHAT_AGENT_ID],
@@ -589,7 +589,7 @@ describe('DbLexiconTransformerPlanner — Branch 0 chat tier', () => {
     await planner.plan(request, CHAT_CONTEXT);
     const checkback = planner.getLastRejectionCheckback();
     expect(checkback).not.toBeNull();
-    const alternatives = checkback!.alternativesByCapability['synthesize'];
+    const alternatives = checkback!.alternativesByCapability['synthesize:content'];
     expect(alternatives).toBeDefined();
     expect(alternatives!.length).toBe(2);
     const altIds = alternatives!.map(a => a.agentId).sort();
@@ -609,8 +609,9 @@ describe('DbLexiconTransformerPlanner — Branch 0 chat tier', () => {
     const checkback = planner.getLastRejectionCheckback();
     expect(checkback).not.toBeNull();
     expect(checkback!.recommendedSelectedAgentIds).toEqual([]);
-    expect(checkback!.alternativesByCapability['synthesize']).toEqual([]);
-    expect(checkback!.missingCapabilities).toEqual(['synthesize']);
+    expect(checkback!.alternativesByCapability['synthesize:content']).toEqual([]);
+    expect(checkback!.missingCapabilities).toEqual(['synthesize:content']);
+    expect(checkback!.rejectedSelectedAgentIds).toEqual([SALES_AGENT_ID]);
     expect(checkback!.rejectedSelectedAgentIds).toEqual([SALES_AGENT_ID]);
   });
 });

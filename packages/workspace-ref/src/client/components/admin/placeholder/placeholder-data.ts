@@ -379,8 +379,8 @@ export const WORKSPACE_PLACEHOLDER: DashboardSurfaceStatus = {
       status: 'configured',
     },
     {
-      label: 'entryMode locked governed_only',
-      pathOrRoute: 'spec §29 / OR-DASH-005',
+      label: 'entryMode dropdown: governed_only | free_chat',
+      pathOrRoute: 'AMEND-nexus-planner-chat-tier-v0-2-0.md §3.7',
       status: 'configured',
     },
   ],

@@ -377,6 +377,21 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
     },
   };
   workspaceFactoryRegistry.register(refWorkspaceFactory);
+  // AMEND-nexus-planner-chat-tier-v0-2-0.md §10.5 — chat_workspace is a
+  // pure manifest naming convention; the workspace transport is the same
+  // HTTP path as governed workspaces. Register the factory under the chat
+  // workspaceType so manifests with entryMode: 'free_chat' validate at
+  // boot. Both factories' `create` defer to API DI wiring — chat vs
+  // governed dispatch is decided by tier derivation in the run-creation
+  // path, not by which factory built the socket.
+  const refChatWorkspaceFactory: WorkspaceFactory = {
+    workspaceType: 'chat_workspace' as NonEmpty,
+    factoryVersion: '1.0.0' as NonEmpty,
+    create: async () => {
+      throw new Error('Workspace construction deferred to API DI wiring.');
+    },
+  };
+  workspaceFactoryRegistry.register(refChatWorkspaceFactory);
 
   // 1f. Orchestrator factory registry (§5.1)
   const orchestratorFactoryRegistry = new OrchestratorFactoryRegistry();

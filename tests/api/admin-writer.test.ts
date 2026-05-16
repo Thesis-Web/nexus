@@ -1269,7 +1269,7 @@ describe('admin-writer routes', () => {
     expect(body.data.workspaceSocketId).toBe('http-2');
   });
 
-  it('POST /workspaces — rejects entryMode != governed_only (Zod literal)', async () => {
+  it('POST /workspaces — rejects entryMode outside governed_only/free_chat enum', async () => {
     const res = await fetch(url('/workspace/admin/setup/workspaces'), {
       method: 'POST',
       headers: adminHeaders(),
@@ -1278,7 +1278,7 @@ describe('admin-writer routes', () => {
     expect(res.status).toBe(400);
   });
 
-  it('PUT /workspaces/:id — refuses to change entryMode away from governed_only', async () => {
+  it('PUT /workspaces/:id — refuses to set entryMode outside enum', async () => {
     manifestWriter._store.set('config/workspace/workspaces.v1.yaml:workspaces', [
       fullWorkspaceBody({ workspaceSocketId: 'wsx' }),
     ]);
@@ -1288,6 +1288,85 @@ describe('admin-writer routes', () => {
       body: JSON.stringify({ entryMode: 'direct' }),
     });
     expect(res.status).toBe(400);
+  });
+
+  // AMEND-nexus-planner-chat-tier-v0-2-0.md §3.7 — entryMode unlock tests.
+
+  const fullChatWorkspaceBody = (overrides: Record<string, unknown> = {}) => ({
+    workspaceSocketId: 'chat-ws',
+    workspaceType: 'chat_workspace',
+    enabled: true,
+    entryMode: 'free_chat',
+    baseUrl: 'http://localhost:4200/chat',
+    returnEndpointId: 'http-return',
+    capabilities: {
+      promptEntry: true,
+      planReview: false,
+      finalDisplay: true,
+      fileSpace: false,
+    },
+    configuration: { defaultChatAgentId: '00000000-0000-4000-a000-000000000004' },
+    ...overrides,
+  });
+
+  it('POST /workspaces — accepts entryMode: free_chat with valid cross-field shape', async () => {
+    const res = await fetch(url('/workspace/admin/setup/workspaces'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(fullChatWorkspaceBody()),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('POST /workspaces — rejects free_chat with planReview: true', async () => {
+    const res = await fetch(url('/workspace/admin/setup/workspaces'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(
+        fullChatWorkspaceBody({
+          capabilities: {
+            promptEntry: true,
+            planReview: true,
+            finalDisplay: true,
+            fileSpace: false,
+          },
+        })
+      ),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/planReview === false/);
+  });
+
+  it('POST /workspaces — rejects free_chat with fileSpace: true', async () => {
+    const res = await fetch(url('/workspace/admin/setup/workspaces'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(
+        fullChatWorkspaceBody({
+          capabilities: {
+            promptEntry: true,
+            planReview: false,
+            finalDisplay: true,
+            fileSpace: true,
+          },
+        })
+      ),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/fileSpace === false/);
+  });
+
+  it('POST /workspaces — rejects free_chat without defaultChatAgentId', async () => {
+    const res = await fetch(url('/workspace/admin/setup/workspaces'), {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(fullChatWorkspaceBody({ configuration: {} })),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/defaultChatAgentId/);
   });
 
   it('PUT /workspaces/:id — updates baseUrl + capabilities', async () => {

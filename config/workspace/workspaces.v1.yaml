@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-10T23:32:09.499Z'
-signature: aWQp2BtZKwtNEC3vt71alD1_YtPJoa9yi9Y9To_7zF-Y0Qle8PQGy9xBY8_KH5p3_6MDIlCk3sepUn2VFXsbCA
+issuedAt: '2026-05-16T02:14:46.100Z'
+signature: nj_Os6BLqKOG88AhI8DUUEF7M1av8ZVh35z1RgZC2DqbeE4OlJMsEvCSsau158zSkWZkhsO2i04oIVspuEeeAQ
 body:
   workspaces:
     - workspaceSocketId: reference-workspace
@@ -16,3 +16,16 @@ body:
         finalDisplay: true
         fileSpace: false
       configuration: {}
+    - workspaceSocketId: nexus-chat-default
+      workspaceType: chat_workspace
+      enabled: true
+      entryMode: free_chat
+      baseUrl: http://localhost:4100/chat
+      returnEndpointId: reference-workspace-return
+      capabilities:
+        promptEntry: true
+        planReview: false
+        finalDisplay: true
+        fileSpace: false
+      configuration:
+        defaultChatAgentId: 00000000-0000-4000-a000-000000000004

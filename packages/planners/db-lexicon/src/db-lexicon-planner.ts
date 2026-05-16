@@ -197,7 +197,7 @@ export class DbLexiconTransformerPlanner
     deps: PlanAssemblyDeps
   ): Promise<ExecutionPlan | PlanRejection> {
     const promptDigest = buildPromptDigest(request.prompt);
-    const synthesize: NonEmpty = 'synthesize' as NonEmpty;
+    const synthesize: NonEmpty = 'synthesize:content' as NonEmpty;
     const operatorPreference: PlannerPlanTrace['operatorPreference'] = {
       selectedAgentIds: [...request.selectedAgentIds] as Uuid[],
       preferredEndpointId: request.preferredEndpointId,
@@ -346,11 +346,11 @@ export class DbLexiconTransformerPlanner
     trace.branch = 'chat';
     trace.operatorPreference = operatorPreference;
     trace.preflightOutcome = preflightOutcome;
-    trace.requiredCapabilities = ['synthesize' as NonEmpty];
+    trace.requiredCapabilities = ['synthesize:content' as NonEmpty];
     trace.candidateAgents = candidatePopulated
       ? [
           {
-            capability: 'synthesize' as NonEmpty,
+            capability: 'synthesize:content' as NonEmpty,
             agentIds: [request.selectedAgentIds[0]],
           },
         ]

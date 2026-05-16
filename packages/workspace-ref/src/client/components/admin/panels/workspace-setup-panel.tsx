@@ -1,8 +1,13 @@
 // packages/workspace-ref/src/client/components/admin/panels/workspace-setup-panel.tsx
 //
 // AMEND-nexus-admin-dashboard-full-buildout §3.4 — writer-enabled workspace
-// CRUD. entryMode is locked to 'governed_only' server-side via z.literal +
-// explicit guard; the form renders it read-only with a tooltip.
+// CRUD.
+// AMEND-nexus-planner-chat-tier-v0-2-0.md §3.7 — entryMode widens from
+// locked literal to 'governed_only' | 'free_chat' dropdown. When operator
+// selects free_chat, capability checkboxes lock to the chat-required shape
+// (planReview=false, promptEntry=true, fileSpace=false, finalDisplay=true)
+// and a defaultChatAgentId picker appears, filtered to actors whose
+// allowedCapabilities include 'synthesize:content'.
 //
 // returnEndpointId is a dropdown driven by the catalog's allReturnEndpoints
 // (cross-surface validation: only currently-defined return endpoints are
@@ -20,6 +25,9 @@ import type { DashboardSurfaceStatus } from '@nexus/contracts';
 import { PanelChrome } from './_panel-chrome.js';
 import type { AdminCatalog } from '../../../admin-catalog-api.js';
 import { addWorkspace, removeWorkspace, updateWorkspace } from '../../../admin-writer-api.js';
+
+const SYNTHESIZE_CAPABILITY = 'synthesize:content';
+type EntryMode = 'governed_only' | 'free_chat';
 
 interface Props {
   data?: DashboardSurfaceStatus;
@@ -55,30 +63,60 @@ const COLUMNS: readonly ManifestTableColumn<WorkspaceEntry>[] = [
   },
 ];
 
-const WORKSPACE_TYPES = ['reference_http', 'http', 'cli', 'mcp', 'other'] as const;
+const WORKSPACE_TYPES = [
+  'reference_http',
+  'http',
+  'cli',
+  'mcp',
+  'chat_workspace',
+  'other',
+] as const;
 
 interface WorkspaceAddDraft {
   workspaceSocketId: string;
   workspaceType: string;
+  entryMode: EntryMode;
   baseUrl: string;
   returnEndpointId: string;
   capPromptEntry: boolean;
   capPlanReview: boolean;
   capFinalDisplay: boolean;
   capFileSpace: boolean;
+  defaultChatAgentId: string;
 }
 
 function defaultDraft(): WorkspaceAddDraft {
   return {
     workspaceSocketId: '',
     workspaceType: 'reference_http',
+    entryMode: 'governed_only',
     baseUrl: 'http://localhost:4100',
     returnEndpointId: '',
     capPromptEntry: true,
     capPlanReview: true,
     capFinalDisplay: true,
     capFileSpace: false,
+    defaultChatAgentId: '',
   };
+}
+
+// When entryMode flips to free_chat, lock the capability shape per the
+// loader + writer cross-field rules. Returning a fresh draft means the
+// inputs below render as disabled checkboxes with the locked values.
+function applyChatLock(draft: WorkspaceAddDraft, mode: EntryMode): WorkspaceAddDraft {
+  if (mode === 'free_chat') {
+    return {
+      ...draft,
+      entryMode: 'free_chat',
+      workspaceType:
+        draft.workspaceType === 'reference_http' ? 'chat_workspace' : draft.workspaceType,
+      capPromptEntry: true,
+      capPlanReview: false,
+      capFinalDisplay: true,
+      capFileSpace: false,
+    };
+  }
+  return { ...draft, entryMode: 'governed_only' };
 }
 
 export function WorkspaceSetupPanel({ data, elevatedSessionId, catalog, onCatalogReload }: Props) {
@@ -107,13 +145,22 @@ export function WorkspaceSetupPanel({ data, elevatedSessionId, catalog, onCatalo
 
   async function handleAdd() {
     if (!elevatedSessionId || !draft.workspaceSocketId || !draft.returnEndpointId) return;
+    if (draft.entryMode === 'free_chat' && !draft.defaultChatAgentId) {
+      setFeedback({
+        type: 'error',
+        msg: 'free_chat workspace requires a default chat agent — select one above.',
+      });
+      return;
+    }
     setBusy(true);
     setFeedback(null);
+    const configuration: Record<string, unknown> =
+      draft.entryMode === 'free_chat' ? { defaultChatAgentId: draft.defaultChatAgentId } : {};
     const res = await addWorkspace(elevatedSessionId, {
       workspaceSocketId: draft.workspaceSocketId,
       workspaceType: draft.workspaceType,
       enabled: true,
-      entryMode: 'governed_only',
+      entryMode: draft.entryMode,
       baseUrl: draft.baseUrl,
       returnEndpointId: draft.returnEndpointId,
       capabilities: {
@@ -122,7 +169,7 @@ export function WorkspaceSetupPanel({ data, elevatedSessionId, catalog, onCatalo
         finalDisplay: draft.capFinalDisplay,
         fileSpace: draft.capFileSpace,
       },
-      configuration: {},
+      configuration,
     });
     setBusy(false);
     if (res.ok) {
@@ -202,8 +249,9 @@ export function WorkspaceSetupPanel({ data, elevatedSessionId, catalog, onCatalo
         />
         {selected ? (
           <p className="nx-admin-panel__hint">
-            <strong>entryMode</strong> is locked to <code>governed_only</code> in this version — see
-            AMEND-nexus-admin-dashboard-full-buildout §3.4.
+            <strong>entryMode</strong> selects the run shape. <code>governed_only</code> runs go
+            through lexicon planning (Branches 1–4); <code>free_chat</code> runs go to a single chat
+            agent (Branch 0). See AMEND-nexus-planner-chat-tier-v0-2-0.md §3.7.
           </p>
         ) : null}
       </div>
@@ -260,12 +308,37 @@ export function WorkspaceSetupPanel({ data, elevatedSessionId, catalog, onCatalo
           </label>
           <label>
             Entry mode:{' '}
-            <input
-              value="governed_only"
-              readOnly
-              title="Locked to governed_only — AMEND-nexus-admin-dashboard §3.4"
-            />
+            <select
+              value={draft.entryMode}
+              onChange={e => setDraft(d => applyChatLock(d, e.target.value as EntryMode))}
+            >
+              <option value="governed_only">governed_only</option>
+              <option value="free_chat">free_chat</option>
+            </select>
           </label>
+          {draft.entryMode === 'free_chat' && (
+            <label>
+              Default chat agent:{' '}
+              <select
+                value={draft.defaultChatAgentId}
+                onChange={e => setDraft(d => ({ ...d, defaultChatAgentId: e.target.value }))}
+              >
+                <option value="">— select a synthesize-capable actor —</option>
+                {(catalog?.allActors ?? [])
+                  .filter(a => a.allowedCapabilities?.includes(SYNTHESIZE_CAPABILITY) === true)
+                  .map(a => ({
+                    id: a.actorId,
+                    label: a.displayName.length > 0 ? a.displayName : a.actorId,
+                  }))
+                  .filter(o => o.id.length > 0)
+                  .map(opt => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
           <label>
             Base URL:{' '}
             <input
@@ -295,11 +368,17 @@ export function WorkspaceSetupPanel({ data, elevatedSessionId, catalog, onCatalo
             </p>
           )}
           <fieldset>
-            <legend>Capabilities</legend>
+            <legend>
+              Capabilities
+              {draft.entryMode === 'free_chat' && (
+                <span className="nx-admin-panel__hint"> (locked for free_chat)</span>
+              )}
+            </legend>
             <label>
               <input
                 type="checkbox"
                 checked={draft.capPromptEntry}
+                disabled={draft.entryMode === 'free_chat'}
                 onChange={e => setDraft(d => ({ ...d, capPromptEntry: e.target.checked }))}
               />{' '}
               promptEntry
@@ -308,6 +387,7 @@ export function WorkspaceSetupPanel({ data, elevatedSessionId, catalog, onCatalo
               <input
                 type="checkbox"
                 checked={draft.capPlanReview}
+                disabled={draft.entryMode === 'free_chat'}
                 onChange={e => setDraft(d => ({ ...d, capPlanReview: e.target.checked }))}
               />{' '}
               planReview
@@ -316,6 +396,7 @@ export function WorkspaceSetupPanel({ data, elevatedSessionId, catalog, onCatalo
               <input
                 type="checkbox"
                 checked={draft.capFinalDisplay}
+                disabled={draft.entryMode === 'free_chat'}
                 onChange={e => setDraft(d => ({ ...d, capFinalDisplay: e.target.checked }))}
               />{' '}
               finalDisplay
@@ -324,6 +405,7 @@ export function WorkspaceSetupPanel({ data, elevatedSessionId, catalog, onCatalo
               <input
                 type="checkbox"
                 checked={draft.capFileSpace}
+                disabled={draft.entryMode === 'free_chat'}
                 onChange={e => setDraft(d => ({ ...d, capFileSpace: e.target.checked }))}
               />{' '}
               fileSpace
