@@ -1,7 +1,7 @@
 # Amendment — Planner DB Lexicon Transformer V1 (JSON fixture)
 # Version: v0.2.1 (post-audit-pass-3 revision; supersedes v0.2.0)
 # Date: 2026-05-13
-# Status: RATIFIED — Phase A complete. Ready for Phase D build (Commit 1 of 7).
+# Status: SHIPPED — Phase D complete across commits bc9485f..d8ff27d. Frontmatter updated 2026-05-15.
 # Supersedes: docs/blueprints/AMEND-nexus-planner-db-lexicon-v0-2-0.md
 # Amends:
 #   AMEND-nexus-blueprint-orch-v1-1-1.md §11.4 (Planner socket law) — registers a new PlannerFactory under the existing socket
