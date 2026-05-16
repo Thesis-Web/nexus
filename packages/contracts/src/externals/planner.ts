@@ -22,7 +22,7 @@ import type {
 // [blueprint-K §11.5, §11.5.4]
 // OCT floor is non-negotiable. Policy can elevate, never lower.
 
-export type PromptVisibilityTier = 'normal' | 'metadata' | 'oct_secure';
+export type PromptVisibilityTier = 'normal' | 'metadata' | 'oct_secure' | 'chat';
 
 // ─── AgentRegistryReader ───
 // Read-only view of agent registry for planner consultation.
@@ -126,7 +126,33 @@ export interface OctSecurePlannerRequest {
   enteredAt: IsoTimestamp;
 }
 
+// AMEND-nexus-planner-chat-tier-v0-2-0.md §2.1 — Branch 0 chat tier.
+// Two-axis architecture closure: prompts that target no NXS-connected
+// system at all. Workspace.entryMode === 'free_chat' is the signed source
+// of truth that drives this tier; UI tier value is advisory. Cardinality
+// of selectedAgentIds is type-enforced as exactly one — chat is
+// single-agent by definition. preferredEndpointId is traced, not
+// adjudicated (same convention as Branches 1–4). checkbackSourceRunId
+// carries through for symmetric Branch 3-style checkback reissue.
+
+export interface ChatPlannerRequest {
+  tier: 'chat';
+  runId: Uuid;
+  userId: NonEmpty;
+  principalId: Uuid;
+  workspaceSocketId: NonEmpty;
+  prompt: NonEmpty;
+  /** EXACTLY one agent — tuple type enforces cardinality at the type level. */
+  selectedAgentIds: readonly [Uuid];
+  /** Operator's preferred endpoint — traced, NOT adjudicated. `null` = Auto (policy). */
+  preferredEndpointId: NonEmpty | null;
+  /** Carry-over from prior rejected run when operator clicked Accept-Suggestions on the symmetric checkback modal. */
+  checkbackSourceRunId: Uuid | null;
+  enteredAt: IsoTimestamp;
+}
+
 export type PlannerRequest =
+  | ChatPlannerRequest
   | NormalPlannerRequest
   | MetadataPlannerRequest
   | OctSecurePlannerRequest;
@@ -260,7 +286,8 @@ export interface PlannerPlanTrace {
     | 'oct_secure'
     | 'pre_resolved_sub_tasks'
     | 'preflight_preferred_agents'
-    | 'lexical_decomposition';
+    | 'lexical_decomposition'
+    | 'chat';
   /** Operator intent — preference data flowed through the trace for audit
    *  even when the branch did not adjudicate it. Null when neither
    *  selectedAgentIds nor preferredEndpointId were supplied. */

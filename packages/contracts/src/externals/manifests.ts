@@ -63,7 +63,7 @@ export interface WorkspaceManifestRecord {
   workspaceSocketId: NonEmpty;
   workspaceType: NonEmpty;
   enabled: boolean;
-  entryMode: 'governed_only';
+  entryMode: 'governed_only' | 'free_chat';
   baseUrl: NonEmpty;
   returnEndpointId: NonEmpty;
   capabilities: {
