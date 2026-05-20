@@ -142,10 +142,16 @@ export interface RunDagNode {
   failureReason: string | null;
   governanceDenied: boolean;
   /** From node_completed.completionMetadata (round-trip work). Null when
-   *  the node hasn't completed yet, or wasn't an nvg dispatch. */
+   *  the node hasn't completed yet, or wasn't an nvg dispatch. The
+   *  toolTurnCount / toolCallsPerTurn / capReached fields are vestigial
+   *  after F4.20 — they used to describe the retired multi-turn dispatch
+   *  loop; the round-trip is now single-turn and these stay null/false.
+   *  unsolicitedToolCallNames carries the F4.20 detection result: the
+   *  list of tool names the model returned but NVG treated as text. */
   toolTurnCount: number | null;
   toolCallsPerTurn: number[] | null;
   capReached: boolean;
+  unsolicitedToolCallNames: string[] | null;
   /** Most recent mailbox slot the node wrote (from partial_result events). */
   writtenSlots: string[];
   dispatchedAt: string | null;
@@ -803,6 +809,7 @@ function extractDagState(events: RunEvent[]): RunDagState | null {
       toolTurnCount: null,
       toolCallsPerTurn: null,
       capReached: false,
+      unsolicitedToolCallNames: null,
       writtenSlots: [],
       dispatchedAt: null,
       completedAt: null,
@@ -876,6 +883,15 @@ function extractDagState(events: RunEvent[]): RunDagState | null {
             .filter((v): v is number => v !== null);
         }
         if (m['capReached'] === true) n.capReached = true;
+        // F4.20 — unsolicited model tool-call detection. Populated when
+        // NVG return-precheck found `tool_calls` in the model response;
+        // the payload was treated as text per Spec F4.20 §4.1.
+        const unsolicited = m['unsolicitedToolCallNames'];
+        if (Array.isArray(unsolicited) && unsolicited.length > 0) {
+          n.unsolicitedToolCallNames = unsolicited.filter(
+            (v): v is string => typeof v === 'string'
+          );
+        }
       }
     } else if (ev.type === 'node_failed') {
       n.status = 'failed';

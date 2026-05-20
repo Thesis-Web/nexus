@@ -38,8 +38,6 @@ import {
   SimpleChannelRegistry,
   SqliteApproverRegistry,
   loadPolicyBundleSet,
-  LexicalNormalizer,
-  PostInferenceNormalizerImpl,
 } from '@nexus/core';
 import { StubConnector } from '@nexus/connector-stub';
 import {
@@ -75,9 +73,7 @@ import type {
   Actor,
   PipelineContext,
   PipelineResult,
-  NormalizerContext,
 } from '@nexus/contracts';
-import { ACTION_VERB } from '@nexus/contracts';
 import { nowIso, riskTierExceeds, CAPABILITY_IDS, FINAL_OUTCOME } from '@nexus/contracts';
 import { bootstrap, bootstrapWorkspace, type BootstrapResult } from './nexus-bootstrap.js';
 import { ActorRegistryAgentReader } from './ref-agent-registry-reader.js';
@@ -121,17 +117,11 @@ import {
   recomputeArtifactDigest,
 } from '../packages/core/src/compile/compile-return-dispatcher.js';
 import { verifyArtifactSignature } from '../packages/core/src/compile/final-response-signer.js';
-import { extractToolCalls } from './extract-tool-calls.js';
 import { bridgeNxsResultToMailbox } from './nxs-result-mailbox-bridge.js';
-import {
-  runDispatchRoundTrip,
-  type NvgTurnResult,
-  type ToolCallDispatchResult,
-} from './dispatch-round-trip.js';
+import { runDispatchRoundTrip, type NvgTurnResult } from './dispatch-round-trip.js';
 import { checkSecureHandoffSlotRead } from './secure-handoff-guard.js';
 import { buildToolDescriptorsForAgent, type ConnectorLookup } from './build-tool-schemas.js';
 import { resolveNxsSlotBindings } from './nxs-slot-binding-resolver.js';
-import type { ExtractedToolCall } from '@nexus/core';
 import type { ToolSchemaDescriptor } from '@nexus/contracts';
 
 const DEFAULT_TRAIL_DIR = path.join(process.cwd(), 'runs');
@@ -425,17 +415,14 @@ const program = createCli({
     );
     console.log('[orch-wire] NXS Pipeline constructed (7 gates)');
 
-    // 22a-bis. Post-Inference Action Normalizer (§28.1) — converts
-    // tool calls extracted from model responses into AgentAction
-    // envelopes that flow into the same 7-gate pipeline. Lexical
-    // helper loaded from the governed verb fixture; canonical verb
-    // list comes from contracts so they stay in lockstep.
-    const lexicalNormalizer = LexicalNormalizer.loadFromFixture(
-      process.cwd(),
-      Object.values(ACTION_VERB)
-    );
-    const postInferenceNormalizer = new PostInferenceNormalizerImpl(lexicalNormalizer);
-    console.log('[orch-wire] PostInferenceNormalizer ready');
+    // 22a-bis. Post-Inference Action Normalizer (former §28.1) is RETIRED
+    // per F4.20 / Q6 / Hard Laws #5 + #7. Model output cannot trigger NXS;
+    // targeted-system actions take the planner-authored nxs_dispatch path
+    // only (Spec F4.7). Any `tool_calls` shape in a model response is
+    // detected at the NVG return-precheck stage (scripts/dispatch-round-
+    // trip.ts) and surfaced via `unsolicited_model_tool_call`; the
+    // payload is treated as text. The subordinate LexicalNormalizer
+    // (§28.2) stays under @nexus/core for future Gate 02 verb resolution.
 
     // 22b. AgentRegistryReader — projection over canonical NXS ActorRegistry
     const agentRegistry = new ActorRegistryAgentReader(coreDeps.actorRegistry);
@@ -912,9 +899,7 @@ const program = createCli({
             'agent:',
             node.agentId,
             'task:',
-            node.taskSummary,
-            '— round-trip cap:',
-            orchManifest.maxToolTurnsPerNode
+            node.taskSummary
           );
 
           // ── Tool-schema bridge (Phase C buildToolDefinitions) ──────
@@ -1081,58 +1066,56 @@ const program = createCli({
             return { kind: 'success', opaqueResponse: inv.opaqueProviderResponse };
           };
 
-          // F4.20 / Q6 / HL #5/#7 — post-inference tool-call dispatch to NXS
-          // is RETIRED. The prior path normalized any model tool_calls and
-          // ran them through the 7-gate pipeline, conflating LLM-internal
-          // tools (Claude Code's MCP, Langgraph state, etc.) with
-          // targeted-system tool calls. LLMs cannot trigger NXS; the
-          // planner-authored nxs_dispatch node is the only entry. We keep
-          // the dispatchToolCall callback shape so the round-trip loop
-          // continues to compile, but every invocation now emits
-          // unsolicited_model_tool_call and returns a fail-closed denial.
-          // The wider deletion of postInferenceNormalizer + extractToolCalls
-          // is the next deliverable (see HANDOFF).
-          const dispatchToolCall = async (
-            tc: ExtractedToolCall,
-            turnIndex: number
-          ): Promise<ToolCallDispatchResult> => {
+          // F4.20 / Q6 / Hard Laws #5 + #7 — model output cannot trigger
+          // NXS. Targeted-system actions take the planner-authored
+          // nxs_dispatch path only. NVG return-precheck inspects the
+          // model response; if any `tool_calls` shape is present, the
+          // emission below writes `unsolicited_model_tool_call` and the
+          // round-trip outcome is reported as `unsolicited_tool_calls`
+          // so the orch treats the response as TEXT (the tool_calls
+          // field is dropped before the payload enters the mailbox).
+          const emitUnsolicitedToolCall = async (
+            toolCalls: ReadonlyArray<{
+              readonly toolName: string;
+              readonly arguments: unknown;
+              readonly providerCallId: string | null;
+            }>
+          ): Promise<void> => {
             await coreDeps.runLedgerWriter!.writeEvent({
               runId: request.runId,
               eventType: 'unsolicited_model_tool_call',
               timestamp: nowIso(),
               actorId: node.agentId,
               detail: {
-                turnIndex,
-                toolName: tc.toolName,
+                nodeId: node.nodeId,
+                disposition: 'treated_as_text',
+                toolNames: toolCalls.map(tc => tc.toolName),
+                toolCallsExtract: toolCalls.map(tc => ({
+                  toolName: tc.toolName,
+                  providerCallId: tc.providerCallId,
+                  argsDigest: sha256Hex(
+                    new TextEncoder().encode(canonicalize(tc.arguments ?? null))
+                  ),
+                })),
                 reason: 'llm_targeted_system_dispatch_forbidden',
               },
             });
             console.warn(
-              '[post-inference] unsolicited model tool call ignored:',
-              tc.toolName,
-              '(turn ' + turnIndex + ')'
+              '[nvg-return-precheck] unsolicited model tool calls treated as text:',
+              toolCalls.map(tc => tc.toolName).join(', ')
             );
-            return {
-              ok: false,
-              reason:
-                'unsolicited_model_tool_call: LLM cannot dispatch targeted-system tools; planner-authored nxs_dispatch is the only entry (Spec F4.20)',
-            };
           };
 
           const roundTrip = await runDispatchRoundTrip(initialMessages, {
             callNvgTurn,
-            dispatchToolCall,
-            maxToolTurnsPerNode: orchManifest.maxToolTurnsPerNode,
+            emitUnsolicitedToolCall,
           });
 
           // ── Map round-trip outcomes onto NodeDispatchResult ─────────────
           if (roundTrip.outcome === 'denied') {
             return {
               success: false,
-              completionMetadata: {
-                toolTurnCount: roundTrip.toolTurnCount,
-                toolCallsPerTurn: [...roundTrip.toolCallsPerTurn],
-              },
+              completionMetadata: {},
               failureReason: (roundTrip.denialCode + ': ' + roundTrip.reason) as NonEmpty,
               governanceDenied: true,
             };
@@ -1140,45 +1123,8 @@ const program = createCli({
           if (roundTrip.outcome === 'invocation_failed') {
             return {
               success: false,
-              completionMetadata: {
-                toolTurnCount: roundTrip.toolTurnCount,
-                toolCallsPerTurn: [...roundTrip.toolCallsPerTurn],
-              },
+              completionMetadata: {},
               failureReason: (roundTrip.code + ': ' + roundTrip.reason) as NonEmpty,
-              governanceDenied: false,
-            };
-          }
-          if (roundTrip.outcome === 'cap_reached') {
-            console.warn(
-              '[orch-wire] tool turn cap reached for run:',
-              request.runId,
-              'turns:',
-              roundTrip.toolTurnCount,
-              'callsPerTurn:',
-              JSON.stringify(roundTrip.toolCallsPerTurn)
-            );
-            return {
-              success: false,
-              completionMetadata: {
-                toolTurnCount: roundTrip.toolTurnCount,
-                toolCallsPerTurn: [...roundTrip.toolCallsPerTurn],
-                capReached: true,
-              },
-              failureReason: ('tool_turn_cap_exceeded: model still requested tools after ' +
-                orchManifest.maxToolTurnsPerNode +
-                ' turns') as NonEmpty,
-              governanceDenied: false,
-            };
-          }
-          if (roundTrip.outcome === 'malformed_response') {
-            console.warn('[orch-wire] malformed provider response — round-trip aborted');
-            return {
-              success: false,
-              completionMetadata: {
-                toolTurnCount: roundTrip.toolTurnCount,
-                toolCallsPerTurn: [...roundTrip.toolCallsPerTurn],
-              },
-              failureReason: 'malformed_provider_response' as NonEmpty,
               governanceDenied: false,
             };
           }
@@ -1254,8 +1200,11 @@ const program = createCli({
             item.mailboxItemId,
             'written for run:',
             request.runId,
-            '(toolTurns:',
-            roundTrip.toolTurnCount + ')'
+            roundTrip.outcome === 'unsolicited_tool_calls'
+              ? '(unsolicited tool_calls detected: ' +
+                  roundTrip.detectedToolCalls.map(tc => tc.toolName).join(',') +
+                  ')'
+              : ''
           );
 
           // CLAUDE-CODE-MODEL-SELECTION-SPEC §5 + CLAUDE-CODE-FIX-MODEL-
@@ -1307,9 +1256,10 @@ const program = createCli({
               actualEndpointId,
               preferenceHonored,
               switchReason,
-              toolTurnCount: roundTrip.toolTurnCount,
-              toolCallsPerTurn: [...roundTrip.toolCallsPerTurn],
-              capReached: false,
+              unsolicitedToolCallNames:
+                roundTrip.outcome === 'unsolicited_tool_calls'
+                  ? roundTrip.detectedToolCalls.map(tc => tc.toolName)
+                  : [],
             },
             failureReason: null,
             governanceDenied: false,

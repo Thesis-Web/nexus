@@ -230,6 +230,7 @@ function buildEventSummary(eventType: string, detail: Record<string, unknown>): 
       const perTurn = meta['toolCallsPerTurn'];
       const capReached = meta['capReached'];
       const tier = meta['modelTierInvoked'];
+      const unsolicited = meta['unsolicitedToolCallNames'];
       const parts: string[] = [];
       if (typeof turns === 'number') {
         parts.push(`${turns} tool turn${turns === 1 ? '' : 's'}`);
@@ -240,12 +241,31 @@ function buildEventSummary(eventType: string, detail: Record<string, unknown>): 
       if (capReached === true) {
         parts.push('⚠ cap reached');
       }
+      if (Array.isArray(unsolicited) && unsolicited.length > 0) {
+        parts.push(
+          `⚠ unsolicited tool_calls (treated as text): ${unsolicited
+            .filter((v): v is string => typeof v === 'string')
+            .join(', ')}`
+        );
+      }
       if (typeof tier === 'string' && tier.length > 0) {
         parts.push(`tier: ${tier}`);
       }
       if (parts.length > 0) return parts.join(' · ');
     }
     return null;
+  }
+  if (eventType === 'unsolicited_model_tool_call') {
+    // F4.20 — NVG return-precheck detected `tool_calls` in a model
+    // response. Payload was treated as text per Spec F4.20 §4.1; the
+    // tool_calls field was dropped before the orch mailbox drop.
+    const tools = detail['toolNames'];
+    if (Array.isArray(tools) && tools.length > 0) {
+      return `⚠ model returned tool_calls (treated as text): ${tools
+        .filter((v): v is string => typeof v === 'string')
+        .join(', ')}`;
+    }
+    return '⚠ model returned tool_calls (treated as text per Nexus governance)';
   }
   if (eventType === 'node_failed') {
     const reason = detail['failureReason'];

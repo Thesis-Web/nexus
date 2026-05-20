@@ -1637,30 +1637,53 @@ export interface NormalizationResult {
   error?: NonEmpty;
 }
 
-// ─── §28.1 Post-Inference Action Normalizer — NVG→NXS boundary plug point ───
-// Pure normalization. Zero governance decisions. Any governance decision inside
-// the normalizer is a build violation (blueprint §15.1, spec §28.1).
-// External implementations provide this; Nexus defines the contract.
-// The lexical-normalizer.ts is a subordinate helper, not the normalizer itself (§28.2).
+// ─── F4.20 / Q6 — LLM internal tools vs targeted-system tools ─────────────
+// The post-inference action normalizer (formerly §28.1) is RETIRED — model
+// output cannot trigger NXS. Targeted-system actions go through the
+// planner-authored nxs_dispatch node path only (Spec F4.7). LLMs may call
+// internal tools (Claude Code MCP, Langgraph state, file_search, etc.); the
+// LlmAdapterDeclaration documents those advertised internals, and the
+// validation in @nexus/runtime-utils rejects any targeted-system tool name.
+//
+// NVG return-precheck (per F4.20 §4.1) inspects every model response; if a
+// `tool_calls` shape is present, it emits `unsolicited_model_tool_call` and
+// strips the field before handing the payload to the orch mailbox. Workspace
+// receipt notes "treated as text per Nexus governance."
 
-/** Context carried from the governed workspace/orchestrator through NVG to the normalizer. */
-export interface NormalizerContext {
-  runId: Uuid;
-  actorId: Uuid;
-  principalId: Uuid;
-  sessionId: Uuid;
-  delegationId: Uuid;
-  protocol: NonEmpty;
-}
+/** Open-governed LLM adapter identifier (one per provider wire-format family). */
+export type LlmAdapterId = NonEmpty;
 
 /**
- * Post-Inference Action Normalizer — converts model output to AgentAction format.
- * Sits at the NVG→NXS boundary. Makes zero governance decisions.
- * Produces a consistent AgentAction entering NXS regardless of model source.
- * External implementations register via bootstrap DI — Nexus never owns the implementation.
+ * Scope of an LLM-internal tool that an adapter may advertise to its LLM.
+ * Internal tools never touch the customer's targeted internal systems —
+ * they live entirely within the LLM runtime / adapter.
  */
-export interface PostInferenceNormalizer {
-  normalize(modelOutput: unknown, context: NormalizerContext): AgentAction;
+export type InternalToolScope =
+  | 'claude_code' // Claude Code's own MCP-mediated tools
+  | 'mcp' // generic MCP server tools wired via shim
+  | 'openai_internal' // OpenAI internal tools (file_search, code_interpreter, etc.)
+  | 'langgraph' // Langgraph internal state/flow tools
+  | 'reasoning' // model-internal scratchpad / thinking tools
+  | 'custom_internal'; // customer-declared, audit-trailed internal tool
+
+export interface InternalToolDescriptor {
+  /** Provider tool name (e.g., 'mcp_file_search'). MUST NOT begin with a
+   *  targeted-system verb (read_, write_, query_, etc.) — the validator
+   *  in @nexus/runtime-utils rejects targeted-system shapes. */
+  readonly toolName: NonEmpty;
+  /** Which class of LLM-internal capability this tool belongs to. */
+  readonly providerScope: InternalToolScope;
+  /** Free-text description for admin audit + LlmAdapterDeclaration export. */
+  readonly description: NonEmpty;
+}
+
+export interface LlmAdapterDeclaration {
+  readonly adapterId: LlmAdapterId;
+  readonly providerKind: 'ollama' | 'anthropic' | 'openai' | 'mcp' | 'custom';
+  /** Internal-only tools advertised by this adapter. May be empty (an
+   *  adapter that does not pass any tools to its LLM). MUST NOT contain
+   *  any targeted-system tool descriptor (the validator rejects them). */
+  readonly internalToolsAdvertised: ReadonlyArray<InternalToolDescriptor>;
 }
 
 // ─── §9.1 Runtime Disposition (MODE-001) ───

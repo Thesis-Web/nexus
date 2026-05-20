@@ -183,6 +183,17 @@ function RunDagNodeCard({ node, runStartedAt, isLast }: RunDagNodeCardProps) {
               </dd>
             </div>
           )}
+          {node.unsolicitedToolCallNames && node.unsolicitedToolCallNames.length > 0 && (
+            <div className="nx-rundag-node__meta-row">
+              <dt>Unsolicited tool calls</dt>
+              <dd>
+                <span className="nx-rundag-node__cap-warning">
+                  ⚠ model returned tool_calls (treated as text per Nexus governance):
+                </span>{' '}
+                {node.unsolicitedToolCallNames.join(', ')}
+              </dd>
+            </div>
+          )}
         </dl>
 
         {(node.status === 'failed' || node.status === 'timed_out') && node.failureReason && (

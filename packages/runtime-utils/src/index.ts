@@ -31,3 +31,9 @@ export {
   type ManifestDomain,
   type QualifiedIdentifier,
 } from './qualified-identifier.js';
+export {
+  validateLlmAdapterDeclaration,
+  assertValidLlmAdapterDeclaration,
+  isTargetedSystemToolName,
+  type LlmAdapterDeclarationViolation,
+} from './llm-adapter-declaration.js';

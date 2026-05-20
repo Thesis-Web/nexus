@@ -2072,37 +2072,54 @@ function enforceGov01FinalOutcomeLiterals(): void {
 // ===========================================================================
 
 function enforceGov02UnsolicitedToolCallBan(): void {
-  // F4.20 / Patch 13 (this gate's strict mode): scripts/nexus-main.ts's
-  // dispatchToolCall must emit unsolicited_model_tool_call before any
-  // dispatch — the LLM cannot reach NXS. The wider deletion of
-  // postInferenceNormalizer + extractToolCalls is the next deliverable.
+  // F4.20 / Q6 / Hard Laws #5 + #7 — model output cannot trigger NXS.
+  // The production runtime path (scripts/nexus-main.ts) must NOT
+  // contain the retired symbols: no `dispatchToolCall` closure, no
+  // `PostInferenceNormalizer` reference, no `extractToolCalls` import.
+  // The replacement is NVG return-precheck — `emitUnsolicitedToolCall`
+  // writes the `unsolicited_model_tool_call` ledger event whenever
+  // `runDispatchRoundTrip` detects `tool_calls` in a model response;
+  // the payload is treated as text and the orch never dispatches.
   const target = path.join('scripts', 'nexus-main.ts');
   if (!fs.existsSync(target)) {
     fail(`GOV-02: ${target} not found`);
   }
   const src = fs.readFileSync(target, 'utf-8');
-  // The dispatchToolCall closure must contain the ledger event emission
-  // and return ok:false before any dispatchToNxs call body.
-  const fnMatch = src.match(/const dispatchToolCall[\s\S]*?\n\s*\};/);
-  if (!fnMatch) {
-    fail(`GOV-02: could not locate dispatchToolCall in ${target}`);
-  }
-  const body = fnMatch![0];
-  if (!/unsolicited_model_tool_call/.test(body)) {
-    fail(`GOV-02: dispatchToolCall must emit unsolicited_model_tool_call (F4.20 / Q6)`);
-  }
-  // The fail-closed return must come before any reachable dispatchToNxs call.
-  const earlyReturnIdx = body.indexOf('unsolicited_model_tool_call: LLM cannot dispatch');
-  const dispatchIdx = body.indexOf('await dispatchToNxs');
-  if (earlyReturnIdx === -1) {
-    fail(`GOV-02: dispatchToolCall must return the fail-closed string before any NXS dispatch`);
-  }
-  if (dispatchIdx !== -1 && dispatchIdx < earlyReturnIdx) {
+  // Strip TS comments so banned-symbol mentions in change-history
+  // comments don't trip the gate.
+  const stripped = stripTsComments(src);
+  if (/\bconst\s+dispatchToolCall\b/.test(stripped)) {
     fail(
-      `GOV-02: dispatchToolCall reaches dispatchToNxs before fail-closed return — LLM tool dispatch must be blocked first (F4.20)`
+      `GOV-02: ${target} declares a dispatchToolCall closure — the post-inference dispatch path is RETIRED (F4.20 §5.1)`
     );
   }
-  pass('unsolicited tool-call dispatch ban (LLM cannot reach NXS via post-inference path)');
+  if (/\bPostInferenceNormalizerImpl\b/.test(stripped)) {
+    fail(
+      `GOV-02: ${target} references PostInferenceNormalizerImpl — the post-inference normalizer is RETIRED (F4.20 §5.1)`
+    );
+  }
+  if (/\bextractToolCalls\b/.test(stripped)) {
+    fail(
+      `GOV-02: ${target} imports/calls extractToolCalls — that helper is for the NVG return-precheck side only (scripts/dispatch-round-trip.ts); orch production code must not call it (F4.20 / LIT-07)`
+    );
+  }
+  // The orch-side production path must still wire the affirmative
+  // emission: emitUnsolicitedToolCall is the callback passed into
+  // runDispatchRoundTrip that writes the ledger event when the
+  // return-precheck loop detects tool_calls.
+  if (!/emitUnsolicitedToolCall/.test(stripped)) {
+    fail(
+      `GOV-02: ${target} must wire emitUnsolicitedToolCall into runDispatchRoundTrip so NVG return-precheck logs the F4.20 §4.1 event`
+    );
+  }
+  if (!/unsolicited_model_tool_call/.test(stripped)) {
+    fail(
+      `GOV-02: ${target} must emit unsolicited_model_tool_call when NVG return-precheck detects model tool_calls (F4.20 §3.2 / §4.1)`
+    );
+  }
+  pass(
+    'unsolicited model tool-call dispatch ban (orch production path has no dispatchToolCall / PostInferenceNormalizer / extractToolCalls; emitUnsolicitedToolCall wired)'
+  );
 }
 
 function enforceGov03DelegationMintFailClosed(): void {

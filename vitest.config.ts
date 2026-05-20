@@ -39,6 +39,10 @@ export default defineConfig({
       'packages/orch-ref/src/**/*.test.ts',
       'packages/planners/*/src/**/*.test.ts',
       'packages/adapters/*/src/**/*.test.ts',
+      // F4.20 — LlmAdapterDeclaration validator lives under runtime-utils
+      // (the targeted-system-tool rejection helper that adapter manifests
+      // call at registration time + that GOV-02 verifies via CI gate).
+      'packages/runtime-utils/src/**/*.test.ts',
       // CLAUDE-CODE-AUDIT-TIGHTEN-PHASE-AB §3 — workspace-ref client
       // tests. Pure reducer/hook tests stay on node env; React
       // component tests opt into jsdom via per-file
