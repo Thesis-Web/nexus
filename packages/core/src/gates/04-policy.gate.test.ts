@@ -16,6 +16,7 @@ import {
   DENIAL_CODE,
   OUTCOME_LABEL,
   ACTION_VERB,
+  ALL_PRINCIPAL_OCT_LEVELS,
   type AgentAction,
   type PipelineContext,
   type LoadedPolicyFile,
@@ -109,11 +110,20 @@ function makeCtx(policyFile: LoadedPolicyFile | null): PipelineContext {
 }
 
 function makePolicy(outcome: string, conditions: Record<string, unknown> = {}): LoadedPolicyFile {
+  // F4.2 — every PolicyCondition now requires `octLevels`. Tests that
+  // do not exercise the OCT axis itself default to the full
+  // ALL_PRINCIPAL_OCT_LEVELS list so the rule still matches an actor
+  // at any OCT classification. Tests that exercise the axis pass an
+  // explicit `octLevels` override.
+  const conditionsWithOct = {
+    octLevels: ALL_PRINCIPAL_OCT_LEVELS,
+    ...conditions,
+  };
   const rule: PolicyRule = {
     ruleId: 'rule-001',
     description: 'test rule',
     priority: 100,
-    conditions: conditions as never,
+    conditions: conditionsWithOct as never,
     outcome: outcome as never,
     approvalConfig: null,
     grantHint: null,
@@ -186,5 +196,19 @@ describe('Gate 04 — Policy', () => {
     expect(gate.gateId).toBe('gate_04_policy');
     expect(gate.gateOrder).toBe(4);
     expect(gate.plane).toBe('control');
+  });
+
+  // ── F4.2 §3.1 — POL-OCT-04 ─────────────────────────────────────────────────
+  // Actor with null octLevel cannot be evaluated against an OCT-keyed
+  // policy bundle. Gate 04 fails closed with denial code
+  // POLICY_ENVELOPE_MISSING_OCT before any rule is consulted.
+  it('POL-OCT-04: denies POLICY_ENVELOPE_MISSING_OCT when actor.octLevel is null', async () => {
+    const ctx = makeCtx(makePolicy(OUTCOME_LABEL.ALLOW));
+    // Replace the actor with one that has not been OCT-classified.
+    ctx.actor = { ...ctx.actor, octLevel: null };
+    const result = await new PolicyGate().evaluate(baseAction(), ctx, []);
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.POLICY_ENVELOPE_MISSING_OCT);
+    expect(result.decision.reason).toMatch(/policy_envelope_missing_oct/);
   });
 });

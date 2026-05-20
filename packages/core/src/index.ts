@@ -123,18 +123,22 @@ export type { SignedOctAssignmentRequest } from './identity/oct-manager.js';
 export { SigningCouncil, InMemorySigningCouncilRequestStore } from './signing/signing-council.js';
 export type { SigningCouncilDeps, SigningCouncilRequestStore } from './signing/signing-council.js';
 
-// F4.1 / F4.8 / F4.17 — SigningCouncil dispatchers (lexicon_mutation,
-// mode_unlock, signing_council_change). Bound at composition root and
-// registered in SigningCouncilDeps.dispatchers.
+// F4.1 / F4.8 / F4.17 / F4.2 — SigningCouncil dispatchers
+// (lexicon_mutation, mode_unlock, signing_council_change,
+// policy_bundle_replace). Bound at composition root and registered in
+// SigningCouncilDeps.dispatchers — all four V1 operations now wired.
 export {
   buildLexiconMutationDispatcher,
   buildModeUnlockDispatcher,
   buildSigningCouncilChangeDispatcher,
+  buildPolicyBundleReplaceDispatcher,
 } from './signing/signing-council-dispatchers.js';
 export type {
   ModeUnlockDispatcherDeps,
   SigningCouncilChangeDispatcherDeps,
   SigningCouncilChangePayload,
+  PolicyBundleReplaceDispatcherDeps,
+  PolicyBundleReplacePayload,
 } from './signing/signing-council-dispatchers.js';
 
 // F4.8 — LexiconMutationExecutor (Phase 1 JSONL append)

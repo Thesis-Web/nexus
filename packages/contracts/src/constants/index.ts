@@ -118,6 +118,18 @@ export const OCT_RANK: Record<string, number> = {
   'OCT-SECURE': 2,
 };
 
+/**
+ * F4.2 §2.1 / §5 migration helper — the full set of principal-OCT levels
+ * that a policy author lists when a rule applies to every classification.
+ * `OCT-COMPILE` is excluded — that level is the compile-loop internal
+ * ceiling (outline §3 J) and never appears in principal-tier rules.
+ */
+export const ALL_PRINCIPAL_OCT_LEVELS: readonly string[] = [
+  OCT_LEVEL.OPEN,
+  OCT_LEVEL.CONFIDENTIAL,
+  OCT_LEVEL.SECURE,
+];
+
 // ─── Operating modes — open governed type (new in v1.4.12) ───
 export const OPERATING_MODE = {
   OBSERVE: 'observe',
@@ -274,6 +286,7 @@ export const DENIAL_CODE = {
   // Gate 04
   POLICY_DENY: 'policy_deny',
   DEFAULT_DENY: 'default_deny',
+  POLICY_ENVELOPE_MISSING_OCT: 'policy_envelope_missing_oct', // F4.2 §3.1 fail-closed
   // Gate 05
   APPROVAL_TIMEOUT: 'approval_timeout',
   APPROVAL_DENIED_BY_HUMAN: 'approval_denied_by_human',

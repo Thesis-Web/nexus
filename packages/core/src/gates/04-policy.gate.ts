@@ -2,6 +2,13 @@
  * Gate 04 — Policy — spec §13.5
  * Rule evaluation, outcome determination, grant template computation.
  * MODULAR-008: sole computation point for ExecutionGrantTemplate.
+ *
+ * F4.2 — Hard Law #5/#10/#13. Gate 04 reads `context.actor.octLevel`
+ * (set at Gate 01 from actor-registry) and threads it through the
+ * PolicyEvalEnvelope. If actor.octLevel is null/undefined, Gate 04 fails
+ * closed with denial code POLICY_ENVELOPE_MISSING_OCT — the policy rules
+ * are authored against an OCT axis, so an unclassified actor cannot be
+ * evaluated.
  */
 import {
   GATE_ID,
@@ -45,6 +52,26 @@ export class PolicyGate implements Gate {
       };
     }
 
+    // F4.2 §3.1 — actor must carry an OCT classification before policy
+    // rules (which are keyed by OCT axis) can be evaluated. Fail closed.
+    const actorOctLevel = context.actor?.octLevel ?? null;
+    if (actorOctLevel === null) {
+      return {
+        decision: {
+          gateId: GATE_ID.G04,
+          gateOrder: 4,
+          plane: 'control',
+          outcome: 'deny',
+          reason: 'policy_envelope_missing_oct: actor.octLevel absent',
+          denialCode: DENIAL_CODE.POLICY_ENVELOPE_MISSING_OCT,
+          policyRuleId: 'default_deny',
+          evaluatedAt: new Date().toISOString(),
+          durationMs: Date.now() - startMs,
+          metadata: { actorId: context.actor?.actorId ?? null },
+        },
+      };
+    }
+
     const envelope: PolicyEvalEnvelope = {
       actorClass: context.actor!.actorClass, // Gate 01 invariant
       capability: action.resolvedCapability!,
@@ -55,6 +82,7 @@ export class PolicyGate implements Gate {
       externalFacing: action.resolvedTarget!.externalFacing,
       chainDepth: context.delegationContext!.chainDepth, // Gate 01 invariant
       targetSystem: action.resolvedTarget!.system, // for PolicyCondition.targetSystems
+      octLevel: actorOctLevel, // F4.2 §2.2
     };
 
     const matchedRule = context.policyFile.sortedRules.find(r =>

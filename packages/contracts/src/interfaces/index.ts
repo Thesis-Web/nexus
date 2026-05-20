@@ -195,6 +195,15 @@ export interface PolicyCondition {
    * keep their "any target" semantics.
    */
   targetSystems?: string[];
+  /**
+   * F4.2 §2.1 — OCT axis. MANDATORY in V1. The author MUST state which
+   * OCT levels the rule applies to. To cover every level the author lists
+   * them explicitly (e.g., ['OCT-OPEN','OCT-CONFIDENTIAL','OCT-SECURE']);
+   * an empty array means the rule matches no actor at all (default-secure).
+   * Hard Law #5 / #13 — explicit list required so a missing field cannot
+   * silently match every actor.
+   */
+  octLevels: readonly OctLevel[];
 }
 
 export interface GrantTemplateHint {
@@ -1406,6 +1415,18 @@ export type RunEventType =
   | 'lexicon_mutation_applied'
   | 'unmapped_prompt'
   | 'lexicon_signal'
+  // ── F4.2 Policy bundle OCT axis (Hard Law #5 / #10 / #13) ─────────────
+  // `policy_envelope_missing_oct` — Gate 04 fail-closed when the actor's
+  //   octLevel is null/undefined; detail carries actorId + ruleId='default_deny'.
+  // `policy_bundle_replaced` — emitted by the policy_bundle_replace
+  //   SigningCouncil dispatcher on successful 2-of-2 application; detail
+  //   carries bundle hash + signer chain.
+  // `would_deny_policy` — observe/advisory mode where a deny rule matched;
+  //   payload still proceeds, but the gate records what enforce would have
+  //   done.
+  | 'policy_envelope_missing_oct'
+  | 'policy_bundle_replaced'
+  | 'would_deny_policy'
   // ── F4.9 Claim Drift Verification (Hard Law #14) ──────────────────────
   // Emitted by the gate runner when ClaimVerificationPort.verify returns
   // 'drift'. Detail carries the carried-vs-current diff (fields list +

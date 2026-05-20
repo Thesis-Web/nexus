@@ -2669,12 +2669,118 @@ function enforceGov12OctMutationLawfulPath(): void {
 function enforceGov13PolicyOctAxisEvaluator(): void {
   // F4.2 — PolicyCondition.octLevels mandatory; Gate 04 reader builds
   // PolicyEvalEnvelope with actor.octLevel and fails closed with
-  // policy_envelope_missing_oct if absent. RED until Patch 36 lands
-  // the policy bundle schema tightening, Gate 04 reader update, the
-  // migration script for existing policy fixtures, and the
-  // policy_bundle_replace dispatcher binding.
-  fail(
-    'GOV-13: PolicyCondition.octLevels not mandatory in production; Gate 04 does not read identityClaims.octLevel — F4.2 §2 / Phase B completion HANDOFF §E.1 Patch 36'
+  // policy_envelope_missing_oct if absent. Bundle replace flows through
+  // SigningCouncil 2-of-2. STRICT AST scan enforcing five invariants
+  // (POL-OCT-01 + POL-OCT-04 + POL-OCT-05/-07 + GOV-13 surface).
+
+  const readSrc = (p: string): string => {
+    if (!fs.existsSync(p)) fail(`GOV-13: required file missing: ${p}`);
+    return fs.readFileSync(p, 'utf-8');
+  };
+
+  // (1) PolicyCondition.octLevels is a required (non-optional) field.
+  const contractsPath = 'packages/contracts/src/interfaces/index.ts';
+  const contractsSrc = readSrc(contractsPath);
+  // Find the PolicyCondition block (from `export interface PolicyCondition` to
+  // the next closing brace at column 0) and inspect the octLevels declaration.
+  const policyMatch = contractsSrc.match(/export interface PolicyCondition\b[\s\S]*?\n\}/m);
+  if (!policyMatch) {
+    fail(`GOV-13: ${contractsPath} must define PolicyCondition`);
+  }
+  const policyBlock = policyMatch![0];
+  if (!/^\s*octLevels:\s*readonly\s+OctLevel\[\]/m.test(policyBlock)) {
+    fail(
+      `GOV-13: ${contractsPath} PolicyCondition.octLevels must be required ('octLevels: readonly OctLevel[]') — F4.2 §2.1 Q3 / HL #13`
+    );
+  }
+  if (/octLevels\?:/m.test(policyBlock)) {
+    fail(
+      `GOV-13: ${contractsPath} PolicyCondition.octLevels must NOT be optional (no 'octLevels?:') — F4.2 §2.1`
+    );
+  }
+
+  // (2) PolicyEvalEnvelope carries octLevel; matcher branch unconditional.
+  const evaluatorPath = 'packages/core/src/policy/evaluator.ts';
+  const evaluatorSrc = readSrc(evaluatorPath);
+  const envMatch = evaluatorSrc.match(/export interface PolicyEvalEnvelope\b[\s\S]*?\n\}/m);
+  if (!envMatch || !/\boctLevel:\s*OctLevel\b/.test(envMatch[0])) {
+    fail(
+      `GOV-13: ${evaluatorPath} PolicyEvalEnvelope must declare 'octLevel: OctLevel' (F4.2 §2.2)`
+    );
+  }
+  if (!/if \(!cond\.octLevels\.includes\(env\.octLevel\)\) return false;/.test(evaluatorSrc)) {
+    fail(
+      `GOV-13: ${evaluatorPath} matchesCondition must check 'if (!cond.octLevels.includes(env.octLevel)) return false;' UNCONDITIONALLY (F4.2 §2.3)`
+    );
+  }
+  // The check must not be guarded by an existence-test (e.g.,
+  // `if (cond.octLevels && ...)`) — the contract field is required.
+  if (/if\s*\(\s*cond\.octLevels\s*&&[^)]*\)\s*\{?/.test(evaluatorSrc)) {
+    fail(
+      `GOV-13: ${evaluatorPath} must NOT guard the octLevels check with an existence test — F4.2 §2.3 (the field is required)`
+    );
+  }
+
+  // (3) Gate 04 references context.actor.octLevel + policy_envelope_missing_oct
+  // (fail-closed code path).
+  const gate04Path = 'packages/core/src/gates/04-policy.gate.ts';
+  const gate04Src = readSrc(gate04Path);
+  if (
+    !/context\.actor\?\.octLevel\b/.test(gate04Src) &&
+    !/context\.actor!\.octLevel\b/.test(gate04Src)
+  ) {
+    fail(`GOV-13: ${gate04Path} must read 'context.actor.octLevel' (F4.2 §3.1)`);
+  }
+  if (!/DENIAL_CODE\.POLICY_ENVELOPE_MISSING_OCT\b/.test(gate04Src)) {
+    fail(
+      `GOV-13: ${gate04Path} must reference DENIAL_CODE.POLICY_ENVELOPE_MISSING_OCT (F4.2 §3.1 fail-closed)`
+    );
+  }
+
+  // (4) policy_bundle_replace dispatcher exported + wired in serve.ts.
+  const dispatchersPath = 'packages/core/src/signing/signing-council-dispatchers.ts';
+  const dispatchersSrc = readSrc(dispatchersPath);
+  if (!/export function buildPolicyBundleReplaceDispatcher\b/.test(dispatchersSrc)) {
+    fail(`GOV-13: ${dispatchersPath} must export buildPolicyBundleReplaceDispatcher (F4.2 §3.2)`);
+  }
+  if (!/POLICY_BUNDLE_REPLACE_EMPTY_OCT_LEVELS/.test(dispatchersSrc)) {
+    fail(
+      `GOV-13: ${dispatchersPath} dispatcher must reject bundles with empty octLevels (F4.2 §3.2)`
+    );
+  }
+  const servePath = 'packages/interfaces/cli/src/commands/serve.ts';
+  const serveSrc = readSrc(servePath);
+  if (!/policy_bundle_replace\s*:\s*buildPolicyBundleReplaceDispatcher\s*\(/.test(serveSrc)) {
+    fail(
+      `GOV-13: ${servePath} must wire policy_bundle_replace: buildPolicyBundleReplaceDispatcher(...) in the SigningCouncil dispatchers map (F4.2 §3.2)`
+    );
+  }
+
+  // (5) Default policy bundle has non-empty octLevels per rule.
+  const defaultBundlePath = 'packages/core/src/policy/rules/default.policy.json';
+  if (!fs.existsSync(defaultBundlePath)) {
+    fail(`GOV-13: ${defaultBundlePath} must exist (default policy bundle)`);
+  }
+  let parsed: { rules?: Array<{ conditions?: { octLevels?: unknown } }> };
+  try {
+    parsed = JSON.parse(fs.readFileSync(defaultBundlePath, 'utf-8'));
+  } catch (err) {
+    fail(`GOV-13: ${defaultBundlePath} malformed JSON: ${(err as Error).message}`);
+  }
+  if (!Array.isArray(parsed!.rules) || parsed!.rules.length === 0) {
+    fail(`GOV-13: ${defaultBundlePath} must declare at least one rule`);
+  }
+  for (const [i, rule] of parsed!.rules.entries()) {
+    const oct = rule?.conditions?.octLevels;
+    if (!Array.isArray(oct) || oct.length === 0) {
+      fail(
+        `GOV-13: ${defaultBundlePath} rule[${i}] must declare a non-empty octLevels list (F4.2 §5 migration)`
+      );
+    }
+  }
+
+  pass(
+    'GOV-13 policy OCT axis (PolicyCondition.octLevels required + matcher unconditional + Gate 04 envelope + policy_bundle_replace dispatcher wired + default bundle migrated)'
   );
 }
 

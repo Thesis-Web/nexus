@@ -401,6 +401,39 @@ function buildEventSummary(eventType: string, detail: Record<string, unknown>): 
       typeof principalId === 'string' && principalId.length > 0 ? principalId : 'unknown';
     return `💡 lexicon signal · arena: ${arenaLabel} · principal: ${principalLabel}`;
   }
+  if (eventType === 'policy_envelope_missing_oct') {
+    // F4.2 §3.1 — Gate 04 fail-closed: actor reached policy evaluation
+    // without an OCT classification. Detail carries the actorId so the
+    // operator can chase down the registration / OCT-assign flow that
+    // missed the actor.
+    const actorId = detail['actorId'];
+    const label = typeof actorId === 'string' && actorId.length > 0 ? actorId : 'unknown_actor';
+    return `⛔ policy envelope missing OCT · actor: ${label}`;
+  }
+  if (eventType === 'policy_bundle_replaced') {
+    // F4.2 §3.2 — SigningCouncil 2-of-2 successfully applied a new
+    // policy bundle. Detail carries bundleId / version / ruleCount and
+    // the signer chain.
+    const bundleId = detail['bundleId'];
+    const bundleVersion = detail['bundleVersion'];
+    const ruleCount = detail['ruleCount'];
+    const signers = detail['signers'];
+    const idLabel =
+      typeof bundleId === 'string' && bundleId.length > 0 ? bundleId.slice(0, 8) + '…' : 'unknown';
+    const versionLabel =
+      typeof bundleVersion === 'string' && bundleVersion.length > 0 ? bundleVersion : '?';
+    const rules = typeof ruleCount === 'number' ? ruleCount : 0;
+    const signerCount = Array.isArray(signers) ? signers.length : 0;
+    return `📜 policy bundle replaced · ${idLabel} (${versionLabel}) · ${rules} rules · signers: ${signerCount}`;
+  }
+  if (eventType === 'would_deny_policy') {
+    // F4.2 §3.3 — observe/advisory mode: Gate 04 matched a deny rule
+    // but the mode permitted continuation. Records what enforce would
+    // have done so operators can preview before flipping mode.
+    const ruleId = detail['policyRuleId'];
+    const label = typeof ruleId === 'string' && ruleId.length > 0 ? ruleId : 'unknown_rule';
+    return `⚠ would-deny policy (mode non-enforcing) · rule: ${label}`;
+  }
   if (eventType === 'claim_drift_detected') {
     // F4.9 / Hard Law #14 — NXS/NVG gate runner detected that the
     // carried claims envelope no longer matches RBAC's current snapshot.

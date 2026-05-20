@@ -40,6 +40,7 @@ import {
   buildLexiconMutationDispatcher,
   buildModeUnlockDispatcher,
   buildSigningCouncilChangeDispatcher,
+  buildPolicyBundleReplaceDispatcher,
 } from '@nexus/core';
 import { promises as fsPromises } from 'node:fs';
 import * as fsPath from 'node:path';
@@ -279,11 +280,9 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
   // The council is the sole legitimate apply path for every governance-
   // significant mutation (mode_unlock, policy_bundle_replace,
   // signing_council_change, lexicon_mutation). Each operation requires
-  // 2 distinct registered admin signatures (Q4). The dispatcher map is
-  // wired here at composition root; policy_bundle_replace lands in F4.2
-  // / priority #5 and is intentionally absent — the council's missing-
-  // dispatcher path denies with `no_dispatcher_for_operation:
-  // policy_bundle_replace` per F4.1 §3.3.
+  // 2 distinct registered admin signatures (Q4). All four V1
+  // dispatchers are wired here at composition root after Patch 35
+  // closed the policy_bundle_replace binding (F4.2 §3.2).
   const lexiconMutationExecutor = new JsonlLexiconMutationExecutor({
     runLedger: runLedgerWriterShared,
     fixturesRoot: process.cwd(),
@@ -310,6 +309,10 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
       }),
       signing_council_change: buildSigningCouncilChangeDispatcher({
         keyDirectory,
+      }),
+      policy_bundle_replace: buildPolicyBundleReplaceDispatcher({
+        controlPlaneKeypair: controlPlaneKey,
+        runLedger: runLedgerWriterShared,
       }),
     },
   });

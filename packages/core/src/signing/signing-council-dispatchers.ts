@@ -1,10 +1,10 @@
 /**
- * SigningCouncil dispatchers — F4.1 §3.3 + F4.8 §3.3.
+ * SigningCouncil dispatchers — F4.1 §3.3 + F4.8 §3.3 + F4.2 §3.2.
  *
- * Three factory builders, one per V1 federated operation that lands in
- * this patch (Phase B Patch 34). policy_bundle_replace lands in Patch
- * F4.2; until then SigningCouncil's missing-dispatcher path denies cleanly
- * with `no_dispatcher_for_operation:policy_bundle_replace`.
+ * Four factory builders, one per V1 federated operation. Phase B Patch
+ * 34 wired lexicon_mutation / mode_unlock / signing_council_change;
+ * Patch 35 (this file's policy_bundle_replace addition) closes the
+ * fourth and final V1 dispatcher binding.
  *
  * Every dispatcher operates on a SigningRequest that the council has
  * already validated:
@@ -29,12 +29,19 @@ import type {
   LexiconMutationExecutor,
   ModeConfiguration,
   NonEmpty,
+  PolicyFile,
   RunLedgerWriter,
   SigningCouncilDispatcher,
   SigningRequest,
 } from '@nexus/contracts';
 import type { KeyPair } from '../crypto/key-manager.js';
-import { applyDisableEnforcingLockTrusted } from '../modes/mode-manager.js';
+import {
+  applyDisableEnforcingLockTrusted,
+  emitInfrastructureAuditEvent,
+} from '../modes/mode-manager.js';
+import { canonicalize } from '../crypto/canonicalize.js';
+import { sign } from '../crypto/signer.js';
+import { sha256 } from '../crypto/signer.js';
 
 // ─── F4.8 lexicon_mutation dispatcher ─────────────────────────────────────
 
@@ -214,5 +221,115 @@ export function buildSigningCouncilChangeDispatcher(
         );
       }
     }
+  };
+}
+
+// ─── F4.2 policy_bundle_replace dispatcher ────────────────────────────────
+
+/**
+ * Payload for `policy_bundle_replace` SigningRequest. The author submits
+ * the full PolicyFile *body* (no signature field); the dispatcher
+ * validates the OCT axis is non-empty on every condition, signs the
+ * canonical form with the control-plane keypair, and writes the signed
+ * bundle to disk. The next `loadPolicyBundleSet()` call picks up the
+ * new bundle.
+ */
+export interface PolicyBundleReplacePayload {
+  /** The PolicyFile body to install (signature is computed by the dispatcher). */
+  readonly bundle: Omit<PolicyFile, 'signature'>;
+  /** Filesystem path where the signed bundle should be persisted. */
+  readonly targetPath: NonEmpty;
+}
+
+export interface PolicyBundleReplaceDispatcherDeps {
+  readonly controlPlaneKeypair: KeyPair;
+  readonly runLedger: RunLedgerWriter;
+  /** Override the fs root (for tests). Defaults to cwd-relative paths. */
+  readonly fsRoot?: string;
+  readonly clock?: () => string;
+}
+
+export function buildPolicyBundleReplaceDispatcher(
+  deps: PolicyBundleReplaceDispatcherDeps
+): SigningCouncilDispatcher {
+  return async (req: SigningRequest): Promise<void> => {
+    const payload = req.payload as Partial<PolicyBundleReplacePayload>;
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      typeof payload.targetPath !== 'string' ||
+      payload.targetPath.length === 0 ||
+      !payload.bundle ||
+      typeof payload.bundle !== 'object'
+    ) {
+      throw new Error(
+        'POLICY_BUNDLE_REPLACE_BAD_PAYLOAD: expected { bundle: PolicyFile-body, targetPath: string }'
+      );
+    }
+    const bundle = payload.bundle;
+    if (!Array.isArray(bundle.rules)) {
+      throw new Error('POLICY_BUNDLE_REPLACE_BAD_BUNDLE: rules[] missing');
+    }
+
+    // F4.2 §3.2 — validate every condition's `octLevels` is a non-empty
+    // array of strings. Empty / missing / wrong-shape rejects the entire
+    // bundle (default-secure — partial-application is never permitted).
+    bundle.rules.forEach((rule, idx) => {
+      const cond = rule?.conditions as unknown;
+      if (!cond || typeof cond !== 'object') {
+        throw new Error(
+          `POLICY_BUNDLE_REPLACE_INVALID_RULE: rule ${idx} (ruleId='${
+            rule?.ruleId ?? '<none>'
+          }') missing conditions`
+        );
+      }
+      const octLevels = (cond as { octLevels?: unknown }).octLevels;
+      if (!Array.isArray(octLevels) || octLevels.length === 0) {
+        throw new Error(
+          `POLICY_BUNDLE_REPLACE_EMPTY_OCT_LEVELS: rule ${idx} (ruleId='${
+            rule?.ruleId ?? '<none>'
+          }') must declare a non-empty octLevels list (F4.2 / Q3 / HL #13)`
+        );
+      }
+      for (const level of octLevels) {
+        if (typeof level !== 'string' || level.length === 0) {
+          throw new Error(
+            `POLICY_BUNDLE_REPLACE_INVALID_OCT_LEVEL: rule ${idx} octLevels carries a non-string entry`
+          );
+        }
+      }
+    });
+
+    // Sign the canonical bundle body with the control-plane keypair.
+    const signature = (await sign(canonicalize(bundle), deps.controlPlaneKeypair)) as Base64Url;
+    const signedFile: PolicyFile = { ...(bundle as PolicyFile), signature };
+    const json = JSON.stringify(signedFile, null, 2) + '\n';
+
+    const fsRoot = deps.fsRoot ?? process.cwd();
+    const targetPath = path.isAbsolute(payload.targetPath)
+      ? payload.targetPath
+      : path.join(fsRoot, payload.targetPath);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.writeFile(targetPath, json, 'utf-8');
+
+    // Domain-specific audit event — pairs with the council's generic
+    // federated_operation_executed event via requestId. Detail carries
+    // the bundle hash (digest of the canonical body) so audit can
+    // verify integrity without storing the bundle inline.
+    const bundleHash = sha256(canonicalize(bundle));
+    await emitInfrastructureAuditEvent(
+      'policy_bundle_replaced',
+      {
+        requestId: req.requestId,
+        targetPath: payload.targetPath,
+        bundleId: bundle.bundleId ?? null,
+        bundleVersion: bundle.bundleVersion ?? null,
+        bundleHash,
+        ruleCount: bundle.rules.length,
+        signers: req.signatures.map(s => s.principalId),
+        appliedAt: deps.clock?.() ?? new Date().toISOString(),
+      },
+      deps.runLedger
+    );
   };
 }
