@@ -702,6 +702,42 @@ export interface ApproverRegistry {
   register(actorId: Uuid, publicKey: Base64Url, channels: string[]): Promise<void>;
 }
 
+// ─── F4.6 File Attachments — bind-at-runOpen, mailbox-materialized ─────────
+// Workspace uploads stage bytes via POST /workspace/attachments/stage; at
+// run-open the binder classifies + computes digest + records provenance.
+// Plan dispatch materializes bound attachments into mailbox items; NVG
+// reads the bound dataLabels at firewall crossing (Spec F4.11).
+export type AttachmentBindingState = 'unbound' | 'bound' | 'rejected' | 'quarantined';
+
+export interface Attachment {
+  readonly attachmentId: NonEmpty;
+  readonly stagedAt: IsoTimestamp;
+  readonly stagedBy: Uuid;
+  readonly mimeType: NonEmpty;
+  readonly byteLength: number;
+  readonly digest: Sha256Hex;
+  readonly storageRef: NonEmpty; // opaque server-side ref; client never sees it
+  readonly bindingState: AttachmentBindingState;
+  readonly boundToRunId?: Uuid;
+  readonly dataLabels: ReadonlyArray<DataLabel>; // populated at bind
+  readonly provenance: ProvenanceSource;
+  readonly rejectionReason?: NonEmpty;
+}
+
+export interface BindContext {
+  readonly principalId: Uuid;
+  readonly identityClaims: Record<string, unknown>;
+  readonly arena: NonEmpty;
+}
+
+export interface AttachmentBinder {
+  bind(
+    runId: Uuid,
+    attachmentIds: ReadonlyArray<NonEmpty>,
+    context: BindContext
+  ): Promise<ReadonlyArray<Attachment>>;
+}
+
 // ─── F4.9 Claim Drift Verification — Hard Law #14 ──────────────────────────
 // NXS Gate 01 resolves identity claims once; downstream gates must call
 // ClaimVerificationPort.verify(carried, gateName) before evaluation. A
@@ -1219,7 +1255,16 @@ export type RunEventType =
   // 'drift'. Detail carries the carried-vs-current diff (fields list +
   // both hashes) — the claim values themselves stay out of the ledger
   // (they live in the carried-claims-ref / current-claims-ref pointers).
-  | 'claim_drift_detected';
+  | 'claim_drift_detected'
+  // ── F4.6 File Attachments (Hard Laws #6, #8, #13, #14) ────────────────
+  // Lifecycle: stage at upload → bind at run-open (classify-at-bind) →
+  // materialize into mailbox items per plan node. Reject/quarantine
+  // never silently — every outcome surfaces a workspace receipt.
+  | 'attachment_staged'
+  | 'attachment_bound'
+  | 'attachment_rejected'
+  | 'attachment_quarantined'
+  | 'attachment_materialized';
 
 export interface RunLedgerEntry {
   entryId: Uuid;
