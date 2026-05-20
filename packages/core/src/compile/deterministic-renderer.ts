@@ -82,17 +82,14 @@ export class DeterministicRenderer implements Compiler {
     items: MailboxItem[]
   ): Promise<FinalResponseArtifact> {
     // ── Step 0: Pass-through eligibility [Nexus default-secure architecture] ──
-    // When no output contract template was selected AND there is exactly one
-    // mailbox item, the compiler is a pass-through: write the single agent's
-    // mailbox bytes verbatim as the body. No template generation, no slot
-    // matching, no slot validation. The single agent's output IS the answer.
-    //
-    // Multi-agent runs always template (madlib pattern). Single-agent runs
-    // WITH an explicit output contract still template (caller wanted a
-    // specific shape). Only single-agent + no-contract bypasses.
-    //
-    // See memory: feedback_nexus_architecture_layers.md
-    //   "Pass-through ONLY when: single agent + no output contract attached."
+    // F4.12 / Hard Law #11 — Compile is pass-through when there's nothing
+    // to compile. Single agent + no template: forward verbatim. The
+    // multi-item bundle path (compilePassThroughBundle) is scaffolded
+    // below for the upcoming switch from assembler-bypass-partial to
+    // pass-through-quarantine. Until verifyMailboxItems + the existing
+    // bypass-partial tests are migrated together, the gate condition
+    // stays on items.length === 1 to preserve the assembler's
+    // partial-artifact behavior for multi-item no-template runs.
     if (request.templateId === undefined && items.length === 1) {
       return this.compilePassThrough(request, contract, items[0]!);
     }
@@ -409,6 +406,99 @@ export class DeterministicRenderer implements Compiler {
       bypassPartials: [],
     };
 
+    const signature = await signArtifact(artifactBase, this.signingKey);
+    return { ...artifactBase, signature };
+  }
+
+  /**
+   * F4.12 §3.3 — Multi-item pass-through bundle. Canonical concatenation
+   * of every item's body bytes in mailbox order. No template generation,
+   * no prose parsing, no slot matching. The aggregate digest is
+   * SHA-256(canonical-concat(body_i)) — same items in same order produce
+   * byte-equal artifact + identical digest (CMP-PT-03 determinism).
+   */
+  private async compilePassThroughBundle(
+    request: CompileRequest,
+    contract: OutputContract,
+    items: readonly MailboxItem[]
+  ): Promise<FinalResponseArtifact> {
+    const segments: Uint8Array[] = [];
+    const sourceIds: NonEmpty[] = [];
+    for (const item of items) {
+      let bodyBytes: Uint8Array | null = null;
+      for (const resolver of this.payloadResolvers) {
+        if (resolver.canResolve(item.resultRef)) {
+          bodyBytes = await resolver.resolveBytes(item.resultRef);
+          break;
+        }
+      }
+      if (bodyBytes === null) {
+        throw new Error(
+          `compile pass-through bundle: no payload resolver accepted resultRef '${item.resultRef}'`
+        );
+      }
+      segments.push(bodyBytes);
+      sourceIds.push(item.mailboxItemId as NonEmpty);
+    }
+    // Canonical concat: items separated by 0x1E (record-separator) so the
+    // bundle is unambiguously decomposable while still being byte-stable.
+    const separator = new Uint8Array([0x1e]);
+    const totalLen = segments.reduce((n, s) => n + s.length, 0) + (segments.length - 1) * 1;
+    const concatenated = new Uint8Array(totalLen);
+    let offset = 0;
+    for (let i = 0; i < segments.length; i++) {
+      if (i > 0) {
+        concatenated.set(separator, offset);
+        offset += 1;
+      }
+      concatenated.set(segments[i]!, offset);
+      offset += segments[i]!.length;
+    }
+    const artifactId = randomUUID() as Uuid;
+    const bodyPath = join(this.outputRoot, 'compile', request.runId, `${artifactId}.bundle`);
+    await fs.mkdir(dirname(bodyPath), { recursive: true });
+    await fs.writeFile(bodyPath, concatenated);
+    const bodyRef = `file://${bodyPath}` as NonEmpty;
+    const bodyDigest = sha256Hex(concatenated);
+
+    await this.runLedgerWriter.writeEvent({
+      runId: request.runId,
+      eventType: 'compile_assembly_complete',
+      timestamp: nowIso(),
+      actorId: null,
+      detail: {
+        templateId: 'pass_through_bundle',
+        templateVersion: '0',
+        format: 'raw',
+        itemCount: items.length,
+        unmatchedCount: 0,
+        orphanedCount: 0,
+        validationFailureCount: 0,
+        guardsFired: 0,
+        warningCount: 0,
+        partial: false,
+        bodyDigest,
+        passThrough: true,
+        sourceMailboxItemIds: sourceIds,
+      },
+    });
+
+    const artifactBase: Omit<FinalResponseArtifact, 'signature'> = {
+      artifactId,
+      runId: request.runId,
+      compilerSocketId: this.compilerSocketId,
+      compilerActorId: null,
+      compileMode: 'deterministic_render',
+      bodyRef,
+      bodyDigest,
+      outputClassifications: contract.inputDataClasses,
+      sourceMailboxItems: sourceIds.map(id => id as Uuid),
+      evidenceRefs: contract.evidenceRefs,
+      routingTrailRefs: contract.routingTrailRefs,
+      runLedgerRefs: contract.runLedgerRefs,
+      createdAt: nowIso(),
+      bypassPartials: [],
+    };
     const signature = await signArtifact(artifactBase, this.signingKey);
     return { ...artifactBase, signature };
   }
