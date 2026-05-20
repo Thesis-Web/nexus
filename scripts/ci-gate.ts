@@ -2217,27 +2217,42 @@ function enforceGov13PolicyOctAxisEvaluator(): void {
 }
 
 function enforceGov14LexiconMutationDoubleAdmin(): void {
-  // F4.1 + F4.8 / Patch 6 lands operation registration + threshold;
-  // executor lands in Patch 8. This gate asserts (a) the operation is
-  // present in FEDERATED_OPERATION; (b) the threshold map declares 2;
-  // (c) no code path bypasses getThreshold for lexicon_mutation.
+  // F4.1 + F4.8 / Patches 6 + 8 (strict): lexicon_mutation operation
+  // registered with threshold=2 and a baked LexiconMutationExecutor
+  // refuses to apply with fewer than 2 distinct signers.
   const constantsPath = path.join('packages', 'contracts', 'src', 'constants', 'index.ts');
+  const executorPath = path.join(
+    'packages',
+    'core',
+    'src',
+    'lexicon',
+    'lexicon-mutation-executor.ts'
+  );
   if (!fs.existsSync(constantsPath)) {
     fail(`GOV-14: contracts constants file not found at ${constantsPath}`);
   }
-  const src = fs.readFileSync(constantsPath, 'utf-8');
-  if (!/LEXICON_MUTATION:\s*'lexicon_mutation'/.test(src)) {
+  const cSrc = fs.readFileSync(constantsPath, 'utf-8');
+  if (!/LEXICON_MUTATION:\s*'lexicon_mutation'/.test(cSrc)) {
     fail(`GOV-14: FEDERATED_OPERATION.LEXICON_MUTATION must be present in ${constantsPath} (Q4)`);
   }
-  // Threshold map must declare 2 for lexicon_mutation (strict literal).
   if (
     !/FEDERATED_OPERATION_THRESHOLDS[\s\S]*?\[FEDERATED_OPERATION\.LEXICON_MUTATION\]:\s*2/.test(
-      src
+      cSrc
     )
   ) {
     fail(`GOV-14: FEDERATED_OPERATION_THRESHOLDS must declare 2 for LEXICON_MUTATION (Q4 STRICT)`);
   }
-  pass('lexicon mutation operation registered with threshold 2 (executor lands in Patch 8 / F4.8)');
+  if (!fs.existsSync(executorPath)) {
+    fail(`GOV-14: LexiconMutationExecutor not found at ${executorPath} (Patch 8 / F4.8)`);
+  }
+  const eSrc = fs.readFileSync(executorPath, 'utf-8');
+  if (!/signers\.length\s*<\s*2/.test(eSrc)) {
+    fail(`GOV-14: LexiconMutationExecutor must reject signers.length < 2 (Q4 STRICT)`);
+  }
+  if (!/new Set\(signers\)\.size\s*<\s*2/.test(eSrc)) {
+    fail(`GOV-14: LexiconMutationExecutor must reject duplicate signers (distinct check)`);
+  }
+  pass('lexicon mutation double-admin (threshold=2 + executor rejects below-threshold)');
 }
 
 function enforceGov15ClaimDriftVerification(): void {

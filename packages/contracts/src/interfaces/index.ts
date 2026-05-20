@@ -702,6 +702,83 @@ export interface ApproverRegistry {
   register(actorId: Uuid, publicKey: Base64Url, channels: string[]): Promise<void>;
 }
 
+// ─── F4.8 Lexicon Mutation — discriminated union for SigningCouncil payload ─
+// Each mutation is the payload of SigningRequest(operation='lexicon_mutation').
+// The 2-of-2 distinct admin signature threshold (Q4) plus the baked
+// LexiconMutationExecutor are the only legitimate apply paths.
+export interface LexiconEntity {
+  readonly entityId: NonEmpty;
+  readonly displayName: NonEmpty;
+  readonly entityType: NonEmpty;
+  readonly disabled?: boolean;
+  readonly notes?: string;
+}
+export interface LexiconEdge {
+  readonly edgeId: NonEmpty;
+  readonly sourceEntityId: NonEmpty;
+  readonly targetEntityId: NonEmpty;
+  readonly relation: NonEmpty;
+  readonly weight?: number;
+  readonly disabled?: boolean;
+}
+export interface WorkflowTemplate {
+  readonly templateId: NonEmpty;
+  readonly slots: ReadonlyArray<{ slotId: NonEmpty; required: boolean }>;
+}
+export interface LexiconGuard {
+  readonly guardId: NonEmpty;
+  readonly when: string;
+  readonly then: string;
+}
+
+export type LexiconMutation =
+  | { readonly kind: 'entity_add'; readonly entity: LexiconEntity }
+  | {
+      readonly kind: 'entity_update';
+      readonly entityId: NonEmpty;
+      readonly patch: Partial<LexiconEntity>;
+    }
+  | { readonly kind: 'entity_disable'; readonly entityId: NonEmpty }
+  | { readonly kind: 'edge_add'; readonly edge: LexiconEdge }
+  | {
+      readonly kind: 'edge_update';
+      readonly edgeId: NonEmpty;
+      readonly patch: Partial<LexiconEdge>;
+    }
+  | { readonly kind: 'edge_disable'; readonly edgeId: NonEmpty }
+  | {
+      readonly kind: 'confidence_set';
+      readonly entityId: NonEmpty;
+      readonly arena: NonEmpty;
+      readonly score: number;
+    }
+  | { readonly kind: 'workflow_template_add'; readonly template: WorkflowTemplate }
+  | {
+      readonly kind: 'workflow_template_update';
+      readonly templateId: NonEmpty;
+      readonly patch: Partial<WorkflowTemplate>;
+    }
+  | { readonly kind: 'guard_add'; readonly guard: LexiconGuard }
+  | {
+      readonly kind: 'guard_update';
+      readonly guardId: NonEmpty;
+      readonly patch: Partial<LexiconGuard>;
+    };
+
+export interface LexiconMutationResult {
+  readonly mutationId: NonEmpty;
+  readonly appliedAt: IsoTimestamp;
+  readonly jsonlFile: NonEmpty;
+  readonly jsonlSeqNo: number;
+}
+
+export interface LexiconMutationExecutor {
+  apply(
+    mutation: LexiconMutation,
+    signers: ReadonlyArray<NonEmpty>
+  ): Promise<LexiconMutationResult>;
+}
+
 // ─── F4.5 OCT Manager — signed OCT assignment surface ──────────────────────
 // Plug-in admin-writer routes call into the baked OctManagerPort. The port
 // itself is implemented in @nexus/core (oct-manager.ts) and registered with
@@ -1096,7 +1173,15 @@ export type RunEventType =
   | 'federated_operation_signature_added'
   | 'federated_operation_executed'
   | 'federated_operation_dispatch_failed'
-  | 'federated_operation_expired';
+  | 'federated_operation_expired'
+  // ── F4.8 Lexicon (Phase 1 JSONL via SigningCouncil) ───────────────────
+  // Emitted by LexiconMutationExecutor when 2-of-2 signatures applied; by
+  // planner callback when a prompt is unmappable; by callback when a user
+  // picks an intent under threshold. Detail carries digest-only — raw
+  // prompt text never lands in the ledger.
+  | 'lexicon_mutation_applied'
+  | 'unmapped_prompt'
+  | 'lexicon_signal';
 
 export interface RunLedgerEntry {
   entryId: Uuid;

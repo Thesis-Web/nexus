@@ -123,6 +123,10 @@ export type { SignedOctAssignmentRequest } from './identity/oct-manager.js';
 export { SigningCouncil, InMemorySigningCouncilRequestStore } from './signing/signing-council.js';
 export type { SigningCouncilDeps, SigningCouncilRequestStore } from './signing/signing-council.js';
 
+// F4.8 — LexiconMutationExecutor (Phase 1 JSONL append)
+export { JsonlLexiconMutationExecutor } from './lexicon/lexicon-mutation-executor.js';
+export type { JsonlLexiconMutationExecutorDeps } from './lexicon/lexicon-mutation-executor.js';
+
 // §13.1 — Pipeline
 export { Pipeline, SimpleConnectorRegistry, SimpleChannelRegistry } from './engine/pipeline.js';
 export type { PipelineGates } from './engine/pipeline.js';
