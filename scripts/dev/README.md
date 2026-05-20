@@ -86,15 +86,15 @@ directly. Underscore prefix marks it as dev-only.
 
 ## What gets created on first run
 
-| Path | Created by | Notes |
-|---|---|---|
-| `keys/dev.keypair.json` | `nexus init` | Ed25519 control-plane keypair |
-| `keys/admin.token` | `nexus init` | bearer token for `/admin/*` server-side routes |
-| `keys/mode-config.json` | `nexus init` | signed initial mode config (enforcing/enforcing, locked) |
-| `keys/workspace-jwt.secret` | `_gen-workspace-keys.ts` | HMAC-SHA256 secret for workspace JWTs |
-| `keys/workspace-dev-admin.apikey` | `_gen-workspace-keys.ts` | api-key value the dev workspace login accepts |
-| `nexus.db` | first `serve` invocation | SQLite store for actors / principals / sessions / approvals |
-| postgres volumes | `docker compose up` | seeded sales-finance + warehouse data |
+| Path                              | Created by               | Notes                                                       |
+| --------------------------------- | ------------------------ | ----------------------------------------------------------- |
+| `keys/dev.keypair.json`           | `nexus init`             | Ed25519 control-plane keypair                               |
+| `keys/admin.token`                | `nexus init`             | bearer token for `/admin/*` server-side routes              |
+| `keys/mode-config.json`           | `nexus init`             | signed initial mode config (enforcing/enforcing, locked)    |
+| `keys/workspace-jwt.secret`       | `_gen-workspace-keys.ts` | HMAC-SHA256 secret for workspace JWTs                       |
+| `keys/workspace-dev-admin.apikey` | `_gen-workspace-keys.ts` | api-key value the dev workspace login accepts               |
+| `nexus.db`                        | first `serve` invocation | SQLite store for actors / principals / sessions / approvals |
+| postgres volumes                  | `docker compose up`      | seeded sales-finance + warehouse data                       |
 
 ## URLs
 
@@ -136,6 +136,7 @@ companion doesn't. Arc 4 fixup added the auto-companion on POST
 `status.sh` reports this case explicitly per admin.
 
 **Workspace login returns 401 / Unauthorized.**
+
 - Check `keys/workspace-jwt.secret` and `keys/workspace-dev-admin.apikey`
   exist (status.sh reports)
 - Check the api-key value you pasted matches the file exactly (no
