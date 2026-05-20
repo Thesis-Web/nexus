@@ -1264,7 +1264,13 @@ export type RunEventType =
   | 'attachment_bound'
   | 'attachment_rejected'
   | 'attachment_quarantined'
-  | 'attachment_materialized';
+  | 'attachment_materialized'
+  // ── F4.15 Delegation mint fail-closed (HL #15) ────────────────────────
+  // Emitted when DelegationMintPort returns empty_intersection or
+  // mint_error. The fabricated-UUID path is retired; mint failure
+  // surfaces explicitly to orch + workspace.
+  | 'delegation_empty_intersection'
+  | 'delegation_mint_error';
 
 export interface RunLedgerEntry {
   entryId: Uuid;

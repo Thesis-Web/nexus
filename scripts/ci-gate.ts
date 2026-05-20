@@ -2083,9 +2083,28 @@ function enforceGov02UnsolicitedToolCallBan(): void {
 }
 
 function enforceGov03DelegationMintFailClosed(): void {
-  // F4.15 / Patch 12: scripts/nexus-main.ts:1394-1450 must not catch a
-  // mint failure and synthesize a UUID. Mint failures fail closed.
-  passPending('Patch 12 / F4.15', 'delegation mint fail-closed');
+  // F4.15 / Patch 12 (this gate's strict mode): scan
+  // scripts/nexus-main.ts's makeIssueDelegation closure for the retired
+  // `return crypto.randomUUID() as Uuid` fail-open path. Mint failures
+  // must re-throw so the run terminates with a mint-attributed failure.
+  const target = path.join('scripts', 'nexus-main.ts');
+  if (!fs.existsSync(target)) {
+    fail(`GOV-03: ${target} not found`);
+  }
+  const src = fs.readFileSync(target, 'utf-8');
+  // Find the makeIssueDelegation function body and scan for the
+  // fabricated-UUID pattern within its catch block.
+  const fnMatch = src.match(/makeIssueDelegation[\s\S]*?\n\s*\};/);
+  if (!fnMatch) {
+    fail(`GOV-03: could not locate makeIssueDelegation in ${target} (F4.15 §3.1)`);
+  }
+  const body = fnMatch![0];
+  if (/return\s+crypto\.randomUUID\s*\(\s*\)\s+as\s+Uuid/.test(body)) {
+    fail(
+      `GOV-03: makeIssueDelegation still fabricates a UUID on mint failure (F4.15 §3.2) — retired path`
+    );
+  }
+  pass('delegation mint fail-closed (no fabricated UUID return path)');
 }
 
 function enforceGov04EffectiveScopeIntersection(): void {

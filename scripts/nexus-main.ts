@@ -1445,8 +1445,18 @@ const program = createCli({
           );
           return dc.delegationId;
         } catch (err) {
-          console.error('[orch-wire] delegation failed:', (err as Error).message);
-          return crypto.randomUUID() as Uuid;
+          // F4.15 / HL #10 / #13 — delegation mint fail-closed. The prior
+          // crypto.randomUUID() return path fabricated an identifier and
+          // let dispatch continue with a phantom delegation; that
+          // obscured the original governance failure and let downstream
+          // Gate 01/03 deny under a fake reference. Re-throwing ensures
+          // the run terminates with a mint-attributed failure that the
+          // orch layer turns into a workspace receipt.
+          const reason = (err as Error).message;
+          console.error('[orch-wire] delegation failed:', reason);
+          throw Object.assign(new Error('delegation_mint_failed: ' + reason), {
+            code: 'DELEGATION_MINT_FAILED',
+          });
         }
       };
     };
