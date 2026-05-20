@@ -702,6 +702,48 @@ export interface ApproverRegistry {
   register(actorId: Uuid, publicKey: Base64Url, channels: string[]): Promise<void>;
 }
 
+// ─── F4.3 In-Browser Approval UX — channels, signed responses ─────────────
+// Plug-in approval UI; baked NXS gate fails closed on approval-required
+// gates with no evidence chain entry. SigningCouncil 2-of-2 is the only
+// path to a wide-open channel (allowAnyRegisteredAdmin). The legacy
+// ApprovalChannel interface (cli-channel runtime port) is unrelated;
+// this is the configured channel record consumed by the admin UI.
+export interface ApprovalChannelConfig {
+  readonly channelId: NonEmpty;
+  readonly channelKind: 'dashboard' | 'webhook' | 'cli';
+  readonly approverIds: ReadonlyArray<Uuid>;
+  readonly openChannelConfig?: SignedOpenChannelConfig;
+  readonly enabled: boolean;
+  readonly notes?: string;
+}
+
+export interface SignedOpenChannelConfig {
+  readonly channelId: NonEmpty;
+  readonly allowAnyRegisteredAdmin: boolean;
+  readonly expiresAt: IsoTimestamp;
+  readonly signatures: ReadonlyArray<{
+    readonly principalId: Uuid;
+    readonly signature: Base64Url;
+  }>;
+  readonly openedBy: Uuid;
+  readonly openedAt: IsoTimestamp;
+}
+
+export interface ApprovalUiPort {
+  open(req: {
+    runId: Uuid;
+    nodeId: NonEmpty;
+    channelId: NonEmpty;
+    reason: string;
+  }): Promise<NonEmpty>;
+  respond(
+    requestId: NonEmpty,
+    approverId: Uuid,
+    decision: 'grant' | 'deny',
+    signature: Base64Url
+  ): Promise<ApprovalRequest>;
+}
+
 // ─── F4.13 Admin Signed Mutation Envelopes — Hard Law #10 ─────────────────
 // Every governance-relevant admin mutation requires a per-mutation
 // Ed25519 admin signature; the route writes mandatory infra ledger
