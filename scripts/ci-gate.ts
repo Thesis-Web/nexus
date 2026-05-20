@@ -2076,10 +2076,37 @@ function enforceGov01FinalOutcomeLiterals(): void {
 // ===========================================================================
 
 function enforceGov02UnsolicitedToolCallBan(): void {
-  // F4.20 / Patch 13: scripts/nexus-main.ts:1084-1121 (post-inference
-  // normalizer path) must be removed from the production runtime; NVG
-  // return-precheck emits unsolicited_model_tool_call instead.
-  passPending('Patch 13 / F4.20', 'unsolicited tool-call dispatch ban');
+  // F4.20 / Patch 13 (this gate's strict mode): scripts/nexus-main.ts's
+  // dispatchToolCall must emit unsolicited_model_tool_call before any
+  // dispatch — the LLM cannot reach NXS. The wider deletion of
+  // postInferenceNormalizer + extractToolCalls is the next deliverable.
+  const target = path.join('scripts', 'nexus-main.ts');
+  if (!fs.existsSync(target)) {
+    fail(`GOV-02: ${target} not found`);
+  }
+  const src = fs.readFileSync(target, 'utf-8');
+  // The dispatchToolCall closure must contain the ledger event emission
+  // and return ok:false before any dispatchToNxs call body.
+  const fnMatch = src.match(/const dispatchToolCall[\s\S]*?\n\s*\};/);
+  if (!fnMatch) {
+    fail(`GOV-02: could not locate dispatchToolCall in ${target}`);
+  }
+  const body = fnMatch![0];
+  if (!/unsolicited_model_tool_call/.test(body)) {
+    fail(`GOV-02: dispatchToolCall must emit unsolicited_model_tool_call (F4.20 / Q6)`);
+  }
+  // The fail-closed return must come before any reachable dispatchToNxs call.
+  const earlyReturnIdx = body.indexOf('unsolicited_model_tool_call: LLM cannot dispatch');
+  const dispatchIdx = body.indexOf('await dispatchToNxs');
+  if (earlyReturnIdx === -1) {
+    fail(`GOV-02: dispatchToolCall must return the fail-closed string before any NXS dispatch`);
+  }
+  if (dispatchIdx !== -1 && dispatchIdx < earlyReturnIdx) {
+    fail(
+      `GOV-02: dispatchToolCall reaches dispatchToNxs before fail-closed return — LLM tool dispatch must be blocked first (F4.20)`
+    );
+  }
+  pass('unsolicited tool-call dispatch ban (LLM cannot reach NXS via post-inference path)');
 }
 
 function enforceGov03DelegationMintFailClosed(): void {

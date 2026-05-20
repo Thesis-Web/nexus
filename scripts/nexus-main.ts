@@ -1081,103 +1081,42 @@ const program = createCli({
             return { kind: 'success', opaqueResponse: inv.opaqueProviderResponse };
           };
 
-          // CLAUDE-CODE-ACTION-NORMALIZER-PHASE-C §5 — post-inference
-          // tool-call dispatch. Each tool call gets a fresh ephemeral
-          // session bound to the orchestrator-issued delegation, runs
-          // through the 7-gate pipeline, and the connector result is
-          // bridged into the run mailbox (data payload OR receipt). The
-          // round-trip loop reads the bridged file body to build the next
-          // turn's tool_result message.
+          // F4.20 / Q6 / HL #5/#7 — post-inference tool-call dispatch to NXS
+          // is RETIRED. The prior path normalized any model tool_calls and
+          // ran them through the 7-gate pipeline, conflating LLM-internal
+          // tools (Claude Code's MCP, Langgraph state, etc.) with
+          // targeted-system tool calls. LLMs cannot trigger NXS; the
+          // planner-authored nxs_dispatch node is the only entry. We keep
+          // the dispatchToolCall callback shape so the round-trip loop
+          // continues to compile, but every invocation now emits
+          // unsolicited_model_tool_call and returns a fail-closed denial.
+          // The wider deletion of postInferenceNormalizer + extractToolCalls
+          // is the next deliverable (see HANDOFF).
           const dispatchToolCall = async (
             tc: ExtractedToolCall,
             turnIndex: number
           ): Promise<ToolCallDispatchResult> => {
-            try {
-              const ctx: NormalizerContext = {
-                runId: request.runId,
-                actorId: node.agentId,
-                principalId: request.principalId,
-                sessionId: crypto.randomUUID() as Uuid,
-                delegationId: _delegationId,
-                protocol: 'post-inference-tool-call' as NonEmpty,
-              };
-              const sessionTtlSeconds = 10 * 60;
-              await coreDeps.sessionStore.create({
-                sessionId: ctx.sessionId,
-                actorId: ctx.actorId,
-                principalId: ctx.principalId,
-                delegationId: ctx.delegationId,
-                createdAt: nowIso(),
-                expiresAt: new Date(
-                  Date.now() + sessionTtlSeconds * 1000
-                ).toISOString() as IsoTimestamp,
-              });
-
-              const action = postInferenceNormalizer.normalize(tc, ctx);
-              const nxsResult = await dispatchToNxs({
-                rawAction: action,
-                runId: request.runId,
-                isNvgBypass: false, // NVG was traversed — not a bypass
-              });
-              console.log(
-                '[post-inference] turn',
+            await coreDeps.runLedgerWriter!.writeEvent({
+              runId: request.runId,
+              eventType: 'unsolicited_model_tool_call',
+              timestamp: nowIso(),
+              actorId: node.agentId,
+              detail: {
                 turnIndex,
-                'tool:',
-                tc.toolName,
-                'outcome:',
-                nxsResult.evidenceRecord.finalOutcome
-              );
-
-              // AMEND-nexus-mailbox-pit-v0-2-1 §3.5 — write tool-call
-              // results into the dispatching agent's per-actor mailbox.
-              const toolBridgeMailboxId = await br.externals.mailboxService.getMailboxForActor(
-                request.runId,
-                node.agentId
-              );
-              if (toolBridgeMailboxId === null) {
-                return {
-                  ok: false,
-                  reason: 'mailbox_not_allocated_for_actor: ' + node.agentId,
-                };
-              }
-              const bridged = await bridgeNxsResultToMailbox(nxsResult.evidenceRecord, {
-                outputCollector: br.externals.outputCollector,
-                payloadsRoot: path.join(DEFAULT_TRAIL_DIR, 'payloads'),
-                agentOctLevel: agent.octLevel ?? 'OCT-OPEN',
-                // Inherit the node's declared output slot so mailboxes
-                // configured with `strict_declared_slots` accept the write.
-                // Tool-call results land in the same slot as the agent's
-                // final NVG text — compile aggregates per slot regardless.
-                slotId: (node.expectedOutputSlots[0] ?? 'default') as NonEmpty,
-                // Tag the mailbox item with the dispatching node's id so
-                // (a) the slot validator finds the declared slot for this
-                // task (declared slots are keyed by taskId = nodeId in the
-                // orchestrator_dispatched event), and (b) downstream
-                // multi-node sub-tasks can find the result via
-                // MailboxService.findBySlot(runId, nodeId, slotId).
-                taskIdOverride: node.nodeId,
-                mailboxId: toolBridgeMailboxId,
-              });
-              if (bridged === null) {
-                // Bridge returns null only when executionResult itself was
-                // null — there is no evidence to receipt. Surface as a
-                // structural failure so the loop synthesizes a tool_result
-                // and the conversation stays well-formed.
-                return { ok: false, reason: 'no_evidence_to_bridge' };
-              }
-              console.log(
-                '[post-inference] mailbox item',
-                bridged.mailboxItem.mailboxItemId,
-                '(' + bridged.kind + ')',
-                'written for tool:',
-                tc.toolName
-              );
-              return { ok: true, payloadPath: bridged.payloadPath, kind: bridged.kind };
-            } catch (toolErr) {
-              const msg = toolErr instanceof Error ? toolErr.message : String(toolErr);
-              console.warn('[post-inference] tool dispatch error for', tc.toolName, '—', msg);
-              return { ok: false, reason: msg };
-            }
+                toolName: tc.toolName,
+                reason: 'llm_targeted_system_dispatch_forbidden',
+              },
+            });
+            console.warn(
+              '[post-inference] unsolicited model tool call ignored:',
+              tc.toolName,
+              '(turn ' + turnIndex + ')'
+            );
+            return {
+              ok: false,
+              reason:
+                'unsolicited_model_tool_call: LLM cannot dispatch targeted-system tools; planner-authored nxs_dispatch is the only entry (Spec F4.20)',
+            };
           };
 
           const roundTrip = await runDispatchRoundTrip(initialMessages, {

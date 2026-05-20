@@ -1270,7 +1270,14 @@ export type RunEventType =
   // mint_error. The fabricated-UUID path is retired; mint failure
   // surfaces explicitly to orch + workspace.
   | 'delegation_empty_intersection'
-  | 'delegation_mint_error';
+  | 'delegation_mint_error'
+  // ── F4.20 LLM internal tools vs targeted systems (Q6 / HL #5/#7) ──────
+  // Emitted by NVG return-precheck whenever a model response carries
+  // tool_calls. The post-inference normalizer that previously dispatched
+  // these to NXS is retired (P0-016, P0-027); model output cannot
+  // trigger NXS. Targeted-system tool calls go through planner-authored
+  // nxs_dispatch only.
+  | 'unsolicited_model_tool_call';
 
 export interface RunLedgerEntry {
   entryId: Uuid;
