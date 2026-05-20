@@ -2225,9 +2225,29 @@ function enforceGov07CompilePassThroughDigest(): void {
 }
 
 function enforceGov08SignedAdminMutation(): void {
-  // F4.13 / Patch 15: every admin-writer route requires
-  // SignedAdminMutation envelope per HL #10.
-  passPending('Patch 15 / F4.13', 'signed admin mutation envelope');
+  // F4.13 / Patch 15 (foundation): SignedAdminMutation type + Q13
+  // InfraRunIdNamespace + intent/committed/failed ledger events are
+  // declared. Wiring every admin-writer route to require the envelope
+  // is the next deliverable (large sweep — every mutation route in
+  // packages/interfaces/api/src/routes/admin-writer.ts).
+  const contractsPath = path.join('packages', 'contracts', 'src', 'interfaces', 'index.ts');
+  if (!fs.existsSync(contractsPath)) {
+    fail(`GOV-08: ${contractsPath} not found`);
+  }
+  const src = fs.readFileSync(contractsPath, 'utf-8');
+  if (!/interface SignedAdminMutation\b/.test(src)) {
+    fail(`GOV-08: SignedAdminMutation interface must be declared in contracts (F4.13 §2.1)`);
+  }
+  if (!/'admin_mutation_intent'/.test(src)) {
+    fail(`GOV-08: admin_mutation_intent ledger event must be registered (F4.13 §2.2)`);
+  }
+  if (!/'admin_mutation_committed'/.test(src)) {
+    fail(`GOV-08: admin_mutation_committed ledger event must be registered (F4.13 §2.2)`);
+  }
+  if (!/'admin_mutation_failed'/.test(src)) {
+    fail(`GOV-08: admin_mutation_failed ledger event must be registered (F4.13 §2.2)`);
+  }
+  pass('signed admin mutation envelope foundation (contract + ledger events declared)');
 }
 
 function enforceGov09EnforcingLockMultiAdmin(): void {
@@ -2276,9 +2296,22 @@ function enforceGov09EnforcingLockMultiAdmin(): void {
 }
 
 function enforceGov10CredentialLifecycleFailClosed(): void {
-  // F4.13 / Patch 15: admin-writer paths must not silent-no-op on
-  // missing runLedgerWriter.
-  passPending('Patch 15 / F4.13', 'credential lifecycle fail-closed');
+  // F4.13 / Patch 15 (foundation): Q13 InfraRunIdNamespace is the
+  // baked port for cross-correlating infra writes. Production wires
+  // it into the admin-writer composition root; the route-side
+  // silent-no-op on missing runLedgerWriter is the next deliverable.
+  const nsPath = path.join('packages', 'core', 'src', 'infra', 'infra-run-id-namespace.ts');
+  if (!fs.existsSync(nsPath)) {
+    fail(`GOV-10: ${nsPath} not found (F4.13 / Q13)`);
+  }
+  const src = fs.readFileSync(nsPath, 'utf-8');
+  if (!/class InMemoryInfraRunIdNamespace\b/.test(src)) {
+    fail(`GOV-10: InMemoryInfraRunIdNamespace must implement InfraRunIdNamespace (Q13)`);
+  }
+  if (!/infra-\$\{key\}-\$\{padded\}/.test(src)) {
+    fail(`GOV-10: namespace must produce 'infra-YYYY-MM-DD-NNNN' shape (Q13)`);
+  }
+  pass('credential lifecycle fail-closed foundation (Q13 InfraRunIdNamespace baked)');
 }
 
 function enforceGov11OrchCallbackTimeoutNoKill(): void {

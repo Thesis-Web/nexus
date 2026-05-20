@@ -702,6 +702,48 @@ export interface ApproverRegistry {
   register(actorId: Uuid, publicKey: Base64Url, channels: string[]): Promise<void>;
 }
 
+// ─── F4.13 Admin Signed Mutation Envelopes — Hard Law #10 ─────────────────
+// Every governance-relevant admin mutation requires a per-mutation
+// Ed25519 admin signature; the route writes mandatory infra ledger
+// events; the ledger writer being unavailable fails closed (503).
+// Q13 InfraRunIdNamespace: daily bucket + monotonic seq (admin-side
+// audit cross-correlation).
+export type AdminMutationKind =
+  | 'actor_register'
+  | 'actor_deregister'
+  | 'agent_config_update'
+  | 'llm_config_update'
+  | 'identity_provider_update'
+  | 'connector_register'
+  | 'connector_deregister'
+  | 'secret_store'
+  | 'secret_remove'
+  | 'webhook_register'
+  | 'webhook_deregister'
+  | 'workspace_config_update'
+  | 'orchestrator_config_update'
+  | 'compile_config_update'
+  | 'mailbox_config_update'
+  | 'manifest_entry_add'
+  | 'manifest_entry_update'
+  | 'manifest_entry_remove'
+  | 'policy_bundle_swap'
+  | 'oct_assign';
+
+export interface SignedAdminMutation<TPayload> {
+  readonly mutationKind: AdminMutationKind;
+  readonly payload: TPayload;
+  readonly opener: NonEmpty;
+  readonly issuedAt: IsoTimestamp;
+  readonly nonce: NonEmpty;
+  readonly signature: Base64Url;
+}
+
+/** Q13 — daily-bucket + monotonic-sequence infrastructure run id. */
+export interface InfraRunIdNamespace {
+  next(date?: Date): NonEmpty; // returns 'infra-YYYY-MM-DD-NNNN'
+}
+
 // ─── F4.6 File Attachments — bind-at-runOpen, mailbox-materialized ─────────
 // Workspace uploads stage bytes via POST /workspace/attachments/stage; at
 // run-open the binder classifies + computes digest + records provenance.
@@ -1277,7 +1319,14 @@ export type RunEventType =
   // these to NXS is retired (P0-016, P0-027); model output cannot
   // trigger NXS. Targeted-system tool calls go through planner-authored
   // nxs_dispatch only.
-  | 'unsolicited_model_tool_call';
+  | 'unsolicited_model_tool_call'
+  // ── F4.13 Admin Signed Mutation Envelopes (HL #10) ────────────────────
+  // Pre/post infra audit pair around every signed admin mutation. The
+  // intent event writes BEFORE the persistence step; commit/failure
+  // writes AFTER. Both share the same mutationId so audit can pair them.
+  | 'admin_mutation_intent'
+  | 'admin_mutation_committed'
+  | 'admin_mutation_failed';
 
 export interface RunLedgerEntry {
   entryId: Uuid;

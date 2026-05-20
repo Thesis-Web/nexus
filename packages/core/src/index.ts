@@ -131,6 +131,10 @@ export type { JsonlLexiconMutationExecutorDeps } from './lexicon/lexicon-mutatio
 export { ReferenceClaimVerifier } from './identity/claim-verifier.js';
 export type { ClaimResolver } from './identity/claim-verifier.js';
 
+// F4.13 / Q13 — InfraRunIdNamespace (daily bucket + monotonic seq)
+export { InMemoryInfraRunIdNamespace } from './infra/infra-run-id-namespace.js';
+export type { InfraRunIdNamespaceDeps } from './infra/infra-run-id-namespace.js';
+
 // §13.1 — Pipeline
 export { Pipeline, SimpleConnectorRegistry, SimpleChannelRegistry } from './engine/pipeline.js';
 export type { PipelineGates } from './engine/pipeline.js';
