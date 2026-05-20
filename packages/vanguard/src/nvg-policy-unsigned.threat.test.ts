@@ -12,22 +12,18 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { randomUUID } from 'crypto';
 import { validateRoutingPolicy } from './router/policy-engine.js';
-import { canonicalize } from '../../core/src/crypto/canonicalize.js';
-import { sign } from '../../core/src/crypto/signer.js';
-import { verify } from '../../core/src/crypto/verifier.js';
-import { loadControlPlaneKey } from '../../core/src/crypto/key-manager.js';
-import type {
-  NvgRoutingPolicy,
-  KeyPair,
-  IsoTimestamp,
-  Uuid,
-  NonEmpty,
-  Base64Url,
-} from '@nexus/contracts';
+import {
+  canonicalize,
+  signEd25519,
+  verifyEd25519,
+  loadDevKeypair,
+  type DevKeyPair,
+} from '@nexus/runtime-utils';
+import type { NvgRoutingPolicy, IsoTimestamp, Uuid, NonEmpty, Base64Url } from '@nexus/contracts';
 
-let controlPlanePair: KeyPair;
+let controlPlanePair: DevKeyPair;
 beforeAll(async () => {
-  controlPlanePair = await loadControlPlaneKey();
+  controlPlanePair = await loadDevKeypair();
 });
 
 function makePolicy(overrides: Partial<NvgRoutingPolicy> = {}): NvgRoutingPolicy {
@@ -47,7 +43,7 @@ describe('NVG Threat: Unsigned Routing Policy (§38.3)', () => {
   it('rejects a routing policy with empty signature', async () => {
     const policy = makePolicy({ signature: '' as Base64Url });
     const { signature: _, ...body } = policy;
-    const isValid = await verify(canonicalize(body), '', controlPlanePair.publicKey);
+    const isValid = await verifyEd25519(canonicalize(body), '', controlPlanePair.publicKey);
     expect(isValid).toBe(false);
   });
 
@@ -56,25 +52,25 @@ describe('NVG Threat: Unsigned Routing Policy (§38.3)', () => {
     const { signature: _, ...body } = policy;
     const tampered =
       'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-    const isValid = await verify(canonicalize(body), tampered, controlPlanePair.publicKey);
+    const isValid = await verifyEd25519(canonicalize(body), tampered, controlPlanePair.publicKey);
     expect(isValid).toBe(false);
   });
 
   it('accepts a correctly signed routing policy', async () => {
     const policy = makePolicy();
     const { signature: _, ...body } = policy;
-    const sig = await sign(canonicalize(body), controlPlanePair);
-    const isValid = await verify(canonicalize(body), sig, controlPlanePair.publicKey);
+    const sig = await signEd25519(canonicalize(body), controlPlanePair.privateKey);
+    const isValid = await verifyEd25519(canonicalize(body), sig, controlPlanePair.publicKey);
     expect(isValid).toBe(true);
   });
 
   it('rejects a policy body modified after signing', async () => {
     const policy = makePolicy();
     const { signature: _, ...body } = policy;
-    const sig = await sign(canonicalize(body), controlPlanePair);
+    const sig = await signEd25519(canonicalize(body), controlPlanePair.privateKey);
     // Tamper with the body after signing
     const tampered = { ...body, issuer: 'attacker' as NonEmpty };
-    const isValid = await verify(canonicalize(tampered), sig, controlPlanePair.publicKey);
+    const isValid = await verifyEd25519(canonicalize(tampered), sig, controlPlanePair.publicKey);
     expect(isValid).toBe(false);
   });
 });

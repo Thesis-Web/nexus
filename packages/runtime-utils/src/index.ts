@@ -13,6 +13,7 @@
  *   MUST NOT import from any implementation package.
  */
 export { canonicalize } from './canonicalize.js';
+export { signEd25519, verifyEd25519, loadDevKeypair, type DevKeyPair } from './crypto.js';
 export {
   loadSignedManifest,
   type LoadSignedManifestResult,

@@ -1,0 +1,4 @@
+{
+  "_doc": "AMEND-nexus-package-import-law-resolver-v0-1-0.md §2.3 — exceptions to the package import-law resolver. V1 ships empty. Adding an entry requires owner ratification (ratifiedBy + expiresAt). The resolver-based CI gate (validateSevenLayerImportLaw) consults this file before reporting violations.",
+  "exceptions": []
+}

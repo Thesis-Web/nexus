@@ -3017,6 +3017,49 @@ function getNexusPackageName(specifier: string): string {
   return parts.slice(0, 2).join('/');
 }
 
+// Resolve a relative import specifier from the source file to the
+// containing package name. Returns the @nexus/* package name of the
+// target (if the import lands inside a workspace package) or null if
+// the target lies inside the same package as the source (self-import
+// across files within the package — always allowed).
+//
+// AMEND-nexus-package-import-law-resolver-v0-1-0.md §2.1: relative
+// imports are normalized to repo-absolute paths and mapped to the
+// owning package's @nexus/* name. The seven-layer law table then
+// applies — tests included by default.
+function resolveRelativeImportToNexusPackage(sourceFile: string, specifier: string): string | null {
+  const sourceDir = path.dirname(sourceFile);
+  // Strip a JS/TS extension off the specifier — `./foo.js`, `./foo.ts`, `./foo` all map to the same file.
+  const resolvedRaw = path.resolve(sourceDir, specifier);
+  // Determine source package
+  const sourcePkg = getSourcePackageDir(sourceFile);
+  const targetPkg = getSourcePackageDir(resolvedRaw);
+  if (sourcePkg === targetPkg) return null; // same-package relative — always allowed
+  // Map target package directory → @nexus/* selfPackage name via LAYER_RULES
+  for (const rule of LAYER_RULES) {
+    if (targetPkg !== null && path.resolve(rule.dir, '..') === targetPkg) {
+      return rule.selfPackage;
+    }
+  }
+  // Not a known @nexus/* package — return a synthetic marker so the gate
+  // can report the violation.
+  return targetPkg !== null ? `(unknown-package:${targetPkg})` : null;
+}
+
+// Walk upward from a file path until a directory containing a
+// package.json is found; return the directory of that package (the
+// repo-root for the package). Returns null if no package.json is
+// found before exiting the workspace.
+function getSourcePackageDir(filePath: string): string | null {
+  let dir = path.dirname(path.resolve(filePath));
+  const repoRoot = path.resolve('.');
+  while (dir.startsWith(repoRoot) && dir !== path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, 'package.json'))) return dir;
+    dir = path.dirname(dir);
+  }
+  return null;
+}
+
 function validateSevenLayerImportLaw(): {
   filesScanned: number;
   packagesScanned: number;
@@ -3036,20 +3079,30 @@ function validateSevenLayerImportLaw(): {
       const specifiers = extractImportSpecifiers(source);
 
       for (const spec of specifiers) {
-        if (isRelativeImport(spec)) continue;
-        if (!isNexusScopedImport(spec)) continue; // Non-@nexus imports handled by Step 19
-
-        const pkg = getNexusPackageName(spec);
+        // F4.18: resolver-based scanner. Relative imports are no longer
+        // silently skipped — they are normalized to absolute paths and
+        // mapped to the target package via LAYER_RULES.
+        let effectivePkg: string;
+        if (isRelativeImport(spec)) {
+          const resolved = resolveRelativeImportToNexusPackage(fpath, spec);
+          if (resolved === null) continue; // same-package relative — allowed
+          effectivePkg = resolved;
+        } else if (isNexusScopedImport(spec)) {
+          effectivePkg = getNexusPackageName(spec);
+        } else {
+          continue; // Non-@nexus imports handled by Step 19
+        }
 
         // Self-import is always allowed
-        if (pkg === rule.selfPackage) continue;
+        if (effectivePkg === rule.selfPackage) continue;
 
         // Check against allowed list
-        const allowed = rule.allowedNexus.some(a => pkg === a || spec.startsWith(a + '/'));
+        const allowed = rule.allowedNexus.some(a => effectivePkg === a || spec.startsWith(a + '/'));
         if (!allowed) {
           violations.push(
-            `  ${fpath} (${rule.layerName}): imports '${spec}' — ` +
-              `only ${rule.allowedNexus.length > 0 ? rule.allowedNexus.join(', ') : 'no @nexus/*'} allowed`
+            `  ${fpath} (${rule.layerName}): imports '${spec}'` +
+              (isRelativeImport(spec) ? ` (resolves to ${effectivePkg})` : '') +
+              ` — only ${rule.allowedNexus.length > 0 ? rule.allowedNexus.join(', ') : 'no @nexus/*'} allowed`
           );
         }
       }
@@ -3057,7 +3110,9 @@ function validateSevenLayerImportLaw(): {
   }
 
   if (violations.length > 0) {
-    fail(`Seven-layer import-law violations (BOUNDARY-001):\n${violations.join('\n')}`);
+    fail(
+      `Seven-layer import-law violations (BOUNDARY-001 / F4.18 resolver):\n${violations.join('\n')}`
+    );
   }
 
   return { filesScanned, packagesScanned };
