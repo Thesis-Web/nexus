@@ -1018,11 +1018,12 @@ const program = createCli({
               environmentContext: agent.environment,
               taskIntent: node.taskSummary,
               payload: turnPayload,
-              // F4.11 transitional: aggregator hookup is the next deliverable;
-              // until then the empty array flows through to NVG's empty-labels
-              // case split which floors classification to internal when
-              // provenance is trusted.
-              // @allow-empty-data-labels
+              // F4.11 / HL #6 — dataLabels MUST be aggregated from upstream
+              // slices + mailbox items + boundConnectorClasses before they
+              // reach NVG. The empty array below is the broken state GOV-05
+              // flags RED until HANDOFF §E.1 Patch 31 lands the aggregation.
+              // The retired `@allow-empty-data-labels` marker bypass was
+              // removed in Patch 26 (HANDOFF §D.2).
               dataLabels: [],
               boundConnectorClasses,
               costPreference: 'standard',
@@ -1697,9 +1698,9 @@ const program = createCli({
             environmentContext: agent.environment,
             taskIntent: firstAgent.taskSummary,
             payload: [{ role: 'user', content: request.prompt }],
-            // F4.11 transitional: probe path uses the prompt slice only;
-            // aggregator hookup is the next deliverable.
-            // @allow-empty-data-labels
+            // F4.11 / HL #6 — same gap as the dispatch path above. Probe
+            // path needs prompt-derived dataLabels from upstream. GOV-05
+            // RED until HANDOFF §E.1 Patch 31 lands the aggregator.
             dataLabels: [],
             boundConnectorClasses: probeBoundClasses,
             costPreference: 'standard',
