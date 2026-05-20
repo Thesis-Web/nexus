@@ -1368,7 +1368,12 @@ export type RunEventType =
   // writes AFTER. Both share the same mutationId so audit can pair them.
   | 'admin_mutation_intent'
   | 'admin_mutation_committed'
-  | 'admin_mutation_failed';
+  | 'admin_mutation_failed'
+  // ── F4.14 Orch callback timeout no-kill (Hard Law #4) ─────────────────
+  // Emitted when a plan checkback times out. NOT plan_checkback_resolved
+  // with decision='deny' — that conflated timeout with denial. The run
+  // stays open; the user decides whether to dismiss/restart/extend.
+  | 'plan_checkback_expired';
 
 export interface RunLedgerEntry {
   entryId: Uuid;

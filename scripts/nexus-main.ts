@@ -1532,20 +1532,32 @@ const program = createCli({
     /**
      * Suspend the run on a Deferred keyed by runId; the workspace UI's
      * POST /workspace/runs/:runId/checkback wakes it via resolvePendingCheckback.
-     * Times out after CHECKBACK_TIMEOUT_MS — auto-deny + plan_checkback_resolved.
+     *
+     * F4.14 / HL #4 — Times out emit `plan_checkback_expired` (NOT
+     * plan_checkback_resolved with decision='deny'; that conflated
+     * timeout with denial). The promise resolves false so the
+     * dispatching node returns control, but the ledger event makes the
+     * actual disposition clear: the user has not decided yet. The
+     * caller surfaces the expired state in the workspace receipt; the
+     * user retains the option to dismiss/restart/extend.
      */
     const waitForCheckback = (runId: Uuid): Promise<boolean> =>
       new Promise<boolean>(resolve => {
+        const openedAt = nowIso();
         const timer = setTimeout(() => {
           const stillPending = pendingCheckbacks.get(runId);
           if (stillPending && stillPending.timer === timer) {
             pendingCheckbacks.delete(runId);
             void coreDeps.runLedgerWriter!.writeEvent({
               runId,
-              eventType: 'plan_checkback_resolved',
+              eventType: 'plan_checkback_expired',
               timestamp: nowIso(),
               actorId: null,
-              detail: { decision: 'deny', reason: 'checkback_timeout' },
+              detail: {
+                reason: 'checkback_timeout',
+                openedAt,
+                expiresAfterMs: CHECKBACK_TIMEOUT_MS,
+              },
             });
             resolve(false);
           }

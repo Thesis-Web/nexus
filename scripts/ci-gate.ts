@@ -2315,9 +2315,31 @@ function enforceGov10CredentialLifecycleFailClosed(): void {
 }
 
 function enforceGov11OrchCallbackTimeoutNoKill(): void {
-  // F4.14 / Patch 18: timeout path at scripts/nexus-main.ts:1564-1601
-  // emits plan_checkback_expired; never authors decision='deny'.
-  passPending('Patch 18 / F4.14', 'orch callback timeout no-kill');
+  // F4.14 / Patch 18 (this gate's strict mode): the waitForCheckback
+  // timeout in scripts/nexus-main.ts must emit plan_checkback_expired,
+  // NOT plan_checkback_resolved with decision='deny'. The latter
+  // conflated timeout with denial and violated Hard Law #4.
+  const target = path.join('scripts', 'nexus-main.ts');
+  if (!fs.existsSync(target)) {
+    fail(`GOV-11: ${target} not found`);
+  }
+  const src = fs.readFileSync(target, 'utf-8');
+  const fnMatch = src.match(/waitForCheckback = \(runId: Uuid\)[\s\S]*?\}\)\;[\s\S]*?\}\)/);
+  if (!fnMatch) {
+    fail(`GOV-11: could not locate waitForCheckback in ${target}`);
+  }
+  const body = fnMatch![0];
+  if (/eventType:\s*'plan_checkback_resolved'/.test(body)) {
+    if (/decision:\s*'deny'/.test(body) && /checkback_timeout/.test(body)) {
+      fail(
+        `GOV-11: waitForCheckback still emits plan_checkback_resolved with decision='deny' on timeout — retired (HL #4 / F4.14)`
+      );
+    }
+  }
+  if (!/eventType:\s*'plan_checkback_expired'/.test(body)) {
+    fail(`GOV-11: waitForCheckback must emit plan_checkback_expired on timeout (F4.14 §2.2)`);
+  }
+  pass('orch callback timeout no-kill (timer emits plan_checkback_expired)');
 }
 
 function enforceGov12OctMutationLawfulPath(): void {
