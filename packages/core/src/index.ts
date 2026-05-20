@@ -127,6 +127,10 @@ export type { SigningCouncilDeps, SigningCouncilRequestStore } from './signing/s
 export { JsonlLexiconMutationExecutor } from './lexicon/lexicon-mutation-executor.js';
 export type { JsonlLexiconMutationExecutorDeps } from './lexicon/lexicon-mutation-executor.js';
 
+// F4.9 — Claim Drift Verification (Hard Law #14)
+export { ReferenceClaimVerifier } from './identity/claim-verifier.js';
+export type { ClaimResolver } from './identity/claim-verifier.js';
+
 // §13.1 — Pipeline
 export { Pipeline, SimpleConnectorRegistry, SimpleChannelRegistry } from './engine/pipeline.js';
 export type { PipelineGates } from './engine/pipeline.js';

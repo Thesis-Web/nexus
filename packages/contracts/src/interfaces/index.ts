@@ -702,6 +702,38 @@ export interface ApproverRegistry {
   register(actorId: Uuid, publicKey: Base64Url, channels: string[]): Promise<void>;
 }
 
+// ─── F4.9 Claim Drift Verification — Hard Law #14 ──────────────────────────
+// NXS Gate 01 resolves identity claims once; downstream gates must call
+// ClaimVerificationPort.verify(carried, gateName) before evaluation. A
+// drift result fails the gate closed and emits claim_drift_detected with
+// the carried-vs-current diff. Mirrored at NVG classify-and-route and
+// return-precheck.
+export interface ClaimsDiff {
+  readonly principalId: Uuid;
+  readonly fieldsChanged: ReadonlyArray<string>;
+  readonly carriedHash: Sha256Hex;
+  readonly currentHash: Sha256Hex;
+  readonly detectedAt: IsoTimestamp;
+}
+
+export type ClaimVerificationResult =
+  | { readonly kind: 'match'; readonly currentClaimsHash: Sha256Hex }
+  | { readonly kind: 'drift'; readonly currentClaimsHash: Sha256Hex; readonly diff: ClaimsDiff };
+
+export interface ClaimVerificationPort {
+  /**
+   * Re-resolve current claims for the principal at this moment and compare
+   * to the carried snapshot via canonical SHA-256 hash. Returns 'match' or
+   * 'drift' with the diff (fieldsChanged enumerates the surface-level
+   * fields whose canonical representation differs).
+   */
+  verify(
+    carriedClaims: Record<string, unknown>,
+    principalId: Uuid,
+    gateName: NonEmpty
+  ): Promise<ClaimVerificationResult>;
+}
+
 // ─── F4.8 Lexicon Mutation — discriminated union for SigningCouncil payload ─
 // Each mutation is the payload of SigningRequest(operation='lexicon_mutation').
 // The 2-of-2 distinct admin signature threshold (Q4) plus the baked
@@ -1181,7 +1213,13 @@ export type RunEventType =
   // prompt text never lands in the ledger.
   | 'lexicon_mutation_applied'
   | 'unmapped_prompt'
-  | 'lexicon_signal';
+  | 'lexicon_signal'
+  // ── F4.9 Claim Drift Verification (Hard Law #14) ──────────────────────
+  // Emitted by the gate runner when ClaimVerificationPort.verify returns
+  // 'drift'. Detail carries the carried-vs-current diff (fields list +
+  // both hashes) — the claim values themselves stay out of the ledger
+  // (they live in the carried-claims-ref / current-claims-ref pointers).
+  | 'claim_drift_detected';
 
 export interface RunLedgerEntry {
   entryId: Uuid;

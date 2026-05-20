@@ -2256,10 +2256,28 @@ function enforceGov14LexiconMutationDoubleAdmin(): void {
 }
 
 function enforceGov15ClaimDriftVerification(): void {
-  // F4.9 / Patch 9: every NXS/NVG gate wraps inputs in a
-  // ClaimVerificationPort callback; claim_drift_detected emitted on
-  // mismatch.
-  passPending('Patch 9 / F4.9', 'claim drift verification');
+  // F4.9 / Patch 9 (this gate's strict mode): the ClaimVerificationPort
+  // interface is declared in contracts, the reference verifier is
+  // implemented in core, and the claim_drift_detected ledger event type
+  // is registered. Wrapping every NXS/NVG gate runner with the verifier
+  // is the next deliverable; this gate guards the foundation.
+  const contractsPath = path.join('packages', 'contracts', 'src', 'interfaces', 'index.ts');
+  const verifierPath = path.join('packages', 'core', 'src', 'identity', 'claim-verifier.ts');
+  if (!fs.existsSync(contractsPath) || !fs.existsSync(verifierPath)) {
+    fail(`GOV-15: missing ${contractsPath} or ${verifierPath}`);
+  }
+  const cSrc = fs.readFileSync(contractsPath, 'utf-8');
+  if (!/interface ClaimVerificationPort\b/.test(cSrc)) {
+    fail('GOV-15: ClaimVerificationPort interface must be declared in contracts (F4.9 §2.1)');
+  }
+  if (!/'claim_drift_detected'/.test(cSrc)) {
+    fail('GOV-15: claim_drift_detected ledger event type must be registered (F4.9 §2.2)');
+  }
+  const vSrc = fs.readFileSync(verifierPath, 'utf-8');
+  if (!/class ReferenceClaimVerifier\b/.test(vSrc)) {
+    fail('GOV-15: ReferenceClaimVerifier must implement ClaimVerificationPort (F4.9 §2.1)');
+  }
+  pass('claim drift verification foundation (port + verifier + event type)');
 }
 
 function enforceGov16ResolvedRelativeImports(): void {
