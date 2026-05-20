@@ -181,6 +181,38 @@ export const GATE_ORDER: GateId[] = [
   GATE_ID.G07,
 ];
 
+// ─── F4.1 SigningCouncil — federated operation union + threshold map ───
+// Q4: lexicon_mutation threshold is STRICT 2 in V1 (below forbidden;
+// above only via owner-ratified V2 amendment). All operations in V1
+// require 2 distinct registered admin signatures.
+export const FEDERATED_OPERATION = {
+  MODE_UNLOCK: 'mode_unlock',
+  POLICY_BUNDLE_REPLACE: 'policy_bundle_replace',
+  SIGNING_COUNCIL_CHANGE: 'signing_council_change',
+  LEXICON_MUTATION: 'lexicon_mutation',
+} as const;
+export type FederatedOperation = (typeof FEDERATED_OPERATION)[keyof typeof FEDERATED_OPERATION];
+
+export const FEDERATED_OPERATION_THRESHOLDS: Record<FederatedOperation, 2> = {
+  [FEDERATED_OPERATION.MODE_UNLOCK]: 2,
+  [FEDERATED_OPERATION.POLICY_BUNDLE_REPLACE]: 2,
+  [FEDERATED_OPERATION.SIGNING_COUNCIL_CHANGE]: 2,
+  [FEDERATED_OPERATION.LEXICON_MUTATION]: 2,
+};
+
+export function getThreshold(op: FederatedOperation): 2 {
+  return FEDERATED_OPERATION_THRESHOLDS[op];
+}
+
+export const SIGNING_REQUEST_STATUS = {
+  PENDING: 'pending',
+  EXECUTED: 'executed',
+  DENIED: 'denied',
+  EXPIRED: 'expired',
+} as const;
+export type SigningRequestStatus =
+  (typeof SIGNING_REQUEST_STATUS)[keyof typeof SIGNING_REQUEST_STATUS];
+
 // ─── Expiry classes — open governed type ───
 export const EXPIRY_CLASS = {
   ACTION_SCOPED: 'action_scoped', // max 30s

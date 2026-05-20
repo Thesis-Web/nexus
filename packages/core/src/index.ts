@@ -119,6 +119,10 @@ export { getRuntimeMode, shouldEnforce, resolveDisposition } from './modes/mode-
 export { assignOct } from './identity/oct-manager.js';
 export type { SignedOctAssignmentRequest } from './identity/oct-manager.js';
 
+// F4.1 — SigningCouncil (federated mutation aggregator)
+export { SigningCouncil, InMemorySigningCouncilRequestStore } from './signing/signing-council.js';
+export type { SigningCouncilDeps, SigningCouncilRequestStore } from './signing/signing-council.js';
+
 // §13.1 — Pipeline
 export { Pipeline, SimpleConnectorRegistry, SimpleChannelRegistry } from './engine/pipeline.js';
 export type { PipelineGates } from './engine/pipeline.js';

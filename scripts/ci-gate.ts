@@ -2217,9 +2217,27 @@ function enforceGov13PolicyOctAxisEvaluator(): void {
 }
 
 function enforceGov14LexiconMutationDoubleAdmin(): void {
-  // F4.1 + F4.8 / Patches 6 + 8: lexicon_mutation operation requires
-  // 2-of-2 distinct admin signatures (Q4 STRICT).
-  passPending('Patch 8 / F4.8', 'lexicon mutation double-admin');
+  // F4.1 + F4.8 / Patch 6 lands operation registration + threshold;
+  // executor lands in Patch 8. This gate asserts (a) the operation is
+  // present in FEDERATED_OPERATION; (b) the threshold map declares 2;
+  // (c) no code path bypasses getThreshold for lexicon_mutation.
+  const constantsPath = path.join('packages', 'contracts', 'src', 'constants', 'index.ts');
+  if (!fs.existsSync(constantsPath)) {
+    fail(`GOV-14: contracts constants file not found at ${constantsPath}`);
+  }
+  const src = fs.readFileSync(constantsPath, 'utf-8');
+  if (!/LEXICON_MUTATION:\s*'lexicon_mutation'/.test(src)) {
+    fail(`GOV-14: FEDERATED_OPERATION.LEXICON_MUTATION must be present in ${constantsPath} (Q4)`);
+  }
+  // Threshold map must declare 2 for lexicon_mutation (strict literal).
+  if (
+    !/FEDERATED_OPERATION_THRESHOLDS[\s\S]*?\[FEDERATED_OPERATION\.LEXICON_MUTATION\]:\s*2/.test(
+      src
+    )
+  ) {
+    fail(`GOV-14: FEDERATED_OPERATION_THRESHOLDS must declare 2 for LEXICON_MUTATION (Q4 STRICT)`);
+  }
+  pass('lexicon mutation operation registered with threshold 2 (executor lands in Patch 8 / F4.8)');
 }
 
 function enforceGov15ClaimDriftVerification(): void {

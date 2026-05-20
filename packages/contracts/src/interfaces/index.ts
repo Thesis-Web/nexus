@@ -702,6 +702,69 @@ export interface ApproverRegistry {
   register(actorId: Uuid, publicKey: Base64Url, channels: string[]): Promise<void>;
 }
 
+// ─── F4.1 SigningCouncil — federated operation aggregation ────────────────
+// All governance-significant mutations (mode_unlock, policy_bundle_replace,
+// signing_council_change, lexicon_mutation) flow through this council.
+// Each operation requires 2 distinct registered admin signatures (Q4).
+//
+// A SigningRequest is the open envelope; admins add signatures one by one
+// until the threshold is met, at which point the council dispatches to the
+// operation-specific executor. Payloads are immutable after open — any
+// edit forces a new requestId.
+
+export interface SigningCouncilSignature {
+  readonly principalId: NonEmpty;
+  readonly signature: Base64Url;
+  readonly signedAt: IsoTimestamp;
+}
+
+export interface SigningRequest {
+  readonly requestId: NonEmpty;
+  readonly operation: FederatedOperationName;
+  readonly payload: Record<string, unknown>;
+  readonly payloadDigest: Sha256Hex;
+  readonly openedAt: IsoTimestamp;
+  readonly openedBy: NonEmpty;
+  readonly expiresAt: IsoTimestamp;
+  readonly signatures: ReadonlyArray<SigningCouncilSignature>;
+  readonly status: SigningRequestStatusName;
+  readonly dispatchedAt?: IsoTimestamp;
+  readonly denialReason?: NonEmpty;
+}
+
+/** Operation-name string mirror of FederatedOperation (see constants). */
+export type FederatedOperationName =
+  | 'mode_unlock'
+  | 'policy_bundle_replace'
+  | 'signing_council_change'
+  | 'lexicon_mutation';
+
+export type SigningRequestStatusName = 'pending' | 'executed' | 'denied' | 'expired';
+
+/**
+ * Operation-specific dispatcher. Called once the threshold of distinct
+ * admin signatures is met. Throws on failure; the council marks the
+ * request as denied and writes federated_operation_dispatch_failed.
+ */
+export interface SigningCouncilDispatcher {
+  (request: SigningRequest): Promise<void>;
+}
+
+export interface SigningCouncilPort {
+  open(input: {
+    operation: FederatedOperationName;
+    payload: Record<string, unknown>;
+    openedBy: NonEmpty;
+    expiresInSeconds?: number;
+  }): Promise<SigningRequest>;
+  sign(requestId: NonEmpty, principalId: NonEmpty, signature: Base64Url): Promise<SigningRequest>;
+  get(requestId: NonEmpty): Promise<SigningRequest | null>;
+  list(filter?: {
+    status?: SigningRequestStatusName;
+    operation?: FederatedOperationName;
+  }): Promise<readonly SigningRequest[]>;
+}
+
 export interface ConnectorRegistry {
   get(systemType: NonEmpty): Connector | undefined;
   register(connector: Connector): void;
@@ -988,7 +1051,18 @@ export type RunEventType =
   // entry into a concrete mailbox item. Cross-actor data movement
   // audit. Detail: { runId, readerActorId, sourceActorId, sourceMailboxId,
   //                  sourceTaskId, slotId, mailboxItemId, resolvedAt }
-  | 'mailbox_slot_resolved_for_dispatch';
+  | 'mailbox_slot_resolved_for_dispatch'
+  // ── F4.1 SigningCouncil federated operations (Hard Law #10) ───────────
+  // Fired during the open/sign/dispatch lifecycle of a federated mutation
+  // (mode_unlock, policy_bundle_replace, signing_council_change,
+  // lexicon_mutation). All carry the full requestId + operation + opener
+  // principal + signature chain so audit can reconstruct the threshold
+  // chain post hoc. Detail never contains private key material.
+  | 'federated_operation_opened'
+  | 'federated_operation_signature_added'
+  | 'federated_operation_executed'
+  | 'federated_operation_dispatch_failed'
+  | 'federated_operation_expired';
 
 export interface RunLedgerEntry {
   entryId: Uuid;

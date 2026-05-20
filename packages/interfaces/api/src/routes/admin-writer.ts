@@ -24,7 +24,9 @@ import * as path from 'node:path';
 import type { Express, Request, Response } from 'express';
 import type {
   ActorRegistry,
+  Base64Url,
   ElevatedAuthProvider,
+  NonEmpty,
   PrincipalRegistry,
   RunLedgerWriter,
   Uuid,
@@ -932,6 +934,11 @@ export interface AdminWriterRouteDeps {
    * When omitted, mode routes return 501.
    */
   readonly modeSigner?: ModeSigner;
+  /**
+   * F4.1 SigningCouncil port. When provided, the `/workspace/admin/signing/*`
+   * routes are wired; when omitted, those routes return 501.
+   */
+  readonly signingCouncil?: import('@nexus/contracts').SigningCouncilPort;
 }
 
 // ── AMEND §3.6 — ModeSigner port ────────────────────────────────────────────
@@ -2016,6 +2023,152 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       error:
         'unlock_requires_two_distinct_admins — open a SigningCouncil mode_unlock request (Spec F4.1)',
     });
+  });
+
+  // ─── F4.1 SigningCouncil HTTP surface ─────────────────────────────────
+  // POST /workspace/admin/signing/requests              — open a request
+  // POST /workspace/admin/signing/requests/:id/signatures — add a signature
+  // GET  /workspace/admin/signing/requests              — list
+  // GET  /workspace/admin/signing/requests/:id          — get one
+  //
+  // All routes check checkAdminAuth (admin role + elevated session); the
+  // baked SigningCouncilPort handles signature verification, threshold
+  // check, and dispatch on threshold-met.
+  const SigningOpenSchema = z
+    .object({
+      operation: z.enum([
+        'mode_unlock',
+        'policy_bundle_replace',
+        'signing_council_change',
+        'lexicon_mutation',
+      ]),
+      payload: z.record(z.unknown()),
+      expiresInSeconds: z.number().int().positive().optional(),
+    })
+    .strict();
+  const SigningSignSchema = z
+    .object({
+      signature: z.string().min(1),
+    })
+    .strict();
+
+  app.post('/workspace/admin/signing/requests', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    if (!deps.signingCouncil) {
+      res.status(501).json({ ok: false, error: 'SigningCouncil not configured' });
+      return;
+    }
+    const parsed = SigningOpenSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+    try {
+      const opened = await deps.signingCouncil.open({
+        operation: parsed.data.operation,
+        payload: parsed.data.payload,
+        openedBy: auth.principalId as NonEmpty,
+        ...(parsed.data.expiresInSeconds !== undefined
+          ? { expiresInSeconds: parsed.data.expiresInSeconds }
+          : {}),
+      });
+      res.json({ ok: true, data: opened });
+    } catch (err) {
+      const sc = (err as { statusCode?: number }).statusCode ?? 500;
+      res.status(sc).json({ ok: false, error: san(err) });
+    }
+  });
+
+  app.post(
+    '/workspace/admin/signing/requests/:requestId/signatures',
+    async (req: Request, res: Response) => {
+      const auth = await checkAdminAuth(req, res, deps);
+      if (!auth.ok) {
+        res.status(auth.status).json({ ok: false, error: auth.error });
+        return;
+      }
+      if (!deps.signingCouncil) {
+        res.status(501).json({ ok: false, error: 'SigningCouncil not configured' });
+        return;
+      }
+      const parsed = SigningSignSchema.safeParse(req.body);
+      if (!parsed.success) {
+        sendValidationError(res, parsed.error);
+        return;
+      }
+      try {
+        const requestId = String(req.params['requestId']) as NonEmpty;
+        const updated = await deps.signingCouncil.sign(
+          requestId,
+          auth.principalId as NonEmpty,
+          parsed.data.signature as Base64Url
+        );
+        res.json({ ok: true, data: updated });
+      } catch (err) {
+        const sc = (err as { statusCode?: number }).statusCode ?? 500;
+        res.status(sc).json({ ok: false, error: san(err) });
+      }
+    }
+  );
+
+  app.get('/workspace/admin/signing/requests', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    if (!deps.signingCouncil) {
+      res.status(501).json({ ok: false, error: 'SigningCouncil not configured' });
+      return;
+    }
+    try {
+      const status =
+        typeof req.query['status'] === 'string'
+          ? (req.query['status'] as 'pending' | 'executed' | 'denied' | 'expired')
+          : undefined;
+      const operation =
+        typeof req.query['operation'] === 'string'
+          ? (req.query['operation'] as
+              | 'mode_unlock'
+              | 'policy_bundle_replace'
+              | 'signing_council_change'
+              | 'lexicon_mutation')
+          : undefined;
+      const filter: Parameters<typeof deps.signingCouncil.list>[0] = {};
+      if (status !== undefined) filter!.status = status;
+      if (operation !== undefined) filter!.operation = operation;
+      const list = await deps.signingCouncil.list(filter);
+      res.json({ ok: true, data: list });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  app.get('/workspace/admin/signing/requests/:requestId', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    if (!deps.signingCouncil) {
+      res.status(501).json({ ok: false, error: 'SigningCouncil not configured' });
+      return;
+    }
+    try {
+      const requestId = String(req.params['requestId']) as NonEmpty;
+      const r = await deps.signingCouncil.get(requestId);
+      if (!r) {
+        res.status(404).json({ ok: false, error: 'request_not_found' });
+        return;
+      }
+      res.json({ ok: true, data: r });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
   });
 
   app.get('/workspace/admin/setup/mode', async (req: Request, res: Response) => {

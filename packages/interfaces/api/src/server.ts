@@ -369,6 +369,14 @@ export interface ApiDependencies {
   hasAdminSigningKeypair?: () => Promise<boolean>;
   /** Override the keys/ directory (admin-key uploads). Defaults to 'keys/'. */
   keyDirectory?: string;
+
+  // ── F4.1 SigningCouncil — federated mutation aggregator ─────────────────
+  /**
+   * Baked SigningCouncilPort. Plug-in admin-writer routes call into this
+   * port to open requests and add signatures; the port handles signature
+   * verification, threshold checking, and dispatch.
+   */
+  signingCouncil?: import('@nexus/contracts').SigningCouncilPort;
 }
 
 // ── §23.1 createApiServer — DI factory ───────────────────────────────────────
