@@ -1894,13 +1894,62 @@ async function main(): Promise<void> {
   await enforceChatTierPlanInvariant();
   pass('buildChatPlan emits single-node + zero-edges + no-outputContract plans');
 
-  // ── F4.10 GOV-01 — final outcome literal gate ──────────────────────────
-  // Q1 ruling: canonical FinalOutcome vocabulary is longer-form
-  // (executed_successfully / denied_*). Retired-incorrect literals must
-  // not reappear anywhere in source.
+  // ─── F4.19 GOV-* SECTION ────────────────────────────────────────────────
+  // 16 named contract-level gates spanning all 16 outline hard laws.
+  // Strict gates run their full check; PENDING gates pass with a message
+  // pointing at the Phase B patch where their strict implementation lands.
+  // The scaffold (names + report block) exists at every commit so subsequent
+  // patches surface against an executable contract.
+  // -----------------------------------------------------------------------
+
   stepLog('GOV-01 final outcome literal gate');
   enforceGov01FinalOutcomeLiterals();
   pass('retired-incorrect finalOutcome literals absent from source');
+
+  stepLog('GOV-02 unsolicited model tool-call dispatch ban');
+  enforceGov02UnsolicitedToolCallBan();
+
+  stepLog('GOV-03 delegation mint fail-closed');
+  enforceGov03DelegationMintFailClosed();
+
+  stepLog('GOV-04 effective-scope 6-dim intersection');
+  enforceGov04EffectiveScopeIntersection();
+
+  stepLog('GOV-05 NVG payload label propagation');
+  enforceGov05NvgPayloadLabels();
+
+  stepLog('GOV-06 compile no-contract pass-through (multi-item)');
+  enforceGov06CompileMultiItemPassThrough();
+
+  stepLog('GOV-07 compile pass-through digest/provenance');
+  enforceGov07CompilePassThroughDigest();
+
+  stepLog('GOV-08 signed admin mutation envelope');
+  enforceGov08SignedAdminMutation();
+
+  stepLog('GOV-09 enforcing-lock multi-admin');
+  enforceGov09EnforcingLockMultiAdmin();
+
+  stepLog('GOV-10 credential lifecycle fail-closed (no silent no-op)');
+  enforceGov10CredentialLifecycleFailClosed();
+
+  stepLog('GOV-11 orch callback timeout no-kill');
+  enforceGov11OrchCallbackTimeoutNoKill();
+
+  stepLog('GOV-12 OCT mutation single lawful path');
+  enforceGov12OctMutationLawfulPath();
+
+  stepLog('GOV-13 policy OCT-axis evaluator');
+  enforceGov13PolicyOctAxisEvaluator();
+
+  stepLog('GOV-14 lexicon mutation double-admin');
+  enforceGov14LexiconMutationDoubleAdmin();
+
+  stepLog('GOV-15 claim drift verification');
+  enforceGov15ClaimDriftVerification();
+
+  stepLog('GOV-16 resolved relative import law');
+  enforceGov16ResolvedRelativeImports();
 
   // Step 81 (or 86 with PLANNER-LEXICON gates): integration test gate — opt-in.
   // Real-DB integration suite (postgres connector against the dev docker-compose
@@ -1958,9 +2007,15 @@ async function main(): Promise<void> {
 const PLANNER_LEXICON_GATE_COUNT = 5;
 const ADMIN_DASHBOARD_GATE_COUNT = 3;
 const CHAT_TIER_GATE_COUNT = 2;
-// F4.19 will scaffold 16 GOV-* gates total; Patch 1 lands GOV-01 only.
-// Incremented as later patches add their gates.
-const GOV_GATE_COUNT = 1;
+// F4.19 scaffolds 16 GOV-* gates. Strict gates enforce; PENDING gates
+// pass with a message naming the patch that lands strict mode.
+const GOV_GATE_COUNT = 16;
+
+// Helper used by scaffold-only gates so their `pass()` line is visually
+// distinct in CI output. Patch IDs map to §D of the dangerous-mode prompt.
+function passPending(patchId: string, summary: string): void {
+  pass(`PENDING (${patchId}) — ${summary}`);
+}
 
 // ===========================================================================
 // F4.10 GOV-01 — final outcome literal gate
@@ -2013,6 +2068,132 @@ function enforceGov01FinalOutcomeLiterals(): void {
         `Use FINAL_OUTCOME.* constants from @nexus/contracts (Q1 / F4.10).`
     );
   }
+}
+
+// ===========================================================================
+// F4.19 GOV-02 to GOV-16 — scaffolded gates
+// Strict checks land patch-by-patch per the Phase B build order.
+// ===========================================================================
+
+function enforceGov02UnsolicitedToolCallBan(): void {
+  // F4.20 / Patch 13: scripts/nexus-main.ts:1084-1121 (post-inference
+  // normalizer path) must be removed from the production runtime; NVG
+  // return-precheck emits unsolicited_model_tool_call instead.
+  passPending('Patch 13 / F4.20', 'unsolicited tool-call dispatch ban');
+}
+
+function enforceGov03DelegationMintFailClosed(): void {
+  // F4.15 / Patch 12: scripts/nexus-main.ts:1394-1450 must not catch a
+  // mint failure and synthesize a UUID. Mint failures fail closed.
+  passPending('Patch 12 / F4.15', 'delegation mint fail-closed');
+}
+
+function enforceGov04EffectiveScopeIntersection(): void {
+  // F4.15 / Patch 12: DelegationMint applies symmetric intersection
+  // across user ∩ agent ∩ delegation in 6 dimensions per HL #15.
+  passPending('Patch 12 / F4.15', 'effective-scope 6-dim intersection');
+}
+
+function enforceGov05NvgPayloadLabels(): void {
+  // F4.11 / Patch 10: every MailboxItem writer must populate
+  // provenance + dataLabels; NVG classify-and-route handles empty
+  // labels via the §3.3 case split.
+  passPending('Patch 10 / F4.11', 'NVG payload label propagation');
+}
+
+function enforceGov06CompileMultiItemPassThrough(): void {
+  // F4.12 / Patch 14: pass-through compile must support multi-item
+  // bundles; no fall-through to defaultTemplateGenerator when no
+  // template is configured.
+  passPending('Patch 14 / F4.12', 'compile multi-item pass-through');
+}
+
+function enforceGov07CompilePassThroughDigest(): void {
+  // F4.12 / Patch 14: shared verifyMailboxItems module verifies digest
+  // + provenance before artifact assembly on BOTH templated and pass-
+  // through paths.
+  passPending('Patch 14 / F4.12', 'compile pass-through digest/provenance');
+}
+
+function enforceGov08SignedAdminMutation(): void {
+  // F4.13 / Patch 15: every admin-writer route requires
+  // SignedAdminMutation envelope per HL #10.
+  passPending('Patch 15 / F4.13', 'signed admin mutation envelope');
+}
+
+function enforceGov09EnforcingLockMultiAdmin(): void {
+  // F4.17 / Patch 5: minRequired=1 override removed; dashboard unlock
+  // requires ≥2 distinct signatures.
+  passPending('Patch 5 / F4.17', 'enforcing-lock multi-admin');
+}
+
+function enforceGov10CredentialLifecycleFailClosed(): void {
+  // F4.13 / Patch 15: admin-writer paths must not silent-no-op on
+  // missing runLedgerWriter.
+  passPending('Patch 15 / F4.13', 'credential lifecycle fail-closed');
+}
+
+function enforceGov11OrchCallbackTimeoutNoKill(): void {
+  // F4.14 / Patch 18: timeout path at scripts/nexus-main.ts:1564-1601
+  // emits plan_checkback_expired; never authors decision='deny'.
+  passPending('Patch 18 / F4.14', 'orch callback timeout no-kill');
+}
+
+function enforceGov12OctMutationLawfulPath(): void {
+  // F4.5 + F4.16 / Patches 4 + 7: octLevel stripped from
+  // ActorUpdateSchema; only signed assignOct/registration/deregistration
+  // flows mutate OCT.
+  passPending('Patch 4 / F4.16', 'OCT mutation single lawful path');
+}
+
+function enforceGov13PolicyOctAxisEvaluator(): void {
+  // F4.2 / Patch 16: PolicyCondition.octLevels mandatory; Gate 04
+  // reads it.
+  passPending('Patch 16 / F4.2', 'policy OCT-axis evaluator');
+}
+
+function enforceGov14LexiconMutationDoubleAdmin(): void {
+  // F4.1 + F4.8 / Patches 6 + 8: lexicon_mutation operation requires
+  // 2-of-2 distinct admin signatures (Q4 STRICT).
+  passPending('Patch 8 / F4.8', 'lexicon mutation double-admin');
+}
+
+function enforceGov15ClaimDriftVerification(): void {
+  // F4.9 / Patch 9: every NXS/NVG gate wraps inputs in a
+  // ClaimVerificationPort callback; claim_drift_detected emitted on
+  // mismatch.
+  passPending('Patch 9 / F4.9', 'claim drift verification');
+}
+
+function enforceGov16ResolvedRelativeImports(): void {
+  // F4.18 / Patch 2 (already landed): seven-layer import-law gate
+  // (Step 21) is now resolver-aware. GOV-16 asserts the law-exceptions
+  // file exists with a strict shape and that the resolver is exercised
+  // (Step 21 emits the actual violations on failure).
+  const lawExceptionsPath = path.join('tests', 'law-exceptions.json');
+  if (!fs.existsSync(lawExceptionsPath)) {
+    fail(`GOV-16: ${lawExceptionsPath} is required (empty default) per F4.18 §2.3`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(lawExceptionsPath, 'utf-8'));
+  } catch (err) {
+    fail(`GOV-16: ${lawExceptionsPath} is not valid JSON: ${(err as Error).message}`);
+  }
+  const obj = parsed as { exceptions?: unknown };
+  if (!obj || typeof obj !== 'object' || !Array.isArray(obj.exceptions)) {
+    fail(`GOV-16: ${lawExceptionsPath} must have an "exceptions" array (empty default)`);
+  }
+  for (const e of obj.exceptions as Array<Record<string, unknown>>) {
+    for (const field of ['source', 'allowedTarget', 'ratifiedBy', 'expiresAt']) {
+      if (typeof e[field] !== 'string' || (e[field] as string).length === 0) {
+        fail(
+          `GOV-16: ${lawExceptionsPath} entry missing required field '${field}': ${JSON.stringify(e)}`
+        );
+      }
+    }
+  }
+  pass('resolved relative import law (Step 21 enforces; law-exceptions.json valid)');
 }
 
 // ===========================================================================
