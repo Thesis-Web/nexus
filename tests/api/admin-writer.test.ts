@@ -297,6 +297,57 @@ function createMockRunLedgerWriter(): RunLedgerWriter & {
   };
 }
 
+// ─── F4.13 SignedAdminMutation mocks ────────────────────────────────────────
+//
+// The admin-writer wrapper requires four ports: an Ed25519 verifier, a
+// nonce replay store, a server-side signer (for plain-payload UI clients),
+// and a daily-bucket infra run id namespace. The tests below post plain
+// payloads (the wrapper's UI-session path), so the server signer is the
+// active port; the verifier just trusts whatever the signer produced.
+
+import {
+  InMemoryAdminMutationNonceStore,
+  type AdminMutationVerifierPort,
+  type AdminMutationServerSignerPort,
+} from '../../packages/interfaces/api/src/middleware/signed-admin-mutation.js';
+import { InMemoryInfraRunIdNamespace } from '../../packages/core/src/infra/infra-run-id-namespace.js';
+import type { AdminMutationKind, SignedAdminMutation } from '@nexus/contracts';
+
+const passThroughVerifier: AdminMutationVerifierPort = {
+  async verify(envelope: SignedAdminMutation<unknown>) {
+    return {
+      ok: true,
+      opener: envelope.opener,
+      payloadDigest: 'fixture-digest',
+      signatureRef: 'fixture-sigref',
+    };
+  },
+};
+
+function makeFixtureSigner(adminPrincipalId: string): AdminMutationServerSignerPort {
+  return {
+    async sign<TPayload>(args: {
+      opener: NonEmpty;
+      mutationKind: AdminMutationKind;
+      payload: TPayload;
+      issuedAt: string;
+      nonce: NonEmpty;
+    }): Promise<SignedAdminMutation<TPayload>> {
+      // The fixture signer always claims the admin principal so the wrapper's
+      // opener-match check passes. Real production wires this to a closure
+      // that loads keys/admins/<opener>.keypair.json.
+      return {
+        mutationKind: args.mutationKind,
+        payload: args.payload,
+        opener: adminPrincipalId as NonEmpty,
+        issuedAt: args.issuedAt as never,
+        nonce: args.nonce,
+        signature: 'fixture-sig' as never,
+      };
+    },
+  };
+}
+
 // ─── App fixture ────────────────────────────────────────────────────────────
 
 function buildApp(opts: {
@@ -334,6 +385,13 @@ function buildApp(opts: {
     ...(opts.includeSecretWriter !== false ? { secretWriter } : {}),
     ...(opts.includeRunLedgerWriter !== false ? { runLedgerWriter } : {}),
     ...(opts.keyDirectory !== undefined ? { keyDirectory: opts.keyDirectory } : {}),
+    // F4.13 wrapper deps — always wired in for these tests so the existing
+    // plain-payload route assertions continue to hit the production code
+    // path (the wrapper forges an envelope server-side via the signer).
+    infraRunIdNamespace: new InMemoryInfraRunIdNamespace(),
+    adminMutationVerifier: passThroughVerifier,
+    adminMutationNonceStore: new InMemoryAdminMutationNonceStore(),
+    adminMutationServerSigner: makeFixtureSigner(ADMIN_PID),
   });
 
   const start = async (): Promise<{ port: number; server: Server }> =>
@@ -1743,10 +1801,18 @@ describe('admin-writer without actorRegistry', () => {
         }),
         'X-Elevated-Session': VALID_ELEV,
       },
+      // Body must satisfy ActorCreateSchema so the F4.13 wrapper's parsePayload
+      // step passes and the route handler's 501 short-circuit fires. The 501
+      // signal is "actorRegistry not configured"; an invalid-shape body would
+      // 400 at the schema boundary first.
       body: JSON.stringify({
-        actorId: 'x',
+        actorId: '44444444-4444-4444-4444-444444444444',
         actorClass: 'SUPERVISED_AGENT',
-        displayName: 'x',
+        displayName: 'Test Agent',
+        principalId: '55555555-5555-5555-5555-555555555555',
+        environment: 'reference',
+        riskCeiling: 'low',
+        allowedSystems: ['reference-tools'],
       }),
     });
     expect(res.status).toBe(501);
@@ -1916,9 +1982,15 @@ describe('admin-writer secret routes', () => {
     expect(res.status).toBe(400);
   });
 
-  // ── Audit events (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC FLAG-2) ─────────────
+  // ── F4.13 SignedAdminMutation audit pair ─────────────────────────────────
+  //
+  // The legacy `secret_stored` / `secret_removed` events were retired
+  // (P0-024 / spec §3.4); the wrapper writes `admin_mutation_intent` BEFORE
+  // the mutation and `admin_mutation_committed` AFTER on every secret
+  // store/remove. Detail still carries keyName + principal + storage
+  // label — never the value.
 
-  it('POST /secrets emits a secret_stored audit event with no value leakage', async () => {
+  it('POST /secrets emits admin_mutation_intent + admin_mutation_committed with no value leakage', async () => {
     const TEST_VAL = 'sk-audit-do-not-leak-9k4e';
     const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets`, {
       method: 'POST',
@@ -1926,19 +1998,21 @@ describe('admin-writer secret routes', () => {
       body: JSON.stringify({ keyName: 'OPENAI_API_KEY', keyValue: TEST_VAL }),
     });
     expect(res.status).toBe(200);
-    expect(runLedgerWriter._entries).toHaveLength(1);
-    const entry = runLedgerWriter._entries[0]!;
-    expect(entry.eventType).toBe('secret_stored');
-    expect(entry.actorId).toBe(ADMIN_AID);
-    expect(entry.detail['adminOperation']).toBe(true);
-    expect(entry.detail['keyName']).toBe('OPENAI_API_KEY');
-    expect(entry.detail['principalId']).toBe(ADMIN_PID);
-    expect(entry.detail['storageLabel']).toBe('mock://secrets');
-    // The value MUST NOT appear anywhere in the audit entry.
-    expect(JSON.stringify(entry)).not.toContain(TEST_VAL);
+    expect(runLedgerWriter._entries).toHaveLength(2);
+    const intent = runLedgerWriter._entries[0]!;
+    const committed = runLedgerWriter._entries[1]!;
+    expect(intent.eventType).toBe('admin_mutation_intent');
+    expect(intent.detail['mutationKind']).toBe('secret_store');
+    expect(intent.detail['principalId']).toBe(ADMIN_PID);
+    expect(intent.detail['opener']).toBe(ADMIN_PID);
+    expect(committed.eventType).toBe('admin_mutation_committed');
+    expect(committed.detail['mutationKind']).toBe('secret_store');
+    // The value MUST NOT appear anywhere in either audit entry.
+    expect(JSON.stringify(intent)).not.toContain(TEST_VAL);
+    expect(JSON.stringify(committed)).not.toContain(TEST_VAL);
   });
 
-  it('POST /secrets does NOT emit an audit event on validation failure', async () => {
+  it('POST /secrets does NOT emit any audit on validation failure', async () => {
     const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets`, {
       method: 'POST',
       headers: adminHeaders(),
@@ -1948,7 +2022,7 @@ describe('admin-writer secret routes', () => {
     expect(runLedgerWriter._entries).toHaveLength(0);
   });
 
-  it('POST /secrets does NOT emit an audit event on auth failure', async () => {
+  it('POST /secrets does NOT emit any audit on auth failure', async () => {
     const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets`, {
       method: 'POST',
       headers: plainHeaders(),
@@ -1958,24 +2032,27 @@ describe('admin-writer secret routes', () => {
     expect(runLedgerWriter._entries).toHaveLength(0);
   });
 
-  it('DELETE /secrets/:keyName emits a secret_removed audit event', async () => {
+  it('DELETE /secrets/:keyName emits admin_mutation_intent + admin_mutation_committed', async () => {
     secretWriter._values.set('OPENAI_API_KEY', 'sk-x');
     const res = await fetch(
       `http://127.0.0.1:${port}/workspace/admin/setup/secrets/OPENAI_API_KEY`,
       { method: 'DELETE', headers: adminHeaders() }
     );
     expect(res.status).toBe(200);
-    expect(runLedgerWriter._entries).toHaveLength(1);
-    const entry = runLedgerWriter._entries[0]!;
-    expect(entry.eventType).toBe('secret_removed');
-    expect(entry.actorId).toBe(ADMIN_AID);
-    expect(entry.detail['adminOperation']).toBe(true);
-    expect(entry.detail['keyName']).toBe('OPENAI_API_KEY');
-    expect(entry.detail['principalId']).toBe(ADMIN_PID);
+    expect(runLedgerWriter._entries).toHaveLength(2);
+    const intent = runLedgerWriter._entries[0]!;
+    const committed = runLedgerWriter._entries[1]!;
+    expect(intent.eventType).toBe('admin_mutation_intent');
+    expect(intent.detail['mutationKind']).toBe('secret_remove');
+    expect(committed.eventType).toBe('admin_mutation_committed');
+    expect(committed.detail['mutationKind']).toBe('secret_remove');
   });
 
-  it('DELETE /secrets/:keyName does NOT emit audit when no key was removed', async () => {
-    // Key absent — delete is a no-op — no credential state changed, so no audit.
+  it('DELETE /secrets/:keyName still emits the audit pair when no key was removed', async () => {
+    // Under F4.13 the wrapper writes intent+committed regardless of the
+    // handler's removed flag; audit can distinguish no-ops by inspecting the
+    // committed event's `removed` field on the response. The ledger gets the
+    // attempt either way so the operator sees the action surface.
     const res = await fetch(`http://127.0.0.1:${port}/workspace/admin/setup/secrets/MISSING_KEY`, {
       method: 'DELETE',
       headers: adminHeaders(),
@@ -1983,12 +2060,63 @@ describe('admin-writer secret routes', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data.removed).toBe(false);
-    expect(runLedgerWriter._entries).toHaveLength(0);
+    expect(runLedgerWriter._entries).toHaveLength(2);
+    expect(runLedgerWriter._entries[0]!.eventType).toBe('admin_mutation_intent');
+    expect(runLedgerWriter._entries[1]!.eventType).toBe('admin_mutation_committed');
   });
 
-  it('audit ledger failure does NOT roll back a successful key write', async () => {
-    // Local fixture so we can swap in a writer that throws — we want the
-    // request to still succeed (best-effort audit) and the key to be stored.
+  it('SAM-08: POST /secrets without runLedgerWriter → 503; secret not stored (inverts P0-033)', async () => {
+    // F4.13 §3.3 / spec §6 SAM-08 — the legacy P0-033 assertion ("audit
+    // ledger failure does NOT roll back a successful key write") is retired.
+    // Under the wrapper, an unavailable run ledger writer means the mutation
+    // refuses at the intent step (503) and the secret store is NEVER called.
+    // The wire-shape diff: the fixture builds without any runLedgerWriter, and
+    // the wrapper returns DENIAL_CODE.AUDIT_UNAVAILABLE rather than proceeding.
+    const localSecret = createMockSecretWriter();
+    const localApp = express();
+    localApp.use(express.json());
+    localApp.use('/workspace', fakeJwtMiddleware);
+    registerAdminWriterRoutes(localApp, {
+      elevatedAuthProvider: mockElevatedAuth,
+      secretWriter: localSecret,
+      // runLedgerWriter intentionally omitted — exercises the SAM-08 branch.
+      infraRunIdNamespace: new InMemoryInfraRunIdNamespace(),
+      adminMutationVerifier: passThroughVerifier,
+      adminMutationNonceStore: new InMemoryAdminMutationNonceStore(),
+      adminMutationServerSigner: makeFixtureSigner(ADMIN_PID),
+    });
+    const localServer = await new Promise<{ port: number; server: Server }>(resolve => {
+      const s = localApp.listen(0, '127.0.0.1', () => {
+        const a = s.address() as AddressInfo;
+        resolve({ port: a.port, server: s });
+      });
+    });
+    try {
+      const res = await fetch(
+        `http://127.0.0.1:${localServer.port}/workspace/admin/setup/secrets`,
+        {
+          method: 'POST',
+          headers: adminHeaders(),
+          body: JSON.stringify({
+            keyName: 'OPENAI_API_KEY',
+            keyValue: 'sk-must-not-be-stored',
+          }),
+        }
+      );
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as { denialCode: string };
+      expect(body.denialCode).toBe('audit_unavailable');
+      // The secret must NOT be stored — F4.13 §3.4 fail-closed.
+      expect(localSecret._values.get('OPENAI_API_KEY')).toBeUndefined();
+    } finally {
+      await new Promise<void>(resolve => localServer.server.close(() => resolve()));
+    }
+  });
+
+  it('SAM-09: POST /secrets with throwing ledger → 503; secret not stored', async () => {
+    // Spec §6 SAM-09 — ledger writer present but throwing must also
+    // fail-closed. The intent write is the gate; if it throws, the mutation
+    // never runs.
     const localSecret = createMockSecretWriter();
     const throwingLedger: RunLedgerWriter = {
       async writeEvent(): Promise<void> {
@@ -2011,6 +2139,10 @@ describe('admin-writer secret routes', () => {
       elevatedAuthProvider: mockElevatedAuth,
       secretWriter: localSecret,
       runLedgerWriter: throwingLedger,
+      infraRunIdNamespace: new InMemoryInfraRunIdNamespace(),
+      adminMutationVerifier: passThroughVerifier,
+      adminMutationNonceStore: new InMemoryAdminMutationNonceStore(),
+      adminMutationServerSigner: makeFixtureSigner(ADMIN_PID),
     });
     const localServer = await new Promise<{ port: number; server: Server }>(resolve => {
       const s = localApp.listen(0, '127.0.0.1', () => {
@@ -2019,21 +2151,18 @@ describe('admin-writer secret routes', () => {
       });
     });
     try {
-      // Silence the warn() emitted by the audit helper for this single case.
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const res = await fetch(
         `http://127.0.0.1:${localServer.port}/workspace/admin/setup/secrets`,
         {
           method: 'POST',
           headers: adminHeaders(),
-          body: JSON.stringify({ keyName: 'OPENAI_API_KEY', keyValue: 'sk-still-stored' }),
+          body: JSON.stringify({ keyName: 'OPENAI_API_KEY', keyValue: 'sk-fail-closed' }),
         }
       );
-      expect(res.status).toBe(200);
-      expect(localSecret._values.get('OPENAI_API_KEY')).toBe('sk-still-stored');
-      // A warning must have been logged so operators can detect the gap.
-      expect(warnSpy).toHaveBeenCalled();
-      warnSpy.mockRestore();
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as { denialCode: string };
+      expect(body.denialCode).toBe('audit_unavailable');
+      expect(localSecret._values.get('OPENAI_API_KEY')).toBeUndefined();
     } finally {
       await new Promise<void>(resolve => localServer.server.close(() => resolve()));
     }
@@ -2355,6 +2484,11 @@ describe('admin-writer mode signing routes', () => {
     registerAdminWriterRoutes(app, {
       elevatedAuthProvider: mockElevatedAuth,
       modeSigner,
+      runLedgerWriter: createMockRunLedgerWriter(),
+      infraRunIdNamespace: new InMemoryInfraRunIdNamespace(),
+      adminMutationVerifier: passThroughVerifier,
+      adminMutationNonceStore: new InMemoryAdminMutationNonceStore(),
+      adminMutationServerSigner: makeFixtureSigner(ADMIN_PID_LOCAL),
     });
     server = await new Promise<Server>(resolve => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
@@ -2484,7 +2618,14 @@ describe('admin-writer without modeSigner', () => {
     const app = express();
     app.use(express.json());
     app.use('/workspace', fakeJwtMiddleware);
-    registerAdminWriterRoutes(app, { elevatedAuthProvider: mockElevatedAuth });
+    registerAdminWriterRoutes(app, {
+      elevatedAuthProvider: mockElevatedAuth,
+      runLedgerWriter: createMockRunLedgerWriter(),
+      infraRunIdNamespace: new InMemoryInfraRunIdNamespace(),
+      adminMutationVerifier: passThroughVerifier,
+      adminMutationNonceStore: new InMemoryAdminMutationNonceStore(),
+      adminMutationServerSigner: makeFixtureSigner('22222222-2222-2222-2222-222222222222'),
+    });
     server = await new Promise<Server>(resolve => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });

@@ -2349,12 +2349,138 @@ function enforceGov07CompilePassThroughDigest(): void {
 }
 
 function enforceGov08SignedAdminMutation(): void {
-  // F4.13 — every governance-relevant admin-writer mutation must be
-  // wrapped in SignedAdminMutation verification + intent/committed/
-  // failed ledger events. RED until Patch 33 lands the ~20-route sweep
-  // and inverts tests/api/admin-writer.test.ts per P0-033.
-  fail(
-    'GOV-08: SignedAdminMutation envelope not yet enforced at admin-writer mutation routes — F4.13 §3 / Phase B completion HANDOFF §E.1 Patch 33'
+  // F4.13 §6 — SAM-11 static gate. Every governance-relevant admin-writer
+  // mutation route must run through the SignedAdminMutation wrapper. The
+  // wrapper sits in packages/interfaces/api/src/middleware/signed-admin-
+  // mutation.ts and exports `withAdminMutation` + `InMemoryAdminMutationNonceStore`.
+  //
+  // Five invariants enforced:
+  //   1. The middleware module exists and exports `withAdminMutation`.
+  //   2. The middleware exports `InMemoryAdminMutationNonceStore` (the
+  //      reference per-process replay store).
+  //   3. admin-writer.ts imports `withAdminMutation` (route file must
+  //      use the wrapper, not roll its own envelope pre-flight).
+  //   4. Every governance-relevant POST/PUT/DELETE in admin-writer.ts is
+  //      registered through `withAdminMutation(`. The SigningCouncil
+  //      federated paths (/mode/unlock, /signing/requests*) are exempt
+  //      — those carry their own 2-of-2 envelope per Spec F4.1.
+  //   5. Every `mutationKind:` literal that appears at a withAdminMutation
+  //      call site exists as a member of the AdminMutationKind union in
+  //      packages/contracts/src/interfaces/index.ts.
+  const middlewarePath = path.join(
+    'packages',
+    'interfaces',
+    'api',
+    'src',
+    'middleware',
+    'signed-admin-mutation.ts'
+  );
+  if (!fs.existsSync(middlewarePath)) {
+    fail(`GOV-08: ${middlewarePath} not found — F4.13 middleware missing (spec §2.1)`);
+  }
+  const middlewareSrc = fs.readFileSync(middlewarePath, 'utf-8');
+  if (!/\bexport\s+function\s+withAdminMutation\b/.test(middlewareSrc)) {
+    fail(`GOV-08: ${middlewarePath} must export withAdminMutation (F4.13 §3.1)`);
+  }
+  if (!/\bexport\s+class\s+InMemoryAdminMutationNonceStore\b/.test(middlewareSrc)) {
+    fail(
+      `GOV-08: ${middlewarePath} must export InMemoryAdminMutationNonceStore (F4.13 §3.1 replay protection)`
+    );
+  }
+  if (!/eventType:\s*'admin_mutation_intent'/.test(middlewareSrc)) {
+    fail(
+      `GOV-08: ${middlewarePath} must write admin_mutation_intent before the mutation runs (F4.13 §3.1)`
+    );
+  }
+  if (!/eventType:\s*'admin_mutation_committed'/.test(middlewareSrc)) {
+    fail(
+      `GOV-08: ${middlewarePath} must write admin_mutation_committed after success (F4.13 §3.2)`
+    );
+  }
+  if (!/eventType:\s*'admin_mutation_failed'/.test(middlewareSrc)) {
+    fail(
+      `GOV-08: ${middlewarePath} must write admin_mutation_failed on handler failure (F4.13 §3.2)`
+    );
+  }
+  const adminWriterPath = path.join(
+    'packages',
+    'interfaces',
+    'api',
+    'src',
+    'routes',
+    'admin-writer.ts'
+  );
+  const adminWriterSrc = fs.readFileSync(adminWriterPath, 'utf-8');
+  if (!/from\s+['"].*signed-admin-mutation\.js['"]/.test(adminWriterSrc)) {
+    fail(`GOV-08: ${adminWriterPath} must import the SignedAdminMutation wrapper (F4.13 §3.1)`);
+  }
+  if (!/\bwithAdminMutation\s*\(/.test(adminWriterSrc)) {
+    fail(`GOV-08: ${adminWriterPath} must register routes through withAdminMutation( (F4.13 §3.1)`);
+  }
+  // Scan every governance-relevant mutation site. Routes under /signing/*
+  // and /mode/unlock are SigningCouncil federated (Spec F4.1) and exempt.
+  const lines = adminWriterSrc.split(/\r?\n/);
+  const exemptPathFragments: ReadonlyArray<string> = ['/mode/unlock', '/signing/requests'];
+  const mutationLineRegex = /\bapp\.(post|put|delete)\s*\(\s*['"`]([^'"`]+)['"`]/;
+  const wrapperHits = new Set<number>();
+  for (let i = 0; i < lines.length; i++) {
+    if (/\bwithAdminMutation\s*\(/.test(lines[i]!)) wrapperHits.add(i);
+  }
+  const violations: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const match = mutationLineRegex.exec(lines[i]!);
+    if (!match) continue;
+    const routePath = match[2]!;
+    if (exemptPathFragments.some(fragment => routePath.includes(fragment))) continue;
+    // Look forward up to 6 lines for a withAdminMutation invocation. This
+    // covers the common `app.post(PATH,\n  withAdminMutation(deps, {...}),\n);`
+    // formatting plus any single-line variants.
+    let wrapped = false;
+    for (let j = i; j < Math.min(i + 8, lines.length); j++) {
+      if (wrapperHits.has(j)) {
+        wrapped = true;
+        break;
+      }
+    }
+    if (!wrapped) {
+      violations.push(
+        `${adminWriterPath}:${i + 1}: ${match[1]!.toUpperCase()} ${routePath} not wrapped in withAdminMutation`
+      );
+    }
+  }
+  if (violations.length > 0) {
+    fail(
+      `GOV-08: ${violations.length} admin-writer mutation route(s) bypass the SignedAdminMutation wrapper:\n  ${violations.join('\n  ')}`
+    );
+  }
+  // Verify every mutationKind: literal lives in AdminMutationKind union.
+  const contractsPath = path.join('packages', 'contracts', 'src', 'interfaces', 'index.ts');
+  const contractsSrc = fs.readFileSync(contractsPath, 'utf-8');
+  const kindUnionMatch = contractsSrc.match(/export\s+type\s+AdminMutationKind\s*=([\s\S]*?);/);
+  if (!kindUnionMatch) {
+    fail(`GOV-08: AdminMutationKind union not found in ${contractsPath}`);
+  }
+  const kindUnionBody = kindUnionMatch![1]!;
+  const declaredKinds = new Set<string>();
+  const kindLiteralRegex = /'([a-z_]+)'/g;
+  let kindMatch: RegExpExecArray | null;
+  while ((kindMatch = kindLiteralRegex.exec(kindUnionBody)) !== null) {
+    declaredKinds.add(kindMatch[1]!);
+  }
+  const usedKinds = new Set<string>();
+  const usageRegex = /mutationKind:\s*'([a-z_]+)'/g;
+  let usageMatch: RegExpExecArray | null;
+  while ((usageMatch = usageRegex.exec(adminWriterSrc)) !== null) {
+    usedKinds.add(usageMatch[1]!);
+  }
+  const unknownKinds = [...usedKinds].filter(k => !declaredKinds.has(k));
+  if (unknownKinds.length > 0) {
+    fail(
+      `GOV-08: admin-writer uses mutationKind literal(s) not declared in AdminMutationKind union: ${unknownKinds.join(', ')}`
+    );
+  }
+  pass(
+    `signed admin mutation envelope (${usedKinds.size} mutationKinds wired; all routes wrapped)`
   );
 }
 
@@ -2404,13 +2530,79 @@ function enforceGov09EnforcingLockMultiAdmin(): void {
 }
 
 function enforceGov10CredentialLifecycleFailClosed(): void {
-  // F4.13 / Q13 — InfraRunIdNamespace is the baked port for
-  // cross-correlating infra writes; admin-writer routes must use it
-  // (no fabricated UUIDs, no silent no-op on missing ledger writer).
-  // RED until Patch 33 wires it into the admin-writer composition root
-  // alongside the SignedAdminMutation sweep.
-  fail(
-    'GOV-10: InfraRunIdNamespace not yet wired into admin-writer composition; silent-no-op paths persist — F4.13 / Q13 / Phase B completion HANDOFF §E.1 Patch 33'
+  // F4.13 / Q13 §3.3 — admin-writer routes fail-closed when the run
+  // ledger writer is unavailable. The silent no-op pattern
+  // `if (!deps.runLedgerWriter) return;` (P0-024) is retired. The
+  // SignedAdminMutation wrapper enforces this for every wrapped route
+  // via DENIAL_CODE.AUDIT_UNAVAILABLE returning 503.
+  //
+  // Three invariants enforced:
+  //   1. Zero `if (!deps.runLedgerWriter) return;` (or equivalent
+  //      non-throwing short-circuit) anywhere under
+  //      packages/interfaces/api/src/routes/admin-*.ts.
+  //   2. The SignedAdminMutation middleware references
+  //      DENIAL_CODE.AUDIT_UNAVAILABLE.
+  //   3. The middleware file imports InfraRunIdNamespace (the Q13 baked
+  //      port for daily-bucket infra run-id assignment).
+  const adminRouteDir = path.join('packages', 'interfaces', 'api', 'src', 'routes');
+  if (!fs.existsSync(adminRouteDir)) {
+    fail(`GOV-10: ${adminRouteDir} not found`);
+  }
+  const adminFiles = fs
+    .readdirSync(adminRouteDir)
+    .filter(f => f.startsWith('admin-') && f.endsWith('.ts') && !f.endsWith('.test.ts'));
+  const silentNoOpPattern = /if\s*\(\s*!\s*deps\.runLedgerWriter\s*\)\s*\{?\s*return\s*;?\s*\}?/;
+  const violations: string[] = [];
+  for (const file of adminFiles) {
+    const fullPath = path.join(adminRouteDir, file);
+    const src = fs.readFileSync(fullPath, 'utf-8');
+    const lines = src.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      if (silentNoOpPattern.test(lines[i]!)) {
+        violations.push(
+          `${fullPath}:${i + 1}: silent no-op 'if (!deps.runLedgerWriter) return' — F4.13 §3.3 retired`
+        );
+      }
+    }
+  }
+  if (violations.length > 0) {
+    fail(
+      `GOV-10: ${violations.length} silent no-op site(s) remain in admin-* routes:\n  ${violations.join('\n  ')}`
+    );
+  }
+  const middlewarePath = path.join(
+    'packages',
+    'interfaces',
+    'api',
+    'src',
+    'middleware',
+    'signed-admin-mutation.ts'
+  );
+  if (!fs.existsSync(middlewarePath)) {
+    fail(
+      `GOV-10: ${middlewarePath} not found — F4.13 middleware required to enforce audit-unavailable fail-closed`
+    );
+  }
+  const middlewareSrc = fs.readFileSync(middlewarePath, 'utf-8');
+  if (!/DENIAL_CODE\.AUDIT_UNAVAILABLE\b/.test(middlewareSrc)) {
+    fail(`GOV-10: ${middlewarePath} must reference DENIAL_CODE.AUDIT_UNAVAILABLE (F4.13 §3.3)`);
+  }
+  if (!/\bInfraRunIdNamespace\b/.test(middlewareSrc)) {
+    fail(
+      `GOV-10: ${middlewarePath} must wire InfraRunIdNamespace into the wrapper (Q13 daily-bucket assignment)`
+    );
+  }
+  // Verify InMemoryInfraRunIdNamespace exists and the constant is reachable.
+  const infraImplPath = path.join('packages', 'core', 'src', 'infra', 'infra-run-id-namespace.ts');
+  if (!fs.existsSync(infraImplPath)) {
+    fail(`GOV-10: ${infraImplPath} not found — InfraRunIdNamespace impl missing`);
+  }
+  const infraSrc = fs.readFileSync(infraImplPath, 'utf-8');
+  if (!/export\s+class\s+InMemoryInfraRunIdNamespace\b/.test(infraSrc)) {
+    fail(`GOV-10: ${infraImplPath} must export InMemoryInfraRunIdNamespace (Q13 reference impl)`);
+  }
+  pass(
+    `credential lifecycle fail-closed (zero silent no-ops in admin-* routes; AUDIT_UNAVAILABLE wired)`
   );
 }
 

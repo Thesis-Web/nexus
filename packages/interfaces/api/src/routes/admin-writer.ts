@@ -26,6 +26,8 @@ import type {
   ActorRegistry,
   Base64Url,
   ElevatedAuthProvider,
+  InfraRunIdNamespace,
+  ModeConfiguration,
   NonEmpty,
   PrincipalRegistry,
   RunLedgerWriter,
@@ -44,6 +46,13 @@ import {
 import { z } from 'zod';
 import { san } from './shared.js';
 import { checkAdminAuth } from './admin-auth.js';
+import {
+  withAdminMutation,
+  type AdminMutationHandlerOutcome,
+  type AdminMutationNonceStorePort,
+  type AdminMutationServerSignerPort,
+  type AdminMutationVerifierPort,
+} from '../middleware/signed-admin-mutation.js';
 
 // ── CLAUDE-CODE-AUDIT-TIGHTEN-PHASE-AB §2 — Zod boundary validation ─────────
 //
@@ -750,14 +759,24 @@ async function writeAdminPublicKeyFile(filePath: string, publicKey: string): Pro
 }
 
 /**
- * Secret schemas. Hand-rolled checks for keyName format (UPPER_SNAKE_CASE,
- * length, regex) and keyValue length stay below — Zod handles type/shape;
- * the route handler enforces value-shape rules that aren't pure structural.
+ * Secret schemas. keyName format (UPPER_SNAKE_CASE, ≤128 chars) is enforced
+ * at the Zod boundary so F4.13's `withAdminMutation` wrapper rejects the
+ * request at parsePayload (400) — BEFORE writing `admin_mutation_intent`.
+ * The ledger only sees attempted mutations with structurally valid input.
  */
+const SECRET_KEY_NAME_RE = /^[A-Z][A-Z0-9_]*$/;
+const SECRET_MAX_KEY_NAME_LEN = 128;
+const SECRET_MAX_KEY_VALUE_LEN = 8 * 1024;
 const SecretCreateSchema = z
   .object({
-    keyName: z.string().min(1),
-    keyValue: z.string().min(1),
+    keyName: z
+      .string()
+      .min(1)
+      .max(SECRET_MAX_KEY_NAME_LEN)
+      .refine(s => SECRET_KEY_NAME_RE.test(s), {
+        message: 'keyName must be upper-snake-case ([A-Z][A-Z0-9_]*) and ≤128 chars',
+      }),
+    keyValue: z.string().min(1).max(SECRET_MAX_KEY_VALUE_LEN),
   })
   .strict();
 
@@ -771,6 +790,47 @@ function sendValidationError(res: Response, err: z.ZodError): void {
     error: 'Validation failed',
     details: err.issues.map(i => ({ path: i.path.join('.'), message: i.message })),
   });
+}
+
+/**
+ * F4.13 §3.1 — bridge a Zod schema into the `withAdminMutation` parsePayload
+ * signature. Mirrors the wire shape of `sendValidationError` so existing
+ * callers that asserted on the `{ error: 'Validation failed', details }`
+ * response continue to pass after the wrapper merges the failure into a
+ * 400 response.
+ */
+function parsePayloadWithZod<T>(schema: z.ZodType<T>): (body: unknown) =>
+  | { ok: true; data: T }
+  | {
+      ok: false;
+      status: number;
+      error: string;
+      details: ReadonlyArray<{ path: string; message: string }>;
+    } {
+  return body => {
+    const parsed = schema.safeParse(body);
+    if (parsed.success) return { ok: true, data: parsed.data };
+    return {
+      ok: false,
+      status: 400,
+      error: 'Validation failed',
+      details: parsed.error.issues.map(i => ({
+        path: i.path.join('.'),
+        message: i.message,
+      })),
+    };
+  };
+}
+
+/**
+ * F4.13 — translate a thrown error into an AdminMutationHandlerOutcome.
+ * Preserves the `statusCode` convention used by the manifest writer + lock
+ * helpers so existing 423 / 409 / 412 / 404 status codes flow through the
+ * wrapper without remapping.
+ */
+function failureFromError(err: unknown): AdminMutationHandlerOutcome {
+  const statusCode = (err as { statusCode?: number }).statusCode ?? 500;
+  return { kind: 'failed', reason: san(err), statusCode };
 }
 
 /**
@@ -945,6 +1005,36 @@ export interface AdminWriterRouteDeps {
    * omitted, /workspace/admin/oct/assign returns 501.
    */
   readonly octManager?: AdminOctManagerPort;
+  // ── F4.13 SignedAdminMutation enforcement (HL #10) ───────────────────────
+  // The four ports below back the `withAdminMutation` wrapper that gates
+  // every mutation route. Their absence triggers a 503 with denial code
+  // AUDIT_UNAVAILABLE at request time — the wrapper fails closed.
+  /** Q13 baked port — daily-bucket + monotonic-sequence run id namespace. */
+  readonly infraRunIdNamespace?: InfraRunIdNamespace;
+  /** F4.13 §2.1 — Ed25519 verifier for SignedAdminMutation envelopes. */
+  readonly adminMutationVerifier?: AdminMutationVerifierPort;
+  /** F4.13 §3.1 — nonce replay store (per-process in-memory by default). */
+  readonly adminMutationNonceStore?: AdminMutationNonceStorePort;
+  /**
+   * F4.13 §3.1 — server-side signer for UI sessions that post a plain
+   * payload (per feedback_signing_keys_server_side: browser never holds
+   * the admin keypair). The wrapper forges a SignedAdminMutation envelope
+   * from the elevated admin's server-side keypair when the request body
+   * does not carry one.
+   */
+  readonly adminMutationServerSigner?: AdminMutationServerSignerPort;
+  /**
+   * F4.13 §3.5 — current ModeConfiguration loader. The wrapper reads
+   * `nxsMode` to decide whether observe-mode should short-circuit the
+   * mutation. Absent loader → default enforcing (most-strict).
+   */
+  readonly loadModeConfig?: () => Promise<ModeConfiguration>;
+  /**
+   * F4.13 §3.2 — true when the run ledger backend supports transactional
+   * rollback on post-mutation write failure. JsonlRunLedgerWriter is NOT
+   * transactional → false. SQLite-backed variant → true.
+   */
+  readonly runLedgerSupportsTransactionalRollback?: boolean;
 }
 
 /**
@@ -1054,120 +1144,154 @@ function registerManifestCrud<
 >(app: Express, deps: AdminWriterRouteDeps, cfg: ManifestCrudConfig<TCreate, TUpdate>): void {
   const paramName = cfg.paramName ?? cfg.idKey;
 
-  app.post(cfg.basePath, async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    if (!deps.manifestWriter) {
-      res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
-      return;
-    }
-    const parsed = cfg.createSchema.safeParse(req.body);
-    if (!parsed.success) {
-      sendValidationError(res, parsed.error);
-      return;
-    }
-    const lock = acquireLock(cfg.manifestPath, auth.principalId);
-    if (!lock.ok) {
-      res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
-      return;
-    }
-    try {
-      const current = await deps.manifestWriter
-        .readEntries(cfg.manifestPath, cfg.arrayKey)
-        .catch(() => [] as Record<string, unknown>[]);
-      if (cfg.preCreate) await cfg.preCreate(parsed.data, current);
-      const entry = parsed.data as Record<string, unknown>;
-      await deps.manifestWriter.addEntry(cfg.manifestPath, cfg.arrayKey, entry, cfg.idKey);
-      releaseLock(cfg.manifestPath, auth.principalId);
-      res.json({
-        ok: true,
-        data: { [cfg.idKey]: entry[cfg.idKey], requiresRestart: true },
-      });
-    } catch (err) {
-      releaseLock(cfg.manifestPath, auth.principalId);
-      const sc = (err as { statusCode?: number }).statusCode ?? 500;
-      res.status(sc).json({ ok: false, error: san(err) });
-    }
-  });
+  app.post(
+    cfg.basePath,
+    withAdminMutation<TCreate>(deps, {
+      mutationKind: 'manifest_entry_add',
+      parsePayload: parsePayloadWithZod(cfg.createSchema),
+      handler: async (payload, ctx) => {
+        if (!deps.manifestWriter) {
+          return {
+            kind: 'failed',
+            reason: 'Manifest writer not configured',
+            statusCode: 501,
+          };
+        }
+        const lock = acquireLock(cfg.manifestPath, ctx.opener);
+        if (!lock.ok) {
+          return {
+            kind: 'failed',
+            reason: 'Manifest locked by ' + lock.heldBy,
+            statusCode: 423,
+          };
+        }
+        try {
+          const current = await deps
+            .manifestWriter!.readEntries(cfg.manifestPath, cfg.arrayKey)
+            .catch(() => [] as Record<string, unknown>[]);
+          if (cfg.preCreate) await cfg.preCreate(payload, current);
+          const entry = payload as Record<string, unknown>;
+          await deps.manifestWriter!.addEntry(cfg.manifestPath, cfg.arrayKey, entry, cfg.idKey);
+          releaseLock(cfg.manifestPath, ctx.opener);
+          return {
+            kind: 'ok',
+            result: { [cfg.idKey]: entry[cfg.idKey], requiresRestart: true },
+          };
+        } catch (err) {
+          releaseLock(cfg.manifestPath, ctx.opener);
+          return failureFromError(err);
+        }
+      },
+    })
+  );
 
-  app.put(`${cfg.basePath}/:${paramName}`, async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    if (!deps.manifestWriter) {
-      res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
-      return;
-    }
-    const parsed = cfg.updateSchema.safeParse(req.body);
-    if (!parsed.success) {
-      sendValidationError(res, parsed.error);
-      return;
-    }
-    const lock = acquireLock(cfg.manifestPath, auth.principalId);
-    if (!lock.ok) {
-      res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
-      return;
-    }
-    try {
-      const id = String(req.params[paramName]);
-      const current = await deps.manifestWriter
-        .readEntries(cfg.manifestPath, cfg.arrayKey)
-        .catch(() => [] as Record<string, unknown>[]);
-      if (cfg.preUpdate) await cfg.preUpdate(id, parsed.data, current);
-      await deps.manifestWriter.updateEntry(
-        cfg.manifestPath,
-        cfg.arrayKey,
-        id,
-        parsed.data,
-        cfg.idKey
-      );
-      releaseLock(cfg.manifestPath, auth.principalId);
-      res.json({ ok: true, data: { [cfg.idKey]: id, requiresRestart: true } });
-    } catch (err) {
-      releaseLock(cfg.manifestPath, auth.principalId);
-      const sc = (err as { statusCode?: number }).statusCode ?? 500;
-      res.status(sc).json({ ok: false, error: san(err) });
-    }
-  });
+  app.put(
+    `${cfg.basePath}/:${paramName}`,
+    withAdminMutation<TUpdate>(deps, {
+      mutationKind: 'manifest_entry_update',
+      parsePayload: parsePayloadWithZod(cfg.updateSchema),
+      handler: async (payload, ctx) => {
+        if (!deps.manifestWriter) {
+          return {
+            kind: 'failed',
+            reason: 'Manifest writer not configured',
+            statusCode: 501,
+          };
+        }
+        const lock = acquireLock(cfg.manifestPath, ctx.opener);
+        if (!lock.ok) {
+          return {
+            kind: 'failed',
+            reason: 'Manifest locked by ' + lock.heldBy,
+            statusCode: 423,
+          };
+        }
+        try {
+          // The wrapper does not surface req.params, so the route handler
+          // reads the id from the raw request via a stash inside the
+          // outcome path. Express attaches params to the underlying req
+          // object; the wrapper's parsePayload also receives req.body
+          // only. We recover the path id through res.req.params here.
+          // (See res.req in Express's typings — bidirectional reference.)
+          const id = String(ctx.req.params?.[paramName] ?? '');
+          if (!id) {
+            return {
+              kind: 'failed',
+              reason: `missing path parameter ${paramName}`,
+              statusCode: 400,
+            };
+          }
+          const current = await deps
+            .manifestWriter!.readEntries(cfg.manifestPath, cfg.arrayKey)
+            .catch(() => [] as Record<string, unknown>[]);
+          if (cfg.preUpdate) await cfg.preUpdate(id, payload, current);
+          await deps.manifestWriter!.updateEntry(
+            cfg.manifestPath,
+            cfg.arrayKey,
+            id,
+            payload,
+            cfg.idKey
+          );
+          releaseLock(cfg.manifestPath, ctx.opener);
+          return { kind: 'ok', result: { [cfg.idKey]: id, requiresRestart: true } };
+        } catch (err) {
+          releaseLock(cfg.manifestPath, ctx.opener);
+          return failureFromError(err);
+        }
+      },
+    })
+  );
 
-  app.delete(`${cfg.basePath}/:${paramName}`, async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    if (!deps.manifestWriter) {
-      res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
-      return;
-    }
-    const lock = acquireLock(cfg.manifestPath, auth.principalId);
-    if (!lock.ok) {
-      res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
-      return;
-    }
-    try {
-      const id = String(req.params[paramName]);
-      const current = await deps.manifestWriter
-        .readEntries(cfg.manifestPath, cfg.arrayKey)
-        .catch(() => [] as Record<string, unknown>[]);
-      if (cfg.preDelete) await cfg.preDelete(id, current);
-      await deps.manifestWriter.removeEntry(cfg.manifestPath, cfg.arrayKey, id, cfg.idKey);
-      releaseLock(cfg.manifestPath, auth.principalId);
-      res.json({
-        ok: true,
-        data: { [cfg.idKey]: id, removed: true, requiresRestart: true },
-      });
-    } catch (err) {
-      releaseLock(cfg.manifestPath, auth.principalId);
-      const sc = (err as { statusCode?: number }).statusCode ?? 500;
-      res.status(sc).json({ ok: false, error: san(err) });
-    }
-  });
+  app.delete(
+    `${cfg.basePath}/:${paramName}`,
+    withAdminMutation<TUpdate>(deps, {
+      mutationKind: 'manifest_entry_remove',
+      // DELETE has no body payload — the wrapper still requires a
+      // parsePayload (so the same envelope path applies); pass-through
+      // returns an empty marker object.
+      parsePayload: () => ({ ok: true, data: {} as TUpdate }),
+      handler: async (_payload, ctx) => {
+        if (!deps.manifestWriter) {
+          return {
+            kind: 'failed',
+            reason: 'Manifest writer not configured',
+            statusCode: 501,
+          };
+        }
+        const lock = acquireLock(cfg.manifestPath, ctx.opener);
+        if (!lock.ok) {
+          return {
+            kind: 'failed',
+            reason: 'Manifest locked by ' + lock.heldBy,
+            statusCode: 423,
+          };
+        }
+        try {
+          const id = String(ctx.req.params?.[paramName] ?? '');
+          if (!id) {
+            return {
+              kind: 'failed',
+              reason: `missing path parameter ${paramName}`,
+              statusCode: 400,
+            };
+          }
+          const current = await deps
+            .manifestWriter!.readEntries(cfg.manifestPath, cfg.arrayKey)
+            .catch(() => [] as Record<string, unknown>[]);
+          if (cfg.preDelete) await cfg.preDelete(id, current);
+          await deps.manifestWriter!.removeEntry(cfg.manifestPath, cfg.arrayKey, id, cfg.idKey);
+          releaseLock(cfg.manifestPath, ctx.opener);
+          return {
+            kind: 'ok',
+            result: { [cfg.idKey]: id, removed: true, requiresRestart: true },
+          };
+        } catch (err) {
+          releaseLock(cfg.manifestPath, ctx.opener);
+          return failureFromError(err);
+        }
+      },
+    })
+  );
 }
 
 /**
@@ -1205,389 +1329,348 @@ async function probeEndpointHealth(url: string): Promise<boolean> {
   }
 }
 
-/**
- * Emit a credential-lifecycle audit entry to the run ledger.
- *
- * CLAUDE-CODE-SECRET-MANAGEMENT-SPEC §"WHAT'S FORBIDDEN":
- *   - detail.keyName is the ONLY identity field — never the value, never a
- *     hash, never a length, never a prefix.
- *   - actorId + principalId capture WHO took the action (admin auth chain).
- *   - storageLabel captures WHICH backend (file vs vault in production).
- *   - adminOperation: true matches the templates.ts convention so audit
- *     consumers can filter admin-lifecycle entries from run-scoped activity.
- *
- * Best-effort: a ledger backend failure must not roll back a successful
- * key write/delete (the credential state on disk has already changed).
- * We log a warning so missing audit entries are visible to operators, who
- * can detect them via gap-detection on the secret_stored / secret_removed
- * counters.
- *
- * No runLedgerWriter wired → silent no-op. Production should treat that
- * as a misconfiguration; reference deployments may legitimately omit it.
- */
-async function emitSecretAuditEvent(
-  deps: AdminWriterRouteDeps,
-  eventType: 'secret_stored' | 'secret_removed',
-  detail: {
-    keyName: string;
-    actorId: string;
-    principalId: string;
-    storageLabel: string;
-  }
-): Promise<void> {
-  if (!deps.runLedgerWriter) return;
-  try {
-    await deps.runLedgerWriter.writeEvent({
-      runId: randomUUID() as Uuid,
-      eventType,
-      timestamp: nowIso(),
-      actorId: detail.actorId as Uuid,
-      detail: {
-        adminOperation: true,
-        keyName: detail.keyName,
-        principalId: detail.principalId,
-        storageLabel: detail.storageLabel,
-      },
-    });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[admin-writer] failed to emit ${eventType} audit event for key ${detail.keyName}: ${
-        err instanceof Error ? err.message : String(err)
-      }`
-    );
-  }
-}
+// F4.13 §3.4 / P0-024 — the legacy `emitSecretAuditEvent` helper was retired
+// when the SignedAdminMutation wrapper became the sole audit path for
+// credential-lifecycle mutations. The wrapper emits admin_mutation_intent +
+// admin_mutation_committed (or _failed) around every secret_store /
+// secret_remove call and FAILS CLOSED with DENIAL_CODE.AUDIT_UNAVAILABLE
+// when the run ledger writer is unavailable — no silent no-op, no
+// best-effort console.warn, no ledger-gap that operators have to detect
+// out-of-band.
 
 export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDeps): void {
   // ═══ SURFACE 1: Model Endpoints (YAML manifest) ═══
-  app.post('/workspace/admin/setup/endpoints', async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    if (!deps.manifestWriter) {
-      res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
-      return;
-    }
-    // CLAUDE-CODE-AUDIT-TIGHTEN-PHASE-AB §2 — validate body BEFORE
-    // acquiring the manifest lock so a malformed POST doesn't even
-    // reserve the file.
-    const parsed = EndpointCreateSchema.safeParse(req.body);
-    if (!parsed.success) {
-      sendValidationError(res, parsed.error);
-      return;
-    }
-    const lock = acquireLock(MANIFEST_ENDPOINTS, auth.principalId);
-    if (!lock.ok) {
-      res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
-      return;
-    }
-    try {
-      const entry: Record<string, unknown> = {
-        ...parsed.data,
-        enabled: parsed.data.enabled ?? true,
-        auth: parsed.data.auth ?? { kind: 'none' },
-      };
-      await deps.manifestWriter.addEntry(MANIFEST_ENDPOINTS, 'endpoints', entry, 'endpointId');
-      const healthy = await probeEndpointHealth(parsed.data.url);
-      releaseLock(MANIFEST_ENDPOINTS, auth.principalId);
-      res.json({
-        ok: true,
-        data: { endpointId: parsed.data.endpointId, healthy, requiresRestart: true },
-      });
-    } catch (err) {
-      releaseLock(MANIFEST_ENDPOINTS, auth.principalId);
-      const sc = (err as { statusCode?: number }).statusCode ?? 500;
-      res.status(sc).json({ ok: false, error: san(err) });
-    }
-  });
+  app.post(
+    '/workspace/admin/setup/endpoints',
+    withAdminMutation<z.infer<typeof EndpointCreateSchema>>(deps, {
+      mutationKind: 'manifest_entry_add',
+      parsePayload: parsePayloadWithZod(EndpointCreateSchema),
+      handler: async (payload, ctx) => {
+        if (!deps.manifestWriter) {
+          return { kind: 'failed', reason: 'Manifest writer not configured', statusCode: 501 };
+        }
+        const lock = acquireLock(MANIFEST_ENDPOINTS, ctx.opener);
+        if (!lock.ok) {
+          return {
+            kind: 'failed',
+            reason: 'Manifest locked by ' + lock.heldBy,
+            statusCode: 423,
+          };
+        }
+        try {
+          const entry: Record<string, unknown> = {
+            ...payload,
+            enabled: payload.enabled ?? true,
+            auth: payload.auth ?? { kind: 'none' },
+          };
+          await deps.manifestWriter.addEntry(MANIFEST_ENDPOINTS, 'endpoints', entry, 'endpointId');
+          const healthy = await probeEndpointHealth(payload.url);
+          releaseLock(MANIFEST_ENDPOINTS, ctx.opener);
+          return {
+            kind: 'ok',
+            result: { endpointId: payload.endpointId, healthy, requiresRestart: true },
+          };
+        } catch (err) {
+          releaseLock(MANIFEST_ENDPOINTS, ctx.opener);
+          return failureFromError(err);
+        }
+      },
+    })
+  );
 
-  app.put('/workspace/admin/setup/endpoints/:endpointId', async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    if (!deps.manifestWriter) {
-      res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
-      return;
-    }
-    const parsed = EndpointUpdateSchema.safeParse(req.body);
-    if (!parsed.success) {
-      sendValidationError(res, parsed.error);
-      return;
-    }
-    const lock = acquireLock(MANIFEST_ENDPOINTS, auth.principalId);
-    if (!lock.ok) {
-      res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
-      return;
-    }
-    try {
-      const eid = String(req.params['endpointId']);
-      const entries = await deps.manifestWriter.updateEntry(
-        MANIFEST_ENDPOINTS,
-        'endpoints',
-        eid,
-        parsed.data,
-        'endpointId'
-      );
-      const updated = entries.find(e => e['endpointId'] === eid);
-      const healthy = updated?.['url']
-        ? await probeEndpointHealth(String(updated['url']))
-        : undefined;
-      releaseLock(MANIFEST_ENDPOINTS, auth.principalId);
-      res.json({ ok: true, data: { endpointId: eid, healthy, requiresRestart: true } });
-    } catch (err) {
-      releaseLock(MANIFEST_ENDPOINTS, auth.principalId);
-      const sc = (err as { statusCode?: number }).statusCode ?? 500;
-      res.status(sc).json({ ok: false, error: san(err) });
-    }
-  });
+  app.put(
+    '/workspace/admin/setup/endpoints/:endpointId',
+    withAdminMutation<z.infer<typeof EndpointUpdateSchema>>(deps, {
+      mutationKind: 'manifest_entry_update',
+      parsePayload: parsePayloadWithZod(EndpointUpdateSchema),
+      handler: async (payload, ctx) => {
+        if (!deps.manifestWriter) {
+          return { kind: 'failed', reason: 'Manifest writer not configured', statusCode: 501 };
+        }
+        const lock = acquireLock(MANIFEST_ENDPOINTS, ctx.opener);
+        if (!lock.ok) {
+          return {
+            kind: 'failed',
+            reason: 'Manifest locked by ' + lock.heldBy,
+            statusCode: 423,
+          };
+        }
+        try {
+          const eid = String(ctx.req.params['endpointId']);
+          const entries = await deps.manifestWriter.updateEntry(
+            MANIFEST_ENDPOINTS,
+            'endpoints',
+            eid,
+            payload,
+            'endpointId'
+          );
+          const updated = entries.find(e => e['endpointId'] === eid);
+          const healthy = updated?.['url']
+            ? await probeEndpointHealth(String(updated['url']))
+            : undefined;
+          releaseLock(MANIFEST_ENDPOINTS, ctx.opener);
+          return {
+            kind: 'ok',
+            result: { endpointId: eid, healthy, requiresRestart: true },
+          };
+        } catch (err) {
+          releaseLock(MANIFEST_ENDPOINTS, ctx.opener);
+          return failureFromError(err);
+        }
+      },
+    })
+  );
 
   app.delete(
     '/workspace/admin/setup/endpoints/:endpointId',
-    async (req: Request, res: Response) => {
-      const auth = await checkAdminAuth(req, res, deps);
-      if (!auth.ok) {
-        res.status(auth.status).json({ ok: false, error: auth.error });
-        return;
-      }
-      if (!deps.manifestWriter) {
-        res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
-        return;
-      }
-      const lock = acquireLock(MANIFEST_ENDPOINTS, auth.principalId);
-      if (!lock.ok) {
-        res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
-        return;
-      }
-      try {
-        const eid = String(req.params['endpointId']);
-        await deps.manifestWriter.removeEntry(MANIFEST_ENDPOINTS, 'endpoints', eid, 'endpointId');
-        releaseLock(MANIFEST_ENDPOINTS, auth.principalId);
-        res.json({ ok: true, data: { endpointId: eid, removed: true, requiresRestart: true } });
-      } catch (err) {
-        releaseLock(MANIFEST_ENDPOINTS, auth.principalId);
-        const sc = (err as { statusCode?: number }).statusCode ?? 500;
-        res.status(sc).json({ ok: false, error: san(err) });
-      }
-    }
+    withAdminMutation<Record<string, never>>(deps, {
+      mutationKind: 'manifest_entry_remove',
+      parsePayload: () => ({ ok: true, data: {} as Record<string, never> }),
+      handler: async (_payload, ctx) => {
+        if (!deps.manifestWriter) {
+          return { kind: 'failed', reason: 'Manifest writer not configured', statusCode: 501 };
+        }
+        const lock = acquireLock(MANIFEST_ENDPOINTS, ctx.opener);
+        if (!lock.ok) {
+          return {
+            kind: 'failed',
+            reason: 'Manifest locked by ' + lock.heldBy,
+            statusCode: 423,
+          };
+        }
+        try {
+          const eid = String(ctx.req.params['endpointId']);
+          await deps.manifestWriter.removeEntry(MANIFEST_ENDPOINTS, 'endpoints', eid, 'endpointId');
+          releaseLock(MANIFEST_ENDPOINTS, ctx.opener);
+          return {
+            kind: 'ok',
+            result: { endpointId: eid, removed: true, requiresRestart: true },
+          };
+        } catch (err) {
+          releaseLock(MANIFEST_ENDPOINTS, ctx.opener);
+          return failureFromError(err);
+        }
+      },
+    })
   );
 
   // ═══ SURFACE 2: Actors & Agents (SQLite — immediate) ═══
-  app.post('/workspace/admin/setup/actors', async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    if (!deps.actorRegistry) {
-      res.status(501).json({ ok: false, error: 'Actor registry not configured' });
-      return;
-    }
-    const parsed = ActorCreateSchema.safeParse(req.body);
-    if (!parsed.success) {
-      sendValidationError(res, parsed.error);
-      return;
-    }
-    try {
-      // Strip undefined optional fields before handing to the registry —
-      // it shapes its own typed Actor record from the input. The cast
-      // through `unknown` is the documented bridge between the schema's
-      // structural type and the registry's nominal Actor type; runtime
-      // validation in `register` is the authoritative gate.
-      const actor: Record<string, unknown> = {
-        ...omitUndefined(parsed.data),
-        enabled: parsed.data.enabled ?? true,
-        registeredAt: parsed.data.registeredAt ?? nowIso(),
-      };
-      await deps.actorRegistry.register(
-        actor as unknown as Parameters<typeof deps.actorRegistry.register>[0]
-      );
-      res.json({ ok: true, data: { actorId: parsed.data.actorId, requiresRestart: false } });
-    } catch (err) {
-      res.status(500).json({ ok: false, error: san(err) });
-    }
-  });
+  app.post(
+    '/workspace/admin/setup/actors',
+    withAdminMutation<z.infer<typeof ActorCreateSchema>>(deps, {
+      mutationKind: 'actor_register',
+      parsePayload: parsePayloadWithZod(ActorCreateSchema),
+      handler: async (payload, _ctx) => {
+        if (!deps.actorRegistry) {
+          return { kind: 'failed', reason: 'Actor registry not configured', statusCode: 501 };
+        }
+        try {
+          // Strip undefined optional fields before handing to the registry —
+          // it shapes its own typed Actor record from the input. The cast
+          // through `unknown` is the documented bridge between the schema's
+          // structural type and the registry's nominal Actor type; runtime
+          // validation in `register` is the authoritative gate.
+          const actor: Record<string, unknown> = {
+            ...omitUndefined(payload),
+            enabled: payload.enabled ?? true,
+            registeredAt: payload.registeredAt ?? nowIso(),
+          };
+          await deps.actorRegistry.register(
+            actor as unknown as Parameters<typeof deps.actorRegistry.register>[0]
+          );
+          return {
+            kind: 'ok',
+            result: { actorId: payload.actorId, requiresRestart: false },
+          };
+        } catch (err) {
+          return failureFromError(err);
+        }
+      },
+    })
+  );
 
-  app.put('/workspace/admin/setup/actors/:actorId', async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    if (!deps.actorRegistry) {
-      res.status(501).json({ ok: false, error: 'Actor registry not configured' });
-      return;
-    }
-    const parsed = ActorUpdateSchema.safeParse(req.body);
-    if (!parsed.success) {
-      sendValidationError(res, parsed.error);
-      return;
-    }
-    try {
-      const actorId = String(req.params['actorId']);
-      const existing = await deps.actorRegistry.get(actorId as Uuid);
-      if (!existing) {
-        res.status(404).json({ ok: false, error: 'Actor ' + actorId + ' not found' });
-        return;
-      }
-      const updated = {
-        ...existing,
-        ...omitUndefined(parsed.data),
-        actorId: existing.actorId,
-      };
-      await deps.actorRegistry.update(
-        actorId as Uuid,
-        updated as unknown as Parameters<typeof deps.actorRegistry.update>[1]
-      );
-      res.json({ ok: true, data: { actorId, requiresRestart: false } });
-    } catch (err) {
-      res.status(500).json({ ok: false, error: san(err) });
-    }
-  });
+  app.put(
+    '/workspace/admin/setup/actors/:actorId',
+    withAdminMutation<z.infer<typeof ActorUpdateSchema>>(deps, {
+      mutationKind: 'agent_config_update',
+      parsePayload: parsePayloadWithZod(ActorUpdateSchema),
+      handler: async (payload, ctx) => {
+        if (!deps.actorRegistry) {
+          return { kind: 'failed', reason: 'Actor registry not configured', statusCode: 501 };
+        }
+        try {
+          const actorId = String(ctx.req.params['actorId']);
+          const existing = await deps.actorRegistry.get(actorId as Uuid);
+          if (!existing) {
+            return {
+              kind: 'failed',
+              reason: 'Actor ' + actorId + ' not found',
+              statusCode: 404,
+            };
+          }
+          const updated = {
+            ...existing,
+            ...omitUndefined(payload),
+            actorId: existing.actorId,
+          };
+          await deps.actorRegistry.update(
+            actorId as Uuid,
+            updated as unknown as Parameters<typeof deps.actorRegistry.update>[1]
+          );
+          return { kind: 'ok', result: { actorId, requiresRestart: false } };
+        } catch (err) {
+          return failureFromError(err);
+        }
+      },
+    })
+  );
 
-  app.delete('/workspace/admin/setup/actors/:actorId', async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    if (!deps.actorRegistry) {
-      res.status(501).json({ ok: false, error: 'Actor registry not configured' });
-      return;
-    }
-    try {
-      const actorId = String(req.params['actorId']);
-      const existing = await deps.actorRegistry.get(actorId as Uuid);
-      if (!existing) {
-        res.status(404).json({ ok: false, error: 'Actor ' + actorId + ' not found' });
-        return;
-      }
-      await deps.actorRegistry.delete(actorId as Uuid);
-      res.json({ ok: true, data: { actorId, deleted: true, requiresRestart: false } });
-    } catch (err) {
-      res.status(500).json({ ok: false, error: san(err) });
-    }
-  });
+  app.delete(
+    '/workspace/admin/setup/actors/:actorId',
+    withAdminMutation<Record<string, never>>(deps, {
+      mutationKind: 'actor_deregister',
+      parsePayload: () => ({ ok: true, data: {} as Record<string, never> }),
+      handler: async (_payload, ctx) => {
+        if (!deps.actorRegistry) {
+          return { kind: 'failed', reason: 'Actor registry not configured', statusCode: 501 };
+        }
+        try {
+          const actorId = String(ctx.req.params['actorId']);
+          const existing = await deps.actorRegistry.get(actorId as Uuid);
+          if (!existing) {
+            return {
+              kind: 'failed',
+              reason: 'Actor ' + actorId + ' not found',
+              statusCode: 404,
+            };
+          }
+          await deps.actorRegistry.delete(actorId as Uuid);
+          return {
+            kind: 'ok',
+            result: { actorId, deleted: true, requiresRestart: false },
+          };
+        } catch (err) {
+          return failureFromError(err);
+        }
+      },
+    })
+  );
 
   // ═══ SURFACE 3: Connectors (YAML manifest) ═══
-  app.post('/workspace/admin/setup/connectors', async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    if (!deps.manifestWriter) {
-      res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
-      return;
-    }
-    // CLAUDE-CODE-AUDIT-TIGHTEN-PHASE-AB §2 — Zod boundary. Schema rejects
-    // wildcards in allowedSystems via the `concreteSystem` refinement, so
-    // the previous `if (!entry.allowedSystems) entry.allowedSystems = ['*']`
-    // server-side default is gone — wildcards never enter the manifest.
-    const parsed = ConnectorCreateSchema.safeParse(req.body);
-    if (!parsed.success) {
-      sendValidationError(res, parsed.error);
-      return;
-    }
-    const lock = acquireLock(MANIFEST_CONNECTORS, auth.principalId);
-    if (!lock.ok) {
-      res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
-      return;
-    }
-    try {
-      const entry: Record<string, unknown> = {
-        ...parsed.data,
-        enabled: parsed.data.enabled ?? true,
-        configuration: parsed.data.configuration ?? {},
-      };
-      await deps.manifestWriter.addEntry(MANIFEST_CONNECTORS, 'connectors', entry, 'connectorId');
-      releaseLock(MANIFEST_CONNECTORS, auth.principalId);
-      res.json({
-        ok: true,
-        data: { connectorId: parsed.data.connectorId, requiresRestart: true },
-      });
-    } catch (err) {
-      releaseLock(MANIFEST_CONNECTORS, auth.principalId);
-      const sc = (err as { statusCode?: number }).statusCode ?? 500;
-      res.status(sc).json({ ok: false, error: san(err) });
-    }
-  });
+  app.post(
+    '/workspace/admin/setup/connectors',
+    withAdminMutation<z.infer<typeof ConnectorCreateSchema>>(deps, {
+      mutationKind: 'connector_register',
+      parsePayload: parsePayloadWithZod(ConnectorCreateSchema),
+      handler: async (payload, ctx) => {
+        if (!deps.manifestWriter) {
+          return { kind: 'failed', reason: 'Manifest writer not configured', statusCode: 501 };
+        }
+        const lock = acquireLock(MANIFEST_CONNECTORS, ctx.opener);
+        if (!lock.ok) {
+          return {
+            kind: 'failed',
+            reason: 'Manifest locked by ' + lock.heldBy,
+            statusCode: 423,
+          };
+        }
+        try {
+          const entry: Record<string, unknown> = {
+            ...payload,
+            enabled: payload.enabled ?? true,
+            configuration: payload.configuration ?? {},
+          };
+          await deps.manifestWriter.addEntry(
+            MANIFEST_CONNECTORS,
+            'connectors',
+            entry,
+            'connectorId'
+          );
+          releaseLock(MANIFEST_CONNECTORS, ctx.opener);
+          return {
+            kind: 'ok',
+            result: { connectorId: payload.connectorId, requiresRestart: true },
+          };
+        } catch (err) {
+          releaseLock(MANIFEST_CONNECTORS, ctx.opener);
+          return failureFromError(err);
+        }
+      },
+    })
+  );
 
-  app.put('/workspace/admin/setup/connectors/:connectorId', async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    if (!deps.manifestWriter) {
-      res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
-      return;
-    }
-    const parsed = ConnectorUpdateSchema.safeParse(req.body);
-    if (!parsed.success) {
-      sendValidationError(res, parsed.error);
-      return;
-    }
-    const lock = acquireLock(MANIFEST_CONNECTORS, auth.principalId);
-    if (!lock.ok) {
-      res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
-      return;
-    }
-    try {
-      const cid = String(req.params['connectorId']);
-      await deps.manifestWriter.updateEntry(
-        MANIFEST_CONNECTORS,
-        'connectors',
-        cid,
-        parsed.data,
-        'connectorId'
-      );
-      releaseLock(MANIFEST_CONNECTORS, auth.principalId);
-      res.json({ ok: true, data: { connectorId: cid, requiresRestart: true } });
-    } catch (err) {
-      releaseLock(MANIFEST_CONNECTORS, auth.principalId);
-      const sc = (err as { statusCode?: number }).statusCode ?? 500;
-      res.status(sc).json({ ok: false, error: san(err) });
-    }
-  });
+  app.put(
+    '/workspace/admin/setup/connectors/:connectorId',
+    withAdminMutation<z.infer<typeof ConnectorUpdateSchema>>(deps, {
+      mutationKind: 'manifest_entry_update',
+      parsePayload: parsePayloadWithZod(ConnectorUpdateSchema),
+      handler: async (payload, ctx) => {
+        if (!deps.manifestWriter) {
+          return { kind: 'failed', reason: 'Manifest writer not configured', statusCode: 501 };
+        }
+        const lock = acquireLock(MANIFEST_CONNECTORS, ctx.opener);
+        if (!lock.ok) {
+          return {
+            kind: 'failed',
+            reason: 'Manifest locked by ' + lock.heldBy,
+            statusCode: 423,
+          };
+        }
+        try {
+          const cid = String(ctx.req.params['connectorId']);
+          await deps.manifestWriter.updateEntry(
+            MANIFEST_CONNECTORS,
+            'connectors',
+            cid,
+            payload,
+            'connectorId'
+          );
+          releaseLock(MANIFEST_CONNECTORS, ctx.opener);
+          return { kind: 'ok', result: { connectorId: cid, requiresRestart: true } };
+        } catch (err) {
+          releaseLock(MANIFEST_CONNECTORS, ctx.opener);
+          return failureFromError(err);
+        }
+      },
+    })
+  );
 
   app.delete(
     '/workspace/admin/setup/connectors/:connectorId',
-    async (req: Request, res: Response) => {
-      const auth = await checkAdminAuth(req, res, deps);
-      if (!auth.ok) {
-        res.status(auth.status).json({ ok: false, error: auth.error });
-        return;
-      }
-      if (!deps.manifestWriter) {
-        res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
-        return;
-      }
-      const lock = acquireLock(MANIFEST_CONNECTORS, auth.principalId);
-      if (!lock.ok) {
-        res.status(423).json({ ok: false, error: 'Manifest locked by ' + lock.heldBy });
-        return;
-      }
-      try {
-        const cid = String(req.params['connectorId']);
-        await deps.manifestWriter.removeEntry(
-          MANIFEST_CONNECTORS,
-          'connectors',
-          cid,
-          'connectorId'
-        );
-        releaseLock(MANIFEST_CONNECTORS, auth.principalId);
-        res.json({ ok: true, data: { connectorId: cid, removed: true, requiresRestart: true } });
-      } catch (err) {
-        releaseLock(MANIFEST_CONNECTORS, auth.principalId);
-        const sc = (err as { statusCode?: number }).statusCode ?? 500;
-        res.status(sc).json({ ok: false, error: san(err) });
-      }
-    }
+    withAdminMutation<Record<string, never>>(deps, {
+      mutationKind: 'connector_deregister',
+      parsePayload: () => ({ ok: true, data: {} as Record<string, never> }),
+      handler: async (_payload, ctx) => {
+        if (!deps.manifestWriter) {
+          return { kind: 'failed', reason: 'Manifest writer not configured', statusCode: 501 };
+        }
+        const lock = acquireLock(MANIFEST_CONNECTORS, ctx.opener);
+        if (!lock.ok) {
+          return {
+            kind: 'failed',
+            reason: 'Manifest locked by ' + lock.heldBy,
+            statusCode: 423,
+          };
+        }
+        try {
+          const cid = String(ctx.req.params['connectorId']);
+          await deps.manifestWriter.removeEntry(
+            MANIFEST_CONNECTORS,
+            'connectors',
+            cid,
+            'connectorId'
+          );
+          releaseLock(MANIFEST_CONNECTORS, ctx.opener);
+          return {
+            kind: 'ok',
+            result: { connectorId: cid, removed: true, requiresRestart: true },
+          };
+        } catch (err) {
+          releaseLock(MANIFEST_CONNECTORS, ctx.opener);
+          return failureFromError(err);
+        }
+      },
+    })
   );
 
   // ═══ SURFACE 5: Identity providers — AMEND-nexus-admin-dashboard §3.1 ═══
@@ -1851,108 +1934,104 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
     }
   });
 
-  app.post('/workspace/admin/setup/admin-keys', async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    const parsed = AdminKeyUploadSchema.safeParse(req.body);
-    if (!parsed.success) {
-      sendValidationError(res, parsed.error);
-      return;
-    }
-    try {
-      const body = parsed.data;
-      const keyId =
-        body.keyKind === 'admin-signing'
-          ? body.keyId
-          : body.keyKind === 'control-plane'
-            ? 'dev'
-            : 'vault';
-      const filePath = adminKeyFilePath(KEY_DIR, body.keyKind, keyId);
-      if (!filePath) {
-        res.status(400).json({ ok: false, error: 'unknown keyKind' });
-        return;
-      }
-      // Validate keypair shape for admin-signing/control-plane: publicKey +
-      // privateKey base64url strings. The Zod schema enforces structure;
-      // additionally check base64url-ish charset to catch obvious pastes.
-      if (body.keyKind === 'admin-signing' || body.keyKind === 'control-plane') {
-        const { publicKey, privateKey } = body.content;
-        const b64Re = /^[A-Za-z0-9_-]+$/;
-        if (!b64Re.test(publicKey) || !b64Re.test(privateKey)) {
-          res.status(400).json({
-            ok: false,
-            error: 'publicKey/privateKey must be base64url-encoded',
-          });
-          return;
+  app.post(
+    '/workspace/admin/setup/admin-keys',
+    withAdminMutation<z.infer<typeof AdminKeyUploadSchema>>(deps, {
+      mutationKind: 'manifest_entry_add',
+      parsePayload: parsePayloadWithZod(AdminKeyUploadSchema),
+      handler: async (payload, _ctx) => {
+        try {
+          const body = payload;
+          const keyId =
+            body.keyKind === 'admin-signing'
+              ? body.keyId
+              : body.keyKind === 'control-plane'
+                ? 'dev'
+                : 'vault';
+          const filePath = adminKeyFilePath(KEY_DIR, body.keyKind, keyId);
+          if (!filePath) {
+            return { kind: 'failed', reason: 'unknown keyKind', statusCode: 400 };
+          }
+          // Validate keypair shape for admin-signing/control-plane: publicKey +
+          // privateKey base64url strings. The Zod schema enforces structure;
+          // additionally check base64url-ish charset to catch obvious pastes.
+          if (body.keyKind === 'admin-signing' || body.keyKind === 'control-plane') {
+            const { publicKey, privateKey } = body.content;
+            const b64Re = /^[A-Za-z0-9_-]+$/;
+            if (!b64Re.test(publicKey) || !b64Re.test(privateKey)) {
+              return {
+                kind: 'failed',
+                reason: 'publicKey/privateKey must be base64url-encoded',
+                statusCode: 400,
+              };
+            }
+          }
+          await writeAdminKeyFile(filePath, body.content, body.keyKind === 'vault');
+          // AMEND-nexus-admin-arc4-fixups §1.1 — admin-signing keypair MUST also
+          // write a sibling `<keyId>.public.json` so `loadAdminPublicKey`
+          // (mode-manager.ts:184-192, used by the unlock route's multi-party
+          // verify) can resolve the signer without loading private material.
+          // public.json is 0644 by definition — pubkeys are publishable;
+          // only the keypair file stays 0600.
+          if (body.keyKind === 'admin-signing') {
+            const publicPath = path.join(KEY_DIR, 'admins', `${keyId}.public.json`);
+            await writeAdminPublicKeyFile(publicPath, body.content.publicKey);
+          }
+          const fingerprint =
+            body.keyKind === 'vault'
+              ? fingerprintForVaultBytes(String(body.content))
+              : fingerprintForPublicKey(body.content.publicKey);
+          return {
+            kind: 'ok',
+            result: {
+              keyId,
+              keyKind: body.keyKind,
+              fingerprint,
+              present: true,
+              requiresRestart: body.keyKind !== 'admin-signing',
+            },
+          };
+        } catch (err) {
+          return failureFromError(err);
         }
-      }
-      await writeAdminKeyFile(filePath, body.content, body.keyKind === 'vault');
-      // AMEND-nexus-admin-arc4-fixups §1.1 — admin-signing keypair MUST also
-      // write a sibling `<keyId>.public.json` so `loadAdminPublicKey`
-      // (mode-manager.ts:184-192, used by the unlock route's multi-party
-      // verify) can resolve the signer without loading private material.
-      // public.json is 0644 by definition — pubkeys are publishable;
-      // only the keypair file stays 0600.
-      if (body.keyKind === 'admin-signing') {
-        const publicPath = path.join(KEY_DIR, 'admins', `${keyId}.public.json`);
-        await writeAdminPublicKeyFile(publicPath, body.content.publicKey);
-      }
-      const fingerprint =
-        body.keyKind === 'vault'
-          ? fingerprintForVaultBytes(String(body.content))
-          : fingerprintForPublicKey(body.content.publicKey);
-      res.json({
-        ok: true,
-        data: {
-          keyId,
-          keyKind: body.keyKind,
-          fingerprint,
-          present: true,
-          requiresRestart: body.keyKind !== 'admin-signing',
-        },
-      });
-    } catch (err) {
-      res.status(500).json({ ok: false, error: san(err) });
-    }
-  });
+      },
+    })
+  );
 
-  app.delete('/workspace/admin/setup/admin-keys/:keyId', async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    const keyId = String(req.params['keyId']);
-    if (!keyId) {
-      res.status(400).json({ ok: false, error: 'keyId required' });
-      return;
-    }
-    // Self-lockout guard: cannot delete the elevated admin's own signing keypair.
-    if (keyId === auth.principalId) {
-      res.status(409).json({
-        ok: false,
-        error: "cannot delete the elevated admin's own signing keypair",
-      });
-      return;
-    }
-    // Only admin-signing keys are deletable from this surface (control-plane
-    // and vault are singletons rotated via POST). Path resolution:
-    const filePath = path.join(KEY_DIR, 'admins', `${keyId}.keypair.json`);
-    try {
-      await fs.unlink(filePath);
-      res.json({ ok: true, data: { keyId, removed: true } });
-    } catch (err) {
-      const errno = (err as { code?: string }).code;
-      if (errno === 'ENOENT') {
-        res.status(404).json({ ok: false, error: `key ${keyId} not found` });
-        return;
-      }
-      res.status(500).json({ ok: false, error: san(err) });
-    }
-  });
+  app.delete(
+    '/workspace/admin/setup/admin-keys/:keyId',
+    withAdminMutation<Record<string, never>>(deps, {
+      mutationKind: 'manifest_entry_remove',
+      parsePayload: () => ({ ok: true, data: {} as Record<string, never> }),
+      handler: async (_payload, ctx) => {
+        const keyId = String(ctx.req.params['keyId']);
+        if (!keyId) {
+          return { kind: 'failed', reason: 'keyId required', statusCode: 400 };
+        }
+        // Self-lockout guard: cannot delete the elevated admin's own signing keypair.
+        if (keyId === ctx.opener) {
+          return {
+            kind: 'failed',
+            reason: "cannot delete the elevated admin's own signing keypair",
+            statusCode: 409,
+          };
+        }
+        // Only admin-signing keys are deletable from this surface (control-plane
+        // and vault are singletons rotated via POST). Path resolution:
+        const filePath = path.join(KEY_DIR, 'admins', `${keyId}.keypair.json`);
+        try {
+          await fs.unlink(filePath);
+          return { kind: 'ok', result: { keyId, removed: true } };
+        } catch (err) {
+          const errno = (err as { code?: string }).code;
+          if (errno === 'ENOENT') {
+            return { kind: 'failed', reason: `key ${keyId} not found`, statusCode: 404 };
+          }
+          return failureFromError(err);
+        }
+      },
+    })
+  );
 
   // ═══ SURFACE 13: Mode (signed envelope) — AMEND-nexus-admin-dashboard §3.6
   // The legacy POST /mode route stays 501; mode mutations always go through
@@ -1967,52 +2046,48 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
     .strict();
   const ModeUnlockSchema = z.object({ confirm: z.literal(true) }).strict();
 
-  app.post('/workspace/admin/setup/mode', async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    if (!deps.modeSigner) {
-      res.status(501).json({ ok: false, error: 'Mode signer not configured' });
-      return;
-    }
-    const parsed = ModeChangeSchema.safeParse(req.body);
-    if (!parsed.success) {
-      sendValidationError(res, parsed.error);
-      return;
-    }
-    try {
-      const hasKey = await deps.modeSigner.hasSigningKeypair(auth.principalId);
-      if (!hasKey) {
-        res.status(412).json({
-          ok: false,
-          error:
-            'missing admin signing keypair — provision via Toolchain & Keys (admin-signing kind) or run nexus init',
-        });
-        return;
-      }
-      const next = await deps.modeSigner.changeMode({
-        engine: parsed.data.engine,
-        mode: parsed.data.mode,
-        adminPrincipalId: auth.principalId,
-      });
-      res.json({ ok: true, data: { currentConfig: next } });
-    } catch (err) {
-      const sc = (err as { statusCode?: number }).statusCode ?? 500;
-      const msg = san(err);
-      // Surface enforcing-lock-blocks-downgrade as 409 with the spec-required
-      // error hint pointing at the unlock route.
-      if (/enforcing-lock/i.test(msg) || /MODE_DOWNGRADE_BLOCKED/.test(msg)) {
-        res.status(409).json({
-          ok: false,
-          error: 'enforcing-lock active; POST /workspace/admin/setup/mode/unlock first',
-        });
-        return;
-      }
-      res.status(sc).json({ ok: false, error: msg });
-    }
-  });
+  app.post(
+    '/workspace/admin/setup/mode',
+    withAdminMutation<z.infer<typeof ModeChangeSchema>>(deps, {
+      mutationKind: 'manifest_entry_update',
+      parsePayload: parsePayloadWithZod(ModeChangeSchema),
+      handler: async (payload, ctx) => {
+        if (!deps.modeSigner) {
+          return { kind: 'failed', reason: 'Mode signer not configured', statusCode: 501 };
+        }
+        try {
+          const hasKey = await deps.modeSigner.hasSigningKeypair(ctx.opener);
+          if (!hasKey) {
+            return {
+              kind: 'failed',
+              reason:
+                'missing admin signing keypair — provision via Toolchain & Keys (admin-signing kind) or run nexus init',
+              statusCode: 412,
+            };
+          }
+          const next = await deps.modeSigner.changeMode({
+            engine: payload.engine,
+            mode: payload.mode,
+            adminPrincipalId: ctx.opener,
+          });
+          return { kind: 'ok', result: { currentConfig: next } };
+        } catch (err) {
+          const sc = (err as { statusCode?: number }).statusCode ?? 500;
+          const msg = san(err);
+          // Surface enforcing-lock-blocks-downgrade as 409 with the spec-required
+          // error hint pointing at the unlock route.
+          if (/enforcing-lock/i.test(msg) || /MODE_DOWNGRADE_BLOCKED/.test(msg)) {
+            return {
+              kind: 'failed',
+              reason: 'enforcing-lock active; POST /workspace/admin/setup/mode/unlock first',
+              statusCode: 409,
+            };
+          }
+          return { kind: 'failed', reason: msg, statusCode: sc };
+        }
+      },
+    })
+  );
 
   // F4.17 / Q4 / HL #10 — single-admin dashboard unlock is retired.
   // The lawful path is SigningCouncil 2-of-2 (Spec F4.1, operation
@@ -2063,43 +2138,38 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
     })
     .strict();
 
-  app.post('/workspace/admin/oct/assign', async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    if (!deps.actorRegistry) {
-      res.status(501).json({ ok: false, error: 'Actor registry not configured' });
-      return;
-    }
-    if (!deps.octManager) {
-      res.status(501).json({ ok: false, error: 'OCT manager not configured' });
-      return;
-    }
-    const parsed = OctAssignSchema.safeParse(req.body);
-    if (!parsed.success) {
-      sendValidationError(res, parsed.error);
-      return;
-    }
-    try {
-      const updated = await deps.octManager.assignOct(parsed.data as never);
-      res.json({ ok: true, data: updated });
-    } catch (err) {
-      const msg = san(err);
-      const status =
-        /OCT_DOWNWARD_OR_EQUAL_FORBIDDEN|OCT_PREVIOUS_MISMATCH|OCT_NULL_LEVEL|OCT_UNRANKED/.test(
-          msg
-        )
-          ? 409
-          : /OCT_SELF_ASSIGNMENT|OCT_INVALID_SIGNATURE|OCT_UNKNOWN_OPERATOR/.test(msg)
-            ? 403
-            : /ACTOR_NOT_FOUND/.test(msg)
-              ? 404
-              : 400;
-      res.status(status).json({ ok: false, error: msg });
-    }
-  });
+  app.post(
+    '/workspace/admin/oct/assign',
+    withAdminMutation<z.infer<typeof OctAssignSchema>>(deps, {
+      mutationKind: 'oct_assign',
+      parsePayload: parsePayloadWithZod(OctAssignSchema),
+      handler: async (payload, _ctx) => {
+        if (!deps.actorRegistry) {
+          return { kind: 'failed', reason: 'Actor registry not configured', statusCode: 501 };
+        }
+        if (!deps.octManager) {
+          return { kind: 'failed', reason: 'OCT manager not configured', statusCode: 501 };
+        }
+        try {
+          const updated = await deps.octManager.assignOct(payload as never);
+          return { kind: 'ok', result: updated };
+        } catch (err) {
+          const msg = san(err);
+          const status =
+            /OCT_DOWNWARD_OR_EQUAL_FORBIDDEN|OCT_PREVIOUS_MISMATCH|OCT_NULL_LEVEL|OCT_UNRANKED/.test(
+              msg
+            )
+              ? 409
+              : /OCT_SELF_ASSIGNMENT|OCT_INVALID_SIGNATURE|OCT_UNKNOWN_OPERATOR/.test(msg)
+                ? 403
+                : /ACTOR_NOT_FOUND/.test(msg)
+                  ? 404
+                  : 400;
+          return { kind: 'failed', reason: msg, statusCode: status };
+        }
+      },
+    })
+  );
 
   // ─── F4.1 SigningCouncil HTTP surface ─────────────────────────────────
   // POST /workspace/admin/signing/requests              — open a request
@@ -2369,71 +2439,66 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
   // POST { baseUrl, adapterId? } → GET {baseUrl}/api/tags → return models[].
   // Used by the admin "Add endpoint" form to populate a model dropdown after
   // the admin enters a node URL.
-  app.post('/workspace/admin/setup/discover', async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    const parsed = DiscoverSchema.safeParse(req.body);
-    if (!parsed.success) {
-      sendValidationError(res, parsed.error);
-      return;
-    }
-    let probeUrl: URL;
-    try {
-      probeUrl = new URL(parsed.data.baseUrl);
-    } catch {
-      // Zod's z.string().url() catches most bad URLs, but defense-in-depth:
-      // node's URL parser is the authoritative validator before we use it.
-      res.status(400).json({ ok: false, error: 'baseUrl must be a valid URL' });
-      return;
-    }
-    if (probeUrl.protocol !== 'http:' && probeUrl.protocol !== 'https:') {
-      res.status(400).json({ ok: false, error: 'baseUrl must be http or https' });
-      return;
-    }
-    // Strip trailing path components — admin may paste either the bare host or
-    // the full /api/chat URL. We always probe /api/tags on the origin.
-    const tagsUrl = new URL('/api/tags', probeUrl.origin).toString();
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    try {
-      const probe = await fetch(tagsUrl, {
-        method: 'GET',
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (!probe.ok) {
-        res.status(502).json({
-          ok: false,
-          error: `Probe failed: HTTP ${probe.status} from ${tagsUrl}`,
-        });
-        return;
-      }
-      const body = (await probe.json()) as { models?: Array<Record<string, unknown>> };
-      const models = Array.isArray(body?.models) ? body.models : [];
-      res.json({
-        ok: true,
-        data: {
-          probedUrl: tagsUrl,
-          models: models.map(m => ({
-            name: typeof m['name'] === 'string' ? m['name'] : String(m['name'] ?? ''),
-            model: typeof m['model'] === 'string' ? m['model'] : undefined,
-            size: typeof m['size'] === 'number' ? m['size'] : undefined,
-            modifiedAt: typeof m['modified_at'] === 'string' ? m['modified_at'] : undefined,
-          })),
-        },
-      });
-    } catch (err) {
-      clearTimeout(timer);
-      const msg =
-        (err as { name?: string }).name === 'AbortError'
-          ? `Probe timed out after 5s: ${tagsUrl}`
-          : san(err);
-      res.status(502).json({ ok: false, error: msg });
-    }
-  });
+  app.post(
+    '/workspace/admin/setup/discover',
+    withAdminMutation<z.infer<typeof DiscoverSchema>>(deps, {
+      mutationKind: 'manifest_entry_update',
+      parsePayload: parsePayloadWithZod(DiscoverSchema),
+      handler: async (payload, _ctx) => {
+        let probeUrl: URL;
+        try {
+          probeUrl = new URL(payload.baseUrl);
+        } catch {
+          // Zod's z.string().url() catches most bad URLs, but defense-in-depth:
+          // node's URL parser is the authoritative validator before we use it.
+          return { kind: 'failed', reason: 'baseUrl must be a valid URL', statusCode: 400 };
+        }
+        if (probeUrl.protocol !== 'http:' && probeUrl.protocol !== 'https:') {
+          return { kind: 'failed', reason: 'baseUrl must be http or https', statusCode: 400 };
+        }
+        // Strip trailing path components — admin may paste either the bare host or
+        // the full /api/chat URL. We always probe /api/tags on the origin.
+        const tagsUrl = new URL('/api/tags', probeUrl.origin).toString();
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5000);
+        try {
+          const probe = await fetch(tagsUrl, {
+            method: 'GET',
+            signal: controller.signal,
+          });
+          clearTimeout(timer);
+          if (!probe.ok) {
+            return {
+              kind: 'failed',
+              reason: `Probe failed: HTTP ${probe.status} from ${tagsUrl}`,
+              statusCode: 502,
+            };
+          }
+          const body = (await probe.json()) as { models?: Array<Record<string, unknown>> };
+          const models = Array.isArray(body?.models) ? body.models : [];
+          return {
+            kind: 'ok',
+            result: {
+              probedUrl: tagsUrl,
+              models: models.map(m => ({
+                name: typeof m['name'] === 'string' ? m['name'] : String(m['name'] ?? ''),
+                model: typeof m['model'] === 'string' ? m['model'] : undefined,
+                size: typeof m['size'] === 'number' ? m['size'] : undefined,
+                modifiedAt: typeof m['modified_at'] === 'string' ? m['modified_at'] : undefined,
+              })),
+            },
+          };
+        } catch (err) {
+          clearTimeout(timer);
+          const msg =
+            (err as { name?: string }).name === 'AbortError'
+              ? `Probe timed out after 5s: ${tagsUrl}`
+              : san(err);
+          return { kind: 'failed', reason: msg, statusCode: 502 };
+        }
+      },
+    })
+  );
 
   // ═══ LOCK STATUS ═══
   app.get('/workspace/admin/setup/lock/:surface', async (req: Request, res: Response) => {
@@ -2475,110 +2540,76 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
   // KEY_NAME validation: upper-snake-case, max 128 chars. Anything else is
   // rejected so a stray colon or path separator can't smuggle a foreign
   // identifier into the file map.
-  const KEY_NAME_RE = /^[A-Z][A-Z0-9_]*$/;
-  const MAX_KEY_NAME_LEN = 128;
-  const MAX_KEY_VALUE_LEN = 8 * 1024; // 8 KiB — well above any provider key
+  app.post(
+    '/workspace/admin/setup/secrets',
+    withAdminMutation<z.infer<typeof SecretCreateSchema>>(deps, {
+      mutationKind: 'secret_store',
+      parsePayload: parsePayloadWithZod(SecretCreateSchema),
+      handler: async (payload, _ctx) => {
+        if (!deps.secretWriter) {
+          return { kind: 'failed', reason: 'Secret writer not configured', statusCode: 501 };
+        }
+        const { keyName, keyValue } = payload;
+        try {
+          await deps.secretWriter.writeSecret(keyName, keyValue);
+          // Response is intentionally write-only — keyName + stored=true. No value echo.
+          // F4.13: the SignedAdminMutation wrapper emits admin_mutation_intent
+          // (with keyName + opener + payloadDigest) BEFORE this handler runs
+          // and admin_mutation_committed AFTER it returns ok. The legacy
+          // best-effort `emitSecretAuditEvent` write was retired (P0-024 / spec
+          // §3.4) — the wrapper is the sole audit path and fails closed.
+          return {
+            kind: 'ok',
+            result: {
+              keyName,
+              stored: true,
+              source: 'file',
+              storageLabel: deps.secretWriter.storageLabel,
+            },
+          };
+        } catch (err) {
+          // Don't leak the key value via the error message either — sanitizer
+          // already handles strings, but keyValue isn't in the error path.
+          return { kind: 'failed', reason: san(err), statusCode: 500 };
+        }
+      },
+    })
+  );
 
-  app.post('/workspace/admin/setup/secrets', async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    if (!deps.secretWriter) {
-      res.status(501).json({ ok: false, error: 'Secret writer not configured' });
-      return;
-    }
-    // CLAUDE-CODE-AUDIT-TIGHTEN-PHASE-AB §2 — Zod handles type/shape;
-    // value-shape rules (UPPER_SNAKE_CASE keyName, length caps) stay
-    // explicit so error messages remain operator-friendly.
-    const parsed = SecretCreateSchema.safeParse(req.body);
-    if (!parsed.success) {
-      sendValidationError(res, parsed.error);
-      return;
-    }
-    const { keyName, keyValue } = parsed.data;
-    if (keyName.length > MAX_KEY_NAME_LEN || !KEY_NAME_RE.test(keyName)) {
-      res.status(400).json({
-        ok: false,
-        error: 'keyName must be upper-snake-case ([A-Z][A-Z0-9_]*) and ≤128 chars',
-      });
-      return;
-    }
-    if (keyValue.length > MAX_KEY_VALUE_LEN) {
-      res.status(400).json({
-        ok: false,
-        error: `keyValue required (non-empty, ≤${MAX_KEY_VALUE_LEN} chars)`,
-      });
-      return;
-    }
-    try {
-      await deps.secretWriter.writeSecret(keyName, keyValue);
-      // Audit: credential-lifecycle event. Detail carries keyName + actor +
-      // storageLabel ONLY — never the value, never a hash, never a length.
-      // Synthetic per-operation runId mirrors templates.ts adminOperation.
-      // Best-effort: a ledger failure must not roll back a stored key, so
-      // we log and continue. Operators can detect missing audit entries via
-      // the gap-detection gate (CMP-12 style).
-      await emitSecretAuditEvent(deps, 'secret_stored', {
-        keyName,
-        actorId: auth.actorId,
-        principalId: auth.principalId,
-        storageLabel: deps.secretWriter.storageLabel,
-      });
-      // Response is intentionally write-only — keyName + stored=true. No value echo.
-      res.json({
-        ok: true,
-        data: {
-          keyName,
-          stored: true,
-          source: 'file',
-          storageLabel: deps.secretWriter.storageLabel,
-        },
-      });
-    } catch (err) {
-      // Don't leak the key value via the error message either — sanitizer
-      // already handles strings, but keyValue isn't in the error path.
-      res.status(500).json({ ok: false, error: san(err) });
-    }
-  });
-
-  app.delete('/workspace/admin/setup/secrets/:keyName', async (req: Request, res: Response) => {
-    const auth = await checkAdminAuth(req, res, deps);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-    if (!deps.secretWriter) {
-      res.status(501).json({ ok: false, error: 'Secret writer not configured' });
-      return;
-    }
-    const keyName = String(req.params['keyName'] ?? '');
-    if (!keyName || keyName.length > MAX_KEY_NAME_LEN || !KEY_NAME_RE.test(keyName)) {
-      res.status(400).json({
-        ok: false,
-        error: 'keyName must be upper-snake-case ([A-Z][A-Z0-9_]*) and ≤128 chars',
-      });
-      return;
-    }
-    try {
-      const removed = await deps.secretWriter.deleteSecret(keyName);
-      // Audit only on actual removal — a no-op delete (key already absent)
-      // doesn't change credential state, so we don't pollute the ledger
-      // with non-events. Same keyName-only detail as secret_stored.
-      if (removed) {
-        await emitSecretAuditEvent(deps, 'secret_removed', {
-          keyName,
-          actorId: auth.actorId,
-          principalId: auth.principalId,
-          storageLabel: deps.secretWriter.storageLabel,
-        });
-      }
-      res.json({ ok: true, data: { keyName, removed } });
-    } catch (err) {
-      res.status(500).json({ ok: false, error: san(err) });
-    }
-  });
+  app.delete(
+    '/workspace/admin/setup/secrets/:keyName',
+    withAdminMutation<Record<string, never>>(deps, {
+      mutationKind: 'secret_remove',
+      parsePayload: () => ({ ok: true, data: {} as Record<string, never> }),
+      handler: async (_payload, ctx) => {
+        if (!deps.secretWriter) {
+          return { kind: 'failed', reason: 'Secret writer not configured', statusCode: 501 };
+        }
+        const keyName = String(ctx.req.params['keyName'] ?? '');
+        if (
+          !keyName ||
+          keyName.length > SECRET_MAX_KEY_NAME_LEN ||
+          !SECRET_KEY_NAME_RE.test(keyName)
+        ) {
+          return {
+            kind: 'failed',
+            reason: 'keyName must be upper-snake-case ([A-Z][A-Z0-9_]*) and ≤128 chars',
+            statusCode: 400,
+          };
+        }
+        try {
+          const removed = await deps.secretWriter.deleteSecret(keyName);
+          // F4.13: the wrapper writes admin_mutation_committed regardless of
+          // whether the delete was a no-op (key already absent). The detail
+          // includes the removed flag so audit can distinguish actual removals
+          // from no-ops.
+          return { kind: 'ok', result: { keyName, removed } };
+        } catch (err) {
+          return { kind: 'failed', reason: san(err), statusCode: 500 };
+        }
+      },
+    })
+  );
 
   app.get('/workspace/admin/setup/secrets/status', async (req: Request, res: Response) => {
     const auth = await checkAdminAuth(req, res, deps);

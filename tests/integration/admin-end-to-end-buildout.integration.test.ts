@@ -28,7 +28,14 @@ import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { registerAdminWriterRoutes } from '../../packages/interfaces/api/src/routes/admin-writer.js';
 import type { ManifestWriter } from '../../packages/interfaces/api/src/routes/admin-writer.js';
+import {
+  InMemoryAdminMutationNonceStore,
+  type AdminMutationVerifierPort,
+  type AdminMutationServerSignerPort,
+} from '../../packages/interfaces/api/src/middleware/signed-admin-mutation.js';
+import { InMemoryInfraRunIdNamespace } from '../../packages/core/src/infra/infra-run-id-namespace.js';
 import type {
+  AdminMutationKind,
   ElevatedAuthProvider,
   ElevatedSessionStatus,
   ElevatedAuthChallengeRequest,
@@ -36,6 +43,9 @@ import type {
   ElevatedAuthVerifyRequest,
   ElevatedSession,
   IdentityClaims,
+  RunLedgerEntry,
+  RunLedgerWriter,
+  SignedAdminMutation,
   Uuid,
   NonEmpty,
 } from '@nexus/contracts';
@@ -129,9 +139,60 @@ describe('admin writer-chain composition (AMEND §1.F scoped E2E)', () => {
     const app = express();
     app.use(express.json());
     app.use('/workspace', fakeJwt);
+    // F4.13 — admin-writer mutations are gated by the SignedAdminMutation
+    // wrapper. The fixture below wires the wrapper deps required to let
+    // plain-payload tests continue to traverse production handlers.
+    const inMemoryLedger: RunLedgerWriter & { _entries: RunLedgerEntry[] } = {
+      _entries: [],
+      async writeEvent(entry): Promise<void> {
+        inMemoryLedger._entries.push({ ...entry, entryId: 'e-' + Math.random() } as RunLedgerEntry);
+      },
+      async getByRunId(): Promise<RunLedgerEntry[]> {
+        return inMemoryLedger._entries;
+      },
+      async tail(): Promise<RunLedgerEntry[]> {
+        return inMemoryLedger._entries.slice(-20);
+      },
+      async getLatestRunId(): Promise<Uuid | null> {
+        return null;
+      },
+    };
+    const passVerifier: AdminMutationVerifierPort = {
+      async verify(envelope: SignedAdminMutation<unknown>) {
+        return {
+          ok: true,
+          opener: envelope.opener,
+          payloadDigest: 'fixture-digest',
+          signatureRef: 'fixture-sigref',
+        };
+      },
+    };
+    const fixtureSigner: AdminMutationServerSignerPort = {
+      async sign<TPayload>(args: {
+        opener: NonEmpty;
+        mutationKind: AdminMutationKind;
+        payload: TPayload;
+        issuedAt: string;
+        nonce: NonEmpty;
+      }): Promise<SignedAdminMutation<TPayload>> {
+        return {
+          mutationKind: args.mutationKind,
+          payload: args.payload,
+          opener: ADMIN_PID as NonEmpty,
+          issuedAt: args.issuedAt as never,
+          nonce: args.nonce,
+          signature: 'fixture-sig' as never,
+        };
+      },
+    };
     registerAdminWriterRoutes(app, {
       elevatedAuthProvider: mockAuth,
       manifestWriter: inMemoryManifestWriter(),
+      runLedgerWriter: inMemoryLedger,
+      infraRunIdNamespace: new InMemoryInfraRunIdNamespace(),
+      adminMutationVerifier: passVerifier,
+      adminMutationNonceStore: new InMemoryAdminMutationNonceStore(),
+      adminMutationServerSigner: fixtureSigner,
     });
     server = await new Promise<Server>(resolve => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));

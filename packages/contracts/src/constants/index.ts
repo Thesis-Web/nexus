@@ -346,6 +346,17 @@ export const DENIAL_CODE = {
   FILL_TYPE_MISMATCH: 'fill_type_mismatch',
   ASSEMBLY_INCOMPLETE: 'assembly_incomplete',
   FILE_BUNDLE_DENIED: 'file_bundle_denied', // DIFF-S23-001: file_bundle fail-closed V1 [blueprint §12]
+  // ─── F4.13 §3.3 / Q5 — admin mutation fail-closed when audit unavailable ──
+  // Returned to admin clients when the Run Ledger writer is unavailable at
+  // the time a SignedAdminMutation route would otherwise apply. Plug-in
+  // admin-writer never silent-fails: the mutation refuses with this code
+  // and a 503 status so the operator sees the gap directly.
+  AUDIT_UNAVAILABLE: 'audit_unavailable',
+  // ─── F4.13 §3.1 — SignedAdminMutation envelope verification denials ──────
+  ADMIN_MUTATION_ENVELOPE_INVALID: 'admin_mutation_envelope_invalid',
+  ADMIN_MUTATION_SIGNATURE_INVALID: 'admin_mutation_signature_invalid',
+  ADMIN_MUTATION_NONCE_REPLAY: 'admin_mutation_nonce_replay',
+  ADMIN_MUTATION_OPENER_UNKNOWN: 'admin_mutation_opener_unknown',
 } as const;
 export type DenialCode = string;
 

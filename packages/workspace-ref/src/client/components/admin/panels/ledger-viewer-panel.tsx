@@ -292,6 +292,34 @@ function buildEventSummary(eventType: string, detail: Record<string, unknown>): 
     }
     return '⚠ would-deny: empty dataLabels + untrusted provenance (mode non-enforcing)';
   }
+  if (eventType === 'admin_mutation_intent') {
+    // F4.13 §3.1 — pre-mutation infra audit event. Detail carries the
+    // mutationKind + opener + payload digest (never the payload values).
+    // The summary surfaces who's about to mutate what so operators can pair
+    // intent with the committed/failed event that follows.
+    const kind = detail['mutationKind'];
+    const opener = detail['opener'];
+    const wouldCommit = detail['wouldCommit'];
+    const observeNote = wouldCommit === true ? ' (observe mode — not applied)' : '';
+    const kindLabel = typeof kind === 'string' && kind.length > 0 ? kind : 'unknown_mutation';
+    const openerLabel = typeof opener === 'string' && opener.length > 0 ? opener : 'unknown';
+    return `🔐 admin mutation intent · ${kindLabel} · opener: ${openerLabel}${observeNote}`;
+  }
+  if (eventType === 'admin_mutation_committed') {
+    // F4.13 §3.2 — post-mutation success audit event. Pairs with the
+    // intent line above via mutationId; the summary just confirms which
+    // mutation kind landed.
+    const kind = detail['mutationKind'];
+    const kindLabel = typeof kind === 'string' && kind.length > 0 ? kind : 'unknown_mutation';
+    return `✅ admin mutation committed · ${kindLabel}`;
+  }
+  if (eventType === 'admin_mutation_failed') {
+    // F4.13 §3.2 — handler failure OR post-write rollback. Detail.reason
+    // explains why; operators see the failed path inline.
+    const reason = detail['reason'];
+    const reasonLabel = typeof reason === 'string' && reason.length > 0 ? reason : 'unknown';
+    return `⛔ admin mutation failed · ${reasonLabel}`;
+  }
   if (eventType === 'claim_drift_detected') {
     // F4.9 / Hard Law #14 — NXS/NVG gate runner detected that the
     // carried claims envelope no longer matches RBAC's current snapshot.
