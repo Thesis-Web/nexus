@@ -2140,10 +2140,35 @@ function enforceGov11OrchCallbackTimeoutNoKill(): void {
 }
 
 function enforceGov12OctMutationLawfulPath(): void {
-  // F4.5 + F4.16 / Patches 4 + 7: octLevel stripped from
-  // ActorUpdateSchema; only signed assignOct/registration/deregistration
-  // flows mutate OCT.
-  passPending('Patch 4 / F4.16', 'OCT mutation single lawful path');
+  // F4.16 / Patch 4 (this gate's strict mode): ActorUpdateSchema in
+  // admin-writer must NOT declare an octLevel field. The lawful
+  // mutation path is the signed assignOct flow (Spec F4.5).
+  const adminWriterPath = path.join(
+    'packages',
+    'interfaces',
+    'api',
+    'src',
+    'routes',
+    'admin-writer.ts'
+  );
+  if (!fs.existsSync(adminWriterPath)) {
+    fail(`GOV-12: admin-writer route not found at ${adminWriterPath}`);
+  }
+  const src = fs.readFileSync(adminWriterPath, 'utf-8');
+  // Extract the ActorUpdateSchema block — Zod schema using .object({...}).strict().
+  const match = src.match(
+    /const ActorUpdateSchema\s*=\s*z\s*\.object\(\{([\s\S]*?)\}\)\s*\.strict\(\)/
+  );
+  if (!match) {
+    fail(`GOV-12: could not locate ActorUpdateSchema definition in ${adminWriterPath}`);
+  }
+  const body = match![1]!;
+  if (/\boctLevel\b\s*:/.test(body)) {
+    fail(
+      `GOV-12: ActorUpdateSchema declares an octLevel field — that bypasses the signed assignOct flow (Spec F4.5 / Q2 / HL #10)`
+    );
+  }
+  pass('OCT mutation single lawful path (generic actor update rejects octLevel)');
 }
 
 function enforceGov13PolicyOctAxisEvaluator(): void {

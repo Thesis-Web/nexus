@@ -274,12 +274,14 @@ export function ActorAgentSetupPanel({
     }
     setBusy(true);
     setFeedback(null);
+    // F4.16 / Q2: octLevel is intentionally omitted — the lawful mutation
+    // path is the signed assignOct flow (Spec F4.5); the generic update
+    // schema rejects octLevel in body.
     const payload: Record<string, unknown> = {
       actorClass: editDraft.actorClass,
       principalId: editDraft.principalId.trim(),
       displayName: editDraft.displayName.trim(),
       environment: editDraft.environment,
-      octLevel: editDraft.octLevel,
       riskCeiling: editDraft.riskCeiling,
       allowedSystems: editDraft.allowedSystems,
       allowedCapabilities: editDraft.allowedCapabilities,
@@ -415,6 +417,7 @@ export function ActorAgentSetupPanel({
 
           {editing === selected.actorId ? (
             <ActorForm
+              mode="edit"
               draft={editDraft}
               setDraft={setEditDraft}
               actorClassOptions={actorClassOptions}
@@ -457,6 +460,7 @@ export function ActorAgentSetupPanel({
         <div className="nx-admin-endpoint-form-card">
           <h4 className="nx-admin-endpoint-form-card__title">Register new actor / agent</h4>
           <ActorForm
+            mode="add"
             draft={addDraft}
             setDraft={setAddDraft}
             actorClassOptions={actorClassOptions}
@@ -481,6 +485,13 @@ export function ActorAgentSetupPanel({
 // ─── Form subcomponent ─────────────────────────────────────────────────────
 
 interface ActorFormProps {
+  /**
+   * F4.16 / Q2 / HL #10: OCT is editable at registration (the auth gate),
+   * but in 'edit' mode the OCT field is read-only — mutation happens
+   * exclusively via the signed assignOct flow (Spec F4.5) plus
+   * deregister-then-register-new for downward equivalents.
+   */
+  mode: 'add' | 'edit';
   draft: DraftActor;
   setDraft: (updater: (prev: DraftActor) => DraftActor) => void;
   actorClassOptions: readonly { id: string; label: string }[];
@@ -495,6 +506,7 @@ interface ActorFormProps {
 }
 
 function ActorForm({
+  mode,
   draft,
   setDraft,
   actorClassOptions,
@@ -575,20 +587,30 @@ function ActorForm({
         </label>
         <label className="nx-admin-endpoint-form__field">
           <span className="nx-admin-endpoint-form__label">OCT level</span>
-          <select
-            className="nx-admin-endpoint-form__input"
-            value={draft.octLevel}
-            onChange={e => setDraft(d => ({ ...d, octLevel: e.target.value }))}
-          >
-            <option value="" disabled>
-              — select OCT —
-            </option>
-            {octOptions.map(o => (
-              <option key={o.id} value={o.id}>
-                {o.label}
+          {mode === 'add' ? (
+            <select
+              className="nx-admin-endpoint-form__input"
+              value={draft.octLevel}
+              onChange={e => setDraft(d => ({ ...d, octLevel: e.target.value }))}
+            >
+              <option value="" disabled>
+                — select OCT —
               </option>
-            ))}
-          </select>
+              {octOptions.map(o => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="nx-admin-endpoint-form__readonly">
+              <span className="nx-admin-endpoint-form__badge">{draft.octLevel || '—'}</span>
+              <span className="nx-admin-endpoint-form__hint">
+                OCT mutations are signed and routed through the OCT manager (Spec F4.5). Downward
+                equivalents require deregister-then-register-new.
+              </span>
+            </div>
+          )}
         </label>
         <label className="nx-admin-endpoint-form__field">
           <span className="nx-admin-endpoint-form__label">Risk ceiling</span>

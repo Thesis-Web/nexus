@@ -129,6 +129,11 @@ const ActorCreateSchema = z
   })
   .strict();
 
+// F4.16 / Q2 / HL #10: octLevel is removed from generic actor update.
+// OCT can only be mutated through the signed assignOct flow (Spec F4.5);
+// downward equivalents are deregister-then-register-new. The .strict()
+// wrapper makes any client that still sends octLevel fail validation —
+// the lawful path lives elsewhere.
 const ActorUpdateSchema = z
   .object({
     actorClass: z.string().min(1).optional(),
@@ -136,7 +141,6 @@ const ActorUpdateSchema = z
     principalId: z.string().uuid().optional(),
     environment: z.string().min(1).optional(),
     riskCeiling: z.string().min(1).optional(),
-    octLevel: z.string().min(1).optional(),
     allowedSystems: z.array(concreteSystem).min(1).optional(),
     allowedCapabilities: z.array(z.string().min(1)).optional(),
     enabled: z.boolean().optional(),

@@ -593,6 +593,41 @@ describe('admin-writer routes', () => {
     expect(updated?.displayName).toBe('new-name');
   });
 
+  // F4.16 / Q2 / HL #10 — OCT-BP-01: generic actor update rejects any
+  // octLevel field in body. The lawful OCT mutation surface is the
+  // signed assignOct flow (Spec F4.5); generic updates cannot launder
+  // an OCT change.
+  it('PUT /actors/:id — rejects octLevel in body (F4.16 OCT-BP-01)', async () => {
+    const aid = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+    actorRegistry._actors.set(aid, {
+      actorId: aid,
+      actorClass: 'SUPERVISED_AGENT',
+      principalId: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
+      displayName: 'oct-test' as NonEmpty,
+      environment: 'reference',
+      octLevel: 'OCT-OPEN',
+      riskCeiling: 'medium',
+      allowedSystems: ['stub'],
+      allowedCapabilities: [],
+      enabled: true,
+      registeredAt: new Date().toISOString(),
+      owner: 'test' as NonEmpty,
+      purpose: 'test' as NonEmpty,
+      reviewCadence: 'quarterly' as NonEmpty,
+    } as Actor);
+
+    const res = await fetch(url(`/workspace/admin/setup/actors/${aid}`), {
+      method: 'PUT',
+      headers: adminHeaders(),
+      body: JSON.stringify({ displayName: 'still-open', octLevel: 'OCT-SECURE' }),
+    });
+    expect(res.status).toBe(400);
+    // Mutation must NOT have taken effect — neither the OCT field nor the
+    // displayName from the rejected body.
+    expect(actorRegistry._actors.get(aid)?.octLevel).toBe('OCT-OPEN');
+    expect(actorRegistry._actors.get(aid)?.displayName).toBe('oct-test');
+  });
+
   it('PUT /actors/:id — 404 for nonexistent', async () => {
     const res = await fetch(
       url('/workspace/admin/setup/actors/00000000-0000-0000-0000-000000000000'),
