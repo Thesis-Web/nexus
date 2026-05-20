@@ -702,99 +702,6 @@ export interface ApproverRegistry {
   register(actorId: Uuid, publicKey: Base64Url, channels: string[]): Promise<void>;
 }
 
-// ─── Q11 / Q12 / P1-013-15 — Workspace adjacents ──────────────────────────
-// Q11: server-side baked prompt store; manifest-published endpoint
-//      GET /workspace/runs/:runId/prompt-ref returns an opaque promptRef
-//      that the workspace re-submits on checkback. Ledger keeps only
-//      promptDigest (HL #14). Plug-in workspaces attach via manifest.
-// Q12: artifact endpoint is ALWAYS opaque — never inline body in ledger.
-//      Reasons: file:// bodyRef leaks topology; OCT classifications can
-//      change retroactively; two-sources-of-truth drift on failure.
-export interface PromptStorePort {
-  /** Store the raw prompt and return an opaque promptRef. */
-  store(runId: Uuid, prompt: string, principalId: Uuid): Promise<NonEmpty>;
-  /** Resolve a promptRef back to the raw prompt bytes. */
-  resolve(promptRef: NonEmpty, principalId: Uuid): Promise<string | null>;
-}
-
-export interface ArtifactEndpointPort {
-  /** Return an opaque endpoint URL for a given artifactId. */
-  endpointFor(artifactId: Uuid): NonEmpty;
-  /** Resolve an opaque endpoint to bytes (admin auth required). */
-  resolveBody(endpoint: NonEmpty, requesterPrincipalId: Uuid): Promise<Uint8Array | null>;
-}
-
-// ─── F3a Chat-Tier Multi-Turn — session + ledger-projection reader ────────
-// Workspace generates a chatSessionId at first turn; subsequent turns of
-// the same conversation reuse it. Per-turn runId stays fresh (HL #12).
-// Planner reads the last N turns via ChatThreadReader (ledger projection
-// only — never mailbox content; raw prompt never stored in ledger).
-export type ChatSessionId = NonEmpty;
-
-export interface ChatTurnRecord {
-  readonly chatSessionId: ChatSessionId;
-  readonly runId: Uuid;
-  readonly turnIndex: number;
-  readonly principalId: Uuid;
-  readonly promptDigest: Sha256Hex;
-  readonly artifactDigest: Sha256Hex | null;
-  readonly artifactEndpoint: NonEmpty | null;
-  readonly openedAt: IsoTimestamp;
-  readonly closedAt: IsoTimestamp | null;
-  readonly finalOutcome: FinalOutcome | null;
-}
-
-export interface ChatThreadReader {
-  listSessions(principalId: Uuid): Promise<ReadonlyArray<ChatSessionId>>;
-  readSession(
-    principalId: Uuid,
-    chatSessionId: ChatSessionId,
-    options?: { lastN?: number }
-  ): Promise<ReadonlyArray<ChatTurnRecord>>;
-}
-
-// ─── F4.3 In-Browser Approval UX — channels, signed responses ─────────────
-// Plug-in approval UI; baked NXS gate fails closed on approval-required
-// gates with no evidence chain entry. SigningCouncil 2-of-2 is the only
-// path to a wide-open channel (allowAnyRegisteredAdmin). The legacy
-// ApprovalChannel interface (cli-channel runtime port) is unrelated;
-// this is the configured channel record consumed by the admin UI.
-export interface ApprovalChannelConfig {
-  readonly channelId: NonEmpty;
-  readonly channelKind: 'dashboard' | 'webhook' | 'cli';
-  readonly approverIds: ReadonlyArray<Uuid>;
-  readonly openChannelConfig?: SignedOpenChannelConfig;
-  readonly enabled: boolean;
-  readonly notes?: string;
-}
-
-export interface SignedOpenChannelConfig {
-  readonly channelId: NonEmpty;
-  readonly allowAnyRegisteredAdmin: boolean;
-  readonly expiresAt: IsoTimestamp;
-  readonly signatures: ReadonlyArray<{
-    readonly principalId: Uuid;
-    readonly signature: Base64Url;
-  }>;
-  readonly openedBy: Uuid;
-  readonly openedAt: IsoTimestamp;
-}
-
-export interface ApprovalUiPort {
-  open(req: {
-    runId: Uuid;
-    nodeId: NonEmpty;
-    channelId: NonEmpty;
-    reason: string;
-  }): Promise<NonEmpty>;
-  respond(
-    requestId: NonEmpty,
-    approverId: Uuid,
-    decision: 'grant' | 'deny',
-    signature: Base64Url
-  ): Promise<ApprovalRequest>;
-}
-
 // ─── F4.13 Admin Signed Mutation Envelopes — Hard Law #10 ─────────────────
 // Every governance-relevant admin mutation requires a per-mutation
 // Ed25519 admin signature; the route writes mandatory infra ledger
@@ -835,42 +742,6 @@ export interface SignedAdminMutation<TPayload> {
 /** Q13 — daily-bucket + monotonic-sequence infrastructure run id. */
 export interface InfraRunIdNamespace {
   next(date?: Date): NonEmpty; // returns 'infra-YYYY-MM-DD-NNNN'
-}
-
-// ─── F4.6 File Attachments — bind-at-runOpen, mailbox-materialized ─────────
-// Workspace uploads stage bytes via POST /workspace/attachments/stage; at
-// run-open the binder classifies + computes digest + records provenance.
-// Plan dispatch materializes bound attachments into mailbox items; NVG
-// reads the bound dataLabels at firewall crossing (Spec F4.11).
-export type AttachmentBindingState = 'unbound' | 'bound' | 'rejected' | 'quarantined';
-
-export interface Attachment {
-  readonly attachmentId: NonEmpty;
-  readonly stagedAt: IsoTimestamp;
-  readonly stagedBy: Uuid;
-  readonly mimeType: NonEmpty;
-  readonly byteLength: number;
-  readonly digest: Sha256Hex;
-  readonly storageRef: NonEmpty; // opaque server-side ref; client never sees it
-  readonly bindingState: AttachmentBindingState;
-  readonly boundToRunId?: Uuid;
-  readonly dataLabels: ReadonlyArray<DataLabel>; // populated at bind
-  readonly provenance: ProvenanceSource;
-  readonly rejectionReason?: NonEmpty;
-}
-
-export interface BindContext {
-  readonly principalId: Uuid;
-  readonly identityClaims: Record<string, unknown>;
-  readonly arena: NonEmpty;
-}
-
-export interface AttachmentBinder {
-  bind(
-    runId: Uuid,
-    attachmentIds: ReadonlyArray<NonEmpty>,
-    context: BindContext
-  ): Promise<ReadonlyArray<Attachment>>;
 }
 
 // ─── F4.9 Claim Drift Verification — Hard Law #14 ──────────────────────────
@@ -995,25 +866,6 @@ export interface SignedOctAssignmentRequest {
   requestedAt: IsoTimestamp;
   reason: NonEmpty;
   signature: Base64Url;
-}
-
-export interface SignedActorRegistrationRequest {
-  readonly action: 'actor_registration';
-  readonly actorId: Uuid;
-  readonly initialOctLevel: OctLevel;
-  readonly operatorId: NonEmpty;
-  readonly requestedAt: IsoTimestamp;
-  readonly reason: NonEmpty;
-  readonly signature: Base64Url;
-}
-
-export interface SignedActorDeregistrationRequest {
-  readonly action: 'actor_deregistration';
-  readonly actorId: Uuid;
-  readonly operatorId: NonEmpty;
-  readonly requestedAt: IsoTimestamp;
-  readonly reason: NonEmpty;
-  readonly signature: Base64Url;
 }
 
 // ─── F4.1 SigningCouncil — federated operation aggregation ────────────────
@@ -1391,15 +1243,6 @@ export type RunEventType =
   // both hashes) — the claim values themselves stay out of the ledger
   // (they live in the carried-claims-ref / current-claims-ref pointers).
   | 'claim_drift_detected'
-  // ── F4.6 File Attachments (Hard Laws #6, #8, #13, #14) ────────────────
-  // Lifecycle: stage at upload → bind at run-open (classify-at-bind) →
-  // materialize into mailbox items per plan node. Reject/quarantine
-  // never silently — every outcome surfaces a workspace receipt.
-  | 'attachment_staged'
-  | 'attachment_bound'
-  | 'attachment_rejected'
-  | 'attachment_quarantined'
-  | 'attachment_materialized'
   // ── F4.15 Delegation mint fail-closed (HL #15) ────────────────────────
   // Emitted when DelegationMintPort returns empty_intersection or
   // mint_error. The fabricated-UUID path is retired; mint failure

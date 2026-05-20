@@ -2007,15 +2007,11 @@ async function main(): Promise<void> {
 const PLANNER_LEXICON_GATE_COUNT = 5;
 const ADMIN_DASHBOARD_GATE_COUNT = 3;
 const CHAT_TIER_GATE_COUNT = 2;
-// F4.19 scaffolds 16 GOV-* gates. Strict gates enforce; PENDING gates
-// pass with a message naming the patch that lands strict mode.
+// 16 GOV-* gates. Each gate is either STRICT (enforces the spec
+// invariant) or RED (explicit fail naming the patch that lands strict
+// mode). There is no third state — the `passPending` lying-helper
+// from Phase B session 1 was retired in Patch 26 (HANDOFF §D.1).
 const GOV_GATE_COUNT = 16;
-
-// Helper used by scaffold-only gates so their `pass()` line is visually
-// distinct in CI output. Patch IDs map to §D of the dangerous-mode prompt.
-function passPending(patchId: string, summary: string): void {
-  pass(`PENDING (${patchId}) — ${summary}`);
-}
 
 // ===========================================================================
 // F4.10 GOV-01 — final outcome literal gate
@@ -2135,22 +2131,23 @@ function enforceGov03DelegationMintFailClosed(): void {
 }
 
 function enforceGov04EffectiveScopeIntersection(): void {
-  // F4.15 / Patch 12: DelegationMint applies symmetric intersection
-  // across user ∩ agent ∩ delegation in 6 dimensions per HL #15.
-  passPending('Patch 12 / F4.15', 'effective-scope 6-dim intersection');
+  // F4.15 — DelegationMint applies symmetric intersection across
+  // user ∩ agent ∩ delegation in 6 dimensions per HL #15. RED until
+  // BakedDelegationMint is wired into scripts/nexus-main.ts
+  // makeIssueDelegation (Phase B completion Patch 28).
+  fail(
+    'GOV-04: BakedDelegationMint port is not yet wired into makeIssueDelegation — F4.15 §3.1 / HL #15 / Phase B completion HANDOFF §E.1 Patch 34'
+  );
 }
 
 function enforceGov05NvgPayloadLabels(): void {
-  // F4.11 / Patch 10 (this gate's strict mode): scan production source
-  // for `dataLabels: []` literal construction. Test fixtures may still
-  // use empty arrays (they exercise the empty-labels case-split branch
-  // explicitly); production paths must aggregate from upstream slices
-  // or declare provenance. A `// @allow-empty-data-labels` comment on
-  // any of the 5 lines immediately above the literal exempts it as a
-  // documented transitional site.
+  // F4.11 §3.3 — every NVG-bound payload + mailbox writer must
+  // populate dataLabels from upstream provenance. No production source
+  // file may construct `dataLabels: []`. The `@allow-empty-data-labels`
+  // marker exemption from Phase B session 1 was retired in Patch 26
+  // (HANDOFF §D.2): the fix is the aggregation work the spec calls
+  // for, not a comment marker.
   const violations: string[] = [];
-  const MARKER = '@allow-empty-data-labels';
-  const LOOKBACK = 5;
   const selfPath = path.normalize(path.join('scripts', 'ci-gate.ts'));
   for (const root of ['packages', 'scripts']) {
     for (const file of walkFiles(root, ['.ts', '.tsx'])) {
@@ -2165,89 +2162,50 @@ function enforceGov05NvgPayloadLabels(): void {
         if (!/dataLabels\s*:\s*\[\s*\]/.test(line)) continue;
         // Skip if the line is itself a `//` comment (literal inside a comment).
         if (/^\s*\/\//.test(line)) continue;
-        let marked = false;
-        for (let j = Math.max(0, i - LOOKBACK); j <= i; j++) {
-          if ((rawLines[j] ?? '').includes(MARKER)) {
-            marked = true;
-            break;
-          }
-        }
-        if (!marked) {
-          violations.push(`${rel}:${i + 1}: dataLabels: [] in production source`);
-        }
+        violations.push(`${rel}:${i + 1}: dataLabels: [] in production source`);
       }
     }
   }
   if (violations.length > 0) {
     fail(
       `GOV-05: NVG payload label propagation violations:\n  ${violations.join('\n  ')}\n` +
-        `F4.11 §3.3 — aggregate from upstream slices/mailbox items; mark transitional sites with // @allow-empty-data-labels comment.`
+        `F4.11 §3.3 — aggregate dataLabels from upstream slices/mailbox items / provenance. ` +
+        `(Phase B completion HANDOFF §E.1 Patch 31 lands the aggregation; the ` +
+        `@allow-empty-data-labels marker bypass was retired in Patch 26.)`
     );
   }
-  pass('NVG payload label propagation (no unmarked empty dataLabels in production)');
+  pass('NVG payload label propagation (no empty dataLabels in production)');
 }
 
 function enforceGov06CompileMultiItemPassThrough(): void {
-  // F4.12 / Patch 14 (partial strict): pass-through bundle helper
-  // exists in deterministic-renderer.ts. The full activation (route
-  // multi-item no-template through the bundle path and migrate the
-  // bypass-partial test suite to quarantine semantics) is the next
-  // deliverable — the bypass-partial integration test currently
-  // depends on the legacy assembler bypass-partial behavior.
-  const rendererPath = path.join('packages', 'core', 'src', 'compile', 'deterministic-renderer.ts');
-  if (!fs.existsSync(rendererPath)) {
-    fail(`GOV-06: ${rendererPath} not found`);
-  }
-  const src = fs.readFileSync(rendererPath, 'utf-8');
-  if (!/compilePassThroughBundle/.test(src)) {
-    fail(`GOV-06: compilePassThroughBundle method missing (F4.12 §3.3 foundation)`);
-  }
-  pass('compile multi-item pass-through (bundle helper scaffolded; activation pending)');
+  // F4.12 §3.3 — multi-item no-template runs must route through the
+  // pass-through bundle helper (verifyMailboxItems + canonical-concat +
+  // signed bundle artifact). RED until Patch 32 completes the gate
+  // condition flip + the compile-bypass test migration via the §C.3
+  // test-breakage protocol. (The dead compilePassThroughBundle method
+  // from Phase B session 1 was deleted in Patch 26.)
+  fail(
+    'GOV-06: compile multi-item pass-through not yet activated — F4.12 §3.3 / Phase B completion HANDOFF §E.1 Patch 32 (test migration via HANDOFF §C.3 protocol pending)'
+  );
 }
 
 function enforceGov07CompilePassThroughDigest(): void {
-  // F4.12 / Patch 14 (partial strict): single-item pass-through helper
-  // computes bodyDigest = sha256Hex(bytes) before signing. Bundle
-  // helper does the same on its canonical concat.
-  const rendererPath = path.join('packages', 'core', 'src', 'compile', 'deterministic-renderer.ts');
-  if (!fs.existsSync(rendererPath)) {
-    fail(`GOV-07: ${rendererPath} not found`);
-  }
-  const src = fs.readFileSync(rendererPath, 'utf-8');
-  // Require both helpers compute bodyDigest = sha256Hex.
-  const occurrences = src.match(/bodyDigest\s*=\s*sha256Hex/g) ?? [];
-  if (occurrences.length < 2) {
-    fail(
-      `GOV-07: deterministic-renderer must call bodyDigest = sha256Hex(bytes) in BOTH pass-through helpers; found ${occurrences.length} occurrences`
-    );
-  }
-  pass('compile pass-through digest (both helpers pin bodyDigest = sha256Hex(bytes))');
+  // F4.12 §3.3 — bundle pass-through helper must compute
+  // bodyDigest = sha256Hex(canonical-concat(items)). RED until Patch 32
+  // re-introduces the bundle helper correctly + activates it.
+  fail(
+    'GOV-07: compile pass-through bundle digest not yet implemented — F4.12 §3.3 / Phase B completion HANDOFF §E.1 Patch 32'
+  );
 }
 
 function enforceGov08SignedAdminMutation(): void {
-  // F4.13 / Patch 15 (foundation): SignedAdminMutation type + Q13
-  // InfraRunIdNamespace + intent/committed/failed ledger events are
-  // declared. Wiring every admin-writer route to require the envelope
-  // is the next deliverable (large sweep — every mutation route in
-  // packages/interfaces/api/src/routes/admin-writer.ts).
-  const contractsPath = path.join('packages', 'contracts', 'src', 'interfaces', 'index.ts');
-  if (!fs.existsSync(contractsPath)) {
-    fail(`GOV-08: ${contractsPath} not found`);
-  }
-  const src = fs.readFileSync(contractsPath, 'utf-8');
-  if (!/interface SignedAdminMutation\b/.test(src)) {
-    fail(`GOV-08: SignedAdminMutation interface must be declared in contracts (F4.13 §2.1)`);
-  }
-  if (!/'admin_mutation_intent'/.test(src)) {
-    fail(`GOV-08: admin_mutation_intent ledger event must be registered (F4.13 §2.2)`);
-  }
-  if (!/'admin_mutation_committed'/.test(src)) {
-    fail(`GOV-08: admin_mutation_committed ledger event must be registered (F4.13 §2.2)`);
-  }
-  if (!/'admin_mutation_failed'/.test(src)) {
-    fail(`GOV-08: admin_mutation_failed ledger event must be registered (F4.13 §2.2)`);
-  }
-  pass('signed admin mutation envelope foundation (contract + ledger events declared)');
+  // F4.13 — every governance-relevant admin-writer mutation must be
+  // wrapped in SignedAdminMutation verification + intent/committed/
+  // failed ledger events. RED until Patch 33 lands the ~20-route sweep
+  // and inverts tests/api/admin-writer.test.ts per P0-033.
+  fail(
+    'GOV-08: SignedAdminMutation envelope not yet enforced at admin-writer mutation routes — F4.13 §3 / Phase B completion HANDOFF §E.1 Patch 33'
+  );
 }
 
 function enforceGov09EnforcingLockMultiAdmin(): void {
@@ -2296,22 +2254,14 @@ function enforceGov09EnforcingLockMultiAdmin(): void {
 }
 
 function enforceGov10CredentialLifecycleFailClosed(): void {
-  // F4.13 / Patch 15 (foundation): Q13 InfraRunIdNamespace is the
-  // baked port for cross-correlating infra writes. Production wires
-  // it into the admin-writer composition root; the route-side
-  // silent-no-op on missing runLedgerWriter is the next deliverable.
-  const nsPath = path.join('packages', 'core', 'src', 'infra', 'infra-run-id-namespace.ts');
-  if (!fs.existsSync(nsPath)) {
-    fail(`GOV-10: ${nsPath} not found (F4.13 / Q13)`);
-  }
-  const src = fs.readFileSync(nsPath, 'utf-8');
-  if (!/class InMemoryInfraRunIdNamespace\b/.test(src)) {
-    fail(`GOV-10: InMemoryInfraRunIdNamespace must implement InfraRunIdNamespace (Q13)`);
-  }
-  if (!/infra-\$\{key\}-\$\{padded\}/.test(src)) {
-    fail(`GOV-10: namespace must produce 'infra-YYYY-MM-DD-NNNN' shape (Q13)`);
-  }
-  pass('credential lifecycle fail-closed foundation (Q13 InfraRunIdNamespace baked)');
+  // F4.13 / Q13 — InfraRunIdNamespace is the baked port for
+  // cross-correlating infra writes; admin-writer routes must use it
+  // (no fabricated UUIDs, no silent no-op on missing ledger writer).
+  // RED until Patch 33 wires it into the admin-writer composition root
+  // alongside the SignedAdminMutation sweep.
+  fail(
+    'GOV-10: InfraRunIdNamespace not yet wired into admin-writer composition; silent-no-op paths persist — F4.13 / Q13 / Phase B completion HANDOFF §E.1 Patch 33'
+  );
 }
 
 function enforceGov11OrchCallbackTimeoutNoKill(): void {
@@ -2375,86 +2325,43 @@ function enforceGov12OctMutationLawfulPath(): void {
 }
 
 function enforceGov13PolicyOctAxisEvaluator(): void {
-  // F4.2 / Patch 16 (foundation): the OCT_LEVEL + OCT_RANK constants
-  // are already in contracts. Wiring PolicyCondition.octLevels as a
-  // mandatory field + Gate 04 reader is a wider sweep across the
-  // policy gate, bundle schema, fixtures, and migration tooling —
-  // staged for the next deliverable. This gate ensures the
-  // foundational constants are present and the OCT manager applies
-  // strict-higher rank (Patch 7).
-  const constantsPath = path.join('packages', 'contracts', 'src', 'constants', 'index.ts');
-  if (!fs.existsSync(constantsPath)) {
-    fail(`GOV-13: ${constantsPath} not found`);
-  }
-  const src = fs.readFileSync(constantsPath, 'utf-8');
-  if (!/export const OCT_RANK\b/.test(src)) {
-    fail(`GOV-13: OCT_RANK must be present in constants (Patch 7 / F4.5)`);
-  }
-  pass('policy OCT-axis evaluator foundation (OCT_RANK present; mandatory field wiring pending)');
+  // F4.2 — PolicyCondition.octLevels mandatory; Gate 04 reader builds
+  // PolicyEvalEnvelope with actor.octLevel and fails closed with
+  // policy_envelope_missing_oct if absent. RED until Patch 36 lands
+  // the policy bundle schema tightening, Gate 04 reader update, the
+  // migration script for existing policy fixtures, and the
+  // policy_bundle_replace dispatcher binding.
+  fail(
+    'GOV-13: PolicyCondition.octLevels not mandatory in production; Gate 04 does not read identityClaims.octLevel — F4.2 §2 / Phase B completion HANDOFF §E.1 Patch 36'
+  );
 }
 
 function enforceGov14LexiconMutationDoubleAdmin(): void {
-  // F4.1 + F4.8 / Patches 6 + 8 (strict): lexicon_mutation operation
-  // registered with threshold=2 and a baked LexiconMutationExecutor
-  // refuses to apply with fewer than 2 distinct signers.
-  const constantsPath = path.join('packages', 'contracts', 'src', 'constants', 'index.ts');
-  const executorPath = path.join(
-    'packages',
-    'core',
-    'src',
-    'lexicon',
-    'lexicon-mutation-executor.ts'
+  // F4.1 + F4.8 / Q4 — lexicon_mutation operation must be wired
+  // end-to-end through the SigningCouncil 2-of-2 dispatcher with the
+  // baked LexiconMutationExecutor as the apply path. The executor
+  // class and the FEDERATED_OPERATION constants exist (Phase B session
+  // 1 Patches 6 + 8), but the council dispatcher map does not
+  // register the executor, no admin-writer routes for lexicon
+  // entity/edge/confidence/template/guard authoring exist, and no
+  // planner callback emits unmapped_prompt / lexicon_signal. RED
+  // until Patch 29 lands the end-to-end wiring.
+  fail(
+    'GOV-14: lexicon_mutation dispatcher not registered with SigningCouncil; no admin-writer lexicon-authoring routes; no planner-side unmapped_prompt / lexicon_signal emission — F4.1 + F4.8 / Q4 / Phase B completion HANDOFF §E.1 Patches 27 + 29'
   );
-  if (!fs.existsSync(constantsPath)) {
-    fail(`GOV-14: contracts constants file not found at ${constantsPath}`);
-  }
-  const cSrc = fs.readFileSync(constantsPath, 'utf-8');
-  if (!/LEXICON_MUTATION:\s*'lexicon_mutation'/.test(cSrc)) {
-    fail(`GOV-14: FEDERATED_OPERATION.LEXICON_MUTATION must be present in ${constantsPath} (Q4)`);
-  }
-  if (
-    !/FEDERATED_OPERATION_THRESHOLDS[\s\S]*?\[FEDERATED_OPERATION\.LEXICON_MUTATION\]:\s*2/.test(
-      cSrc
-    )
-  ) {
-    fail(`GOV-14: FEDERATED_OPERATION_THRESHOLDS must declare 2 for LEXICON_MUTATION (Q4 STRICT)`);
-  }
-  if (!fs.existsSync(executorPath)) {
-    fail(`GOV-14: LexiconMutationExecutor not found at ${executorPath} (Patch 8 / F4.8)`);
-  }
-  const eSrc = fs.readFileSync(executorPath, 'utf-8');
-  if (!/signers\.length\s*<\s*2/.test(eSrc)) {
-    fail(`GOV-14: LexiconMutationExecutor must reject signers.length < 2 (Q4 STRICT)`);
-  }
-  if (!/new Set\(signers\)\.size\s*<\s*2/.test(eSrc)) {
-    fail(`GOV-14: LexiconMutationExecutor must reject duplicate signers (distinct check)`);
-  }
-  pass('lexicon mutation double-admin (threshold=2 + executor rejects below-threshold)');
 }
 
 function enforceGov15ClaimDriftVerification(): void {
-  // F4.9 / Patch 9 (this gate's strict mode): the ClaimVerificationPort
-  // interface is declared in contracts, the reference verifier is
-  // implemented in core, and the claim_drift_detected ledger event type
-  // is registered. Wrapping every NXS/NVG gate runner with the verifier
-  // is the next deliverable; this gate guards the foundation.
-  const contractsPath = path.join('packages', 'contracts', 'src', 'interfaces', 'index.ts');
-  const verifierPath = path.join('packages', 'core', 'src', 'identity', 'claim-verifier.ts');
-  if (!fs.existsSync(contractsPath) || !fs.existsSync(verifierPath)) {
-    fail(`GOV-15: missing ${contractsPath} or ${verifierPath}`);
-  }
-  const cSrc = fs.readFileSync(contractsPath, 'utf-8');
-  if (!/interface ClaimVerificationPort\b/.test(cSrc)) {
-    fail('GOV-15: ClaimVerificationPort interface must be declared in contracts (F4.9 §2.1)');
-  }
-  if (!/'claim_drift_detected'/.test(cSrc)) {
-    fail('GOV-15: claim_drift_detected ledger event type must be registered (F4.9 §2.2)');
-  }
-  const vSrc = fs.readFileSync(verifierPath, 'utf-8');
-  if (!/class ReferenceClaimVerifier\b/.test(vSrc)) {
-    fail('GOV-15: ReferenceClaimVerifier must implement ClaimVerificationPort (F4.9 §2.1)');
-  }
-  pass('claim drift verification foundation (port + verifier + event type)');
+  // F4.9 / HL #14 — every NXS gate (01-07) and NVG classify-and-route
+  // + return-precheck must wrap with runGateWithDriftCheck and call
+  // ClaimVerificationPort.verify(carried, principalId, gateName)
+  // before evaluation; drift emits claim_drift_detected and fails the
+  // gate closed. The port + ReferenceClaimVerifier exist (Phase B
+  // session 1 Patch 9), but no gate runner calls them. RED until
+  // Patch 29 lands the runner wrapping.
+  fail(
+    'GOV-15: ClaimVerificationPort not invoked from any NXS/NVG gate runner — F4.9 §3 / HL #14 / Phase B completion HANDOFF §E.1 Patch 30'
+  );
 }
 
 function enforceGov16ResolvedRelativeImports(): void {
