@@ -1416,17 +1416,18 @@ export type RunEventType =
   | 'unmapped_prompt'
   | 'lexicon_signal'
   // ── F4.2 Policy bundle OCT axis (Hard Law #5 / #10 / #13) ─────────────
-  // `policy_envelope_missing_oct` — Gate 04 fail-closed when the actor's
-  //   octLevel is null/undefined; detail carries actorId + ruleId='default_deny'.
   // `policy_bundle_replaced` — emitted by the policy_bundle_replace
   //   SigningCouncil dispatcher on successful 2-of-2 application; detail
   //   carries bundle hash + signer chain.
-  // `would_deny_policy` — observe/advisory mode where a deny rule matched;
-  //   payload still proceeds, but the gate records what enforce would have
-  //   done.
-  | 'policy_envelope_missing_oct'
+  //
+  // Note: Gate 04's fail-closed on missing actor.octLevel is signalled via
+  // GateDecision.denialCode = DENIAL_CODE.POLICY_ENVELOPE_MISSING_OCT
+  // (already in the constants), which flows through the standard pipeline
+  // ledger emission path — no separate event type needed. Three-mode
+  // would-deny logging is post-V1 (spec F4.2 §3.3 is a runtime model
+  // description, not a §1 scope deliverable); the corresponding event
+  // type will be added when the three-mode evaluator branch lands.
   | 'policy_bundle_replaced'
-  | 'would_deny_policy'
   // ── F4.9 Claim Drift Verification (Hard Law #14) ──────────────────────
   // Emitted by the gate runner when ClaimVerificationPort.verify returns
   // 'drift'. Detail carries the carried-vs-current diff (fields list +

@@ -1001,6 +1001,15 @@ export interface AdminWriterRouteDeps {
    */
   readonly signingCouncil?: import('@nexus/contracts').SigningCouncilPort;
   /**
+   * F4.1 / feedback_signing_keys_server_side — server-side Ed25519 signer
+   * for admins that POST to /workspace/admin/signing/requests/:id/signatures
+   * without a pre-computed signature (the browser never holds the admin
+   * keypair). The wrapper loads the elevated admin's keypair, signs the
+   * canonical envelope, and feeds the bytes to `signingCouncil.sign()`.
+   * Absent → external (pre-signed) clients still work; UI clients get 403.
+   */
+  readonly signingCouncilServerSigner?: SigningCouncilServerSignerPort;
+  /**
    * F4.5 OCT manager port. Production wires this to @nexus/core's
    * assignOct(req, registry, ledger) closure; tests inject a mock. When
    * omitted, /workspace/admin/oct/assign returns 501.
@@ -1048,6 +1057,32 @@ export interface AdminOctManagerPort {
     actorId: string;
     octLevel: string;
   }>;
+}
+
+// ── F4.1 SigningCouncil server-side signer (feedback_signing_keys_server_side) ─
+//
+// UI clients post to /workspace/admin/signing/requests/:id/signatures
+// without an Ed25519 signature; the browser MUST NOT hold the admin
+// keypair. This port loads the elevated admin's keypair server-side and
+// signs the canonical envelope the council expects (envelope = canonicalize
+// of {requestId, operation, payloadDigest, openedAt}). The route forwards
+// the resulting bytes to `signingCouncil.sign(requestId, principalId, sig)`.
+//
+// External clients (CLI, scripts, third parties) can bypass this port by
+// pre-signing and posting the signature in the request body; the route
+// honors a pre-supplied signature when present and only invokes the
+// server-side signer when the body omits `signature`.
+export interface SigningCouncilServerSignerPort {
+  /**
+   * Sign the council's canonical envelope using the elevated admin's
+   * keypair. Returns base64url-encoded Ed25519 signature bytes. Throws
+   * with statusCode set when the principal has no keypair on disk
+   * (manifests as 403/412 from the route).
+   */
+  signEnvelope(input: {
+    readonly principalId: import('@nexus/contracts').NonEmpty;
+    readonly canonicalEnvelope: string;
+  }): Promise<import('@nexus/contracts').Base64Url>;
 }
 
 // ── AMEND §3.6 — ModeSigner port ────────────────────────────────────────────
@@ -2193,9 +2228,16 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       expiresInSeconds: z.number().int().positive().optional(),
     })
     .strict();
+  // F4.1 / feedback_signing_keys_server_side — the SigningSignSchema's
+  // `signature` field is OPTIONAL because production UI clients post
+  // without a signature; the route then loads the elevated admin's
+  // server-side keypair via `signingCouncilServerSigner` and forges the
+  // Ed25519 signature itself. External clients (CLI, scripts, third
+  // parties) MAY pre-sign and post the bytes directly. When neither is
+  // available the route returns 403.
   const SigningSignSchema = z
     .object({
-      signature: z.string().min(1),
+      signature: z.string().min(1).optional(),
     })
     .strict();
 
@@ -2249,10 +2291,56 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       }
       try {
         const requestId = String(req.params['requestId']) as NonEmpty;
+        // F4.1 / feedback_signing_keys_server_side — two paths:
+        //   1. External (CLI/script) client posted a pre-computed
+        //      signature → forward to council.sign() as-is.
+        //   2. UI client omitted `signature` → the route loads the
+        //      elevated admin's keypair via signingCouncilServerSigner
+        //      and signs the canonical envelope server-side. Browser
+        //      never holds the admin keypair.
+        let signature: Base64Url;
+        if (parsed.data.signature !== undefined) {
+          signature = parsed.data.signature as Base64Url;
+        } else {
+          if (!deps.signingCouncilServerSigner) {
+            res.status(403).json({
+              ok: false,
+              error:
+                'signature_required: server-side signer not configured; supply a pre-computed signature or wire SigningCouncilServerSigner',
+            });
+            return;
+          }
+          const pending = await deps.signingCouncil.get(requestId);
+          if (!pending) {
+            res.status(404).json({ ok: false, error: 'request_not_found' });
+            return;
+          }
+          // The council is a SigningCouncilPort with a single concrete
+          // implementation (SigningCouncil in @nexus/core); both the
+          // implementation and the port expose `canonicalSigningEnvelope`.
+          // Route consumers downcast to read the envelope so the server
+          // signer can produce a verifier-compatible signature.
+          const envelopeBuilder = deps.signingCouncil as {
+            canonicalSigningEnvelope?: (req: typeof pending) => string;
+          };
+          if (typeof envelopeBuilder.canonicalSigningEnvelope !== 'function') {
+            res.status(500).json({
+              ok: false,
+              error:
+                'signing_council_envelope_unavailable: configured SigningCouncil implementation does not expose canonicalSigningEnvelope',
+            });
+            return;
+          }
+          const canonicalEnvelope = envelopeBuilder.canonicalSigningEnvelope(pending);
+          signature = await deps.signingCouncilServerSigner.signEnvelope({
+            principalId: auth.principalId as NonEmpty,
+            canonicalEnvelope,
+          });
+        }
         const updated = await deps.signingCouncil.sign(
           requestId,
           auth.principalId as NonEmpty,
-          parsed.data.signature as Base64Url
+          signature
         );
         res.json({ ok: true, data: updated });
       } catch (err) {

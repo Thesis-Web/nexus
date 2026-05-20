@@ -172,6 +172,11 @@ export function registerAllRoutes(
     // production for /workspace/admin/signing/* + /workspace/admin/lexicon/*
     // routes (otherwise 501).
     ...(deps.signingCouncil !== undefined ? { signingCouncil: deps.signingCouncil } : {}),
+    // F4.1 / feedback_signing_keys_server_side — server-side Ed25519
+    // signer for UI clients (browser never holds the admin keypair).
+    ...(deps.signingCouncilServerSigner !== undefined
+      ? { signingCouncilServerSigner: deps.signingCouncilServerSigner }
+      : {}),
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

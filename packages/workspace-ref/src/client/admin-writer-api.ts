@@ -615,16 +615,23 @@ export async function listSigningRequests(
   return writerFetch('/workspace/admin/signing/requests' + suffix, elevatedSessionId, 'GET');
 }
 
+/**
+ * Sign a pending SigningRequest. F4.1 /
+ * feedback_signing_keys_server_side: the browser MUST NOT hold the admin
+ * keypair, so this helper sends an empty body — the route loads the
+ * elevated admin's server-side keypair and forges the Ed25519 signature
+ * itself. External (CLI) clients pre-signing the canonical envelope
+ * should call the underlying route directly with `{ signature: <bytes> }`.
+ */
 export async function signSigningRequest(
   elevatedSessionId: string,
-  requestId: string,
-  signature: string
+  requestId: string
 ): Promise<WriterResponse<SigningRequestDisplay>> {
   return writerFetch(
     `/workspace/admin/signing/requests/${encodeURIComponent(requestId)}/signatures`,
     elevatedSessionId,
     'POST',
-    { signature }
+    {}
   );
 }
 

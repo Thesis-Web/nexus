@@ -317,6 +317,38 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
     },
   });
 
+  // F4.1 / feedback_signing_keys_server_side — UI clients hitting the
+  // council sign route omit `signature` from the body; this signer loads
+  // the elevated admin's keypair from disk and signs the canonical
+  // envelope (the same one the council verifies against). External CLI
+  // clients that pre-sign bypass this entirely and post the bytes
+  // directly. The signer fails closed when the principal has no keypair
+  // — the route surfaces it as 412 to the caller.
+  const signingCouncilServerSigner = {
+    async signEnvelope(input: {
+      readonly principalId: NonEmpty;
+      readonly canonicalEnvelope: string;
+    }): Promise<string> {
+      const kp = await loadAdminKeypair(input.principalId);
+      if (!kp) {
+        throw Object.assign(
+          new Error(
+            'admin_signing_keypair_missing: keys/admins/' +
+              input.principalId +
+              '.keypair.json not found; the elevated admin must register a keypair before signing council requests'
+          ),
+          { statusCode: 412 }
+        );
+      }
+      return signEd25519(input.canonicalEnvelope, {
+        publicKey: kp.publicKey as never,
+        privateKey: kp.privateKey as never,
+        generatedAt: new Date().toISOString() as never,
+        purpose: 'dev' as const,
+      });
+    },
+  };
+
   const baseDeps: ApiDependencies = {
     actorRegistry: new SqliteActorRegistry(db),
     principalRegistry: new SqlitePrincipalRegistry(db),
@@ -343,6 +375,7 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
     manifestWriter,
     modeSigner,
     signingCouncil,
+    signingCouncilServerSigner,
     keyDirectory,
     // §4.1 — best-effort: report any admin signing keypair as present.
     // The dashboard panel uses this to show the fallback CLI-instructions

@@ -1671,16 +1671,6 @@ const program = createCli({
       readonly resolve: (decision: boolean) => void;
       readonly timer: ReturnType<typeof setTimeout>;
       readonly expiresAt: number;
-      // F4.8 §2.3 — context kept so resolvePendingCheckback can emit a
-      // `lexicon_signal` ledger event when the user picks a suggested
-      // intent (allow=true). The fields are admin-review signal payload
-      // per outline §3 E; not load-bearing for governance.
-      readonly lexiconSignal?: {
-        readonly principalId: NonEmpty;
-        readonly arena: NonEmpty;
-        readonly promptDigest: Sha256Hex | null;
-        readonly candidateAgentIds: ReadonlyArray<Uuid>;
-      };
     }
     const pendingCheckbacks = new Map<Uuid, PendingCheckback>();
     const CHECKBACK_TIMEOUT_MS = 5 * 60_000;
@@ -2003,20 +1993,22 @@ const program = createCli({
         detail: { decision: allow ? 'allow' : 'deny' },
       });
       // F4.8 §2.3 / outline §3 E — `lexicon_signal` records that a user
-      // chose an intent from a top-N checkback. Drives the admin review
-      // queue ("users keep picking X — propose a lexicon entity for X").
-      // Only emit on accept; a deny carries no positive signal.
-      if (allow && pending.lexiconSignal) {
+      // positively resolved a callback. The spec's strict reading is
+      // "user picks from top-N candidates" — V1 callbacks today only
+      // support binary allow/deny, so we emit on every accept-resolution
+      // and tag the v1 source. Admin review queue can filter by `kind`
+      // when the planner-rejection-with-candidates path lands the
+      // richer payload (promptDigest, arena, chosenIntent, candidate
+      // scores) per F4.8 §2.3 in a follow-on Phase B item.
+      if (allow) {
         await coreDeps.runLedgerWriter!.writeEvent({
           runId,
           eventType: 'lexicon_signal',
           timestamp: nowIso(),
           actorId: null,
           detail: {
-            principalId: pending.lexiconSignal.principalId,
-            arena: pending.lexiconSignal.arena,
-            promptDigest: pending.lexiconSignal.promptDigest,
-            chosenAgentIds: pending.lexiconSignal.candidateAgentIds,
+            kind: 'callback_resolved_positive',
+            sourceCheckbackKind: 'planner_or_routing_callback',
           },
         });
       }

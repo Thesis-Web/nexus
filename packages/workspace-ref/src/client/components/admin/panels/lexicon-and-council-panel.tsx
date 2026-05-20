@@ -27,21 +27,15 @@
 // follow-up enhancement (HANDOFF §F non-gate items, not blocking gov
 // floor).
 //
-// Server signs server-side (the workspace fetch does not send the admin
-// keypair). For Phase 1 V1 the simplest path through the existing
-// SigningCouncil surface is:
-//   - Admin opens the request via the lexicon-authoring route (server
-//     records `openedBy`).
-//   - Server-side signing helper builds the Ed25519 signature over the
-//     canonical envelope using the principal's keypair (route forges).
-//
-// In this panel the "Sign as me" button POSTs a small marker that the
-// server interprets as "use my elevated session's keypair to sign this
-// envelope server-side." The signature value sent in the request body is
-// a sentinel that the back-end recognizes; the actual Ed25519 bytes are
-// computed on the server side from the persisted admin keypair. This
-// matches feedback_signing_keys_server_side.md (the browser never holds
-// the admin keypair).
+// Per feedback_signing_keys_server_side, the browser MUST NOT hold the
+// admin keypair. The "Sign as me" button posts an empty body to
+// /workspace/admin/signing/requests/:id/signatures; the route loads the
+// elevated admin's keypair from keys/admins/<principalId>.keypair.json,
+// builds the canonical envelope the council expects, signs it server-
+// side via the wired SigningCouncilServerSigner port, then forwards the
+// real Ed25519 bytes to signingCouncil.sign(). External CLI clients
+// retain the ability to pre-sign and post `{ signature: <bytes> }`
+// directly — that path bypasses the server-side signer.
 
 import { useEffect, useState } from 'react';
 import { PanelChrome } from './_panel-chrome.js';
@@ -177,19 +171,14 @@ export function LexiconAndCouncilPanel({ data, elevatedSessionId, adminPrincipal
     if (!elevatedSessionId) return;
     setSigningId(requestId);
     try {
-      // The signature value sent here is a sentinel; the server-side
-      // signing helper loads keys/admins/<principalId>.keypair.json (per
-      // feedback_signing_keys_server_side.md, the browser never holds
-      // the admin keypair) and replaces this placeholder with a real
-      // Ed25519 signature over the canonical envelope before the route
-      // forwards to signingCouncil.sign(...). When the helper is not
-      // configured for this session, the route returns 403 with a
-      // clear message and the operator sees it in the queueError area.
-      const result = await signSigningRequest(
-        elevatedSessionId,
-        requestId,
-        'server_side_sign_request'
-      );
+      // F4.1 / feedback_signing_keys_server_side — the helper posts an
+      // empty body; the route loads the elevated admin's keypair from
+      // keys/admins/<principalId>.keypair.json server-side and signs
+      // the canonical envelope. The browser never holds the keypair.
+      // When the principal has no keypair on disk the route returns
+      // 412 (precondition failed); when the server-side signer is not
+      // configured it returns 403; either surfaces in queueError below.
+      const result = await signSigningRequest(elevatedSessionId, requestId);
       if (result.ok) {
         setQueueError(null);
         await reloadQueue();

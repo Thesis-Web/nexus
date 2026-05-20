@@ -377,6 +377,14 @@ export interface ApiDependencies {
    * verification, threshold checking, and dispatch.
    */
   signingCouncil?: import('@nexus/contracts').SigningCouncilPort;
+  /**
+   * F4.1 / feedback_signing_keys_server_side — server-side Ed25519 signer
+   * for the council sign route. UI clients post without a signature; the
+   * route loads the elevated admin's keypair via this port and signs the
+   * canonical envelope server-side. Absent → UI clients get 403; CLI
+   * (pre-signed) clients keep working.
+   */
+  signingCouncilServerSigner?: import('./routes/admin-writer.js').SigningCouncilServerSignerPort;
 
   // ── F4.5 OCT manager — signed OCT assignment surface ────────────────────
   /**
