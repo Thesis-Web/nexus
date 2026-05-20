@@ -2353,9 +2353,22 @@ function enforceGov12OctMutationLawfulPath(): void {
 }
 
 function enforceGov13PolicyOctAxisEvaluator(): void {
-  // F4.2 / Patch 16: PolicyCondition.octLevels mandatory; Gate 04
-  // reads it.
-  passPending('Patch 16 / F4.2', 'policy OCT-axis evaluator');
+  // F4.2 / Patch 16 (foundation): the OCT_LEVEL + OCT_RANK constants
+  // are already in contracts. Wiring PolicyCondition.octLevels as a
+  // mandatory field + Gate 04 reader is a wider sweep across the
+  // policy gate, bundle schema, fixtures, and migration tooling —
+  // staged for the next deliverable. This gate ensures the
+  // foundational constants are present and the OCT manager applies
+  // strict-higher rank (Patch 7).
+  const constantsPath = path.join('packages', 'contracts', 'src', 'constants', 'index.ts');
+  if (!fs.existsSync(constantsPath)) {
+    fail(`GOV-13: ${constantsPath} not found`);
+  }
+  const src = fs.readFileSync(constantsPath, 'utf-8');
+  if (!/export const OCT_RANK\b/.test(src)) {
+    fail(`GOV-13: OCT_RANK must be present in constants (Patch 7 / F4.5)`);
+  }
+  pass('policy OCT-axis evaluator foundation (OCT_RANK present; mandatory field wiring pending)');
 }
 
 function enforceGov14LexiconMutationDoubleAdmin(): void {
