@@ -129,6 +129,9 @@ export async function changeMode(
 }
 
 // ── §9.4: Disable enforcing-lock (multi-party) ─────────────────────────────
+// F4.17 / Q4 / HL #10 — `minRequired` is now floored at 2; any caller
+// requesting a lower threshold throws at function entry. This blocks the
+// retired single-admin dashboard unlock path (P0-023, P0-034).
 export async function disableEnforcingLock(
   adminSignatures: Array<{ adminId: NonEmpty; signature: Base64Url }>,
   currentConfig: ModeConfiguration,
@@ -138,8 +141,17 @@ export async function disableEnforcingLock(
   minRequired: number = 2,
   requestedAt: IsoTimestamp = nowIso() as IsoTimestamp // MODE-003 FIX: caller-provided for multi-party
 ): Promise<ModeConfiguration> {
+  if (minRequired < 2) {
+    throw new Error(
+      'MULTI_PARTY_REQUIRED: minRequired must be ≥ 2 — single-admin dashboard unlock retired (F4.17 / Q4)'
+    );
+  }
   if (adminSignatures.length < minRequired) {
     throw new Error('MULTI_PARTY_REQUIRED: need ' + minRequired + ' admin signatures');
+  }
+  const distinctIds = new Set(adminSignatures.map(s => s.adminId));
+  if (distinctIds.size < minRequired) {
+    throw new Error('DUPLICATE_SIGNER: ' + minRequired + ' distinct admin signatures required');
   }
 
   // Verify each admin signature over canonical unlock-request payload

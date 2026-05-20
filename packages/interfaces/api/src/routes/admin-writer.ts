@@ -969,9 +969,11 @@ export interface ModeSigner {
     adminPrincipalId: string;
   }): Promise<ModeSignerState>;
   /**
-   * Single-admin unlock of enforcing-lock from the dashboard
-   * (minRequired=1). The multi-party CLI flow (minRequired=2) remains
-   * available via the existing nexus CLI.
+   * F4.17: Enforcing-lock unlock from the dashboard now requires
+   * SigningCouncil 2-of-2 (Spec F4.1, operation='mode_unlock'). The
+   * single-admin override is retired (P0-023, P0-034). This method
+   * remains in the interface for backwards-compat of dependent code
+   * but throws 409 until SigningCouncil ratifies the request.
    */
   unlockEnforcing(adminPrincipalId: string): Promise<ModeSignerState>;
 }
@@ -1987,6 +1989,13 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
     }
   });
 
+  // F4.17 / Q4 / HL #10 — single-admin dashboard unlock is retired.
+  // The lawful path is SigningCouncil 2-of-2 (Spec F4.1, operation
+  // 'mode_unlock'); the request must be opened via the SigningCouncil
+  // route. Until that route lands in Patch 6, this endpoint rejects all
+  // attempts with 409 so the safety rail can never be lowered by a
+  // single admin via the dashboard. The CLI multi-party path
+  // (disableEnforcingLock with ≥2 signatures) remains available.
   app.post('/workspace/admin/setup/mode/unlock', async (req: Request, res: Response) => {
     const auth = await checkAdminAuth(req, res, deps);
     if (!auth.ok) {
@@ -2002,21 +2011,11 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       sendValidationError(res, parsed.error);
       return;
     }
-    try {
-      const hasKey = await deps.modeSigner.hasSigningKeypair(auth.principalId);
-      if (!hasKey) {
-        res.status(412).json({
-          ok: false,
-          error: 'missing admin signing keypair — provision via Toolchain & Keys',
-        });
-        return;
-      }
-      const next = await deps.modeSigner.unlockEnforcing(auth.principalId);
-      res.json({ ok: true, data: { currentConfig: next } });
-    } catch (err) {
-      const sc = (err as { statusCode?: number }).statusCode ?? 500;
-      res.status(sc).json({ ok: false, error: san(err) });
-    }
+    res.status(409).json({
+      ok: false,
+      error:
+        'unlock_requires_two_distinct_admins — open a SigningCouncil mode_unlock request (Spec F4.1)',
+    });
   });
 
   app.get('/workspace/admin/setup/mode', async (req: Request, res: Response) => {

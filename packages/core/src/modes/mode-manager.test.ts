@@ -162,6 +162,44 @@ describe('Mode Manager — spec §9', () => {
     ).rejects.toThrow('MULTI_PARTY_REQUIRED');
   });
 
+  // F4.17 / Q4 — single-admin dashboard unlock is retired. Any caller that
+  // tries to pass minRequired=1 fails at function entry; tests assert the
+  // override path is gone (ELM-01).
+  it('disableEnforcingLock rejects minRequired < 2 (F4.17 ELM-01)', async () => {
+    const config = await createDefaultModeConfig(adminId, keypair);
+    const ledger = new MockRunLedgerWriter();
+    await expect(
+      disableEnforcingLock(
+        [{ adminId: 'admin-1' as NonEmpty, signature: 'fake' as Base64Url }],
+        config,
+        adminId,
+        keypair,
+        ledger as any,
+        1 // retired single-admin path
+      )
+    ).rejects.toThrow('MULTI_PARTY_REQUIRED: minRequired must be ≥ 2');
+  });
+
+  // F4.17 — duplicate signers from the same admin do not meet the
+  // distinct-signer requirement (ELM-03).
+  it('disableEnforcingLock rejects duplicate signers (F4.17 ELM-03)', async () => {
+    const config = await createDefaultModeConfig(adminId, keypair);
+    const ledger = new MockRunLedgerWriter();
+    await expect(
+      disableEnforcingLock(
+        [
+          { adminId: 'admin-1' as NonEmpty, signature: 'sig-a' as Base64Url },
+          { adminId: 'admin-1' as NonEmpty, signature: 'sig-b' as Base64Url },
+        ],
+        config,
+        adminId,
+        keypair,
+        ledger as any,
+        2
+      )
+    ).rejects.toThrow('DUPLICATE_SIGNER');
+  });
+
   // ── §9.3.1: getInfraRunId deterministic ───────────────────────────────────
 
   it('getInfraRunId returns deterministic UUID for same day', () => {

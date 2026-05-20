@@ -248,46 +248,20 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
         signatureFingerprint: fingerprintSignature(next.signature),
       };
     },
-    async unlockEnforcing(adminPrincipalId) {
-      const kp = await loadAdminKeypair(adminPrincipalId);
-      if (!kp) {
-        throw Object.assign(new Error('admin signing keypair missing'), { statusCode: 412 });
-      }
-      const current = await loadModeConfig(modeConfigPath);
-      // §8 decision (best-solve): single-admin dashboard unlock via
-      // minRequired=1; multi-party CLI flow remains available with the
-      // existing default minRequired=2.
-      const requestedAt = new Date().toISOString();
-      const unlockPayload = canonicalize({
-        action: 'disable_enforcing_lock',
-        configSignature: current.signature,
-        requestedAt,
-      });
-      const signature = await signEd25519(
-        unlockPayload,
-        kp as unknown as Parameters<typeof signEd25519>[1]
+    async unlockEnforcing(_adminPrincipalId): Promise<ModeSignerState> {
+      // F4.17 / Q4 / HL #10 — the previous minRequired=1 single-admin
+      // dashboard unlock is retired. The lawful path is SigningCouncil
+      // 2-of-2 with operation='mode_unlock' (Spec F4.1); plug-in side
+      // rejects single-admin attempts with 409 until SigningCouncil
+      // ratifies. Until Patch 6 lands SigningCouncil end-to-end, no
+      // dashboard unlock path exists; CLI multi-party flow continues
+      // to work via disableEnforcingLock with ≥2 admin signatures.
+      throw Object.assign(
+        new Error(
+          'unlock_requires_two_distinct_admins — open a SigningCouncil mode_unlock request (Spec F4.1)'
+        ),
+        { statusCode: 409 }
       );
-      const next = await disableEnforcingLock(
-        [{ adminId: adminPrincipalId as unknown as NonEmpty, signature }],
-        current,
-        adminPrincipalId as unknown as NonEmpty,
-        kp as unknown as Parameters<typeof disableEnforcingLock>[3],
-        runLedgerWriterShared,
-        1,
-        requestedAt as unknown as Parameters<typeof disableEnforcingLock>[6]
-      );
-      await saveModeConfig(next, modeConfigPath);
-      return {
-        nxsMode: next.nxsMode as ModeSignerState['nxsMode'],
-        nvgMode: next.nvgMode as ModeSignerState['nvgMode'],
-        enforcingLocked: next.enforcingLocked,
-        updatedAt: next.updatedAt,
-        updatedBy: {
-          adminId: next.updatedBy.adminId,
-          publicKey: next.updatedBy.publicKey,
-        },
-        signatureFingerprint: fingerprintSignature(next.signature),
-      };
     },
   };
 

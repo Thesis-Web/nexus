@@ -2413,7 +2413,11 @@ describe('admin-writer mode signing routes', () => {
     expect(body.error).toMatch(/unlock/i);
   });
 
-  it('POST /mode/unlock — applies, then mode downgrade succeeds', async () => {
+  // F4.17 / Q4 / HL #10 — single-admin dashboard unlock is retired.
+  // The lawful unlock path is SigningCouncil 2-of-2; until Patch 6 lands
+  // the SigningCouncil flow, this route returns 409 on every attempt
+  // (ELM-02 + P0-034 inversion).
+  it('POST /mode/unlock — rejects single-admin attempt (F4.17 ELM-02)', async () => {
     modeSigner._hasKey.add(ADMIN_PID_LOCAL);
     modeSigner._state = {
       ...modeSigner._state,
@@ -2425,13 +2429,11 @@ describe('admin-writer mode signing routes', () => {
       headers: headers(),
       body: JSON.stringify({ confirm: true }),
     });
-    expect(unlockRes.status).toBe(200);
-    const downgradeRes = await fetch(url('/workspace/admin/setup/mode'), {
-      method: 'POST',
-      headers: headers(),
-      body: JSON.stringify({ engine: 'nxs', mode: 'observe' }),
-    });
-    expect(downgradeRes.status).toBe(200);
+    expect(unlockRes.status).toBe(409);
+    const body = (await unlockRes.json()) as { error: string };
+    expect(body.error).toMatch(/unlock_requires_two_distinct_admins/);
+    // Mode signer state must remain locked — no mutation took effect.
+    expect(modeSigner._state.enforcingLocked).toBe(true);
   });
 
   it('POST /mode — 400 on invalid mode value', async () => {

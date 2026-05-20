@@ -2122,9 +2122,48 @@ function enforceGov08SignedAdminMutation(): void {
 }
 
 function enforceGov09EnforcingLockMultiAdmin(): void {
-  // F4.17 / Patch 5: minRequired=1 override removed; dashboard unlock
-  // requires ≥2 distinct signatures.
-  passPending('Patch 5 / F4.17', 'enforcing-lock multi-admin');
+  // F4.17 / Patch 5 (this gate's strict mode): scans mode-manager,
+  // serve.ts, admin-writer for the retired minRequired=1 pattern.
+  // No source file may pass `minRequired=1` to disableEnforcingLock,
+  // and no docstring may advertise single-admin dashboard unlock.
+  const files = [
+    path.join('packages', 'core', 'src', 'modes', 'mode-manager.ts'),
+    path.join('packages', 'interfaces', 'cli', 'src', 'commands', 'serve.ts'),
+    path.join('packages', 'interfaces', 'api', 'src', 'routes', 'admin-writer.ts'),
+  ];
+  const violations: string[] = [];
+  for (const f of files) {
+    if (!fs.existsSync(f)) continue;
+    const src = stripTsComments(fs.readFileSync(f, 'utf-8'));
+    const lines = src.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      if (/\bminRequired\s*[:=]\s*1\b/.test(line)) {
+        violations.push(`${f}:${i + 1}: minRequired=1 — retired single-admin unlock path`);
+      }
+    }
+    // Call-site form: disableEnforcingLock(..., 1) — final positional
+    // arg of value 1 is the retired minRequired override.
+    const callPattern = /disableEnforcingLock\s*\([^)]*?,\s*1\s*(?:,|\))/s;
+    if (callPattern.test(src)) {
+      violations.push(`${f}: disableEnforcingLock(..., 1) call retired (Q4 strict-2)`);
+    }
+  }
+  // Forbid the deprecated docstring phrasing anywhere.
+  for (const f of files) {
+    if (!fs.existsSync(f)) continue;
+    const raw = fs.readFileSync(f, 'utf-8');
+    if (/Single-admin unlock of enforcing-lock from the dashboard/i.test(raw)) {
+      violations.push(`${f}: deprecated 'Single-admin unlock ...' docstring (ELM-08)`);
+    }
+  }
+  if (violations.length > 0) {
+    fail(
+      `GOV-09: enforcing-lock multi-admin violations:\n  ${violations.join('\n  ')}\n` +
+        `F4.17 / Q4 — only SigningCouncil 2-of-2 may unlock enforcing-lock`
+    );
+  }
+  pass('enforcing-lock multi-admin (no minRequired=1 path; no retired docstrings)');
 }
 
 function enforceGov10CredentialLifecycleFailClosed(): void {
