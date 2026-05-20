@@ -2095,10 +2095,50 @@ function enforceGov04EffectiveScopeIntersection(): void {
 }
 
 function enforceGov05NvgPayloadLabels(): void {
-  // F4.11 / Patch 10: every MailboxItem writer must populate
-  // provenance + dataLabels; NVG classify-and-route handles empty
-  // labels via the §3.3 case split.
-  passPending('Patch 10 / F4.11', 'NVG payload label propagation');
+  // F4.11 / Patch 10 (this gate's strict mode): scan production source
+  // for `dataLabels: []` literal construction. Test fixtures may still
+  // use empty arrays (they exercise the empty-labels case-split branch
+  // explicitly); production paths must aggregate from upstream slices
+  // or declare provenance. A `// @allow-empty-data-labels` comment on
+  // any of the 5 lines immediately above the literal exempts it as a
+  // documented transitional site.
+  const violations: string[] = [];
+  const MARKER = '@allow-empty-data-labels';
+  const LOOKBACK = 5;
+  const selfPath = path.normalize(path.join('scripts', 'ci-gate.ts'));
+  for (const root of ['packages', 'scripts']) {
+    for (const file of walkFiles(root, ['.ts', '.tsx'])) {
+      const rel = path.normalize(file);
+      if (/[\\/](dist|test-fixtures)[\\/]/.test(rel)) continue;
+      if (/\.(test|spec|integration|threat)\.tsx?$/.test(rel)) continue;
+      if (rel === selfPath) continue; // skip ci-gate.ts itself (it names the literal)
+      const raw = fs.readFileSync(file, 'utf-8');
+      const rawLines = raw.split(/\r?\n/);
+      for (let i = 0; i < rawLines.length; i++) {
+        const line = rawLines[i]!;
+        if (!/dataLabels\s*:\s*\[\s*\]/.test(line)) continue;
+        // Skip if the line is itself a `//` comment (literal inside a comment).
+        if (/^\s*\/\//.test(line)) continue;
+        let marked = false;
+        for (let j = Math.max(0, i - LOOKBACK); j <= i; j++) {
+          if ((rawLines[j] ?? '').includes(MARKER)) {
+            marked = true;
+            break;
+          }
+        }
+        if (!marked) {
+          violations.push(`${rel}:${i + 1}: dataLabels: [] in production source`);
+        }
+      }
+    }
+  }
+  if (violations.length > 0) {
+    fail(
+      `GOV-05: NVG payload label propagation violations:\n  ${violations.join('\n  ')}\n` +
+        `F4.11 §3.3 — aggregate from upstream slices/mailbox items; mark transitional sites with // @allow-empty-data-labels comment.`
+    );
+  }
+  pass('NVG payload label propagation (no unmarked empty dataLabels in production)');
 }
 
 function enforceGov06CompileMultiItemPassThrough(): void {

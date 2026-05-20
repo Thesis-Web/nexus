@@ -1286,6 +1286,17 @@ export interface DataLabel {
   confidence: number;
 }
 
+// ─── F4.11 NVG Payload Labels — provenance taxonomy (Hard Law #6) ─────────
+// Every mailbox item and every NVG request must carry provenance so the
+// classify-and-route gate can apply the §3.3 empty-labels case split
+// (Spec F4.11). Untrusted/unknown provenance with empty labels → deny.
+export type ProvenanceSource =
+  | 'workspace_upload'
+  | 'nxs_connector_result'
+  | 'agent_output'
+  | 'planner_history'
+  | 'unknown';
+
 export interface NvgOutboundRequest {
   requestId: Uuid;
   runId: Uuid;

@@ -1024,6 +1024,11 @@ const program = createCli({
               environmentContext: agent.environment,
               taskIntent: node.taskSummary,
               payload: turnPayload,
+              // F4.11 transitional: aggregator hookup is the next deliverable;
+              // until then the empty array flows through to NVG's empty-labels
+              // case split which floors classification to internal when
+              // provenance is trusted.
+              // @allow-empty-data-labels
               dataLabels: [],
               boundConnectorClasses,
               costPreference: 'standard',
@@ -1641,6 +1646,9 @@ const program = createCli({
             environmentContext: agent.environment,
             taskIntent: firstAgent.taskSummary,
             payload: [{ role: 'user', content: request.prompt }],
+            // F4.11 transitional: probe path uses the prompt slice only;
+            // aggregator hookup is the next deliverable.
+            // @allow-empty-data-labels
             dataLabels: [],
             boundConnectorClasses: probeBoundClasses,
             costPreference: 'standard',
