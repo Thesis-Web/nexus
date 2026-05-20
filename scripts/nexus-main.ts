@@ -38,6 +38,7 @@ import {
   SimpleChannelRegistry,
   SqliteApproverRegistry,
   loadPolicyBundleSet,
+  BakedDelegationMint,
 } from '@nexus/core';
 import { StubConnector } from '@nexus/connector-stub';
 import {
@@ -71,10 +72,18 @@ import type {
   CompileReturnRequest,
   AgentAction,
   Actor,
+  Principal,
   PipelineContext,
   PipelineResult,
+  IdentityClaimsCapabilityCeiling,
+  AgentDeclaration,
+  ExplicitDelegationScope,
+  Capability,
+  FirewallTransitMap,
+  RunTypeKind,
+  OctLevel,
 } from '@nexus/contracts';
-import { nowIso, riskTierExceeds, CAPABILITY_IDS, FINAL_OUTCOME } from '@nexus/contracts';
+import { nowIso, CAPABILITY_IDS, FINAL_OUTCOME, OCT_LEVEL } from '@nexus/contracts';
 import { bootstrap, bootstrapWorkspace, type BootstrapResult } from './nexus-bootstrap.js';
 import { ActorRegistryAgentReader } from './ref-agent-registry-reader.js';
 import {
@@ -1276,77 +1285,208 @@ const program = createCli({
       };
     };
 
-    // 22e. Factory: makeIssueDelegation — closes over the requesting user's
-    // principalId. Delegation scope = lesser of agent's ceiling and principal's
-    // ceiling. Blueprint §12.1, §17.3.
-    // SPEC-DELEGATION-RUNTIME-PRINCIPAL-FIX §2.1.
-    const makeIssueDelegation = (requestingPrincipalId: Uuid) => {
-      return async (agentId: Uuid, _scope: DelegationScope): Promise<Uuid> => {
-        try {
-          const agent = await coreDeps.actorRegistry.get(agentId);
-          if (!agent) throw new Error('Agent not found: ' + agentId);
-
-          // Look up the REQUESTING USER's principal — not the agent's registrar.
-          const principal = await coreDeps.principalRegistry.get(requestingPrincipalId);
-          if (!principal) throw new Error('Principal not found: ' + requestingPrincipalId);
-
-          // Systems: strict intersection of agent's and principal's allowed
-          // systems. No wildcards — both sides must list concrete connector IDs.
-          // mintRootDelegation will reject any system not in principal scope, so
-          // a bare '*' here would fail closed at signing time anyway.
-          const effectiveSystems = agent.allowedSystems.filter(s =>
-            principal.allowedSystems.includes(s)
-          );
-
-          // Capabilities: agent's capabilities pass through. The Principal type
-          // has no allowedCapabilities field — capability scope is enforced at
-          // Gate 03 (delegation) plus the OCT ceiling and risk-tier comparison.
-          const effectiveCapabilities = agent.allowedCapabilities ?? [];
-
-          // Risk: lesser of agent's ceiling and principal's max delegable tier.
-          const effectiveRiskTier = riskTierExceeds(
-            agent.riskCeiling,
-            principal.maxDelegableRiskTier
-          )
-            ? principal.maxDelegableRiskTier
-            : agent.riskCeiling;
-
-          const dc = await mintRootDelegation(principal, agent, {
-            principalId: requestingPrincipalId,
-            actorId: agentId,
-            allowedSystems: effectiveSystems,
-            allowedCapabilities: effectiveCapabilities,
-            forbiddenCapabilities: [],
-            maxRiskTier: effectiveRiskTier,
-            allowDownstreamPropagation: false,
-            environment: agent.environment,
-            expiresAt: new Date(Date.now() + 3600_000).toISOString() as IsoTimestamp,
-            maxChainDepth: orchManifest.maxSplitDepth,
-          });
-          await coreDeps.delegationStore.save(dc);
-          console.log(
-            '[orch-wire] delegation issued:',
-            dc.delegationId,
-            'principal:',
-            requestingPrincipalId,
-            'agent:',
-            agentId
-          );
-          return dc.delegationId;
-        } catch (err) {
-          // F4.15 / HL #10 / #13 — delegation mint fail-closed. The prior
-          // crypto.randomUUID() return path fabricated an identifier and
-          // let dispatch continue with a phantom delegation; that
-          // obscured the original governance failure and let downstream
-          // Gate 01/03 deny under a fake reference. Re-throwing ensures
-          // the run terminates with a mint-attributed failure that the
-          // orch layer turns into a workspace receipt.
-          const reason = (err as Error).message;
-          console.error('[orch-wire] delegation failed:', reason);
-          throw Object.assign(new Error('delegation_mint_failed: ' + reason), {
+    // 22e. Factory: makeIssueDelegation — F4.15 / Hard Law #15.
+    //
+    // The baked DelegationMintPort owns the three-way symmetric
+    // intersection arithmetic (user ∩ agent ∩ explicit) across all six
+    // dimensions (target_systems, capabilities, oct_level, firewall_
+    // rights, run_types, risk_tier). This factory adapts the Principal
+    // + Actor + DelegationScope (orch-ref routing metadata) into the
+    // canonical DelegationMintInput envelope and routes the result per
+    // F4.15 §3.3 — success → delegationId; empty_intersection →
+    // delegation_empty_intersection ledger event + throw with dimension;
+    // mint_error → delegation_mint_error ledger event + throw.
+    //
+    // The previous fabricated-UUID fail-open path is retired (Phase B
+    // session 1 Patch 12 / GOV-03); this patch additionally enforces
+    // the spec's symmetric three-way intersection by reading user-side
+    // permittedCapabilities + firewallTransitRights + permittedRunTypes
+    // + octLevel + maxRiskTier from the Principal record (Phase B
+    // session completion Patch 28). Where a legacy Principal lacks the
+    // field, the fallback widens that dimension to the agent's view —
+    // accompanied by a `delegation_user_claims_widened` ledger event so
+    // audit sees the legacy hop.
+    const makeIssueDelegation = (requestingPrincipalId: Uuid, runId: Uuid) => {
+      return async (agentId: Uuid, scope: DelegationScope): Promise<Uuid> => {
+        const agent = await coreDeps.actorRegistry.get(agentId);
+        if (!agent) {
+          throw Object.assign(new Error('delegation_mint_failed: Agent not found: ' + agentId), {
             code: 'DELEGATION_MINT_FAILED',
           });
         }
+
+        // Look up the REQUESTING USER's principal — not the agent's registrar.
+        const principal = await coreDeps.principalRegistry.get(requestingPrincipalId);
+        if (!principal) {
+          throw Object.assign(
+            new Error('delegation_mint_failed: Principal not found: ' + requestingPrincipalId),
+            { code: 'DELEGATION_MINT_FAILED' }
+          );
+        }
+
+        // Build the F4.15 §2.1 IdentityClaimsCapabilityCeiling from the
+        // Principal record. Where the legacy Principal lacks a field,
+        // widen to the agent's value (with a ledger note); production
+        // RBAC will populate every field as we migrate per §3 B of
+        // the alignment outline.
+        const widenedClaims: string[] = [];
+        const userPermittedCapabilities: ReadonlyArray<Capability> =
+          principal.permittedCapabilities ??
+          (widenedClaims.push('permittedCapabilities'),
+          (agent.allowedCapabilities ?? []) as ReadonlyArray<Capability>);
+        const userFirewallTransitRights: FirewallTransitMap =
+          principal.firewallTransitRights ??
+          (widenedClaims.push('firewallTransitRights'),
+          {
+            outbound: [],
+            inbound: [],
+          });
+        const userPermittedRunTypes: ReadonlyArray<RunTypeKind> =
+          principal.permittedRunTypes ??
+          (widenedClaims.push('permittedRunTypes'),
+          ['chat', 'sectioned', 'secure_rails', 'autonomous'] as ReadonlyArray<RunTypeKind>);
+        const userOctLevel: OctLevel =
+          principal.octLevel ?? (widenedClaims.push('octLevel'), agent.octLevel ?? OCT_LEVEL.OPEN);
+
+        if (widenedClaims.length > 0 && coreDeps.runLedgerWriter) {
+          // The legacy widening is honest: ledger writes the list so
+          // audit + future migration sees exactly which fields RBAC
+          // still needs to populate per-principal.
+          await coreDeps.runLedgerWriter.writeEvent({
+            runId,
+            eventType: 'delegation_user_claims_widened',
+            timestamp: nowIso(),
+            actorId: agentId,
+            detail: {
+              principalId: requestingPrincipalId,
+              widenedFields: widenedClaims,
+            },
+          });
+        }
+
+        const userClaims: IdentityClaimsCapabilityCeiling = {
+          principalId: requestingPrincipalId,
+          permittedTargetSystems: principal.allowedSystems as ReadonlyArray<NonEmpty>,
+          permittedCapabilities: userPermittedCapabilities,
+          firewallTransitRights: userFirewallTransitRights,
+          permittedRunTypes: userPermittedRunTypes,
+          octLevel: userOctLevel,
+          maxRiskTier: principal.maxDelegableRiskTier,
+        };
+
+        const agentDeclaration: AgentDeclaration = {
+          agentId,
+          visibleTargetSystems: agent.allowedSystems as ReadonlyArray<NonEmpty>,
+          allowedCapabilities: (agent.allowedCapabilities ?? []) as ReadonlyArray<Capability>,
+          // Agents today carry firewall transit rights as part of their
+          // OCT classification + risk tier; for F4.15 mint the default
+          // is "match user" so the agent never narrows further than the
+          // user. Production RBAC will populate per-agent.
+          firewallTransitRights: userFirewallTransitRights,
+          permittedRunTypes: userPermittedRunTypes,
+          maxOctLevel: agent.octLevel ?? userOctLevel,
+          maxRiskTier: agent.riskCeiling,
+        };
+
+        const explicitDelegatedScope: ExplicitDelegationScope = {
+          // The orch-ref DelegationScope (plan-routing metadata) does
+          // not carry permission narrowing today; the explicit scope is
+          // populated from the planner-emitted node's expected reach.
+          // Where the planner does not narrow, the explicit scope
+          // mirrors the user side (no further intersection).
+          targetSystems: userClaims.permittedTargetSystems,
+          capabilities: userClaims.permittedCapabilities,
+          firewallTransitRights: userClaims.firewallTransitRights,
+          runTypes: userClaims.permittedRunTypes,
+          maxOctLevel: userClaims.octLevel,
+          maxRiskTier: userClaims.maxRiskTier,
+          expiresAt: new Date(Date.now() + 3600_000).toISOString() as IsoTimestamp,
+        };
+
+        // Per-call BakedDelegationMint instantiation — the signer +
+        // persister close over (principal, agent) so concurrent dispatch
+        // calls never race on shared state.
+        const delegationMint = new BakedDelegationMint({
+          signer: async body =>
+            mintRootDelegation(principal, agent, {
+              principalId: body.principalId,
+              actorId: body.actorId,
+              allowedSystems: [...body.allowedSystems],
+              allowedCapabilities: [...body.allowedCapabilities],
+              forbiddenCapabilities: [...body.forbiddenCapabilities],
+              maxRiskTier: body.maxRiskTier,
+              allowDownstreamPropagation: body.allowDownstreamPropagation,
+              environment: agent.environment,
+              expiresAt: body.expiresAt,
+              maxChainDepth: body.maxChainDepth,
+            }),
+          newErrorRef: () => crypto.randomUUID() as NonEmpty,
+          persister: async dc => {
+            await coreDeps.delegationStore.save(dc);
+          },
+        });
+
+        const result = await delegationMint.mint({
+          runId,
+          nodeId: scope.taskSummary,
+          userClaims,
+          agentDeclaration,
+          explicitDelegatedScope,
+          issuedAt: nowIso(),
+          maxChainDepth: orchManifest.maxSplitDepth,
+        });
+
+        if (result.kind === 'empty_intersection') {
+          await coreDeps.runLedgerWriter?.writeEvent({
+            runId,
+            eventType: 'delegation_empty_intersection',
+            timestamp: nowIso(),
+            actorId: agentId,
+            detail: {
+              principalId: requestingPrincipalId,
+              dimension: result.dimension,
+              userValues: result.userValues,
+              agentValues: result.agentValues,
+              explicitValues: result.explicitValues,
+            },
+          });
+          throw Object.assign(
+            new Error(
+              'delegation_mint_failed: empty intersection on dimension ' + result.dimension
+            ),
+            { code: 'DELEGATION_EMPTY_INTERSECTION', dimension: result.dimension }
+          );
+        }
+        if (result.kind === 'mint_error') {
+          await coreDeps.runLedgerWriter?.writeEvent({
+            runId,
+            eventType: 'delegation_mint_error',
+            timestamp: nowIso(),
+            actorId: agentId,
+            detail: {
+              principalId: requestingPrincipalId,
+              reason: result.reason,
+              errorRef: result.errorRef,
+              detail: result.detail,
+            },
+          });
+          throw Object.assign(
+            new Error('delegation_mint_failed: ' + result.reason + ': ' + result.detail),
+            { code: 'DELEGATION_MINT_ERROR', reason: result.reason }
+          );
+        }
+
+        console.log(
+          '[orch-wire] delegation issued:',
+          result.delegation.delegationId,
+          'principal:',
+          requestingPrincipalId,
+          'agent:',
+          agentId,
+          'effectiveCapabilities:',
+          result.effectiveScope.capabilities.join(',')
+        );
+        return result.delegation.delegationId;
       };
     };
 
@@ -1866,7 +2006,7 @@ const program = createCli({
       // Build per-request issuer + dispatcher + checkback closing over the
       // requesting user's principalId AND the originating prompt — handleRun
       // threads them into every plan-node dispatch and the pre-flight probe.
-      const issueDelegation = makeIssueDelegation(request.principalId);
+      const issueDelegation = makeIssueDelegation(request.principalId, request.runId);
       const dispatchToGovernance = makeDispatchToGovernance(request);
       const sendPlanCheckback = makeSendPlanCheckback(request);
       return coordinator.handleRun(request, {

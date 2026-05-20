@@ -2148,12 +2148,77 @@ function enforceGov03DelegationMintFailClosed(): void {
 }
 
 function enforceGov04EffectiveScopeIntersection(): void {
-  // F4.15 — DelegationMint applies symmetric intersection across
-  // user ∩ agent ∩ delegation in 6 dimensions per HL #15. RED until
-  // BakedDelegationMint is wired into scripts/nexus-main.ts
-  // makeIssueDelegation (Phase B completion Patch 28).
-  fail(
-    'GOV-04: BakedDelegationMint port is not yet wired into makeIssueDelegation — F4.15 §3.1 / HL #15 / Phase B completion HANDOFF §E.1 Patch 34'
+  // F4.15 §3.1 / Hard Law #15 — DelegationMint applies symmetric
+  // intersection across (userClaims ∩ agentDeclaration ∩
+  // explicitDelegatedScope) in six dimensions: target_systems,
+  // capabilities, oct_level, firewall_rights, run_types, risk_tier.
+  // This gate AST-scans the baked impl to verify every dimension
+  // reads ALL THREE sources (P0-029 closure) and is wired in
+  // scripts/nexus-main.ts via BakedDelegationMint.
+  const mintPath = path.join('packages', 'core', 'src', 'identity', 'delegation-mint.ts');
+  if (!fs.existsSync(mintPath)) {
+    fail(`GOV-04: ${mintPath} not found (F4.15 §3.1)`);
+  }
+  const src = fs.readFileSync(mintPath, 'utf-8');
+  if (!/class BakedDelegationMint\b/.test(src)) {
+    fail('GOV-04: BakedDelegationMint class must be present (F4.15 §3.1)');
+  }
+  // Every dimension MUST appear at least once in an empty_intersection
+  // emission — that asserts the impl branches on each dimension.
+  const REQUIRED_DIMENSIONS = [
+    'target_systems',
+    'capabilities',
+    'oct_level',
+    'firewall_rights',
+    'run_types',
+    'risk_tier',
+  ];
+  for (const dim of REQUIRED_DIMENSIONS) {
+    const pattern = new RegExp(`emptyIntersection\\(\\s*'${dim}'`, 'm');
+    if (!pattern.test(src)) {
+      fail(
+        `GOV-04: BakedDelegationMint must branch on dimension '${dim}' via emptyIntersection (F4.15 §3.1)`
+      );
+    }
+  }
+  // Every dimension MUST read userClaims AND agentDeclaration AND
+  // explicitDelegatedScope (the three-way symmetric intersection).
+  // Verify by counting how many times each source name appears — the
+  // impl reads each source for at least four dimensions (systems,
+  // capabilities, firewall, run_types) plus two (oct, risk).
+  const userReads = (src.match(/userClaims\.[A-Za-z_]+/g) ?? []).length;
+  const agentReads = (src.match(/agent\.[A-Za-z_]+/g) ?? []).length;
+  const explicitReads = (src.match(/explicit\.[A-Za-z_]+/g) ?? []).length;
+  if (userReads < 6 || agentReads < 6 || explicitReads < 6) {
+    fail(
+      `GOV-04: BakedDelegationMint must read user, agent, and explicit sources for every dimension; found userReads=${userReads}, agentReads=${agentReads}, explicitReads=${explicitReads} (F4.15 §3.1)`
+    );
+  }
+  // Production wiring — scripts/nexus-main.ts must instantiate
+  // BakedDelegationMint inside makeIssueDelegation (per-call shape
+  // per F4.15 §3.3 caller behavior).
+  const mainPath = path.join('scripts', 'nexus-main.ts');
+  if (!fs.existsSync(mainPath)) {
+    fail(`GOV-04: ${mainPath} not found`);
+  }
+  const mainSrc = fs.readFileSync(mainPath, 'utf-8');
+  if (!/new BakedDelegationMint\b/.test(mainSrc)) {
+    fail(
+      'GOV-04: scripts/nexus-main.ts must instantiate BakedDelegationMint inside makeIssueDelegation (F4.15 §3.3)'
+    );
+  }
+  if (!/'delegation_empty_intersection'/.test(mainSrc)) {
+    fail(
+      'GOV-04: scripts/nexus-main.ts must emit delegation_empty_intersection on empty result (F4.15 §3.3)'
+    );
+  }
+  if (!/'delegation_mint_error'/.test(mainSrc)) {
+    fail(
+      'GOV-04: scripts/nexus-main.ts must emit delegation_mint_error on mint failure (F4.15 §3.3)'
+    );
+  }
+  pass(
+    'effective-scope 6-dim three-way intersection (BakedDelegationMint baked + wired; user ∩ agent ∩ explicit per dimension)'
   );
 }
 

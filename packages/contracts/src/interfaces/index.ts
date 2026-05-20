@@ -26,6 +26,15 @@ import type {
 } from '../constants/index.js';
 
 // ─── §12.3.1 Principal ───
+// F4.15 / HL #15 — the user-side ceiling fed into the three-way
+// intersection at delegation mint. Fields are optional in the contract
+// for backward compatibility with persisted principals registered
+// before F4.15; runtime construction of IdentityClaimsCapabilityCeiling
+// (in scripts/nexus-main.ts) supplies them. Production principals
+// SHOULD carry every field — RBAC populates the full envelope per
+// outline §3 B (target systems + capabilities + firewall transit
+// rights + permitted run types + OCT classification + capability
+// ceiling + risk tier).
 export interface Principal {
   principalId: Uuid;
   displayName: NonEmpty;
@@ -33,6 +42,14 @@ export interface Principal {
   registeredAt: IsoTimestamp;
   maxDelegableRiskTier: RiskTier;
   allowedSystems: string[];
+  /** F4.15 §2.1 — user-side capability ceiling (intersected at mint). */
+  permittedCapabilities?: ReadonlyArray<NonEmpty>;
+  /** F4.15 §2.1 — user-side firewall transit rights. */
+  firewallTransitRights?: FirewallTransitMap;
+  /** F4.15 §2.1 — user-side permitted run-type set. */
+  permittedRunTypes?: ReadonlyArray<RunTypeKind>;
+  /** F4.15 §2.1 — user-side OCT classification ceiling. */
+  octLevel?: OctLevel;
 }
 
 // ─── §12.3.2 Actor ───
@@ -744,6 +761,158 @@ export interface InfraRunIdNamespace {
   next(date?: Date): NonEmpty; // returns 'infra-YYYY-MM-DD-NNNN'
 }
 
+// ─── F4.15 Delegation Mint — fail-closed, three-way symmetric intersection ─
+// Hard Law #15: run effective permissions = (user current RBAC) ∩
+// (agent declared per RBAC) ∩ (explicit delegation scope for this run).
+// Lesser wins in every dimension. Any empty dimension → no mint;
+// mint failure → no fabricated delegationId. The baked DelegationMintPort
+// implementation owns the intersection arithmetic; orch consumers receive
+// a DelegationMintResult discriminator and route per §3.3 of Spec F4.15.
+
+/** Open-governed capability identifier (verb-scoped action name). */
+export type Capability = NonEmpty;
+
+/** Run-type identifier mirror of the workspace run types. */
+export type RunTypeKind = 'chat' | 'sectioned' | 'secure_rails' | 'autonomous';
+
+/**
+ * Firewall transit rights per direction. NVG consumes these at outbound
+ * + inbound payload checks (Hard Law #6).
+ */
+export interface FirewallTransitMap {
+  readonly outbound: ReadonlyArray<NonEmpty>;
+  readonly inbound: ReadonlyArray<NonEmpty>;
+}
+
+/** Identifies which dimension caused an empty intersection. */
+export type IntersectionDimension =
+  | 'target_systems'
+  | 'capabilities'
+  | 'oct_level'
+  | 'firewall_rights'
+  | 'run_types'
+  | 'risk_tier';
+
+/**
+ * User-side ceiling consumed by the delegation mint. Populated by RBAC at
+ * run-open (alongside the carried identity claims envelope). The
+ * `permittedCapabilities` field is mandatory — the Phase B session 1
+ * comment "Principal has no allowedCapabilities" (P0-018 evidence) is
+ * retired; capability scope MUST flow from RBAC into the mint, not
+ * default to the agent side.
+ */
+export interface IdentityClaimsCapabilityCeiling {
+  readonly principalId: Uuid;
+  readonly permittedTargetSystems: ReadonlyArray<NonEmpty>;
+  readonly permittedCapabilities: ReadonlyArray<Capability>;
+  readonly firewallTransitRights: FirewallTransitMap;
+  readonly permittedRunTypes: ReadonlyArray<RunTypeKind>;
+  readonly octLevel: OctLevel;
+  readonly maxRiskTier: RiskTier;
+}
+
+/**
+ * Agent-side ceiling consumed by the delegation mint. Derived from the
+ * agent's registered Actor record (octLevel + riskCeiling +
+ * allowedSystems + allowedCapabilities) plus per-agent registration
+ * metadata (firewall transit rights, permitted run types). The mint
+ * intersects this with the user side and the explicit scope.
+ */
+export interface AgentDeclaration {
+  readonly agentId: Uuid;
+  readonly visibleTargetSystems: ReadonlyArray<NonEmpty>;
+  readonly allowedCapabilities: ReadonlyArray<Capability>;
+  readonly firewallTransitRights: FirewallTransitMap;
+  readonly permittedRunTypes: ReadonlyArray<RunTypeKind>;
+  readonly maxOctLevel: OctLevel;
+  readonly maxRiskTier: RiskTier;
+}
+
+/**
+ * Explicit per-run delegation scope authored by the planner / orch when
+ * dispatching a node. The third leg of the three-way intersection.
+ * Named ExplicitDelegationScope rather than DelegationScope because the
+ * orch-ref package already exports a DelegationScope for plan routing
+ * metadata (taskSummary / requiresNvg / requiresNxs / nodeType /
+ * expectedOutputSlots); the two concepts are distinct and renaming the
+ * orch-ref one would ripple through every plan emitter (preserved per
+ * owner ratification 2026-05-20: no upstream/downstream rename).
+ */
+export interface ExplicitDelegationScope {
+  readonly targetSystems: ReadonlyArray<NonEmpty>;
+  readonly capabilities: ReadonlyArray<Capability>;
+  readonly firewallTransitRights: FirewallTransitMap;
+  readonly runTypes: ReadonlyArray<RunTypeKind>;
+  readonly maxOctLevel: OctLevel;
+  readonly maxRiskTier: RiskTier;
+  /** Hard expiry — the mint stamps this onto the SignedDelegation. */
+  readonly expiresAt: IsoTimestamp;
+}
+
+/**
+ * Run-effective permissions = three-way intersection. Returned on the
+ * `kind: 'success'` branch of DelegationMintResult.
+ */
+export interface EffectiveDelegationScope {
+  readonly targetSystems: ReadonlyArray<NonEmpty>;
+  readonly capabilities: ReadonlyArray<Capability>;
+  readonly firewallTransitRights: FirewallTransitMap;
+  readonly runTypes: ReadonlyArray<RunTypeKind>;
+  readonly octLevel: OctLevel;
+  readonly riskTier: RiskTier;
+}
+
+/** Reason codes for {@link DelegationMintResult} `mint_error`. */
+export type MintErrorReason = 'signing_unavailable' | 'signature_failed' | 'persistence_failed';
+
+/** Stable opaque error reference for support / audit cross-correlation. */
+export type DelegationMintErrorRef = NonEmpty;
+
+/**
+ * Discriminated result of one mint attempt. The mint never returns a
+ * fabricated delegationId — only the `success` branch carries one (on a
+ * fully-signed DelegationContext envelope).
+ */
+export type DelegationMintResult =
+  | {
+      readonly kind: 'success';
+      readonly delegation: DelegationContext;
+      readonly effectiveScope: EffectiveDelegationScope;
+    }
+  | {
+      readonly kind: 'empty_intersection';
+      readonly dimension: IntersectionDimension;
+      readonly userValues: ReadonlyArray<unknown>;
+      readonly agentValues: ReadonlyArray<unknown>;
+      readonly explicitValues: ReadonlyArray<unknown>;
+    }
+  | {
+      readonly kind: 'mint_error';
+      readonly reason: MintErrorReason;
+      readonly errorRef: DelegationMintErrorRef;
+      readonly detail: NonEmpty;
+    };
+
+export interface DelegationMintInput {
+  readonly runId: Uuid;
+  readonly nodeId?: NonEmpty;
+  readonly userClaims: IdentityClaimsCapabilityCeiling;
+  readonly agentDeclaration: AgentDeclaration;
+  readonly explicitDelegatedScope: ExplicitDelegationScope;
+  readonly issuedAt: IsoTimestamp;
+  readonly maxChainDepth: number;
+}
+
+/**
+ * Baked port owning the three-way intersection arithmetic + signing.
+ * Plug-in orch reference impls call this through dependency injection.
+ * The port itself never decides governance — it executes the lesser-wins
+ * rule and signs the resulting envelope.
+ */
+export interface DelegationMintPort {
+  mint(input: DelegationMintInput): Promise<DelegationMintResult>;
+}
+
 // ─── F4.9 Claim Drift Verification — Hard Law #14 ──────────────────────────
 // NXS Gate 01 resolves identity claims once; downstream gates must call
 // ClaimVerificationPort.verify(carried, gateName) before evaluation. A
@@ -1249,6 +1418,13 @@ export type RunEventType =
   // surfaces explicitly to orch + workspace.
   | 'delegation_empty_intersection'
   | 'delegation_mint_error'
+  // Emitted when makeIssueDelegation widens a Principal's claims
+  // envelope to satisfy F4.15 §2.1 (the principal record was
+  // registered before permittedCapabilities/firewallTransitRights/
+  // permittedRunTypes/octLevel were mandatory fields). Audit reads
+  // this list to migrate the principal record to a fully-populated
+  // claims envelope per outline §3 B.
+  | 'delegation_user_claims_widened'
   // ── F4.20 LLM internal tools vs targeted systems (Q6 / HL #5/#7) ──────
   // Emitted by NVG return-precheck whenever a model response carries
   // tool_calls. The post-inference normalizer that previously dispatched

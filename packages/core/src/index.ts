@@ -158,3 +158,17 @@ export type { ManifestWriterConfig } from './manifest/manifest-writer-service.js
 // cannot trigger NXS; targeted-system actions take the planner-authored
 // nxs_dispatch path only.
 export { LexicalNormalizer } from './normalization/lexical-normalizer.js';
+
+// F4.15 — Baked DelegationMint with three-way symmetric intersection
+// (Hard Law #15). Orch composition roots construct one BakedDelegationMint
+// per process and wire it into makeIssueDelegation; the port owns the
+// intersection arithmetic + signing surface.
+export {
+  BakedDelegationMint,
+  intersectStrings,
+  lesserOct,
+  lesserRisk,
+  type DelegationSigner,
+  type DelegationPersister,
+  type BakedDelegationMintDeps,
+} from './identity/delegation-mint.js';
