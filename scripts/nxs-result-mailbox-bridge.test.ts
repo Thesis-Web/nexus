@@ -30,6 +30,7 @@ import type {
   IsoTimestamp,
   NonEmpty,
 } from '@nexus/contracts';
+import { FINAL_OUTCOME } from '@nexus/contracts';
 
 // ── Doubles ──────────────────────────────────────────────────────────────────
 
@@ -168,7 +169,7 @@ function makeEvidence(opts: {
       approvalLinkage: 'NOT_APPLICABLE' as never,
     },
     executionResult: exec,
-    finalOutcome: opts.status === 'failure' ? 'denied_execution' : 'executed_successfully',
+    finalOutcome: opts.status === 'failure' ? FINAL_OUTCOME.DENIED_OTHER : FINAL_OUTCOME.EXECUTED,
     threatEvents: [],
     compilerView: {} as never,
     previousHash: '0'.repeat(64) as never,
@@ -227,7 +228,7 @@ describe('bridgeNxsResultToMailbox', () => {
     expect(ref.resultRef).toBe(`file://${payloadPath}`);
     expect(ref.octLevel).toBe('OCT-OPEN');
     expect(ref.redactionState).toBe('not_required');
-    expect(ref.finalOutcome).toBe('executed_successfully');
+    expect(ref.finalOutcome).toBe(FINAL_OUTCOME.EXECUTED);
     expect(result!.mailboxItem.mailboxItemId).toBe('00000000-0000-4000-a000-000000000777');
   });
 
@@ -259,7 +260,7 @@ describe('bridgeNxsResultToMailbox', () => {
     expect(body.status).toBe('failure');
     expect(body.errorType).toBe('FORBIDDEN_QUERY');
     expect(body.errorMessage).toBe("verb 'DROP' is not permitted");
-    expect(body.finalOutcome).toBe('denied_execution');
+    expect(body.finalOutcome).toBe(FINAL_OUTCOME.DENIED_OTHER);
 
     // Digest matches the receipt bytes — round-trip callers verify this
     // when they re-read the file to feed the LLM, so it must line up.
@@ -270,7 +271,7 @@ describe('bridgeNxsResultToMailbox', () => {
     expect(state.writes[0]!.resultDigest).toBe(expected);
 
     // finalOutcome on the reference reflects the denial.
-    expect(state.writes[0]!.finalOutcome).toBe('denied_execution');
+    expect(state.writes[0]!.finalOutcome).toBe(FINAL_OUTCOME.DENIED_OTHER);
   });
 
   it('writes a receipt mailbox item when the execution succeeded but no payload file exists', async () => {
@@ -292,7 +293,7 @@ describe('bridgeNxsResultToMailbox', () => {
 
     const body = JSON.parse(await fs.readFile(receiptPath, 'utf-8'));
     expect(body.status).toBe('success');
-    expect(body.finalOutcome).toBe('executed_successfully');
+    expect(body.finalOutcome).toBe(FINAL_OUTCOME.EXECUTED);
     expect(body.errorType).toBeNull();
     expect(body.errorMessage).toBeNull();
   });

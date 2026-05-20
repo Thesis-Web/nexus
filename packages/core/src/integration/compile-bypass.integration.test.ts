@@ -52,6 +52,7 @@ import type {
   Uuid,
   DenialCode,
 } from '@nexus/contracts';
+import { FINAL_OUTCOME } from '@nexus/contracts';
 import { MailboxServiceImpl } from '../mailbox/mailbox-service.js';
 import { OutputCollectorImpl } from '../output/output-collector.js';
 import { PayloadResolverRegistryImpl } from '../output/payload-resolver.js';
@@ -241,7 +242,7 @@ describe('compile bypass partial — end-to-end real-component integration', () 
       redactionState: 'not_required',
       evidenceRecordId: null,
       executionGrantId: null,
-      finalOutcome: 'executed_successfully',
+      finalOutcome: FINAL_OUTCOME.EXECUTED,
     });
 
     const mailboxA = allocations.get(actorA)!;

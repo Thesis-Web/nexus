@@ -14,6 +14,7 @@ import { verifyChain } from '../ledger/chain-verifier.js';
 import { loadControlPlaneKey } from '../crypto/key-manager.js';
 import { nowIso } from '../utils/time.js';
 import type { EvidenceRecord, KeyPair } from '../types/index.js';
+import { FINAL_OUTCOME } from '@nexus/contracts';
 
 let controlPlanePair: KeyPair;
 beforeAll(async () => {
@@ -53,7 +54,7 @@ function makeRecord(seq: number, prevHash: string | null, recordHash: string): E
     approvalResponse: null,
     grantMetadata: null,
     executionResult: null,
-    finalOutcome: 'executed',
+    finalOutcome: FINAL_OUTCOME.EXECUTED,
     threatEvents: [],
     previousHash: prevHash,
     compilerView: null as any,

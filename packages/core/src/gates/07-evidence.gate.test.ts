@@ -220,14 +220,14 @@ describe('Gate 07 — Evidence', () => {
     expect(record.finalOutcome).toBe(FINAL_OUTCOME.EXECUTED);
   });
 
-  it('returns denied_identity finalOutcome on Gate 01 denial', async () => {
+  it('returns denied_auth finalOutcome on Gate 01 denial', async () => {
     const kp = await makeEphemeralKeyPair();
     const ledger = makeLedger();
     const gate = new EvidenceGate(ledger, kp);
     const decisions = [denyDecision(GATE_ID.G01, 1, DENIAL_CODE.ACTOR_NOT_REGISTERED)];
     await gate.evaluate(baseAction(), makeCtx(), decisions);
     const record = ledger.appended[0]!;
-    expect(record.finalOutcome).toBe(FINAL_OUTCOME.DENIED_IDENTITY);
+    expect(record.finalOutcome).toBe(FINAL_OUTCOME.DENIED_AUTH);
   });
 
   it('returns denied_delegation on Gate 03 denial (uses denialCode not reason string)', async () => {
@@ -268,7 +268,7 @@ describe('Gate 07 — Evidence', () => {
     await gate.evaluate(baseAction(), makeCtx(), decisions);
     expect(ledger.appended).toHaveLength(1);
     const record = ledger.appended[0]!;
-    expect(record.finalOutcome).toBe(FINAL_OUTCOME.DENIED_THREAT);
+    expect(record.finalOutcome).toBe(FINAL_OUTCOME.DENIED_OTHER);
   });
 
   it('EvidenceRecord has non-empty actorClass and actorEnvironment', async () => {

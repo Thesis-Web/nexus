@@ -60,7 +60,7 @@ import type {
   NxsOutputReference,
   OutputCollector as IOutputCollector,
 } from '@nexus/contracts';
-import { nowIso } from '@nexus/contracts';
+import { nowIso, FINAL_OUTCOME } from '@nexus/contracts';
 
 import { RefRunCoordinator } from '@nexus/orch-ref';
 import {
@@ -293,7 +293,7 @@ describe('multi-node slot-binding loop (end-to-end)', () => {
         redactionState: 'not_required',
         evidenceRecordId: null,
         executionGrantId: null,
-        finalOutcome: 'executed_successfully',
+        finalOutcome: FINAL_OUTCOME.EXECUTED,
       };
 
       // Mailbox-pit V1: write to the per-actor mailbox allocated for this

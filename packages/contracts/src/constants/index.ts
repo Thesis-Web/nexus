@@ -130,19 +130,35 @@ export const APPROVAL_DECISION_LABEL = {
 } as const;
 export type ApprovalDecisionLabel = string;
 
-// ─── Final outcome labels — open governed type ───
+// ─── Final outcome labels — canonical (Q1 / F4.10) ───
+// Longer-form vocabulary; literal-union type forces compile-time drift detection.
 export const FINAL_OUTCOME = {
-  EXECUTED: 'executed',
-  DENIED_IDENTITY: 'denied_identity',
-  DENIED_CLASSIF: 'denied_classification',
-  DENIED_DELEGATION: 'denied_delegation',
+  EXECUTED: 'executed_successfully',
+  DENIED_AUTH: 'denied_auth',
+  DENIED_RBAC: 'denied_rbac',
+  DENIED_OCT: 'denied_oct',
   DENIED_POLICY: 'denied_policy',
   DENIED_APPROVAL: 'denied_approval',
-  DENIED_TIMEOUT: 'denied_timeout',
-  DENIED_THREAT: 'denied_threat',
-  ERROR: 'error',
+  DENIED_DELEGATION: 'denied_delegation',
+  DENIED_CLAIM_DRIFT: 'denied_claim_drift',
+  DENIED_WILDCARD: 'denied_wildcard',
+  DENIED_LEXICON: 'denied_lexicon',
+  DENIED_OTHER: 'denied_other',
+  ERROR_DISPATCH: 'error_dispatch',
+  ERROR_TIMEOUT: 'error_timeout',
+  EXPIRED: 'expired',
 } as const;
-export type FinalOutcome = string;
+export type FinalOutcome = (typeof FINAL_OUTCOME)[keyof typeof FINAL_OUTCOME];
+
+export function isExecuted(o: FinalOutcome): boolean {
+  return o === FINAL_OUTCOME.EXECUTED;
+}
+export function isDenied(o: FinalOutcome): boolean {
+  return o.startsWith('denied_');
+}
+export function isError(o: FinalOutcome): boolean {
+  return o.startsWith('error_');
+}
 
 // ─── Gate identifiers (fixed order) — open governed type ───
 export const GATE_ID = {

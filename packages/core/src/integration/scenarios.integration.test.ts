@@ -609,18 +609,18 @@ describe('Integration: POC Scenarios (spec §27.3)', () => {
     assertBaseInvariants(evidenceRecord);
   });
 
-  it('scenario-05: high-risk send with approval → timeout → denied_timeout (never allow)', async () => {
+  it('scenario-05: high-risk send with approval → timeout → denied_approval (never allow)', async () => {
     const { evidenceRecord } = await runScenario('05-approval-timeout', {
       approvalDecision: 'timeout',
     });
 
-    expect(evidenceRecord.finalOutcome).toBe(FINAL_OUTCOME.DENIED_TIMEOUT);
+    expect(evidenceRecord.finalOutcome).toBe(FINAL_OUTCOME.DENIED_APPROVAL);
     // Timeout must NEVER produce executed
     expect(evidenceRecord.finalOutcome).not.toBe(FINAL_OUTCOME.EXECUTED);
     assertBaseInvariants(evidenceRecord);
   });
 
-  it('scenario-06: replay of scenario-01 action → denied_threat (REPLAY_DETECTED)', async () => {
+  it('scenario-06: replay of scenario-01 action → denied_other (REPLAY_DETECTED)', async () => {
     // Bootstrap once, then submit the SAME actionId twice
     const setup = JSON.parse(
       await fs.readFile(
@@ -791,11 +791,11 @@ describe('Integration: POC Scenarios (spec §27.3)', () => {
       });
     }
 
-    // Second run — SAME actionId → replay detected → denied_threat
+    // Second run — SAME actionId → replay detected → denied_other (Q1 vocab)
     const secondAction = baseAction();
     const secondResult = await pipeline.process(secondAction, baseContext());
     const second = secondResult.evidenceRecord;
-    expect(second.finalOutcome).toBe(FINAL_OUTCOME.DENIED_THREAT);
+    expect(second.finalOutcome).toBe(FINAL_OUTCOME.DENIED_OTHER);
 
     // Write run ledger for replay run
     if (integrationRunLedger) {
@@ -841,10 +841,10 @@ describe('Integration: POC Scenarios (spec §27.3)', () => {
     await expect(runScenario('08-policy-unsigned')).rejects.toThrow(PolicySignatureError);
   });
 
-  it('scenario-09: broad token bypass → connector throws NexusSecurityViolation → denied_threat', async () => {
+  it('scenario-09: broad token bypass → connector throws NexusSecurityViolation → denied_other', async () => {
     const { evidenceRecord } = await runScenario('09-broad-token-bypass');
 
-    expect(evidenceRecord.finalOutcome).toBe(FINAL_OUTCOME.DENIED_THREAT);
+    expect(evidenceRecord.finalOutcome).toBe(FINAL_OUTCOME.DENIED_OTHER);
     assertBaseInvariants(evidenceRecord);
   });
 

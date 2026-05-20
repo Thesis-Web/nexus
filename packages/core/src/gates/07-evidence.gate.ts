@@ -106,10 +106,10 @@ function computeFinalOutcome(decisions: GateDecision[]): FinalOutcome {
       d.outcome === OUTCOME_LABEL.ESCALATE
     )
       continue;
-    if (d.outcome === 'error') return FINAL_OUTCOME.ERROR;
+    if (d.outcome === 'error') return FINAL_OUTCOME.ERROR_DISPATCH;
 
     const code = d.denialCode;
-    if (code === DENIAL_CODE.APPROVAL_TIMEOUT) return FINAL_OUTCOME.DENIED_TIMEOUT;
+    if (code === DENIAL_CODE.APPROVAL_TIMEOUT) return FINAL_OUTCOME.DENIED_APPROVAL;
     if (
       code === DENIAL_CODE.REPLAY_DETECTED ||
       code === DENIAL_CODE.RATE_LIMIT_EXCEEDED ||
@@ -117,10 +117,10 @@ function computeFinalOutcome(decisions: GateDecision[]): FinalOutcome {
       code === DENIAL_CODE.TEMPLATE_INTEGRITY_FAILED ||
       code === DENIAL_CODE.GRANT_EXPIRED
     )
-      return FINAL_OUTCOME.DENIED_THREAT;
-    if (d.gateId === GATE_ID.G06 && d.outcome === 'deny') return FINAL_OUTCOME.DENIED_THREAT;
-    if (d.gateId === GATE_ID.G01) return FINAL_OUTCOME.DENIED_IDENTITY;
-    if (d.gateId === GATE_ID.G02) return FINAL_OUTCOME.DENIED_CLASSIF;
+      return FINAL_OUTCOME.DENIED_OTHER;
+    if (d.gateId === GATE_ID.G06 && d.outcome === 'deny') return FINAL_OUTCOME.DENIED_OTHER;
+    if (d.gateId === GATE_ID.G01) return FINAL_OUTCOME.DENIED_AUTH;
+    if (d.gateId === GATE_ID.G02) return FINAL_OUTCOME.DENIED_OCT;
     if (d.gateId === GATE_ID.G03) return FINAL_OUTCOME.DENIED_DELEGATION;
     if (d.gateId === GATE_ID.G04) return FINAL_OUTCOME.DENIED_POLICY;
     if (d.gateId === GATE_ID.G05) return FINAL_OUTCOME.DENIED_APPROVAL;

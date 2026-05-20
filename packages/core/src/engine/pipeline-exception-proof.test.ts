@@ -27,6 +27,7 @@ import {
   type ThreatEvent,
 } from '../types/index.js';
 import { nowIso } from '../utils/time.js';
+import { FINAL_OUTCOME } from '@nexus/contracts';
 
 // ─── Minimal DB with delegation_sequences table ──────────────────────────────
 
@@ -114,7 +115,7 @@ function mockEvidenceGate() {
           approvalResponse: null,
           grantMetadata: null,
           executionResult: null,
-          finalOutcome: 'error',
+          finalOutcome: FINAL_OUTCOME.ERROR_DISPATCH,
           threatEvents: [],
           previousHash: 'GENESIS',
           compilerView: null,

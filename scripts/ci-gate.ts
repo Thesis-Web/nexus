@@ -1894,6 +1894,14 @@ async function main(): Promise<void> {
   await enforceChatTierPlanInvariant();
   pass('buildChatPlan emits single-node + zero-edges + no-outputContract plans');
 
+  // ── F4.10 GOV-01 — final outcome literal gate ──────────────────────────
+  // Q1 ruling: canonical FinalOutcome vocabulary is longer-form
+  // (executed_successfully / denied_*). Retired-incorrect literals must
+  // not reappear anywhere in source.
+  stepLog('GOV-01 final outcome literal gate');
+  enforceGov01FinalOutcomeLiterals();
+  pass('retired-incorrect finalOutcome literals absent from source');
+
   // Step 81 (or 86 with PLANNER-LEXICON gates): integration test gate — opt-in.
   // Real-DB integration suite (postgres connector against the dev docker-compose
   // pair). Skipped unless NEXUS_RUN_INTEGRATION=1 so the gate stays fast in
@@ -1906,7 +1914,7 @@ async function main(): Promise<void> {
     pass('integration suite passed against real Postgres');
   } else {
     console.log(
-      `Step ${PLANNER_LEXICON_GATE_COUNT + ADMIN_DASHBOARD_GATE_COUNT + CHAT_TIER_GATE_COUNT + 81}: INTEG-01 integration test gate ... [33mSKIPPED[0m  (set NEXUS_RUN_INTEGRATION=1 to run)`
+      `Step ${PLANNER_LEXICON_GATE_COUNT + ADMIN_DASHBOARD_GATE_COUNT + CHAT_TIER_GATE_COUNT + GOV_GATE_COUNT + 81}: INTEG-01 integration test gate ... [33mSKIPPED[0m  (set NEXUS_RUN_INTEGRATION=1 to run)`
     );
   }
 
@@ -1937,6 +1945,7 @@ async function main(): Promise<void> {
     PLANNER_LEXICON_GATE_COUNT +
     ADMIN_DASHBOARD_GATE_COUNT +
     CHAT_TIER_GATE_COUNT +
+    GOV_GATE_COUNT +
     (process.env['NEXUS_RUN_INTEGRATION'] === '1' ? 1 : 0);
   console.log(`\n=== ci:gate PASSED — all ${totalSteps} steps ===\n`);
 }
@@ -1949,6 +1958,62 @@ async function main(): Promise<void> {
 const PLANNER_LEXICON_GATE_COUNT = 5;
 const ADMIN_DASHBOARD_GATE_COUNT = 3;
 const CHAT_TIER_GATE_COUNT = 2;
+// F4.19 will scaffold 16 GOV-* gates total; Patch 1 lands GOV-01 only.
+// Incremented as later patches add their gates.
+const GOV_GATE_COUNT = 1;
+
+// ===========================================================================
+// F4.10 GOV-01 — final outcome literal gate
+// ===========================================================================
+// Q1 canonical vocabulary: executed_successfully / denied_*. Retired-incorrect
+// finalOutcome literals must not reappear as quoted string literals anywhere
+// in source. Exemption: this gate file (which names the literals to forbid)
+// and the contracts constants file (which defined the prior vocabulary in
+// the migration history — already removed from current source).
+const GOV01_RETIRED_FINAL_OUTCOMES: readonly string[] = [
+  'denied_identity',
+  'denied_classification',
+  'denied_timeout',
+  'denied_threat',
+  'denied_execution',
+];
+
+// 'executed' as a finalOutcome literal is retired in favor of
+// 'executed_successfully'. Banned as a bare quoted literal except inside the
+// few files that may legitimately use the token (gate decision outcome
+// 'pass'/'allow'/'error' is unrelated; verify locally).
+function enforceGov01FinalOutcomeLiterals(): void {
+  const roots = ['packages', 'scripts', 'tests'];
+  const exempt = new Set<string>([
+    path.normalize('scripts/ci-gate.ts'),
+    path.normalize('packages/contracts/src/constants/index.ts'),
+  ]);
+  const violations: string[] = [];
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const retiredPattern = new RegExp(
+    `(['"\`])(${GOV01_RETIRED_FINAL_OUTCOMES.map(escape).join('|')})\\1`
+  );
+  for (const root of roots) {
+    for (const file of walkFiles(root, ['.ts', '.tsx'])) {
+      const rel = path.normalize(file);
+      if (exempt.has(rel)) continue;
+      if (rel.includes(`${path.sep}dist${path.sep}`)) continue;
+      const src = stripTsComments(fs.readFileSync(file, 'utf-8'));
+      const lines = src.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        if (retiredPattern.test(lines[i]!)) {
+          violations.push(`${rel}:${i + 1}: retired finalOutcome literal — ${lines[i]!.trim()}`);
+        }
+      }
+    }
+  }
+  if (violations.length > 0) {
+    fail(
+      `GOV-01: retired finalOutcome literal(s) found (${violations.length}):\n  ${violations.join('\n  ')}\n` +
+        `Use FINAL_OUTCOME.* constants from @nexus/contracts (Q1 / F4.10).`
+    );
+  }
+}
 
 // ===========================================================================
 // ADMIN-DASH gates — AMEND-nexus-admin-dashboard-full-buildout §4.7

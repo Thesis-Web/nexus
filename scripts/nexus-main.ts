@@ -78,7 +78,7 @@ import type {
   NormalizerContext,
 } from '@nexus/contracts';
 import { ACTION_VERB } from '@nexus/contracts';
-import { nowIso, riskTierExceeds, CAPABILITY_IDS } from '@nexus/contracts';
+import { nowIso, riskTierExceeds, CAPABILITY_IDS, FINAL_OUTCOME } from '@nexus/contracts';
 import { bootstrap, bootstrapWorkspace, type BootstrapResult } from './nexus-bootstrap.js';
 import { ActorRegistryAgentReader } from './ref-agent-registry-reader.js';
 import {
@@ -719,7 +719,7 @@ const program = createCli({
           '(' + bridged.kind + ')'
         );
 
-        if (finalOutcome === 'executed_successfully') {
+        if (finalOutcome === FINAL_OUTCOME.EXECUTED) {
           return {
             success: true,
             completionMetadata: {
@@ -733,12 +733,7 @@ const program = createCli({
           };
         }
 
-        const isDenied =
-          finalOutcome === 'denied_classification' ||
-          finalOutcome === 'denied_delegation' ||
-          finalOutcome === 'denied_policy' ||
-          finalOutcome === 'denied_approval' ||
-          finalOutcome === 'denied_execution';
+        const isDeniedOutcome = finalOutcome.startsWith('denied_');
         return {
           success: false,
           completionMetadata: {
@@ -748,7 +743,7 @@ const program = createCli({
             finalOutcome,
           },
           failureReason: ('nxs_dispatch_failed: ' + finalOutcome) as NonEmpty,
-          governanceDenied: isDenied,
+          governanceDenied: isDeniedOutcome,
         };
       };
 
