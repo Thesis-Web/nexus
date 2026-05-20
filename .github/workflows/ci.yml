@@ -8,7 +8,7 @@ on:
 
 jobs:
   ci-gate:
-    name: CI Gate (all 16 steps)
+    name: CI Gate
     runs-on: ubuntu-latest
 
     steps:
@@ -40,7 +40,76 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run ci:gate (all 16 steps)
+      # ci:gate runs all GOV-* + EXT-* + CMP-* + WS-* + CHAT-TIER + ADMIN-DASH
+      # + PLANNER-LEXICON + GOV gates. INTEG-01 (real-DB integration) is
+      # gated behind NEXUS_RUN_INTEGRATION=1 + the integ-pg job below.
+      - name: Run ci:gate
         run: pnpm ci:gate
         env:
           NODE_ENV: test
+
+  # F4.13 Patch 23 / Q14 — Postgres integration job (opt-in).
+  #
+  # The default ci-gate job above keeps INTEG-01 skipped so CI stays fast
+  # on every PR. This job runs the real-DB integration suite against
+  # postgres service containers. Triggered on workflow_dispatch + on push
+  # to main; PRs can opt in by labeling 'run-integ'.
+  integ-pg:
+    name: Postgres integration (INTEG-01)
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'run-integ')
+    runs-on: ubuntu-latest
+
+    services:
+      postgres-sales-finance:
+        image: postgres:15
+        env:
+          POSTGRES_USER: nexus
+          POSTGRES_PASSWORD: nexus
+          POSTGRES_DB: sales_finance
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      postgres-warehouse:
+        image: postgres:15
+        env:
+          POSTGRES_USER: nexus
+          POSTGRES_PASSWORD: nexus
+          POSTGRES_DB: warehouse
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run integration tests
+        run: pnpm test:integration
+        env:
+          NODE_ENV: test
+          NEXUS_RUN_INTEGRATION: '1'
+          NEXUS_INTEGRATION_PG: '1'
+          PG_SALES_FINANCE_URL: postgres://nexus:nexus@localhost:5433/sales_finance
+          PG_WAREHOUSE_URL: postgres://nexus:nexus@localhost:5434/warehouse
