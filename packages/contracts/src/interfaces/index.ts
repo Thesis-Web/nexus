@@ -702,6 +702,28 @@ export interface ApproverRegistry {
   register(actorId: Uuid, publicKey: Base64Url, channels: string[]): Promise<void>;
 }
 
+// ─── Q11 / Q12 / P1-013-15 — Workspace adjacents ──────────────────────────
+// Q11: server-side baked prompt store; manifest-published endpoint
+//      GET /workspace/runs/:runId/prompt-ref returns an opaque promptRef
+//      that the workspace re-submits on checkback. Ledger keeps only
+//      promptDigest (HL #14). Plug-in workspaces attach via manifest.
+// Q12: artifact endpoint is ALWAYS opaque — never inline body in ledger.
+//      Reasons: file:// bodyRef leaks topology; OCT classifications can
+//      change retroactively; two-sources-of-truth drift on failure.
+export interface PromptStorePort {
+  /** Store the raw prompt and return an opaque promptRef. */
+  store(runId: Uuid, prompt: string, principalId: Uuid): Promise<NonEmpty>;
+  /** Resolve a promptRef back to the raw prompt bytes. */
+  resolve(promptRef: NonEmpty, principalId: Uuid): Promise<string | null>;
+}
+
+export interface ArtifactEndpointPort {
+  /** Return an opaque endpoint URL for a given artifactId. */
+  endpointFor(artifactId: Uuid): NonEmpty;
+  /** Resolve an opaque endpoint to bytes (admin auth required). */
+  resolveBody(endpoint: NonEmpty, requesterPrincipalId: Uuid): Promise<Uint8Array | null>;
+}
+
 // ─── F3a Chat-Tier Multi-Turn — session + ledger-projection reader ────────
 // Workspace generates a chatSessionId at first turn; subsequent turns of
 // the same conversation reuse it. Per-turn runId stays fresh (HL #12).
