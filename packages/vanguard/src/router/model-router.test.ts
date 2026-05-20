@@ -57,6 +57,7 @@ function makeRequest(overrides: Partial<NvgOutboundRequest> = {}): NvgOutboundRe
     boundConnectorClasses: [],
     costPreference: 'low' as NonEmpty,
     carriedClaims: {},
+    provenance: 'workspace_upload',
     ...overrides,
   };
 }

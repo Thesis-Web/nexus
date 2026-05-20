@@ -42,6 +42,7 @@ import type {
   RunLedgerWriter,
 } from '@nexus/contracts';
 import { nowIso, DENIAL_CODE, NexusSecurityViolation } from '@nexus/contracts';
+import { provenanceFromSourceType } from '@nexus/runtime-utils';
 import { computeMailboxEligibility } from './mailbox-eligibility.js';
 import { encodeMailboxIdV1 } from './mailbox-id-format.js';
 
@@ -83,6 +84,11 @@ export class MailboxServiceImpl implements IMailboxService {
       resultRef: output.resultRef,
       resultDigest: output.resultDigest,
       resultClassifications: output.resultClassifications,
+      // F4.11 / Hard Law #6 — provenance derived from the writer's
+      // OutputSourceType. NXS connector results are trusted, NVG/agent
+      // outputs default to 'agent_output' (untrusted unless the agent
+      // declaration carries trusted=true at NVG case-split time).
+      provenance: provenanceFromSourceType(output.sourceType),
       octLevel: output.octLevel,
       createdAt: now,
       expiresAt: input.expiresAt,

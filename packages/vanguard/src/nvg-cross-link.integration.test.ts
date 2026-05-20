@@ -94,6 +94,7 @@ function makeRequest(runId: Uuid, overrides: Partial<NvgOutboundRequest> = {}): 
     costPreference: 'standard',
     latencyPreference: 'standard',
     carriedClaims: {},
+    provenance: 'workspace_upload',
     ...overrides,
   };
 }

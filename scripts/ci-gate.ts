@@ -2223,14 +2223,24 @@ function enforceGov04EffectiveScopeIntersection(): void {
 }
 
 function enforceGov05NvgPayloadLabels(): void {
-  // F4.11 §3.3 — every NVG-bound payload + mailbox writer must
-  // populate dataLabels from upstream provenance. No production source
-  // file may construct `dataLabels: []`. The `@allow-empty-data-labels`
-  // marker exemption from Phase B session 1 was retired in Patch 26
-  // (HANDOFF §D.2): the fix is the aggregation work the spec calls
-  // for, not a comment marker.
-  const violations: string[] = [];
+  // F4.11 §3.3 / Hard Law #6 — STRICT GREEN once every NVG-bound payload
+  // is constructed via the runtime-utils aggregator and every MailboxItem
+  // writer sets provenance from a trusted source. Four invariants:
+  //
+  // 1. No production source file may construct `dataLabels: []` (the
+  //    retired `@allow-empty-data-labels` marker exemption from Phase B
+  //    session 1 was deleted in Patch 26).
+  // 2. The runtime-utils helper exports `aggregatePayloadLabels` +
+  //    `resolveAggregatedProvenance` so the orch + any future writer
+  //    share a canonical aggregation surface.
+  // 3. `provenanceFromSourceType` is wired into `writeFromOutput` so
+  //    every MailboxItem persisted by the baked mailbox-service carries
+  //    a non-default provenance.
+  // 4. NvgServiceImpl applies the §3.3 case split (empty labels +
+  //    untrusted/unknown provenance → NVG_UNKNOWN_PROVENANCE_PAYLOAD;
+  //    empty labels + trusted → floor 'internal' + log).
   const selfPath = path.normalize(path.join('scripts', 'ci-gate.ts'));
+  const violations: string[] = [];
   for (const root of ['packages', 'scripts']) {
     for (const file of walkFiles(root, ['.ts', '.tsx'])) {
       const rel = path.normalize(file);
@@ -2242,8 +2252,10 @@ function enforceGov05NvgPayloadLabels(): void {
       for (let i = 0; i < rawLines.length; i++) {
         const line = rawLines[i]!;
         if (!/dataLabels\s*:\s*\[\s*\]/.test(line)) continue;
-        // Skip if the line is itself a `//` comment (literal inside a comment).
-        if (/^\s*\/\//.test(line)) continue;
+        // Skip if the line is itself a comment (line comment or
+        // jsdoc/block-comment continuation line). The aggregation
+        // helper's docstring legitimately names the literal.
+        if (/^\s*(?:\/\/|\*)/.test(line)) continue;
         violations.push(`${rel}:${i + 1}: dataLabels: [] in production source`);
       }
     }
@@ -2251,12 +2263,68 @@ function enforceGov05NvgPayloadLabels(): void {
   if (violations.length > 0) {
     fail(
       `GOV-05: NVG payload label propagation violations:\n  ${violations.join('\n  ')}\n` +
-        `F4.11 §3.3 — aggregate dataLabels from upstream slices/mailbox items / provenance. ` +
-        `(Phase B completion HANDOFF §E.1 Patch 31 lands the aggregation; the ` +
-        `@allow-empty-data-labels marker bypass was retired in Patch 26.)`
+        `F4.11 §3.3 — aggregate dataLabels from upstream slices/mailbox items / provenance ` +
+        `using aggregatePayloadLabels() from @nexus/runtime-utils.`
     );
   }
-  pass('NVG payload label propagation (no empty dataLabels in production)');
+
+  const helperPath = path.join('packages', 'runtime-utils', 'src', 'payload-labels.ts');
+  if (!fs.existsSync(helperPath)) {
+    fail(`GOV-05: ${helperPath} not found — F4.11 aggregation helper missing`);
+  }
+  const helperSrc = fs.readFileSync(helperPath, 'utf-8');
+  for (const sym of [
+    'aggregatePayloadLabels',
+    'resolveAggregatedProvenance',
+    'provenanceFromSourceType',
+    'isTrustedProvenance',
+  ]) {
+    if (!new RegExp(`\\bexport\\b[^\\n]*\\b${sym}\\b`).test(helperSrc)) {
+      fail(`GOV-05: ${helperPath} must export ${sym} (F4.11 §3.1)`);
+    }
+  }
+
+  const mailboxServicePath = path.join('packages', 'core', 'src', 'mailbox', 'mailbox-service.ts');
+  const mailboxServiceSrc = fs.readFileSync(mailboxServicePath, 'utf-8');
+  const mailboxServiceStripped = stripTsComments(mailboxServiceSrc);
+  if (!/provenanceFromSourceType\(output\.sourceType\)/.test(mailboxServiceStripped)) {
+    fail(
+      `GOV-05: ${mailboxServicePath} writeFromOutput must set provenance via ` +
+        `provenanceFromSourceType(output.sourceType) (F4.11 §3.1)`
+    );
+  }
+
+  const nvgServicePath = path.join('packages', 'vanguard', 'src', 'nvg-service.ts');
+  const nvgServiceStripped = stripTsComments(fs.readFileSync(nvgServicePath, 'utf-8'));
+  if (!/isTrustedProvenance\(/.test(nvgServiceStripped)) {
+    fail(
+      `GOV-05: ${nvgServicePath} must consult isTrustedProvenance() for the §3.3 ` +
+        `empty-labels case split (F4.11 §3.3)`
+    );
+  }
+  if (!/DENIAL_CODE\.NVG_UNKNOWN_PROVENANCE_PAYLOAD/.test(nvgServiceStripped)) {
+    fail(
+      `GOV-05: ${nvgServicePath} must deny untrusted-provenance empty payloads with ` +
+        `DENIAL_CODE.NVG_UNKNOWN_PROVENANCE_PAYLOAD (F4.11 §3.3)`
+    );
+  }
+  if (!/'data_label_floored_internal'/.test(nvgServiceStripped)) {
+    fail(
+      `GOV-05: ${nvgServicePath} must write data_label_floored_internal on the trusted-floor ` +
+        `branch of the case split (F4.11 §3.3)`
+    );
+  }
+  if (!/'would_deny_data_labels'/.test(nvgServiceStripped)) {
+    fail(
+      `GOV-05: ${nvgServicePath} must write would_deny_data_labels on the observe/advisory ` +
+        `mode branch (F4.11 §3.4)`
+    );
+  }
+
+  pass(
+    'NVG payload label propagation (no empty dataLabels in production; aggregator + ' +
+      'provenance writer + case split + denial code all wired)'
+  );
 }
 
 function enforceGov06CompileMultiItemPassThrough(): void {

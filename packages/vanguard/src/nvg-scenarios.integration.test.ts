@@ -99,6 +99,7 @@ function makeRequest(overrides: Partial<NvgOutboundRequest> = {}): NvgOutboundRe
     costPreference: 'standard',
     latencyPreference: 'standard',
     carriedClaims: {},
+    provenance: 'workspace_upload',
     ...overrides,
   };
 }

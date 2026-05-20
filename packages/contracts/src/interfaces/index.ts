@@ -1412,6 +1412,17 @@ export type RunEventType =
   // both hashes) — the claim values themselves stay out of the ledger
   // (they live in the carried-claims-ref / current-claims-ref pointers).
   | 'claim_drift_detected'
+  // ── F4.11 NVG Payload Labels (Hard Law #6) ────────────────────────────
+  // Emitted by NVG classify-and-route when the §3.3 empty-labels case
+  // split fires. `data_label_floored_internal` — empty labels with
+  // trusted provenance (nxs_connector_result, workspace_upload,
+  // planner_history, or trusted agent_output): the gate floors the
+  // classification at `internal` and proceeds. `would_deny_data_labels`
+  // — observe/advisory mode where enforce would have denied:
+  // payload still crosses (per §3.4) but the gate records what enforce
+  // would have done so the operator can preview before flipping mode.
+  | 'data_label_floored_internal'
+  | 'would_deny_data_labels'
   // ── F4.15 Delegation mint fail-closed (HL #15) ────────────────────────
   // Emitted when DelegationMintPort returns empty_intersection or
   // mint_error. The fabricated-UUID path is retired; mint failure
@@ -1560,6 +1571,19 @@ export interface NvgOutboundRequest {
    * runner fails closed under enforce mode.
    */
   carriedClaims: Record<string, unknown>;
+  /**
+   * F4.11 §2.3 / Hard Law #6 — aggregated provenance of the payload. The
+   * orchestrator computes this from the upstream mailbox items the
+   * dispatch slice reads (max-trust selection across items). NVG's
+   * classify-and-route gate applies the §3.3 empty-labels case split
+   * against this field: empty labels + trusted provenance → floor
+   * 'internal' + log; empty labels + untrusted/unknown → deny with
+   * NVG_UNKNOWN_PROVENANCE_PAYLOAD. The provenance value here is the
+   * aggregate across all upstream items contributing to the request;
+   * per-item provenance is preserved on MailboxItem.provenance for
+   * audit reconstruction.
+   */
+  provenance: ProvenanceSource;
 }
 
 export interface NvgClassificationResult {

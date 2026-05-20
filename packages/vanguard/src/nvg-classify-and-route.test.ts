@@ -73,6 +73,11 @@ function makeRequest(overrides: Partial<NvgOutboundRequest> = {}): NvgOutboundRe
     costPreference: 'standard',
     latencyPreference: 'standard',
     carriedClaims: {},
+    // F4.11 — default fixture provenance is workspace_upload (trusted
+    // user-originated content from the workspace boundary). Tests that
+    // exercise the §3.3 case split override this to drive specific
+    // empty-labels-with-X-provenance behavior.
+    provenance: 'workspace_upload',
     ...overrides,
   };
 }
@@ -574,15 +579,20 @@ describe('NVG classifyAndRoute — Label Validation (NVG-CLASS-001)', () => {
     expect(result.classification.isSensitive).toBe(true);
   });
 
-  it('allows empty labels — classifies as public (no labels is not a rejection)', async () => {
+  it('NPL-05 (replaces P0-030 fail-open): empty labels + untrusted agent_output → deny', async () => {
+    // F4.11 §3.3 — the old assertion treated empty dataLabels as public.
+    // That was the documented P0-030 fail-open. The §3.3 case split now
+    // forces deny in enforce mode when provenance is untrusted.
     const deps = makeDeps(tmpDir);
     const nvg = new NvgServiceImpl(deps);
 
-    const result = await nvg.classifyAndRoute(makeRequest({ dataLabels: [] }));
+    const result = await nvg.classifyAndRoute(
+      makeRequest({ dataLabels: [], boundConnectorClasses: [], provenance: 'agent_output' })
+    );
 
-    // Empty labels → readLabels returns empty validLabels with 0 rejected
-    // classifyOutboundData([]) → PUBLIC
-    expect(result.classification.effectiveDataClass).toBe(DATA_CLASS.PUBLIC);
+    expect(result.allowed).toBe(false);
+    expect(result.denialCode).toBe(DENIAL_CODE.NVG_UNKNOWN_PROVENANCE_PAYLOAD);
+    expect(result.denialReason).toContain('agent_output');
   });
 });
 
@@ -736,5 +746,109 @@ describe('NVG classifyAndRoute — Claim Drift (F4.9 §3.2)', () => {
     expect(result.denialCode).toBe(DENIAL_CODE.CLAIM_DRIFT_DETECTED);
     const driftEvents = captured.entries.filter(e => e.eventType === 'claim_drift_detected');
     expect(driftEvents.length).toBeGreaterThan(0);
+  });
+});
+
+// ─── F4.11 Empty-Labels Case Split (NPL-04 / -06 / -07 / -08) ───────────────
+// Spec §3.3 — when the request arrives with no dataLabels AND no connector
+// bindings to contribute the binding-axis floor, the gate decides by
+// provenance: trusted → floor 'internal' + log; untrusted/unknown → deny.
+
+describe('NVG classifyAndRoute — F4.11 §3.3 empty-labels case split', () => {
+  function captureLedger(): {
+    runLedger: RunLedgerWriter;
+    entries: Array<{ eventType: string; detail: Record<string, unknown> }>;
+  } {
+    const entries: Array<{ eventType: string; detail: Record<string, unknown> }> = [];
+    return {
+      entries,
+      runLedger: {
+        writeEvent: async entry => {
+          entries.push({
+            eventType: entry.eventType as string,
+            detail: (entry.detail ?? {}) as Record<string, unknown>,
+          });
+        },
+        getByRunId: async () => [],
+        tail: async () => [],
+        getLatestRunId: async () => null,
+      },
+    };
+  }
+
+  it('NPL-04: empty labels + nxs_connector_result (trusted) → floor internal + ledger event', async () => {
+    const captured = captureLedger();
+    const nvg = new NvgServiceImpl(makeDeps({ runLedger: captured.runLedger }));
+    const result = await nvg.classifyAndRoute(
+      makeRequest({
+        dataLabels: [],
+        boundConnectorClasses: [],
+        provenance: 'nxs_connector_result',
+      })
+    );
+    expect(result.allowed).toBe(true);
+    expect(result.classification.effectiveDataClass).toBe(DATA_CLASS.INTERNAL);
+    const floor = captured.entries.find(e => e.eventType === 'data_label_floored_internal');
+    expect(floor).toBeDefined();
+    expect(floor!.detail['provenance']).toBe('nxs_connector_result');
+  });
+
+  it('NPL-06: empty labels + workspace_upload (trusted) → floor internal + ledger event', async () => {
+    const captured = captureLedger();
+    const nvg = new NvgServiceImpl(makeDeps({ runLedger: captured.runLedger }));
+    const result = await nvg.classifyAndRoute(
+      makeRequest({
+        dataLabels: [],
+        boundConnectorClasses: [],
+        provenance: 'workspace_upload',
+      })
+    );
+    expect(result.allowed).toBe(true);
+    expect(result.classification.effectiveDataClass).toBe(DATA_CLASS.INTERNAL);
+    expect(captured.entries.some(e => e.eventType === 'data_label_floored_internal')).toBe(true);
+  });
+
+  it('NPL-07: observe mode — untrusted provenance logs would_deny_data_labels, proceeds', async () => {
+    const captured = captureLedger();
+    const nvg = new NvgServiceImpl(
+      makeDeps({
+        runLedger: captured.runLedger,
+        modeConfig: makeModeConfig(OPERATING_MODE.ENFORCING, OPERATING_MODE.OBSERVE),
+      })
+    );
+    const result = await nvg.classifyAndRoute(
+      makeRequest({
+        dataLabels: [],
+        boundConnectorClasses: [],
+        provenance: 'agent_output',
+      })
+    );
+    expect(result.allowed).toBe(true); // observe: payload proceeds
+    expect(result.disposition).toBe('observe');
+    const wouldDeny = captured.entries.find(e => e.eventType === 'would_deny_data_labels');
+    expect(wouldDeny).toBeDefined();
+    expect(wouldDeny!.detail['provenance']).toBe('agent_output');
+    expect(wouldDeny!.detail['wouldDenyCode']).toBe(DENIAL_CODE.NVG_UNKNOWN_PROVENANCE_PAYLOAD);
+  });
+
+  it('NPL-08: enforcing mode — untrusted provenance deny → no LLM invocation', async () => {
+    const captured = captureLedger();
+    const nvg = new NvgServiceImpl(
+      makeDeps({
+        runLedger: captured.runLedger,
+        modeConfig: makeModeConfig(OPERATING_MODE.ENFORCING, OPERATING_MODE.ENFORCING),
+      })
+    );
+    const result = await nvg.classifyAndRoute(
+      makeRequest({
+        dataLabels: [],
+        boundConnectorClasses: [],
+        provenance: 'unknown',
+      })
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.denialCode).toBe(DENIAL_CODE.NVG_UNKNOWN_PROVENANCE_PAYLOAD);
+    expect(result.invocation).toBeNull();
+    expect(result.modelTierInvoked).toBeNull();
   });
 });

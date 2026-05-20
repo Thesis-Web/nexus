@@ -267,6 +267,31 @@ function buildEventSummary(eventType: string, detail: Record<string, unknown>): 
     }
     return '⚠ model returned tool_calls (treated as text per Nexus governance)';
   }
+  if (eventType === 'data_label_floored_internal') {
+    // F4.11 §3.3 — NVG saw empty labels + trusted provenance and
+    // floored the classification at 'internal' instead of quarantining.
+    // Surface the provenance so operators understand which writer-side
+    // trust source justified the floor.
+    const provenance = detail['provenance'];
+    if (typeof provenance === 'string' && provenance.length > 0) {
+      return `📥 dataLabels floored to internal (provenance: ${provenance})`;
+    }
+    return '📥 dataLabels floored to internal';
+  }
+  if (eventType === 'would_deny_data_labels') {
+    // F4.11 §3.3 — observe/advisory mode: enforce would have denied
+    // the request because labels were empty with untrusted provenance.
+    // Surface the same line operators will see when they flip the
+    // mode to enforce so the policy preview is honest.
+    const provenance = detail['provenance'];
+    const code = detail['wouldDenyCode'];
+    if (typeof provenance === 'string' && provenance.length > 0) {
+      return `⚠ would-deny (mode advisory): empty labels + provenance=${provenance} → ${
+        typeof code === 'string' ? code : 'nvg_unknown_provenance_payload'
+      }`;
+    }
+    return '⚠ would-deny: empty dataLabels + untrusted provenance (mode non-enforcing)';
+  }
   if (eventType === 'claim_drift_detected') {
     // F4.9 / Hard Law #14 — NXS/NVG gate runner detected that the
     // carried claims envelope no longer matches RBAC's current snapshot.

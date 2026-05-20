@@ -56,6 +56,9 @@ export function registerMailboxRoutes(app: Express, deps: Partial<MailboxRouteDe
         sourceType: item.sourceType,
         resultDigest: item.resultDigest,
         resultClassifications: item.resultClassifications,
+        // F4.11 — admin dashboard surfaces provenance so operators can
+        // see which writer produced each item.
+        provenance: item.provenance,
         octLevel: item.octLevel,
         createdAt: item.createdAt,
         expiresAt: item.expiresAt,

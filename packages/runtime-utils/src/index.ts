@@ -42,3 +42,10 @@ export {
   type NvgDriftWrapperDeps,
   type NvgDriftCheckOutcome,
 } from './claim-drift.js';
+export {
+  provenanceFromSourceType,
+  resolveAggregatedProvenance,
+  aggregatePayloadLabels,
+  isTrustedProvenance,
+  TRUSTED_PROVENANCE_SOURCES,
+} from './payload-labels.js';

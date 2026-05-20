@@ -85,6 +85,7 @@ import type {
   OctLevel,
 } from '@nexus/contracts';
 import { nowIso, CAPABILITY_IDS, FINAL_OUTCOME, OCT_LEVEL } from '@nexus/contracts';
+import { aggregatePayloadLabels, resolveAggregatedProvenance } from '@nexus/runtime-utils';
 import { bootstrap, bootstrapWorkspace, type BootstrapResult } from './nexus-bootstrap.js';
 import { ActorRegistryAgentReader } from './ref-agent-registry-reader.js';
 import {
@@ -820,6 +821,14 @@ const program = createCli({
             });
           }
 
+          // ── F4.11 — collect upstream mailbox items as slot reads are
+          // resolved so the NVG dispatch sites below can aggregate
+          // dataLabels + provenance from them. The collector is
+          // populated inside the slot-read loop so a single pass
+          // through the upstream graph feeds both the LLM input
+          // framing AND the gate-side classification surface.
+          const upstreamMailboxItems: import('@nexus/contracts').MailboxItem[] = [];
+
           // ── Multi-node planner: pre-seed upstream slot reads ──────────
           // For each entry in the node's inputSlotReads, look up the
           // upstream node by subTaskKey, fetch the latest mailbox item
@@ -906,6 +915,10 @@ const program = createCli({
                 role: 'user',
                 content: `[Upstream slot ${ref.fromSubTaskKey}.${ref.slotId}]\n\n${body}`,
               });
+              // F4.11 — register the upstream item with the aggregator;
+              // its resultClassifications + provenance contribute to the
+              // NVG dispatch labels below.
+              upstreamMailboxItems.push(item);
               // AMEND-nexus-mailbox-pit-v0-2-1 §3.4.4 — emit per-resolution
               // audit event so the cross-actor data movement orch performs
               // is recorded in the run ledger.
@@ -1045,6 +1058,17 @@ const program = createCli({
             // F4.9 — resolve the agent's carried claims at dispatch so the
             // NVG classify-and-route gate runner can verify the snapshot.
             const agentCarriedClaims = await resolveAgentCarriedClaims(node.agentId);
+            // F4.11 / HL #6 — dataLabels aggregated from upstream
+            // mailbox items + the agent's boundConnectorClasses (the
+            // binding-axis floor per §24.2). NVG's §3.3 case split runs
+            // against the aggregated provenance: trusted sources floor
+            // to internal; untrusted/unknown with no labels denies with
+            // NVG_UNKNOWN_PROVENANCE_PAYLOAD.
+            const aggregatedLabels = aggregatePayloadLabels(
+              upstreamMailboxItems,
+              boundConnectorClasses
+            );
+            const aggregatedProvenance = resolveAggregatedProvenance(upstreamMailboxItems);
             const nvgRequest: NvgOutboundRequest = {
               requestId: crypto.randomUUID() as Uuid,
               runId: request.runId,
@@ -1053,13 +1077,7 @@ const program = createCli({
               environmentContext: agent.environment,
               taskIntent: node.taskSummary,
               payload: turnPayload,
-              // F4.11 / HL #6 — dataLabels MUST be aggregated from upstream
-              // slices + mailbox items + boundConnectorClasses before they
-              // reach NVG. The empty array below is the broken state GOV-05
-              // flags RED until HANDOFF §E.1 Patch 31 lands the aggregation.
-              // The retired `@allow-empty-data-labels` marker bypass was
-              // removed in Patch 26 (HANDOFF §D.2).
-              dataLabels: [],
+              dataLabels: aggregatedLabels,
               boundConnectorClasses,
               costPreference: 'standard',
               latencyPreference: 'standard',
@@ -1068,6 +1086,7 @@ const program = createCli({
               // within the governed tier set; null = Auto (policy).
               preferredEndpointId: request.preferredEndpointId,
               carriedClaims: agentCarriedClaims,
+              provenance: aggregatedProvenance,
             };
             nvgTurnIndex++;
             const result = await br.nvgService.classifyAndRoute(nvgRequest);
@@ -1732,6 +1751,17 @@ const program = createCli({
           // gate runner — drift detection at probe time is forward-only
           // and the dispatch path re-verifies before invocation).
           const probeCarriedClaims = await resolveAgentCarriedClaims(firstAgent.agentId);
+          // F4.11 / HL #6 — probe-side aggregation. Pre-flight has no
+          // upstream mailbox items (the dispatch hasn't run yet), so the
+          // label surface comes from the binding-axis floor only.
+          // Provenance is 'workspace_upload' because the probe's payload
+          // is the user's prompt, which originates at the workspace
+          // trust boundary — semantically the same trust model as the
+          // spec's attachment binder, just for prompt body. When both
+          // binding and labels are empty (free_chat agent with no
+          // connectors), the §3.3 case split treats workspace_upload as
+          // trusted and floors to 'internal' rather than quarantining.
+          const probeAggregatedLabels = aggregatePayloadLabels([], probeBoundClasses);
           const probe: NvgOutboundRequest = {
             requestId: crypto.randomUUID() as Uuid,
             runId: request.runId,
@@ -1740,10 +1770,7 @@ const program = createCli({
             environmentContext: agent.environment,
             taskIntent: firstAgent.taskSummary,
             payload: [{ role: 'user', content: request.prompt }],
-            // F4.11 / HL #6 — same gap as the dispatch path above. Probe
-            // path needs prompt-derived dataLabels from upstream. GOV-05
-            // RED until HANDOFF §E.1 Patch 31 lands the aggregator.
-            dataLabels: [],
+            dataLabels: probeAggregatedLabels,
             boundConnectorClasses: probeBoundClasses,
             costPreference: 'standard',
             latencyPreference: 'standard',
@@ -1752,6 +1779,7 @@ const program = createCli({
             // the checkback message can name a concrete unavailable model.
             preferredEndpointId: request.preferredEndpointId,
             carriedClaims: probeCarriedClaims,
+            provenance: 'workspace_upload',
           };
 
           const routing = await br.nvgService.previewRouting(probe);

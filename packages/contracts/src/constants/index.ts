@@ -304,6 +304,12 @@ export const DENIAL_CODE = {
   NVG_ENDPOINT_TIMEOUT: 'nvg_endpoint_timeout',
   NVG_ENDPOINT_UNREACHABLE: 'nvg_endpoint_unreachable',
   NVG_POLICY_SIG_INVALID: 'nvg_routing_policy_signature_invalid',
+  // F4.11 §3.3 — NVG quarantines payloads that arrive with empty
+  // dataLabels and provenance from an untrusted source (agent_output
+  // without trusted-agent declaration) or 'unknown'. Distinct from
+  // NVG_QUARANTINE (post-firewall inbound scrubbing) so audit can
+  // pair the denial with the §3.3 case split rule that fired.
+  NVG_UNKNOWN_PROVENANCE_PAYLOAD: 'nvg_unknown_provenance_payload',
   // ─── NISP-001.A Transport Denial Codes (§12.2, F-03) ───
   NVG_TRANSPORT_UNKNOWN_ADAPTER: 'nvg_transport_unknown_adapter',
   NVG_TRANSPORT_AUTH_MISSING: 'nvg_transport_auth_missing',

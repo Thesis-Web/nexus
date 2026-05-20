@@ -58,6 +58,7 @@ function makeRequest(): NvgOutboundRequest {
     costPreference: 'standard',
     latencyPreference: 'standard',
     carriedClaims: {},
+    provenance: 'workspace_upload',
   };
 }
 

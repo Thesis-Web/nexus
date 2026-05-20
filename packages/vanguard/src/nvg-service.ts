@@ -40,7 +40,7 @@ import {
   type IsoTimestamp,
   type RuntimeDisposition,
 } from '@nexus/contracts';
-import { runNvgGateWithDriftCheck } from '@nexus/runtime-utils';
+import { isTrustedProvenance, runNvgGateWithDriftCheck } from '@nexus/runtime-utils';
 import { classifyOutboundData } from './classifier/data-classifier.js';
 import { enforceOctModelCeiling } from './classifier/ceiling-enforcer.js';
 import { readLabels } from './classifier/label-reader.js';
@@ -255,6 +255,90 @@ export class NvgServiceImpl implements NvgService {
         disposition,
         invocation: null,
       });
+    }
+
+    // ── F4.11 §3.3 — Empty-labels case split (Hard Law #6 / P0-030) ───────
+    // When the request arrives with NO valid labels AND no connector
+    // bindings to contribute the binding-axis floor, the gate must decide
+    // by provenance:
+    //   - trusted source (nxs_connector_result / workspace_upload /
+    //     planner_history) → allow, classifier floors to 'internal' below,
+    //     log data_label_floored_internal.
+    //   - untrusted (agent_output without trusted-agent declaration) or
+    //     'unknown' → deny with NVG_UNKNOWN_PROVENANCE_PAYLOAD. The
+    //     retired "empty labels classify as public" assertion (P0-030) is
+    //     replaced by this fail-closed default. Mode matrix (§3.4):
+    //     observe/advisory log `would_deny_data_labels` and proceed;
+    //     enforce denies.
+    const emptyLabelSurface =
+      labelResult.validLabels.length === 0 && request.boundConnectorClasses.length === 0;
+    if (emptyLabelSurface) {
+      const trusted = isTrustedProvenance(request.provenance);
+      if (trusted) {
+        await runLedger.writeEvent({
+          runId: request.runId,
+          eventType: 'data_label_floored_internal',
+          timestamp: new Date().toISOString() as IsoTimestamp,
+          actorId: request.actorId,
+          detail: {
+            provenance: request.provenance,
+            correlationId,
+            requestId: request.requestId,
+            floor: 'internal',
+          },
+        });
+        // Fall through — Step 2 classifier with no validLabels + no
+        // bindings normally returns 'public'. We override by injecting
+        // a synthetic internal-floor label so the policy engine sees
+        // the floored classification.
+        labelResult.validLabels.push({
+          source: `provenance_floor:${request.provenance}` as NonEmpty,
+          label: 'internal',
+          confidence: 1.0,
+        });
+      } else {
+        const reason =
+          `empty labels with untrusted provenance ${request.provenance} — ` +
+          'gate quarantines per F4.11 §3.3 (no payload crosses the wall without ' +
+          'a trusted upstream source).';
+        if (disposition === 'enforce') {
+          await handleNvgDenial(
+            request,
+            DENIAL_CODE.NVG_UNKNOWN_PROVENANCE_PAYLOAD,
+            reason,
+            trailWriter,
+            policyVersion,
+            correlationId
+          );
+          return this.buildResult({
+            allowed: false,
+            classification: classifyOutboundData([]),
+            modelTierSelected: null,
+            modelTierInvoked: null,
+            denialCode: DENIAL_CODE.NVG_UNKNOWN_PROVENANCE_PAYLOAD as DenialCode,
+            denialReason: reason,
+            trailCorrelationId: correlationId,
+            disposition,
+            invocation: null,
+          });
+        }
+        // observe / advisory: log what enforce would have done and
+        // proceed (spec §3.4). The downstream classifier still runs.
+        await runLedger.writeEvent({
+          runId: request.runId,
+          eventType: 'would_deny_data_labels',
+          timestamp: new Date().toISOString() as IsoTimestamp,
+          actorId: request.actorId,
+          detail: {
+            provenance: request.provenance,
+            correlationId,
+            requestId: request.requestId,
+            disposition,
+            wouldDenyCode: DENIAL_CODE.NVG_UNKNOWN_PROVENANCE_PAYLOAD,
+            reason,
+          },
+        });
+      }
     }
 
     // ── Step 2: Data Classification (§24.2) ────────────────────────────────

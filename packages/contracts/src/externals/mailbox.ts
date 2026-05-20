@@ -24,6 +24,7 @@
 
 import type { Uuid, IsoTimestamp, Sha256Hex, NonEmpty } from '../types/index.js';
 import type { DataClass, OctLevel, DenialCode } from '../constants/index.js';
+import type { ProvenanceSource } from '../interfaces/index.js';
 import type {
   OutputSourceType,
   NvgOutputReference,
@@ -50,6 +51,21 @@ export interface MailboxItem {
   resultRef: NonEmpty;
   resultDigest: Sha256Hex;
   resultClassifications: DataClass[];
+  /**
+   * F4.11 §2.2 / Hard Law #6 — provenance of the payload. Set by the
+   * writer (NXS connector bridge → 'nxs_connector_result'; agent
+   * compile-drop → 'agent_output'; NVG sandbox return → 'agent_output';
+   * workspace attachment binder → 'workspace_upload'; chat-history
+   * loader → 'planner_history'). NVG's classify-and-route gate applies
+   * the §3.3 empty-labels case split using this field; missing trusted
+   * provenance with empty labels fails the wall closed.
+   *
+   * 'unknown' is the defensive default the runtime-utils helper
+   * produces when no writer-side mapping applies. Writers SHOULD always
+   * supply a concrete source — 'unknown' is reserved for cases where
+   * the upstream chain is incomplete and the gate must quarantine.
+   */
+  provenance: ProvenanceSource;
   octLevel: OctLevel;
   createdAt: IsoTimestamp;
   expiresAt: IsoTimestamp | null;
