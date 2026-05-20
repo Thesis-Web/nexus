@@ -168,6 +168,10 @@ export function registerAllRoutes(
     // AMEND-nexus-admin-dashboard-full-buildout §3.6/§3.7
     ...(deps.modeSigner !== undefined ? { modeSigner: deps.modeSigner } : {}),
     ...(deps.keyDirectory !== undefined ? { keyDirectory: deps.keyDirectory } : {}),
+    // F4.1 SigningCouncil — federated mutation aggregator. Required in
+    // production for /workspace/admin/signing/* + /workspace/admin/lexicon/*
+    // routes (otherwise 501).
+    ...(deps.signingCouncil !== undefined ? { signingCouncil: deps.signingCouncil } : {}),
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

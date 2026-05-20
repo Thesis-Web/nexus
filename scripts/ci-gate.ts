@@ -2681,15 +2681,146 @@ function enforceGov13PolicyOctAxisEvaluator(): void {
 function enforceGov14LexiconMutationDoubleAdmin(): void {
   // F4.1 + F4.8 / Q4 — lexicon_mutation operation must be wired
   // end-to-end through the SigningCouncil 2-of-2 dispatcher with the
-  // baked LexiconMutationExecutor as the apply path. The executor
-  // class and the FEDERATED_OPERATION constants exist (Phase B session
-  // 1 Patches 6 + 8), but the council dispatcher map does not
-  // register the executor, no admin-writer routes for lexicon
-  // entity/edge/confidence/template/guard authoring exist, and no
-  // planner callback emits unmapped_prompt / lexicon_signal. RED
-  // until Patch 29 lands the end-to-end wiring.
-  fail(
-    'GOV-14: lexicon_mutation dispatcher not registered with SigningCouncil; no admin-writer lexicon-authoring routes; no planner-side unmapped_prompt / lexicon_signal emission — F4.1 + F4.8 / Q4 / Phase B completion HANDOFF §E.1 Patches 27 + 29'
+  // baked LexiconMutationExecutor as the apply path. STRICT AST scan
+  // enforcing seven invariants (FED-08 + LEX-MUT-07 + LEX-MUT-08 surface).
+
+  const readSrc = (p: string): string => {
+    if (!fs.existsSync(p)) fail(`GOV-14: required file missing: ${p}`);
+    return fs.readFileSync(p, 'utf-8');
+  };
+
+  // (1) Constants — threshold map literal === 2 for lexicon_mutation.
+  const constantsPath = 'packages/contracts/src/constants/index.ts';
+  const constantsSrc = readSrc(constantsPath);
+  if (
+    !/FEDERATED_OPERATION_THRESHOLDS\s*:\s*Record<FederatedOperation,\s*2>\s*=/.test(constantsSrc)
+  ) {
+    fail(
+      `GOV-14: ${constantsPath} must declare FEDERATED_OPERATION_THRESHOLDS as Record<FederatedOperation, 2> (Q4 strict 2-signature threshold)`
+    );
+  }
+
+  // (2) Executor — JsonlLexiconMutationExecutor exported from core.
+  const executorPath = 'packages/core/src/lexicon/lexicon-mutation-executor.ts';
+  const executorSrc = readSrc(executorPath);
+  if (!/export class JsonlLexiconMutationExecutor\b/.test(executorSrc)) {
+    fail(
+      `GOV-14: ${executorPath} must export JsonlLexiconMutationExecutor (F4.8 Phase 1 apply path)`
+    );
+  }
+  if (!/signers\.length\s*<\s*2/.test(executorSrc)) {
+    fail(
+      `GOV-14: ${executorPath} must enforce signers.length >= 2 before apply (Q4 strict threshold)`
+    );
+  }
+
+  // (3) Dispatchers — buildLexiconMutationDispatcher exported AND references the executor.
+  const dispatchersPath = 'packages/core/src/signing/signing-council-dispatchers.ts';
+  const dispatchersSrc = readSrc(dispatchersPath);
+  if (!/export function buildLexiconMutationDispatcher\b/.test(dispatchersSrc)) {
+    fail(
+      `GOV-14: ${dispatchersPath} must export buildLexiconMutationDispatcher (F4.1 §3.3 binding)`
+    );
+  }
+  if (!/LexiconMutationExecutor\b/.test(dispatchersSrc)) {
+    fail(
+      `GOV-14: ${dispatchersPath} buildLexiconMutationDispatcher must close over a LexiconMutationExecutor`
+    );
+  }
+  if (!/executor\.apply\s*\(/.test(dispatchersSrc)) {
+    fail(`GOV-14: ${dispatchersPath} must invoke executor.apply (the only legitimate apply path)`);
+  }
+
+  // (4) Composition root — serve.ts wires lexicon_mutation in the
+  // SigningCouncil dispatchers map.
+  const servePath = 'packages/interfaces/cli/src/commands/serve.ts';
+  const serveSrc = readSrc(servePath);
+  if (!/new SigningCouncil\s*\(/.test(serveSrc)) {
+    fail(
+      `GOV-14: ${servePath} must instantiate SigningCouncil at composition root (F4.1 §5 step 4)`
+    );
+  }
+  if (!/lexicon_mutation\s*:\s*buildLexiconMutationDispatcher\s*\(/.test(serveSrc)) {
+    fail(
+      `GOV-14: ${servePath} must wire lexicon_mutation: buildLexiconMutationDispatcher(...) in SigningCouncil dispatchers map`
+    );
+  }
+  if (!/JsonlLexiconMutationExecutor\b/.test(serveSrc)) {
+    fail(
+      `GOV-14: ${servePath} must construct JsonlLexiconMutationExecutor at composition root (Phase 1 backend)`
+    );
+  }
+
+  // (5) Lexicon admin-writer routes — five POST authoring routes exist.
+  // None of these routes may invoke JsonlLexiconMutationExecutor.apply
+  // directly; the SigningCouncil dispatcher is the sole apply path.
+  const adminWriterPath = 'packages/interfaces/api/src/routes/admin-writer.ts';
+  const adminWriterSrc = readSrc(adminWriterPath);
+  const requiredLexiconRoutes = [
+    "app.post('/workspace/admin/lexicon/entities'",
+    "app.post('/workspace/admin/lexicon/edges'",
+    "app.post('/workspace/admin/lexicon/confidence'",
+    "app.post('/workspace/admin/lexicon/templates'",
+    "app.post('/workspace/admin/lexicon/guards'",
+  ];
+  for (const literal of requiredLexiconRoutes) {
+    if (!adminWriterSrc.includes(literal)) {
+      fail(
+        `GOV-14: ${adminWriterPath} must register lexicon-authoring route ${literal} (F4.8 §5.4)`
+      );
+    }
+  }
+  if (
+    /new JsonlLexiconMutationExecutor\s*\(/.test(adminWriterSrc) ||
+    /lexiconMutationExecutor\.apply\s*\(/.test(adminWriterSrc)
+  ) {
+    fail(
+      `GOV-14: ${adminWriterPath} must not call JsonlLexiconMutationExecutor or .apply directly — SigningCouncil 2-of-2 is the only apply path (HL #10 / Q4 / LEX-MUT-07)`
+    );
+  }
+  if (!/operation:\s*'lexicon_mutation'/s.test(adminWriterSrc)) {
+    fail(
+      `GOV-14: ${adminWriterPath} must open lexicon_mutation SigningRequests via signingCouncil.open({ operation: 'lexicon_mutation', ... })`
+    );
+  }
+
+  // (6) Planner-side emission — coordinator emits unmapped_prompt;
+  // composition root emits lexicon_signal on the checkback-resolve
+  // path. Both event-type literals must appear with a writeLedger /
+  // writeEvent invocation.
+  const coordinatorPath = 'packages/orch-ref/src/run-coordinator.ts';
+  const coordinatorSrc = readSrc(coordinatorPath);
+  if (!/this\.writeLedger\s*\([^)]*['"]unmapped_prompt['"]/s.test(coordinatorSrc)) {
+    fail(
+      `GOV-14: ${coordinatorPath} must invoke writeLedger(...'unmapped_prompt'...) on planner rejection with unmappable_request (F4.8 §2.3 admin review queue)`
+    );
+  }
+  const mainPath = 'scripts/nexus-main.ts';
+  const mainSrc = readSrc(mainPath);
+  if (!/eventType:\s*['"]lexicon_signal['"]/.test(mainSrc)) {
+    fail(
+      `GOV-14: ${mainPath} must emit 'lexicon_signal' on checkback resolution (F4.8 §2.3 admin review queue)`
+    );
+  }
+
+  // (7) Runtime read paths cannot mutate — LEX-MUT-07 / -08 invariant.
+  // The planner package must not import LexiconMutationExecutor; runtime
+  // read paths are read-only per F4.8 §3.4.
+  const plannerSrcDir = 'packages/planners/db-lexicon/src';
+  if (fs.existsSync(plannerSrcDir)) {
+    const plannerFiles = walkFiles(plannerSrcDir, ['.ts']).filter(f => !f.endsWith('.test.ts'));
+    for (const f of plannerFiles) {
+      const src = fs.readFileSync(f, 'utf-8');
+      if (/\bLexiconMutationExecutor\b/.test(src) || /\.applyMutation\s*\(/.test(src)) {
+        fail(
+          `GOV-14: ${f} (planner runtime) must not reference LexiconMutationExecutor — runtime read paths are read-only (F4.8 §3.4 / LEX-MUT-07)`
+        );
+      }
+    }
+  }
+
+  pass(
+    'GOV-14 lexicon_mutation double-admin (executor + dispatcher + 5 admin-writer routes + planner emission wired end-to-end through SigningCouncil 2-of-2)'
   );
 }
 

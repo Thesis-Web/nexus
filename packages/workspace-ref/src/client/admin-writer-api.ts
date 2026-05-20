@@ -575,3 +575,78 @@ export async function deleteSecret(
     'DELETE'
   );
 }
+
+// ── F4.1 SigningCouncil — pending requests + sign action ────────────────────
+
+export type SigningOperationName =
+  | 'mode_unlock'
+  | 'policy_bundle_replace'
+  | 'signing_council_change'
+  | 'lexicon_mutation';
+
+export type SigningRequestStatus = 'pending' | 'executed' | 'denied' | 'expired';
+
+export interface SigningRequestDisplay {
+  requestId: string;
+  operation: SigningOperationName;
+  payload: Record<string, unknown>;
+  payloadDigest: string;
+  openedAt: string;
+  openedBy: string;
+  expiresAt: string;
+  signatures: ReadonlyArray<{
+    principalId: string;
+    signature: string;
+    signedAt: string;
+  }>;
+  status: SigningRequestStatus;
+  dispatchedAt?: string;
+  denialReason?: string;
+}
+
+export async function listSigningRequests(
+  elevatedSessionId: string,
+  filter?: { status?: SigningRequestStatus; operation?: SigningOperationName }
+): Promise<WriterResponse<readonly SigningRequestDisplay[]>> {
+  const params = new URLSearchParams();
+  if (filter?.status) params.append('status', filter.status);
+  if (filter?.operation) params.append('operation', filter.operation);
+  const suffix = params.toString().length > 0 ? '?' + params.toString() : '';
+  return writerFetch('/workspace/admin/signing/requests' + suffix, elevatedSessionId, 'GET');
+}
+
+export async function signSigningRequest(
+  elevatedSessionId: string,
+  requestId: string,
+  signature: string
+): Promise<WriterResponse<SigningRequestDisplay>> {
+  return writerFetch(
+    `/workspace/admin/signing/requests/${encodeURIComponent(requestId)}/signatures`,
+    elevatedSessionId,
+    'POST',
+    { signature }
+  );
+}
+
+// ── F4.8 Lexicon admin — author mutations + read fixtures ───────────────────
+
+export interface LexiconEntityDisplay {
+  entityId: string;
+  displayName: string;
+  entityType: string;
+  disabled?: boolean;
+  notes?: string;
+}
+
+export async function createLexiconEntity(
+  elevatedSessionId: string,
+  payload: LexiconEntityDisplay
+): Promise<WriterResponse<SigningRequestDisplay>> {
+  return writerFetch('/workspace/admin/lexicon/entities', elevatedSessionId, 'POST', payload);
+}
+
+export async function listLexiconEntities(
+  elevatedSessionId: string
+): Promise<WriterResponse<readonly unknown[]>> {
+  return writerFetch('/workspace/admin/lexicon/entities', elevatedSessionId, 'GET');
+}

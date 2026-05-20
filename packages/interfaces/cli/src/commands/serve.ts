@@ -34,6 +34,12 @@ import {
   sign as signEd25519,
   canonicalize,
   ManifestWriterService,
+  SigningCouncil,
+  InMemorySigningCouncilRequestStore,
+  JsonlLexiconMutationExecutor,
+  buildLexiconMutationDispatcher,
+  buildModeUnlockDispatcher,
+  buildSigningCouncilChangeDispatcher,
 } from '@nexus/core';
 import { promises as fsPromises } from 'node:fs';
 import * as fsPath from 'node:path';
@@ -249,13 +255,17 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
       };
     },
     async unlockEnforcing(_adminPrincipalId): Promise<ModeSignerState> {
-      // F4.17 / Q4 / HL #10 — the previous minRequired=1 single-admin
-      // dashboard unlock is retired. The lawful path is SigningCouncil
-      // 2-of-2 with operation='mode_unlock' (Spec F4.1); plug-in side
-      // rejects single-admin attempts with 409 until SigningCouncil
-      // ratifies. Until Patch 6 lands SigningCouncil end-to-end, no
-      // dashboard unlock path exists; CLI multi-party flow continues
-      // to work via disableEnforcingLock with ≥2 admin signatures.
+      // F4.17 / Q4 / HL #10 — single-admin dashboard unlock is retired.
+      // The lawful path is SigningCouncil 2-of-2 with
+      // operation='mode_unlock' (Spec F4.1). The dashboard now posts to
+      // POST /workspace/admin/signing/requests with operation=mode_unlock,
+      // and a second admin signs at
+      // POST /workspace/admin/signing/requests/:id/signatures. When
+      // threshold (2 distinct admin signatures) is met, the mode_unlock
+      // dispatcher writes the new mode config and emits
+      // enforcing_lock_disabled. This stub remains for legacy callers
+      // that hit the modeSigner port directly; production code goes
+      // through SigningCouncil.
       throw Object.assign(
         new Error(
           'unlock_requires_two_distinct_admins — open a SigningCouncil mode_unlock request (Spec F4.1)'
@@ -264,6 +274,45 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
       );
     },
   };
+
+  // ── F4.1 SigningCouncil — federated mutation aggregator ─────────────────
+  // The council is the sole legitimate apply path for every governance-
+  // significant mutation (mode_unlock, policy_bundle_replace,
+  // signing_council_change, lexicon_mutation). Each operation requires
+  // 2 distinct registered admin signatures (Q4). The dispatcher map is
+  // wired here at composition root; policy_bundle_replace lands in F4.2
+  // / priority #5 and is intentionally absent — the council's missing-
+  // dispatcher path denies with `no_dispatcher_for_operation:
+  // policy_bundle_replace` per F4.1 §3.3.
+  const lexiconMutationExecutor = new JsonlLexiconMutationExecutor({
+    runLedger: runLedgerWriterShared,
+    fixturesRoot: process.cwd(),
+  });
+  const signingCouncil = new SigningCouncil({
+    store: new InMemorySigningCouncilRequestStore(),
+    runLedger: runLedgerWriterShared,
+    dispatchers: {
+      lexicon_mutation: buildLexiconMutationDispatcher(lexiconMutationExecutor),
+      mode_unlock: buildModeUnlockDispatcher({
+        loadModeConfig: () => loadModeConfig(modeConfigPath),
+        saveModeConfig: next => saveModeConfig(next, modeConfigPath),
+        loadAdminKeypair: async (adminId: string) => {
+          const raw = await loadAdminKeypair(adminId);
+          if (!raw) return null;
+          return {
+            publicKey: raw.publicKey as never,
+            privateKey: raw.privateKey as never,
+            generatedAt: new Date().toISOString() as never,
+            purpose: 'dev' as const,
+          };
+        },
+        runLedger: runLedgerWriterShared,
+      }),
+      signing_council_change: buildSigningCouncilChangeDispatcher({
+        keyDirectory,
+      }),
+    },
+  });
 
   const baseDeps: ApiDependencies = {
     actorRegistry: new SqliteActorRegistry(db),
@@ -290,6 +339,7 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
       ),
     manifestWriter,
     modeSigner,
+    signingCouncil,
     keyDirectory,
     // §4.1 — best-effort: report any admin signing keypair as present.
     // The dashboard panel uses this to show the fallback CLI-instructions

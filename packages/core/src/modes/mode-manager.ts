@@ -168,6 +168,38 @@ export async function disableEnforcingLock(
     if (!valid) throw new Error('INVALID_ADMIN_SIGNATURE: ' + sig.adminId);
   }
 
+  return applyDisableEnforcingLockTrusted(
+    adminSignatures.map(s => s.adminId),
+    currentConfig,
+    primaryAdminId,
+    primaryAdminKeypair,
+    runLedger
+  );
+}
+
+// F4.1 SigningCouncil dispatch path — the council already verified each
+// admin signature against the canonical signing envelope
+// `{requestId, operation, payloadDigest, openedAt}` before invoking the
+// mode_unlock dispatcher. Re-verifying against the
+// `{action, configSignature, requestedAt}` canonical form (used by
+// `disableEnforcingLock`) would require admins to dual-sign two distinct
+// envelopes, which contradicts F4.1 §3.2. This helper is the trusted
+// apply step: rebuild the mode config with enforcingLocked=false, sign
+// with the primary admin's keypair, emit `enforcing_lock_disabled`. The
+// caller asserts that the signer list is the council's verified output;
+// any direct caller from outside `signing-council.ts` is suspect.
+export async function applyDisableEnforcingLockTrusted(
+  signers: ReadonlyArray<NonEmpty>,
+  currentConfig: ModeConfiguration,
+  primaryAdminId: NonEmpty,
+  primaryAdminKeypair: KeyPair,
+  runLedger: RunLedgerWriter
+): Promise<ModeConfiguration> {
+  if (signers.length < 2 || new Set(signers).size < 2) {
+    throw new Error(
+      'MULTI_PARTY_REQUIRED: applyDisableEnforcingLockTrusted needs ≥ 2 distinct signer ids'
+    );
+  }
   const updated: ModeConfiguration = {
     ...currentConfig,
     enforcingLocked: false,
@@ -178,12 +210,11 @@ export async function disableEnforcingLock(
   const { signature: _, ...body } = updated;
   updated.signature = await sign(canonicalize(body), primaryAdminKeypair);
 
-  // §9.3.1: Mandatory infrastructure audit event
   await emitInfrastructureAuditEvent(
     'enforcing_lock_disabled',
     {
-      adminSigners: adminSignatures.map(s => s.adminId),
-      minRequired,
+      adminSigners: signers,
+      minRequired: 2,
       disabledAt: updated.updatedAt,
     },
     runLedger

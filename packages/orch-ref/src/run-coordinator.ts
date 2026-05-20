@@ -226,6 +226,32 @@ export class RefRunCoordinator implements RunCoordinator {
         });
       }
 
+      // F4.8 §2.3 — `unmapped_prompt` is the admin-review signal when the
+      // planner could not match the prompt against any candidate above
+      // confidence threshold. This drives the lexicon admin queue per
+      // outline §3 E "MUTATION admin-only: unmapped prompts log as
+      // `unmapped_prompt` events; admins review periodically." Emit only
+      // when the rejection reason indicates the lexicon match failed
+      // (unmappable_request) — capability ceiling / max split / malformed
+      // rejections are NOT lexicon mapping signals and do not emit.
+      if (rejection.reason === 'unmappable_request' && trace !== null) {
+        await this.writeLedger(request.runId, 'unmapped_prompt', {
+          principalId: request.principalId,
+          // Per outline §3 E: arena drives confidence scoring. V1 portable
+          // build uses 'default' until per-workspace arenas land
+          // (Manifest Manifold M2). The mini-substrate population spec
+          // F4.8 Phase 2 / `lexicon-mini-substrate-v0-1-0.md` will widen
+          // this to the workspace-resolved arena id.
+          arena: 'default',
+          promptDigest: trace.promptDigest,
+          topCandidatesUnderThreshold: trace.candidateIntents.map(intentId => ({
+            candidateId: intentId,
+            score: 0,
+          })),
+          rejectionReason: rejection.reason,
+        });
+      }
+
       return this.planPreviewFromRejection(request, rejection, checkback);
     }
 

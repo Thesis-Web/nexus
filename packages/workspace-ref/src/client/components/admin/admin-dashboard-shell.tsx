@@ -30,6 +30,7 @@ import { CompileMailboxSetupPanel } from './panels/compile-mailbox-setup-panel.j
 import { ModePolicySetupPanel } from './panels/mode-policy-setup-panel.js';
 import { LedgerViewerPanel } from './panels/ledger-viewer-panel.js';
 import { ToolchainKeysPanel } from './panels/toolchain-keys-panel.js';
+import { LexiconAndCouncilPanel } from './panels/lexicon-and-council-panel.js';
 
 interface NavItem {
   surfaceId: string;
@@ -47,6 +48,7 @@ const NAV: readonly NavItem[] = [
   { surfaceId: 'orchestrator', title: 'Orchestrators' },
   { surfaceId: 'mailbox_compile_return', title: 'Mailbox / Compile / Return' },
   { surfaceId: 'modes_policy_oct', title: 'Modes, Policy & OCT' },
+  { surfaceId: 'signing_council_lexicon', title: 'Signing Council & Lexicon' },
   { surfaceId: 'observability', title: 'Ledgers & Trails' },
   { surfaceId: 'toolchain', title: 'Toolchain & Keys' },
 ];
@@ -154,6 +156,14 @@ function renderSurface(
           {...(data ? { data } : {})}
           elevatedSessionId={elevatedSessionId}
           onCatalogReload={onCatalogReload}
+        />
+      );
+    case 'signing_council_lexicon':
+      return (
+        <LexiconAndCouncilPanel
+          {...(data ? { data } : {})}
+          elevatedSessionId={elevatedSessionId}
+          adminPrincipalId={adminPrincipalId}
         />
       );
     case 'observability':

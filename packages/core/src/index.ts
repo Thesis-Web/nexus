@@ -123,9 +123,26 @@ export type { SignedOctAssignmentRequest } from './identity/oct-manager.js';
 export { SigningCouncil, InMemorySigningCouncilRequestStore } from './signing/signing-council.js';
 export type { SigningCouncilDeps, SigningCouncilRequestStore } from './signing/signing-council.js';
 
+// F4.1 / F4.8 / F4.17 — SigningCouncil dispatchers (lexicon_mutation,
+// mode_unlock, signing_council_change). Bound at composition root and
+// registered in SigningCouncilDeps.dispatchers.
+export {
+  buildLexiconMutationDispatcher,
+  buildModeUnlockDispatcher,
+  buildSigningCouncilChangeDispatcher,
+} from './signing/signing-council-dispatchers.js';
+export type {
+  ModeUnlockDispatcherDeps,
+  SigningCouncilChangeDispatcherDeps,
+  SigningCouncilChangePayload,
+} from './signing/signing-council-dispatchers.js';
+
 // F4.8 — LexiconMutationExecutor (Phase 1 JSONL append)
 export { JsonlLexiconMutationExecutor } from './lexicon/lexicon-mutation-executor.js';
 export type { JsonlLexiconMutationExecutorDeps } from './lexicon/lexicon-mutation-executor.js';
+
+// F4.17 — mode unlock trusted apply (called by mode_unlock dispatcher)
+export { applyDisableEnforcingLockTrusted } from './modes/mode-manager.js';
 
 // F4.9 — Claim Drift Verification (Hard Law #14)
 export { ReferenceClaimVerifier } from './identity/claim-verifier.js';

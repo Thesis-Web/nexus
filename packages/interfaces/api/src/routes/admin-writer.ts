@@ -27,6 +27,7 @@ import type {
   Base64Url,
   ElevatedAuthProvider,
   InfraRunIdNamespace,
+  LexiconMutation,
   ModeConfiguration,
   NonEmpty,
   PrincipalRegistry,
@@ -2312,6 +2313,330 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
         return;
       }
       res.json({ ok: true, data: r });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  // ─── F4.8 Lexicon admin-writer surface ────────────────────────────────────
+  // Five POST routes that author lexicon mutations (entity / edge /
+  // confidence / template / guard). Each route Zod-validates the payload,
+  // builds a `LexiconMutation` discriminated-union member, and opens a
+  // SigningRequest(operation='lexicon_mutation', payload={mutation}) via
+  // the SigningCouncil. **No route applies a mutation directly**; the
+  // SigningCouncil dispatches to JsonlLexiconMutationExecutor.apply only
+  // after 2 distinct admin signatures are aggregated. Hard Law #10 / Q4.
+  //
+  // GOV-14 invariant #5 enforces these five routes via AST scan.
+  //
+  // Lifecycle:
+  //   1. Admin POSTs e.g. /workspace/admin/lexicon/entities with
+  //      { displayName, entityType, ... }.
+  //   2. Route wraps as { kind: 'entity_add', entity: {...} } and opens a
+  //      SigningRequest.
+  //   3. Response: { requestId, status: 'pending', signaturesNeeded: 2 }.
+  //   4. UI presents "Awaiting second signer"; second admin signs at
+  //      POST /workspace/admin/signing/requests/:id/signatures.
+  //   5. Threshold met → executor applies → status: 'executed'.
+
+  const LexEntityCreateSchema = z
+    .object({
+      entityId: z.string().min(1),
+      displayName: z.string().min(1),
+      entityType: z.string().min(1),
+      disabled: z.boolean().optional(),
+      notes: z.string().optional(),
+    })
+    .strict();
+
+  const LexEntityUpdateSchema = z
+    .object({
+      displayName: z.string().min(1).optional(),
+      entityType: z.string().min(1).optional(),
+      disabled: z.boolean().optional(),
+      notes: z.string().optional(),
+    })
+    .strict();
+
+  const LexEdgeCreateSchema = z
+    .object({
+      edgeId: z.string().min(1),
+      sourceEntityId: z.string().min(1),
+      targetEntityId: z.string().min(1),
+      relation: z.string().min(1),
+      weight: z.number().optional(),
+      disabled: z.boolean().optional(),
+    })
+    .strict();
+
+  const LexConfidenceSchema = z
+    .object({
+      entityId: z.string().min(1),
+      arena: z.string().min(1),
+      score: z.number().min(0).max(1),
+    })
+    .strict();
+
+  const LexTemplateCreateSchema = z
+    .object({
+      templateId: z.string().min(1),
+      slots: z
+        .array(z.object({ slotId: z.string().min(1), required: z.boolean() }).strict())
+        .min(1),
+    })
+    .strict();
+
+  const LexGuardCreateSchema = z
+    .object({
+      guardId: z.string().min(1),
+      when: z.string().min(1),
+      then: z.string().min(1),
+    })
+    .strict();
+
+  async function openLexiconMutationRequest(
+    req: Request,
+    res: Response,
+    mutation: LexiconMutation
+  ): Promise<void> {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    if (!deps.signingCouncil) {
+      res.status(501).json({ ok: false, error: 'SigningCouncil not configured' });
+      return;
+    }
+    try {
+      const opened = await deps.signingCouncil.open({
+        operation: 'lexicon_mutation',
+        payload: { mutation } as unknown as Record<string, unknown>,
+        openedBy: auth.principalId as NonEmpty,
+      });
+      res.status(202).json({ ok: true, data: opened });
+    } catch (err) {
+      const sc = (err as { statusCode?: number }).statusCode ?? 500;
+      res.status(sc).json({ ok: false, error: san(err) });
+    }
+  }
+
+  app.post('/workspace/admin/lexicon/entities', async (req: Request, res: Response) => {
+    const parsed = LexEntityCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+    const entity = parsed.data as Parameters<typeof openLexiconMutationRequest>[2] extends never
+      ? never
+      : {
+          entityId: NonEmpty;
+          displayName: NonEmpty;
+          entityType: NonEmpty;
+          disabled?: boolean;
+          notes?: string;
+        };
+    await openLexiconMutationRequest(req, res, {
+      kind: 'entity_add',
+      entity: {
+        entityId: entity.entityId as NonEmpty,
+        displayName: entity.displayName as NonEmpty,
+        entityType: entity.entityType as NonEmpty,
+        ...(entity.disabled !== undefined ? { disabled: entity.disabled } : {}),
+        ...(entity.notes !== undefined ? { notes: entity.notes } : {}),
+      },
+    });
+  });
+
+  app.put('/workspace/admin/lexicon/entities/:entityId', async (req: Request, res: Response) => {
+    const parsed = LexEntityUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+    const entityId = String(req.params['entityId']) as NonEmpty;
+    const patch: {
+      displayName?: NonEmpty;
+      entityType?: NonEmpty;
+      disabled?: boolean;
+      notes?: string;
+    } = {};
+    if (parsed.data.displayName !== undefined)
+      patch.displayName = parsed.data.displayName as NonEmpty;
+    if (parsed.data.entityType !== undefined) patch.entityType = parsed.data.entityType as NonEmpty;
+    if (parsed.data.disabled !== undefined) patch.disabled = parsed.data.disabled;
+    if (parsed.data.notes !== undefined) patch.notes = parsed.data.notes;
+    await openLexiconMutationRequest(req, res, {
+      kind: 'entity_update',
+      entityId,
+      patch,
+    });
+  });
+
+  app.delete('/workspace/admin/lexicon/entities/:entityId', async (req: Request, res: Response) => {
+    const entityId = String(req.params['entityId']) as NonEmpty;
+    await openLexiconMutationRequest(req, res, {
+      kind: 'entity_disable',
+      entityId,
+    });
+  });
+
+  app.post('/workspace/admin/lexicon/edges', async (req: Request, res: Response) => {
+    const parsed = LexEdgeCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+    const edge = parsed.data;
+    await openLexiconMutationRequest(req, res, {
+      kind: 'edge_add',
+      edge: {
+        edgeId: edge.edgeId as NonEmpty,
+        sourceEntityId: edge.sourceEntityId as NonEmpty,
+        targetEntityId: edge.targetEntityId as NonEmpty,
+        relation: edge.relation as NonEmpty,
+        ...(edge.weight !== undefined ? { weight: edge.weight } : {}),
+        ...(edge.disabled !== undefined ? { disabled: edge.disabled } : {}),
+      },
+    });
+  });
+
+  app.delete('/workspace/admin/lexicon/edges/:edgeId', async (req: Request, res: Response) => {
+    const edgeId = String(req.params['edgeId']) as NonEmpty;
+    await openLexiconMutationRequest(req, res, {
+      kind: 'edge_disable',
+      edgeId,
+    });
+  });
+
+  app.post('/workspace/admin/lexicon/confidence', async (req: Request, res: Response) => {
+    const parsed = LexConfidenceSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+    await openLexiconMutationRequest(req, res, {
+      kind: 'confidence_set',
+      entityId: parsed.data.entityId as NonEmpty,
+      arena: parsed.data.arena as NonEmpty,
+      score: parsed.data.score,
+    });
+  });
+
+  app.post('/workspace/admin/lexicon/templates', async (req: Request, res: Response) => {
+    const parsed = LexTemplateCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+    await openLexiconMutationRequest(req, res, {
+      kind: 'workflow_template_add',
+      template: {
+        templateId: parsed.data.templateId as NonEmpty,
+        slots: parsed.data.slots.map(s => ({
+          slotId: s.slotId as NonEmpty,
+          required: s.required,
+        })),
+      },
+    });
+  });
+
+  app.post('/workspace/admin/lexicon/guards', async (req: Request, res: Response) => {
+    const parsed = LexGuardCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+    await openLexiconMutationRequest(req, res, {
+      kind: 'guard_add',
+      guard: {
+        guardId: parsed.data.guardId as NonEmpty,
+        when: parsed.data.when,
+        then: parsed.data.then,
+      },
+    });
+  });
+
+  // ─── Lexicon read views (admin dashboard reads canonical state) ──────────
+  // The admin dashboard editors read these endpoints to populate the
+  // listing tables. The source of truth is the JSONL fixture set under
+  // fixtures/lexicon/ — same files the planner reads at boot. Each line is
+  // a canonical record; the latest record per id wins (mutations append).
+
+  async function readLexiconFixture(filename: string): Promise<ReadonlyArray<unknown>> {
+    const fixturePath = path.join(process.cwd(), 'fixtures', 'lexicon', filename);
+    try {
+      const raw = await fs.readFile(fixturePath, 'utf-8');
+      return raw
+        .split(/\r?\n/)
+        .filter(line => line.trim().length > 0)
+        .map(line => JSON.parse(line));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw err;
+    }
+  }
+
+  app.get('/workspace/admin/lexicon/entities', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    try {
+      res.json({ ok: true, data: await readLexiconFixture('lexicon_entity.jsonl') });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  app.get('/workspace/admin/lexicon/edges', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    try {
+      res.json({ ok: true, data: await readLexiconFixture('lexicon_edge.jsonl') });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  app.get('/workspace/admin/lexicon/confidence', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    try {
+      res.json({ ok: true, data: await readLexiconFixture('lexicon_confidence.jsonl') });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  app.get('/workspace/admin/lexicon/templates', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    try {
+      res.json({ ok: true, data: await readLexiconFixture('workflow_template.jsonl') });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
+  app.get('/workspace/admin/lexicon/guards', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    try {
+      res.json({ ok: true, data: await readLexiconFixture('lexicon_guard.jsonl') });
     } catch (err) {
       res.status(500).json({ ok: false, error: san(err) });
     }

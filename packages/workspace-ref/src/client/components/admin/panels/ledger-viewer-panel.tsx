@@ -320,6 +320,87 @@ function buildEventSummary(eventType: string, detail: Record<string, unknown>): 
     const reasonLabel = typeof reason === 'string' && reason.length > 0 ? reason : 'unknown';
     return `⛔ admin mutation failed · ${reasonLabel}`;
   }
+  if (eventType === 'federated_operation_opened') {
+    // F4.1 §3.1 — admin opened a SigningCouncil request. Detail carries
+    // the operation type, opener, threshold, payload digest.
+    const op = detail['operation'];
+    const opener = detail['openedBy'];
+    const threshold = detail['threshold'];
+    const opLabel = typeof op === 'string' && op.length > 0 ? op : 'unknown_operation';
+    const openerLabel = typeof opener === 'string' && opener.length > 0 ? opener : 'unknown';
+    const tNum = typeof threshold === 'number' ? threshold : 2;
+    return `🔓 federation request opened · ${opLabel} · opener: ${openerLabel} · needs ${tNum} sigs`;
+  }
+  if (eventType === 'federated_operation_signature_added') {
+    // F4.1 §3.2 — another admin signed a pending request. Detail
+    // includes which admin signed and progress toward threshold.
+    const op = detail['operation'];
+    const principal = detail['principalId'];
+    const signatures = detail['signaturesNow'];
+    const threshold = detail['threshold'];
+    const opLabel = typeof op === 'string' && op.length > 0 ? op : 'unknown_operation';
+    const principalLabel =
+      typeof principal === 'string' && principal.length > 0 ? principal : 'unknown';
+    const sigCount = typeof signatures === 'number' ? signatures : 0;
+    const threshNum = typeof threshold === 'number' ? threshold : 2;
+    return `✍ federation signature added · ${opLabel} · ${principalLabel} (${sigCount}/${threshNum})`;
+  }
+  if (eventType === 'federated_operation_executed') {
+    // F4.1 §3.3 — threshold met, dispatcher succeeded. Detail carries
+    // the full signer chain and payload digest.
+    const op = detail['operation'];
+    const signers = detail['signers'];
+    const opLabel = typeof op === 'string' && op.length > 0 ? op : 'unknown_operation';
+    const signerCount = Array.isArray(signers) ? signers.length : 0;
+    return `✅ federation executed · ${opLabel} · signers: ${signerCount}`;
+  }
+  if (eventType === 'federated_operation_dispatch_failed') {
+    // F4.1 §3.3 — threshold met but dispatcher threw. Detail carries
+    // the reason; the target was NOT mutated.
+    const op = detail['operation'];
+    const reason = detail['reason'];
+    const opLabel = typeof op === 'string' && op.length > 0 ? op : 'unknown_operation';
+    const reasonLabel = typeof reason === 'string' && reason.length > 0 ? reason : 'unknown';
+    return `⛔ federation dispatch failed · ${opLabel} · ${reasonLabel}`;
+  }
+  if (eventType === 'federated_operation_expired') {
+    // F4.1 §3.4 — request aged past expiresAt without threshold being
+    // met. No dispatch occurred.
+    const op = detail['operation'];
+    const opLabel = typeof op === 'string' && op.length > 0 ? op : 'unknown_operation';
+    return `⌛ federation expired · ${opLabel}`;
+  }
+  if (eventType === 'lexicon_mutation_applied') {
+    // F4.8 §3.3 — executor applied the mutation after 2-of-2 signatures.
+    // Detail carries the mutation kind + the signer chain + JSONL file/seq.
+    const kind = detail['mutationKind'];
+    const signers = detail['signers'];
+    const kindLabel = typeof kind === 'string' && kind.length > 0 ? kind : 'unknown_mutation';
+    const signerCount = Array.isArray(signers) ? signers.length : 0;
+    return `📖 lexicon mutation applied · ${kindLabel} · signers: ${signerCount}`;
+  }
+  if (eventType === 'unmapped_prompt') {
+    // F4.8 §2.3 — planner could not match the prompt against any candidate
+    // above confidence threshold. Drives the admin review queue per
+    // outline §3 E "admins review periodically." Detail carries the prompt
+    // digest + arena + top candidates that were under threshold.
+    const arena = detail['arena'];
+    const principalId = detail['principalId'];
+    const arenaLabel = typeof arena === 'string' && arena.length > 0 ? arena : 'default';
+    const principalLabel =
+      typeof principalId === 'string' && principalId.length > 0 ? principalId : 'unknown';
+    return `❓ unmapped prompt · arena: ${arenaLabel} · principal: ${principalLabel}`;
+  }
+  if (eventType === 'lexicon_signal') {
+    // F4.8 §2.3 — user picked a candidate from a top-N callback. Admin
+    // queue input ("users keep picking X — propose a lexicon entity for X").
+    const arena = detail['arena'];
+    const principalId = detail['principalId'];
+    const arenaLabel = typeof arena === 'string' && arena.length > 0 ? arena : 'default';
+    const principalLabel =
+      typeof principalId === 'string' && principalId.length > 0 ? principalId : 'unknown';
+    return `💡 lexicon signal · arena: ${arenaLabel} · principal: ${principalLabel}`;
+  }
   if (eventType === 'claim_drift_detected') {
     // F4.9 / Hard Law #14 — NXS/NVG gate runner detected that the
     // carried claims envelope no longer matches RBAC's current snapshot.

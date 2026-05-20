@@ -1671,6 +1671,16 @@ const program = createCli({
       readonly resolve: (decision: boolean) => void;
       readonly timer: ReturnType<typeof setTimeout>;
       readonly expiresAt: number;
+      // F4.8 §2.3 — context kept so resolvePendingCheckback can emit a
+      // `lexicon_signal` ledger event when the user picks a suggested
+      // intent (allow=true). The fields are admin-review signal payload
+      // per outline §3 E; not load-bearing for governance.
+      readonly lexiconSignal?: {
+        readonly principalId: NonEmpty;
+        readonly arena: NonEmpty;
+        readonly promptDigest: Sha256Hex | null;
+        readonly candidateAgentIds: ReadonlyArray<Uuid>;
+      };
     }
     const pendingCheckbacks = new Map<Uuid, PendingCheckback>();
     const CHECKBACK_TIMEOUT_MS = 5 * 60_000;
@@ -1992,6 +2002,24 @@ const program = createCli({
         actorId: null,
         detail: { decision: allow ? 'allow' : 'deny' },
       });
+      // F4.8 §2.3 / outline §3 E — `lexicon_signal` records that a user
+      // chose an intent from a top-N checkback. Drives the admin review
+      // queue ("users keep picking X — propose a lexicon entity for X").
+      // Only emit on accept; a deny carries no positive signal.
+      if (allow && pending.lexiconSignal) {
+        await coreDeps.runLedgerWriter!.writeEvent({
+          runId,
+          eventType: 'lexicon_signal',
+          timestamp: nowIso(),
+          actorId: null,
+          detail: {
+            principalId: pending.lexiconSignal.principalId,
+            arena: pending.lexiconSignal.arena,
+            promptDigest: pending.lexiconSignal.promptDigest,
+            chosenAgentIds: pending.lexiconSignal.candidateAgentIds,
+          },
+        });
+      }
       pending.resolve(allow);
       return true;
     };
