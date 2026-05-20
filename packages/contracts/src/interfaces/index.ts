@@ -702,6 +702,35 @@ export interface ApproverRegistry {
   register(actorId: Uuid, publicKey: Base64Url, channels: string[]): Promise<void>;
 }
 
+// ─── F3a Chat-Tier Multi-Turn — session + ledger-projection reader ────────
+// Workspace generates a chatSessionId at first turn; subsequent turns of
+// the same conversation reuse it. Per-turn runId stays fresh (HL #12).
+// Planner reads the last N turns via ChatThreadReader (ledger projection
+// only — never mailbox content; raw prompt never stored in ledger).
+export type ChatSessionId = NonEmpty;
+
+export interface ChatTurnRecord {
+  readonly chatSessionId: ChatSessionId;
+  readonly runId: Uuid;
+  readonly turnIndex: number;
+  readonly principalId: Uuid;
+  readonly promptDigest: Sha256Hex;
+  readonly artifactDigest: Sha256Hex | null;
+  readonly artifactEndpoint: NonEmpty | null;
+  readonly openedAt: IsoTimestamp;
+  readonly closedAt: IsoTimestamp | null;
+  readonly finalOutcome: FinalOutcome | null;
+}
+
+export interface ChatThreadReader {
+  listSessions(principalId: Uuid): Promise<ReadonlyArray<ChatSessionId>>;
+  readSession(
+    principalId: Uuid,
+    chatSessionId: ChatSessionId,
+    options?: { lastN?: number }
+  ): Promise<ReadonlyArray<ChatTurnRecord>>;
+}
+
 // ─── F4.3 In-Browser Approval UX — channels, signed responses ─────────────
 // Plug-in approval UI; baked NXS gate fails closed on approval-required
 // gates with no evidence chain entry. SigningCouncil 2-of-2 is the only
