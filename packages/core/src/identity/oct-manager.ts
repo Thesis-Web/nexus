@@ -12,6 +12,7 @@
  */
 import {
   OCT_LEVEL,
+  OCT_RANK,
   type Uuid,
   type OctLevel,
   type NonEmpty,
@@ -19,6 +20,7 @@ import {
   type Base64Url,
   type ActorRegistry,
   type RunLedgerWriter,
+  type SignedOctAssignmentRequest,
 } from '../types/index.js';
 import { nowIso } from '../utils/time.js';
 import { canonicalize } from '../crypto/canonicalize.js';
@@ -28,18 +30,10 @@ import { loadAdminPublicKey, emitInfrastructureAuditEvent } from '../modes/mode-
 
 /**
  * Signed OCT assignment/change request — HOLE-S3-001 approved shape.
- * Signature covers every field except `signature` itself.
+ * Type now lives in @nexus/contracts (F4.5); re-exported here for callers
+ * that imported from this module historically.
  */
-export interface SignedOctAssignmentRequest {
-  action: 'oct_assignment' | 'oct_change';
-  actorId: Uuid;
-  previousOctLevel: OctLevel | null;
-  newOctLevel: OctLevel;
-  operatorId: NonEmpty;
-  requestedAt: IsoTimestamp;
-  reason: NonEmpty;
-  signature: Base64Url;
-}
+export type { SignedOctAssignmentRequest } from '../types/index.js';
 
 /**
  * §11.3: Assign or change OCT level for an actor.
@@ -113,6 +107,24 @@ export async function assignOct(
     if (previousOctLevel !== actor.octLevel) {
       throw new Error(
         `OCT_PREVIOUS_MISMATCH: expected ${actor.octLevel}, request says ${previousOctLevel}`
+      );
+    }
+    // F4.5 §2.1 / Q2 / HL #10 — assignOct accepts only strictly-higher
+    // rank changes. Downward equivalents are deregister-then-register-new
+    // (§3.3); equal-rank changes are no-ops and rejected (OCT-UI-04).
+    if (previousOctLevel === null || newOctLevel === null) {
+      throw new Error('OCT_NULL_LEVEL: oct_change requires non-null previous and new levels');
+    }
+    const prevRank = OCT_RANK[previousOctLevel];
+    const nextRank = OCT_RANK[newOctLevel];
+    if (prevRank === undefined || nextRank === undefined) {
+      throw new Error(
+        `OCT_UNRANKED_LEVEL: ${previousOctLevel} or ${newOctLevel} is not in the principal-data rank`
+      );
+    }
+    if (nextRank <= prevRank) {
+      throw new Error(
+        `OCT_DOWNWARD_OR_EQUAL_FORBIDDEN: rank[${newOctLevel}]=${nextRank} must exceed rank[${previousOctLevel}]=${prevRank}; lower via deregister-then-register-new`
       );
     }
   }

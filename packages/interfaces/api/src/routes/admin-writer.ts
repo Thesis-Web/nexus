@@ -939,6 +939,24 @@ export interface AdminWriterRouteDeps {
    * routes are wired; when omitted, those routes return 501.
    */
   readonly signingCouncil?: import('@nexus/contracts').SigningCouncilPort;
+  /**
+   * F4.5 OCT manager port. Production wires this to @nexus/core's
+   * assignOct(req, registry, ledger) closure; tests inject a mock. When
+   * omitted, /workspace/admin/oct/assign returns 501.
+   */
+  readonly octManager?: AdminOctManagerPort;
+}
+
+/**
+ * F4.5 OctManagerPort facade. Plug-in admin-writer calls into this port;
+ * production binds it to the baked @nexus/core assignOct closure (the
+ * server has both an ActorRegistry and a RunLedgerWriter in its scope).
+ */
+export interface AdminOctManagerPort {
+  assignOct(req: import('@nexus/contracts').SignedOctAssignmentRequest): Promise<{
+    actorId: string;
+    octLevel: string;
+  }>;
 }
 
 // ── AMEND §3.6 — ModeSigner port ────────────────────────────────────────────
@@ -2023,6 +2041,64 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       error:
         'unlock_requires_two_distinct_admins — open a SigningCouncil mode_unlock request (Spec F4.1)',
     });
+  });
+
+  // ─── F4.5 OCT signed assign surface ────────────────────────────────────
+  // POST /workspace/admin/oct/assign — apply a signed OCT change to an
+  // actor. The body is a SignedOctAssignmentRequest envelope (signature
+  // produced server-side per feedback_signing_keys_server_side.md; the
+  // browser never holds the operator's private key). The baked
+  // OctManagerPort enforces strict-higher rank (Q2 / HL #10); downward
+  // equivalents are deregister-then-register-new (§3.3).
+  const OctAssignSchema = z
+    .object({
+      action: z.enum(['oct_assignment', 'oct_change']),
+      actorId: z.string().uuid(),
+      previousOctLevel: z.string().min(1).nullable(),
+      newOctLevel: z.string().min(1),
+      operatorId: z.string().min(1),
+      requestedAt: z.string().min(1),
+      reason: z.string().min(1),
+      signature: z.string().min(1),
+    })
+    .strict();
+
+  app.post('/workspace/admin/oct/assign', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    if (!deps.actorRegistry) {
+      res.status(501).json({ ok: false, error: 'Actor registry not configured' });
+      return;
+    }
+    if (!deps.octManager) {
+      res.status(501).json({ ok: false, error: 'OCT manager not configured' });
+      return;
+    }
+    const parsed = OctAssignSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
+    try {
+      const updated = await deps.octManager.assignOct(parsed.data as never);
+      res.json({ ok: true, data: updated });
+    } catch (err) {
+      const msg = san(err);
+      const status =
+        /OCT_DOWNWARD_OR_EQUAL_FORBIDDEN|OCT_PREVIOUS_MISMATCH|OCT_NULL_LEVEL|OCT_UNRANKED/.test(
+          msg
+        )
+          ? 409
+          : /OCT_SELF_ASSIGNMENT|OCT_INVALID_SIGNATURE|OCT_UNKNOWN_OPERATOR/.test(msg)
+            ? 403
+            : /ACTOR_NOT_FOUND/.test(msg)
+              ? 404
+              : 400;
+      res.status(status).json({ ok: false, error: msg });
+    }
   });
 
   // ─── F4.1 SigningCouncil HTTP surface ─────────────────────────────────

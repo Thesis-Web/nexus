@@ -377,6 +377,14 @@ export interface ApiDependencies {
    * verification, threshold checking, and dispatch.
    */
   signingCouncil?: import('@nexus/contracts').SigningCouncilPort;
+
+  // ── F4.5 OCT manager — signed OCT assignment surface ────────────────────
+  /**
+   * Baked OctManagerPort. Plug-in /workspace/admin/oct/assign calls into
+   * this port; downstream the port runs @nexus/core's assignOct() with
+   * the server's ActorRegistry + RunLedgerWriter bound.
+   */
+  octManager?: import('./routes/admin-writer.js').AdminOctManagerPort;
 }
 
 // ── §23.1 createApiServer — DI factory ───────────────────────────────────────

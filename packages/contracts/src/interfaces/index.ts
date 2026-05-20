@@ -702,6 +702,40 @@ export interface ApproverRegistry {
   register(actorId: Uuid, publicKey: Base64Url, channels: string[]): Promise<void>;
 }
 
+// ─── F4.5 OCT Manager — signed OCT assignment surface ──────────────────────
+// Plug-in admin-writer routes call into the baked OctManagerPort. The port
+// itself is implemented in @nexus/core (oct-manager.ts) and registered with
+// the API server via ApiDependencies.octManager.
+export interface SignedOctAssignmentRequest {
+  action: 'oct_assignment' | 'oct_change';
+  actorId: Uuid;
+  previousOctLevel: OctLevel | null;
+  newOctLevel: OctLevel;
+  operatorId: NonEmpty;
+  requestedAt: IsoTimestamp;
+  reason: NonEmpty;
+  signature: Base64Url;
+}
+
+export interface SignedActorRegistrationRequest {
+  readonly action: 'actor_registration';
+  readonly actorId: Uuid;
+  readonly initialOctLevel: OctLevel;
+  readonly operatorId: NonEmpty;
+  readonly requestedAt: IsoTimestamp;
+  readonly reason: NonEmpty;
+  readonly signature: Base64Url;
+}
+
+export interface SignedActorDeregistrationRequest {
+  readonly action: 'actor_deregistration';
+  readonly actorId: Uuid;
+  readonly operatorId: NonEmpty;
+  readonly requestedAt: IsoTimestamp;
+  readonly reason: NonEmpty;
+  readonly signature: Base64Url;
+}
+
 // ─── F4.1 SigningCouncil — federated operation aggregation ────────────────
 // All governance-significant mutations (mode_unlock, policy_bundle_replace,
 // signing_council_change, lexicon_mutation) flow through this council.

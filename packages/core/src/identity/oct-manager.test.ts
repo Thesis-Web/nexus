@@ -250,6 +250,53 @@ describe('OCT Manager — spec §11.3', () => {
     );
   });
 
+  // F4.5 §2.1 / Q2 / HL #10 — assignOct accepts only strictly-higher rank.
+  // OCT-UI-03: downward attempt rejected. OCT-UI-04: equal rejected (no-op).
+  it('rejects oct_change with downward rank (F4.5 OCT-UI-03)', async () => {
+    const actorId = registerTestActor(db, OCT_LEVEL.SECURE);
+    const ledger = new MockRunLedgerWriter();
+    const request = await buildSignedRequest({
+      actorId: actorId as Uuid,
+      action: 'oct_change',
+      newOctLevel: OCT_LEVEL.OPEN,
+      previousOctLevel: OCT_LEVEL.SECURE as any,
+    });
+    await expect(assignOct(request, registry, ledger as any)).rejects.toThrow(
+      'OCT_DOWNWARD_OR_EQUAL_FORBIDDEN'
+    );
+    // Actor unchanged — no mutation took effect.
+    const actor = await registry.get(actorId as Uuid);
+    expect(actor!.octLevel).toBe(OCT_LEVEL.SECURE);
+  });
+
+  it('rejects oct_change with equal rank (F4.5 OCT-UI-04)', async () => {
+    const actorId = registerTestActor(db, OCT_LEVEL.CONFIDENTIAL);
+    const ledger = new MockRunLedgerWriter();
+    const request = await buildSignedRequest({
+      actorId: actorId as Uuid,
+      action: 'oct_change',
+      newOctLevel: OCT_LEVEL.CONFIDENTIAL,
+      previousOctLevel: OCT_LEVEL.CONFIDENTIAL as any,
+    });
+    await expect(assignOct(request, registry, ledger as any)).rejects.toThrow(
+      'OCT_DOWNWARD_OR_EQUAL_FORBIDDEN'
+    );
+  });
+
+  it('accepts oct_change with strictly-higher rank (F4.5 OCT-UI-02)', async () => {
+    const actorId = registerTestActor(db, OCT_LEVEL.OPEN);
+    const ledger = new MockRunLedgerWriter();
+    const request = await buildSignedRequest({
+      actorId: actorId as Uuid,
+      action: 'oct_change',
+      newOctLevel: OCT_LEVEL.SECURE,
+      previousOctLevel: OCT_LEVEL.OPEN as any,
+    });
+    await assignOct(request, registry, ledger as any);
+    const actor = await registry.get(actorId as Uuid);
+    expect(actor!.octLevel).toBe(OCT_LEVEL.SECURE);
+  });
+
   // ─── OCT-003: Event type proof tests ──────────────────────────────────────
 
   it('oct_change emits eventType "oct_change" NOT "oct_assignment" (OCT-003 proof)', async () => {

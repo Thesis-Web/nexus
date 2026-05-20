@@ -105,6 +105,19 @@ export const OCT_LEVEL = {
 } as const;
 export type OctLevel = string; // MODULAR-015: never a closed enum
 
+// F4.5 §2.1 — OCT rank for strict-higher mutation enforcement (Q2 / HL #10).
+// Higher rank = more restrictive. assignOct accepts a change only when
+// rank[new] > rank[previous]; downward equivalents require deregister-
+// then-register-new at the new ceiling. OCT-COMPILE is the compile-loop
+// internal ceiling (§3 J) and is not part of the linear principal-data
+// ranking — assignments to/from OCT-COMPILE flow through a different
+// path (mailbox-bind), not assignOct.
+export const OCT_RANK: Record<string, number> = {
+  'OCT-OPEN': 0,
+  'OCT-CONFIDENTIAL': 1,
+  'OCT-SECURE': 2,
+};
+
 // ─── Operating modes — open governed type (new in v1.4.12) ───
 export const OPERATING_MODE = {
   OBSERVE: 'observe',
