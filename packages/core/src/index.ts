@@ -137,7 +137,16 @@ export type { InfraRunIdNamespaceDeps } from './infra/infra-run-id-namespace.js'
 
 // §13.1 — Pipeline
 export { Pipeline, SimpleConnectorRegistry, SimpleChannelRegistry } from './engine/pipeline.js';
-export type { PipelineGates } from './engine/pipeline.js';
+export type { PipelineGates, PipelineDriftDeps } from './engine/pipeline.js';
+
+// F4.9 — Gate runner wrapper that wires the claim-drift verifier into
+// each NXS gate evaluation (Hard Law #14). Pipeline uses this; tests
+// may also import it for direct wrapper verification.
+export {
+  runGateWithDriftCheck,
+  type DriftWrapperDeps,
+  type DriftGateName,
+} from './gates/runner.js';
 
 // §13.2-§13.8 — Gates
 export { IdentityGate } from './gates/01-identity.gate.js';

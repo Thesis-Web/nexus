@@ -28,6 +28,7 @@ import {
   JsonlRunLedgerWriter,
   Pipeline,
   SimpleChannelRegistry,
+  ReferenceClaimVerifier,
   ReplayDetector,
   RateLimiter,
   loadPolicyFile,
@@ -382,6 +383,13 @@ async function runScenario(
   const capReg = new CapabilityRegistry();
   const riskClassifier = new RiskClassifier(capReg);
   const identityProvider = new RegistryBackedIdentityProvider(actorReg, principalReg);
+  // F4.9 — Hard Law #14 claim-drift verifier. Resolver re-reads the
+  // actor's current claims via the same identity provider Gate 01 used,
+  // so a mid-run RBAC change shows up as drift at every downstream gate.
+  const claimVerifier = new ReferenceClaimVerifier(async actorIdentifier => {
+    const fresh = await identityProvider.resolveIdentity(actorIdentifier as any);
+    return (fresh ?? {}) as Record<string, unknown>;
+  });
   const pipeline = new Pipeline(
     {
       identity: new IdentityGate(
@@ -406,7 +414,8 @@ async function runScenario(
     new ReplayDetector(db),
     new RateLimiter(),
     db,
-    modeConfig
+    modeConfig,
+    { verifier: claimVerifier, runLedger: runEventLedger }
   );
   const rawAction: Omit<AgentAction, 'delegationSequence'> = {
     actionId: setup.replayActionId ?? newUuid(),

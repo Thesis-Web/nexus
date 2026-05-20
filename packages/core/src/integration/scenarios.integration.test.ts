@@ -23,6 +23,7 @@ import { randomUUID } from 'crypto';
 import { Pipeline, SimpleConnectorRegistry, SimpleChannelRegistry } from '../engine/pipeline.js';
 import { IdentityGate } from '../gates/01-identity.gate.js';
 import { RegistryBackedIdentityProvider } from '../identity/registry-identity-provider.js';
+import { ReferenceClaimVerifier } from '../identity/claim-verifier.js';
 import type { ModeConfiguration } from '../types/index.js';
 import { ClassificationGate } from '../gates/02-classification.gate.js';
 import { DelegationGate } from '../gates/03-delegation.gate.js';
@@ -452,6 +453,10 @@ export async function runScenario(
   const replayDetector = new ReplayDetector(db);
   const rateLimiter = new RateLimiter();
 
+  const integrationClaimVerifier = new ReferenceClaimVerifier(async actorIdentifier => {
+    const fresh = await identityProvider.resolveIdentity(actorIdentifier as any);
+    return (fresh ?? {}) as Record<string, unknown>;
+  });
   const pipeline = new Pipeline(
     {
       identity: identityGate,
@@ -465,7 +470,13 @@ export async function runScenario(
     replayDetector,
     rateLimiter,
     db,
-    TEST_MODE_CONFIG
+    TEST_MODE_CONFIG,
+    {
+      verifier: integrationClaimVerifier,
+      runLedger:
+        integrationRunLedger ??
+        new JsonlRunLedgerWriter(`/tmp/nexus-test-${randomUUID()}.run-ledger.jsonl`),
+    }
   );
 
   // 14. Build action (no delegationSequence — pipeline assigns it)
@@ -686,6 +697,10 @@ describe('Integration: POC Scenarios (spec §27.3)', () => {
     const policyFile = await loadPolicyFile(setup.policyFile!, controlPlanePair);
     const capReg = new CapabilityRegistry();
     const replayIdentityProvider = new RegistryBackedIdentityProvider(actorReg, principalReg);
+    const replayClaimVerifier = new ReferenceClaimVerifier(async actorIdentifier => {
+      const fresh = await replayIdentityProvider.resolveIdentity(actorIdentifier as any);
+      return (fresh ?? {}) as Record<string, unknown>;
+    });
     const pipeline = new Pipeline(
       {
         identity: new IdentityGate(
@@ -714,7 +729,13 @@ describe('Integration: POC Scenarios (spec §27.3)', () => {
       new ReplayDetector(db),
       new RateLimiter(),
       db,
-      TEST_MODE_CONFIG
+      TEST_MODE_CONFIG,
+      {
+        verifier: replayClaimVerifier,
+        runLedger:
+          integrationRunLedger ??
+          new JsonlRunLedgerWriter(`/tmp/nexus-replay-${randomUUID()}.run-ledger.jsonl`),
+      }
     );
 
     const { StubConnector } = await import('../../../connectors/stub/stub.connector.js');

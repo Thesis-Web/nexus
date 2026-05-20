@@ -2434,15 +2434,117 @@ function enforceGov14LexiconMutationDoubleAdmin(): void {
 }
 
 function enforceGov15ClaimDriftVerification(): void {
-  // F4.9 / HL #14 — every NXS gate (01-07) and NVG classify-and-route
-  // + return-precheck must wrap with runGateWithDriftCheck and call
-  // ClaimVerificationPort.verify(carried, principalId, gateName)
-  // before evaluation; drift emits claim_drift_detected and fails the
-  // gate closed. The port + ReferenceClaimVerifier exist (Phase B
-  // session 1 Patch 9), but no gate runner calls them. RED until
-  // Patch 29 lands the runner wrapping.
-  fail(
-    'GOV-15: ClaimVerificationPort not invoked from any NXS/NVG gate runner — F4.9 §3 / HL #14 / Phase B completion HANDOFF §E.1 Patch 30'
+  // F4.9 / Hard Law #14 — verify the runtime wiring of the claim-drift
+  // wrapper. The spec mandates that ClaimVerificationPort.verify() is
+  // invoked at every NXS gate (02-07) and at NVG classify-and-route +
+  // return-precheck before each gate body runs. This static gate is
+  // CDV-07 (spec §5): if the wrapper is absent from any required call
+  // site, the gate fails RED.
+  //
+  // Four invariants enforced:
+  //   1. The Pipeline wrapper (`runGateWithDriftCheck`) exists and is
+  //      exported from packages/core/src/gates/runner.ts.
+  //   2. The NVG-side wrapper (`runNvgGateWithDriftCheck`) exists and
+  //      is exported from @nexus/runtime-utils.
+  //   3. packages/core/src/engine/pipeline.ts invokes the wrapper
+  //      around each non-Gate-01 evaluation (Gate 01 is the resolver).
+  //   4. packages/vanguard/src/nvg-service.ts invokes the NVG wrapper
+  //      at both classify-and-route and return-precheck call sites.
+  //   5. `claim_drift_detected` is a registered RunEventType.
+  const runnerPath = path.join('packages', 'core', 'src', 'gates', 'runner.ts');
+  if (!fs.existsSync(runnerPath)) {
+    fail(`GOV-15: ${runnerPath} not found — F4.9 wrapper missing (spec §3.1)`);
+  }
+  const runnerSrc = fs.readFileSync(runnerPath, 'utf-8');
+  if (!/\bexport\s+async\s+function\s+runGateWithDriftCheck\b/.test(runnerSrc)) {
+    fail(`GOV-15: ${runnerPath} must export runGateWithDriftCheck (F4.9 §3.1)`);
+  }
+  if (!/deps\.verifier\.verify\(/.test(runnerSrc)) {
+    fail(
+      `GOV-15: ${runnerPath} must invoke ClaimVerificationPort.verify() — wrapper bypassed (F4.9 §2.1)`
+    );
+  }
+  if (!/eventType:\s*'claim_drift_detected'/.test(runnerSrc)) {
+    fail(
+      `GOV-15: ${runnerPath} must write a claim_drift_detected ledger event on drift (F4.9 §2.2)`
+    );
+  }
+
+  const driftHelperPath = path.join('packages', 'runtime-utils', 'src', 'claim-drift.ts');
+  if (!fs.existsSync(driftHelperPath)) {
+    fail(
+      `GOV-15: ${driftHelperPath} not found — runtime-utils NVG drift helper missing (F4.9 §3.2)`
+    );
+  }
+  const driftHelperSrc = fs.readFileSync(driftHelperPath, 'utf-8');
+  if (!/\bexport\s+async\s+function\s+runNvgGateWithDriftCheck\b/.test(driftHelperSrc)) {
+    fail(`GOV-15: ${driftHelperPath} must export runNvgGateWithDriftCheck (F4.9 §3.2)`);
+  }
+  if (!/deps\.verifier\.verify\(/.test(driftHelperSrc)) {
+    fail(`GOV-15: ${driftHelperPath} must invoke ClaimVerificationPort.verify() (F4.9 §2.1)`);
+  }
+
+  const pipelinePath = path.join('packages', 'core', 'src', 'engine', 'pipeline.ts');
+  if (!fs.existsSync(pipelinePath)) {
+    fail(`GOV-15: ${pipelinePath} not found`);
+  }
+  const pipelineSrc = fs.readFileSync(pipelinePath, 'utf-8');
+  const pipelineStripped = stripTsComments(pipelineSrc);
+  if (!/runGateWithDriftCheck\(/.test(pipelineStripped)) {
+    fail(
+      `GOV-15: ${pipelinePath} must wrap every non-Gate-01 evaluation with runGateWithDriftCheck (F4.9 §3.1)`
+    );
+  }
+  // The wrapper must be called at every NXS gate (02-07). Each gate
+  // identifier should appear in the wrapped invocation set.
+  const requiredGateIds = ['G02', 'G03', 'G04', 'G05', 'G06', 'G07'];
+  for (const gid of requiredGateIds) {
+    if (!new RegExp(`GATE_ID\\.${gid}\\b`).test(pipelineStripped)) {
+      fail(
+        `GOV-15: ${pipelinePath} drift wrapper must reference GATE_ID.${gid} (F4.9 §3.1 wrapping invariant)`
+      );
+    }
+  }
+
+  const nvgServicePath = path.join('packages', 'vanguard', 'src', 'nvg-service.ts');
+  if (!fs.existsSync(nvgServicePath)) {
+    fail(`GOV-15: ${nvgServicePath} not found`);
+  }
+  const nvgSrc = fs.readFileSync(nvgServicePath, 'utf-8');
+  const nvgStripped = stripTsComments(nvgSrc);
+  if (!/runNvgGateWithDriftCheck\(/.test(nvgStripped)) {
+    fail(
+      `GOV-15: ${nvgServicePath} must invoke runNvgGateWithDriftCheck at classify-and-route + return-precheck (F4.9 §3.2)`
+    );
+  }
+  if (!/'nvg_classify_and_route'/.test(nvgStripped)) {
+    fail(
+      `GOV-15: ${nvgServicePath} must wrap classify-and-route with gateName 'nvg_classify_and_route' (F4.9 §3.2)`
+    );
+  }
+  if (!/'nvg_return_precheck'/.test(nvgStripped)) {
+    fail(
+      `GOV-15: ${nvgServicePath} must wrap return-precheck with gateName 'nvg_return_precheck' (F4.9 §3.2)`
+    );
+  }
+  // NVG must fail closed on drift in enforce mode — the wall returns
+  // a CLAIM_DRIFT_DETECTED denial after writing the ledger event.
+  if (!/DENIAL_CODE\.CLAIM_DRIFT_DETECTED/.test(nvgStripped)) {
+    fail(
+      `GOV-15: ${nvgServicePath} must use DENIAL_CODE.CLAIM_DRIFT_DETECTED on drift denial (F4.9 §3.4)`
+    );
+  }
+
+  // The ledger event type itself must remain a registered RunEventType.
+  const contractsPath = path.join('packages', 'contracts', 'src', 'interfaces', 'index.ts');
+  const contractsSrc = fs.readFileSync(contractsPath, 'utf-8');
+  if (!/\|\s*'claim_drift_detected'/.test(contractsSrc)) {
+    fail(
+      `GOV-15: 'claim_drift_detected' missing from RunEventType union in ${contractsPath} (F4.9 §2.2)`
+    );
+  }
+  pass(
+    'claim drift verification (Pipeline + NVG wrap every gate; runGateWithDriftCheck/runNvgGateWithDriftCheck exported; claim_drift_detected event wired)'
   );
 }
 

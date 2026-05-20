@@ -15,6 +15,7 @@ import {
   DENIAL_CODE,
   OPERATING_MODE,
   OCT_CEILINGS,
+  type ClaimVerificationPort,
   type NvgService,
   type NvgClassifyAndRouteResult,
   type NvgClassificationResult,
@@ -26,6 +27,7 @@ import {
   type NvgRoutingPreview,
   type NvgRoutingPreviewEndpoint,
   type RoutingTrailWriter,
+  type RunLedgerWriter,
   type NvgTransportContext,
   type ModeConfiguration,
   type DataLabel,
@@ -38,6 +40,7 @@ import {
   type IsoTimestamp,
   type RuntimeDisposition,
 } from '@nexus/contracts';
+import { runNvgGateWithDriftCheck } from '@nexus/runtime-utils';
 import { classifyOutboundData } from './classifier/data-classifier.js';
 import { enforceOctModelCeiling } from './classifier/ceiling-enforcer.js';
 import { readLabels } from './classifier/label-reader.js';
@@ -55,12 +58,34 @@ export interface NvgServiceDeps {
   readonly trailWriter: RoutingTrailWriter;
   readonly transportContext: NvgTransportContext; // T6-F03: mandatory — no stub-success path
   readonly modeConfig: ModeConfiguration;
+  /**
+   * F4.9 / Hard Law #14 — claim-drift verifier invoked at NVG classify-
+   * and-route entry and at return-precheck. Optional at construction
+   * because Step 12 of the bootstrap runs before the actor/principal
+   * registries that back the IdentityProvider exist (see HANDOFF
+   * MANIFEST-MANIFOLD-ARC §1 — the seam ordering is the broader gap
+   * F4.9 will help close). Production wiring calls
+   * `attachClaimDriftDeps()` immediately after coreDeps becomes
+   * available; once set, calls cannot be cleared.
+   *
+   * If absent at the time `classifyAndRoute` is invoked, the wall
+   * FAILS CLOSED — drift-check is baked enforcement and cannot be
+   * skipped silently.
+   */
+  readonly claimVerifier?: ClaimVerificationPort;
+  readonly runLedger?: RunLedgerWriter;
 }
 
 // ── NVG Service Implementation ──────────────────────────────────────────────
 
 export class NvgServiceImpl implements NvgService {
   private readonly deps: NvgServiceDeps | null;
+  // F4.9 — claim-drift deps are late-bound from the orch wiring root
+  // because bootstrap Step 12 runs before the actor/principal registries
+  // that back the IdentityProvider. Once attached, both fields are
+  // immutable; attempts to re-attach throw.
+  private lateClaimVerifier: ClaimVerificationPort | null = null;
+  private lateRunLedger: RunLedgerWriter | null = null;
 
   /**
    * Construct with full deps for classifyAndRoute composition.
@@ -68,6 +93,43 @@ export class NvgServiceImpl implements NvgService {
    */
   constructor(deps?: NvgServiceDeps) {
     this.deps = deps ?? null;
+  }
+
+  /**
+   * F4.9 / Hard Law #14 — attach the claim-drift verifier + ledger writer
+   * once the actor/principal registries exist. May be called exactly once.
+   * Subsequent calls throw — there is no legitimate reason to swap the
+   * verifier mid-run.
+   *
+   * Production wiring (nexus-main bootstrapWorkspaceApiDeps) calls this
+   * right after coreDeps is in scope. If `classifyAndRoute` runs before
+   * `attachClaimDriftDeps` (verifier+ledger not provided at construction
+   * either), it fails closed — drift detection is not optional.
+   */
+  attachClaimDriftDeps(verifier: ClaimVerificationPort, runLedger: RunLedgerWriter): void {
+    if (this.lateClaimVerifier !== null || this.lateRunLedger !== null) {
+      throw new Error(
+        'NvgServiceImpl: claim-drift deps already attached — single-shot setter (F4.9)'
+      );
+    }
+    this.lateClaimVerifier = verifier;
+    this.lateRunLedger = runLedger;
+  }
+
+  private requireClaimDriftDeps(): {
+    verifier: ClaimVerificationPort;
+    ledger: RunLedgerWriter;
+  } {
+    const v = this.deps?.claimVerifier ?? this.lateClaimVerifier;
+    const l = this.deps?.runLedger ?? this.lateRunLedger;
+    if (!v || !l) {
+      throw new Error(
+        'NvgServiceImpl: claim-drift verifier + run-ledger writer required for ' +
+          'classifyAndRoute (F4.9 / Hard Law #14). Construct with claimVerifier + ' +
+          'runLedger or call attachClaimDriftDeps() before invoking the wall.'
+      );
+    }
+    return { verifier: v, ledger: l };
   }
 
   // ── Individual methods (unchanged from HOLE-S7-001) ──────────────────────
@@ -124,9 +186,46 @@ export class NvgServiceImpl implements NvgService {
       );
     }
     const { routingPolicy, tierRegistry, trailWriter, transportContext, modeConfig } = this.deps;
+    // F4.9 / HL #14 — fail closed if claim-drift deps are absent
+    const { verifier: claimVerifier, ledger: runLedger } = this.requireClaimDriftDeps();
     const correlationId = crypto.randomUUID() as Uuid;
     const policyVersion = routingPolicy.version;
     const disposition = this.resolveNvgDisposition();
+
+    // ── F4.9 §3.2 — claim-drift verification at NVG classify-and-route ───
+    // Hard Law #14: NVG callbacks RBAC at this gate to verify the carried
+    // claims still match the current RBAC snapshot. Drift in enforce mode
+    // fails the wall closed with NVG_CLAIM_DRIFT denial; observe/advisory
+    // log and proceed per the §3.4 mode matrix.
+    const driftClassify = await runNvgGateWithDriftCheck(
+      request.carriedClaims,
+      request.actorId,
+      request.runId,
+      { verifier: claimVerifier, ledger: runLedger, disposition },
+      'nvg_classify_and_route' as NonEmpty
+    );
+    if (driftClassify.drift && disposition === 'enforce') {
+      const reason = driftClassify.reason ?? 'claim drift detected at nvg_classify_and_route';
+      await handleNvgDenial(
+        request,
+        DENIAL_CODE.CLAIM_DRIFT_DETECTED,
+        reason,
+        trailWriter,
+        policyVersion,
+        correlationId
+      );
+      return this.buildResult({
+        allowed: false,
+        classification: classifyOutboundData([]),
+        modelTierSelected: null,
+        modelTierInvoked: null,
+        denialCode: DENIAL_CODE.CLAIM_DRIFT_DETECTED as DenialCode,
+        denialReason: reason,
+        trailCorrelationId: correlationId,
+        disposition,
+        invocation: null,
+      });
+    }
 
     // ── Step 1: Label Validation (§24.1) ──────────────────────────────────────
     // readLabels validates structure, clamps confidence, rejects unknown data
@@ -313,6 +412,42 @@ export class NvgServiceImpl implements NvgService {
       transportContext,
       preferredEndpoint
     );
+
+    // ── F4.9 §3.2 — claim-drift verification at NVG return-precheck ──────
+    // The model invocation has crossed the wall. Before the inbound
+    // payload is logged + normalized into the orch-readable mailbox
+    // slot, verify the carried claims still match the current RBAC
+    // snapshot. A late RBAC revoke between outbound and inbound is
+    // exactly the scenario Hard Law #14 forces fail-closed.
+    const driftReturn = await runNvgGateWithDriftCheck(
+      request.carriedClaims,
+      request.actorId,
+      request.runId,
+      { verifier: claimVerifier, ledger: runLedger, disposition },
+      'nvg_return_precheck' as NonEmpty
+    );
+    if (driftReturn.drift && disposition === 'enforce') {
+      const reason = driftReturn.reason ?? 'claim drift detected at nvg_return_precheck';
+      await handleNvgDenial(
+        request,
+        DENIAL_CODE.CLAIM_DRIFT_DETECTED,
+        reason,
+        trailWriter,
+        policyVersion,
+        correlationId
+      );
+      return this.buildResult({
+        allowed: false,
+        classification,
+        modelTierSelected: approvedTier,
+        modelTierInvoked: invocation.endpointUsed?.tier ?? null,
+        denialCode: DENIAL_CODE.CLAIM_DRIFT_DETECTED as DenialCode,
+        denialReason: reason,
+        trailCorrelationId: correlationId,
+        disposition,
+        invocation,
+      });
+    }
 
     // ── Step 7: Inbound Return Path Logging (§24.6) ────────────────────────
     await handleInboundResponse(correlationId, request, invocation, trailWriter, policyVersion);

@@ -17,6 +17,7 @@ import {
   DENIAL_CODE,
   GATE_ID,
   type AgentAction,
+  type ClaimVerificationPort,
   type PipelineContext,
   type EvidenceRecord,
   type ThreatEvent,
@@ -27,6 +28,7 @@ import {
   type PipelineInterface,
   type ModeConfiguration,
   type PipelineResult,
+  type RunLedgerWriter,
 } from '../types/index.js';
 import type { IdentityGate } from '../gates/01-identity.gate.js';
 import type { ClassificationGate } from '../gates/02-classification.gate.js';
@@ -35,6 +37,7 @@ import type { PolicyGate } from '../gates/04-policy.gate.js';
 import type { ApprovalGate } from '../gates/05-approval.gate.js';
 import type { ExecutionGate } from '../gates/06-execution.gate.js';
 import type { EvidenceGate } from '../gates/07-evidence.gate.js';
+import { runGateWithDriftCheck, type DriftWrapperDeps } from '../gates/runner.js';
 import type { ReplayDetector } from '../security/replay-detector.js';
 import type { RateLimiter } from '../security/rate-limiter.js';
 import { buildThreatEvent } from '../security/threat-log.js';
@@ -54,13 +57,24 @@ export interface PipelineGates {
   evidence: EvidenceGate;
 }
 
+/**
+ * Deps that wire the F4.9 claim-drift wrapper into the Pipeline.
+ * Required at construction; the wrapper is mandatory baked enforcement
+ * (Hard Law #14) and there is no legitimate "skip" path.
+ */
+export interface PipelineDriftDeps {
+  readonly verifier: ClaimVerificationPort;
+  readonly runLedger: RunLedgerWriter;
+}
+
 export class Pipeline implements PipelineInterface {
   constructor(
     private readonly gates: PipelineGates,
     private readonly replay: ReplayDetector,
     private readonly limiter: RateLimiter,
     private readonly db: Database.Database,
-    private readonly modeConfig: ModeConfiguration // MODE-001: signed infrastructure config
+    private readonly modeConfig: ModeConfiguration, // MODE-001: signed infrastructure config
+    private readonly driftDeps: PipelineDriftDeps // F4.9: HL #14 claim-drift wrapper
   ) {}
 
   async process(
@@ -71,6 +85,15 @@ export class Pipeline implements PipelineInterface {
     const nxsMode = getRuntimeMode(this.modeConfig, 'nxs');
     const disposition = resolveDisposition(nxsMode);
     const enforcing = shouldEnforce(nxsMode);
+    // F4.9 — claim-drift wrapper deps assembled once per process(). The
+    // wrapper bypasses Gate 01 (which IS the resolver) and any pre-Gate-01
+    // path where context.identityClaims is still absent; every gate that
+    // runs with claims populated is verified before evaluation.
+    const driftDeps: DriftWrapperDeps = {
+      verifier: this.driftDeps.verifier,
+      ledger: this.driftDeps.runLedger,
+      disposition,
+    };
     // === INGRESS SECURITY ===
     // Rate limit
     try {
@@ -97,7 +120,8 @@ export class Pipeline implements PipelineInterface {
               metadata: {},
             },
           ],
-          disposition
+          disposition,
+          driftDeps
         );
       }
       throw err;
@@ -128,7 +152,8 @@ export class Pipeline implements PipelineInterface {
               metadata: {},
             },
           ],
-          disposition
+          disposition,
+          driftDeps
         );
       }
       throw err;
@@ -162,7 +187,8 @@ export class Pipeline implements PipelineInterface {
             metadata: {},
           },
         ],
-        disposition
+        disposition,
+        driftDeps
       );
     }
 
@@ -203,16 +229,29 @@ export class Pipeline implements PipelineInterface {
     // Gate 07 must always run. If any gate throws, we catch and still run Gate 07.
     try {
       // === GATES 01-04: fixed sequential pipeline ===
-      const linearGates = [
-        this.gates.identity,
-        this.gates.classification,
-        this.gates.delegation,
-        this.gates.policy,
+      const linearGates: ReadonlyArray<{
+        gate: import('../types/index.js').Gate;
+        name: import('../types/index.js').NonEmpty;
+      }> = [
+        { gate: this.gates.identity, name: GATE_ID.G01 as import('../types/index.js').NonEmpty },
+        {
+          gate: this.gates.classification,
+          name: GATE_ID.G02 as import('../types/index.js').NonEmpty,
+        },
+        { gate: this.gates.delegation, name: GATE_ID.G03 as import('../types/index.js').NonEmpty },
+        { gate: this.gates.policy, name: GATE_ID.G04 as import('../types/index.js').NonEmpty },
       ];
 
       let earlyDenial = false;
-      for (const gate of linearGates) {
-        const result = await gate.evaluate(action, context, decisions);
+      for (const { gate, name } of linearGates) {
+        const result = await runGateWithDriftCheck(
+          gate,
+          action,
+          context,
+          decisions,
+          driftDeps,
+          name
+        );
         decisions.push(result.decision);
 
         if (result.actionMutations) Object.assign(action, result.actionMutations);
@@ -235,7 +274,14 @@ export class Pipeline implements PipelineInterface {
 
         if (outcome === OUTCOME_LABEL.REQUIRE_APPROVAL || outcome === OUTCOME_LABEL.ESCALATE) {
           // === GATE 05: Approval (conditional — never on ALLOW paths) ===
-          const approvalResult = await this.gates.approval.evaluate(action, context, decisions);
+          const approvalResult = await runGateWithDriftCheck(
+            this.gates.approval,
+            action,
+            context,
+            decisions,
+            driftDeps,
+            GATE_ID.G05 as import('../types/index.js').NonEmpty
+          );
           decisions.push(approvalResult.decision);
           if (approvalResult.approvalRequest)
             context.approvalRequest = approvalResult.approvalRequest;
@@ -248,14 +294,28 @@ export class Pipeline implements PipelineInterface {
 
           if (!approvalDenied) {
             // Gate 05 passed → Gate 06
-            const execResult = await this.gates.execution.evaluate(action, context, decisions);
+            const execResult = await runGateWithDriftCheck(
+              this.gates.execution,
+              action,
+              context,
+              decisions,
+              driftDeps,
+              GATE_ID.G06 as import('../types/index.js').NonEmpty
+            );
             decisions.push(execResult.decision);
             if (execResult.grant) context.executionGrant = execResult.grant;
             if (execResult.executionResult) context.executionResult = execResult.executionResult;
           }
         } else if (outcome === OUTCOME_LABEL.ALLOW) {
           // === GATE 06: Execution (no approval required) ===
-          const execResult = await this.gates.execution.evaluate(action, context, decisions);
+          const execResult = await runGateWithDriftCheck(
+            this.gates.execution,
+            action,
+            context,
+            decisions,
+            driftDeps,
+            GATE_ID.G06 as import('../types/index.js').NonEmpty
+          );
           decisions.push(execResult.decision);
           if (execResult.grant) context.executionGrant = execResult.grant;
           if (execResult.executionResult) context.executionResult = execResult.executionResult;
@@ -299,7 +359,7 @@ export class Pipeline implements PipelineInterface {
           nonEnforcingDisposition: 'evaluated_not_executed' as const,
           modeSkippedGates: [GATE_ID.G05, GATE_ID.G06],
         };
-    return this.runGate07(action, context, decisions, disposition, modeMetadata);
+    return this.runGate07(action, context, decisions, disposition, driftDeps, modeMetadata);
   }
 
   /** Gate 07 always runs exactly once per action. Extracted to prevent duplication. */
@@ -308,12 +368,27 @@ export class Pipeline implements PipelineInterface {
     context: PipelineContext,
     decisions: import('../types/index.js').GateDecision[],
     disposition: import('../types/index.js').RuntimeDisposition,
+    driftDeps: DriftWrapperDeps,
     modeMetadata?: {
       nonEnforcingDisposition: 'evaluated_not_executed';
       modeSkippedGates: string[];
     }
   ): Promise<PipelineResult> {
-    const evidenceResult = await this.gates.evidence.evaluate(action, context, decisions);
+    // F4.9 / Hard Law #14 — Gate 07 (Evidence) is the final NXS gate and
+    // is wrapped just like 02-06. Gate 07 runs even when context.actor /
+    // .identityClaims were never set (early ingress denial); the wrapper
+    // returns the unwrapped evaluation in that case via Gate 01 bypass
+    // semantics rather than crashing on absent claims.
+    const evidenceResult = context.identityClaims
+      ? await runGateWithDriftCheck(
+          this.gates.evidence,
+          action,
+          context,
+          decisions,
+          driftDeps,
+          GATE_ID.G07 as import('../types/index.js').NonEmpty
+        )
+      : await this.gates.evidence.evaluate(action, context, decisions);
     decisions.push(evidenceResult.decision);
     if (!context.lastEvidenceRecord) {
       throw new Error('invariant: lastEvidenceRecord must be set by Gate 07');

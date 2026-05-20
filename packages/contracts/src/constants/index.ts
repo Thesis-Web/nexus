@@ -293,6 +293,8 @@ export const DENIAL_CODE = {
   TEMPLATE_INTEGRITY_FAILED: 'template_integrity_failed',
   GRANT_EXPIRED: 'grant_expired',
   SEQUENCE_ANOMALY: 'sequence_anomaly', // chain verifier only — not ingress
+  // F4.9 / Hard Law #14 — claim drift detection at any NXS/NVG gate
+  CLAIM_DRIFT_DETECTED: 'claim_drift_detected',
   // NVG
   NVG_CLASSIFICATION_DENIED: 'nvg_classification_denied',
   NVG_OCT_CEILING_DENIED: 'nvg_oct_ceiling_denied',

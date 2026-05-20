@@ -1551,6 +1551,15 @@ export interface NvgOutboundRequest {
    * `null` or undefined = Auto (policy) — original routing behavior.
    */
   preferredEndpointId?: NonEmpty | null;
+  /**
+   * F4.9 §3.2 — Carried claims envelope snapshot. The orchestrator populates
+   * this from the principal's IdentityClaims at dispatch so the NVG gate
+   * runner can verify against RBAC's current state (Hard Law #14). The
+   * canonical-hash comparison is performed in NvgServiceImpl. If the field
+   * is absent and a ClaimVerificationPort is wired into NVG, the gate
+   * runner fails closed under enforce mode.
+   */
+  carriedClaims: Record<string, unknown>;
 }
 
 export interface NvgClassificationResult {

@@ -46,6 +46,7 @@ function makeRequest(): NvgOutboundRequest {
     boundConnectorClasses: [],
     costPreference: 'standard',
     latencyPreference: 'standard',
+    carriedClaims: {},
   };
 }
 

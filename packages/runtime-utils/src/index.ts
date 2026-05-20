@@ -37,3 +37,8 @@ export {
   isTargetedSystemToolName,
   type LlmAdapterDeclarationViolation,
 } from './llm-adapter-declaration.js';
+export {
+  runNvgGateWithDriftCheck,
+  type NvgDriftWrapperDeps,
+  type NvgDriftCheckOutcome,
+} from './claim-drift.js';

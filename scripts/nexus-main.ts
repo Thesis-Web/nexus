@@ -34,6 +34,7 @@ import {
   loadControlPlaneKey,
   mintRootDelegation,
   RegistryBackedIdentityProvider,
+  ReferenceClaimVerifier,
   SimpleConnectorRegistry,
   SimpleChannelRegistry,
   SqliteApproverRegistry,
@@ -393,6 +394,36 @@ const program = createCli({
       coreDeps.actorRegistry,
       coreDeps.principalRegistry
     );
+    // F4.9 — Hard Law #14 claim-drift verifier. Resolver re-reads the
+    // actor's current claims via the same IdentityProvider Gate 01 used,
+    // so a mid-run RBAC change shows up as drift at every downstream
+    // NXS gate (02-07). The Pipeline writes `claim_drift_detected` events
+    // into the canonical run-event ledger that the rest of the orch path
+    // also uses (`coreDeps.runLedgerWriter`).
+    if (!coreDeps.runLedgerWriter) {
+      throw new Error(
+        '[orch-wire] F4.9: Pipeline requires coreDeps.runLedgerWriter for claim-drift ' +
+          'ledger writes (Hard Law #14). Bootstrap step 21 must construct the ledger writer.'
+      );
+    }
+    const pipelineClaimVerifier = new ReferenceClaimVerifier(async actorIdentifier => {
+      const fresh = await pipelineIdp.resolveIdentity(actorIdentifier as any);
+      return (fresh ?? {}) as Record<string, unknown>;
+    });
+    // F4.9 §3.2 — NVG carries the same IdentityClaims snapshot the NXS
+    // pipeline carries, so the NVG gate runner can verify the snapshot
+    // is still current at classify-and-route / return-precheck time.
+    // The orch resolves the agent's claims once per dispatch and embeds
+    // them on the NvgOutboundRequest before calling NVG.
+    const resolveAgentCarriedClaims = async (agentId: string): Promise<Record<string, unknown>> => {
+      const fresh = await pipelineIdp.resolveIdentity(agentId as any);
+      return (fresh ?? {}) as Record<string, unknown>;
+    };
+    // F4.9 — attach the same verifier + run-event ledger to the NVG
+    // service. Bootstrap Step 12 constructs NvgServiceImpl before the
+    // actor/principal registries exist; this is the production-wired
+    // attach point. Single-shot setter — guarded against double-attach.
+    br.nvgService.attachClaimDriftDeps(pipelineClaimVerifier, coreDeps.runLedgerWriter);
     const nxsPipeline = new Pipeline(
       {
         identity: new IdentityGate(
@@ -420,7 +451,8 @@ const program = createCli({
       new ReplayDetector(coreDeps.db),
       new RateLimiter(),
       coreDeps.db,
-      modeConfig
+      modeConfig,
+      { verifier: pipelineClaimVerifier, runLedger: coreDeps.runLedgerWriter }
     );
     console.log('[orch-wire] NXS Pipeline constructed (7 gates)');
 
@@ -1010,6 +1042,9 @@ const program = createCli({
             // adapters that hadn't seen a structured payload before).
             const turnPayload: unknown =
               toolDescriptors.length > 0 ? { messages, toolDescriptors } : messages;
+            // F4.9 — resolve the agent's carried claims at dispatch so the
+            // NVG classify-and-route gate runner can verify the snapshot.
+            const agentCarriedClaims = await resolveAgentCarriedClaims(node.agentId);
             const nvgRequest: NvgOutboundRequest = {
               requestId: crypto.randomUUID() as Uuid,
               runId: request.runId,
@@ -1032,6 +1067,7 @@ const program = createCli({
               // dropdown preference. NVG treats it as a weighted suggestion
               // within the governed tier set; null = Auto (policy).
               preferredEndpointId: request.preferredEndpointId,
+              carriedClaims: agentCarriedClaims,
             };
             nvgTurnIndex++;
             const result = await br.nvgService.classifyAndRoute(nvgRequest);
@@ -1690,6 +1726,12 @@ const program = createCli({
                 .filter((c): c is DataClass => typeof c === 'string' && c.length > 0)
             )
           );
+          // F4.9 — pre-flight probe carries the same claims envelope the
+          // dispatch path will carry, so previewRouting honors HL #14 even
+          // for the non-invoking probe (which itself does not run the
+          // gate runner — drift detection at probe time is forward-only
+          // and the dispatch path re-verifies before invocation).
+          const probeCarriedClaims = await resolveAgentCarriedClaims(firstAgent.agentId);
           const probe: NvgOutboundRequest = {
             requestId: crypto.randomUUID() as Uuid,
             runId: request.runId,
@@ -1709,6 +1751,7 @@ const program = createCli({
             // user's preferred endpoint health alongside the policy tier so
             // the checkback message can name a concrete unavailable model.
             preferredEndpointId: request.preferredEndpointId,
+            carriedClaims: probeCarriedClaims,
           };
 
           const routing = await br.nvgService.previewRouting(probe);

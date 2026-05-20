@@ -27,6 +27,8 @@ import {
   SqliteDelegationStore,
   SqlitePendingApprovalStore,
   JsonlLedgerBackend,
+  JsonlRunLedgerWriter,
+  ReferenceClaimVerifier,
   VerbNormalizer,
   LexicalVerbResolver,
   TargetNormalizer,
@@ -84,6 +86,11 @@ export async function cmdServeMcp(opts: ServeMcpOptions): Promise<void> {
 
   // 3. Ledger backend (JSONL — Backend v1)
   const ledger = new JsonlLedgerBackend(LEDGER_PATH);
+  // 3b. Run-event ledger sibling of `ledger` — F4.9 / Hard Law #14
+  // claim-drift verification writes `claim_drift_detected` events here.
+  const RUN_LEDGER_PATH =
+    process.env['NEXUS_RUN_LEDGER_PATH'] ?? path.join(repoRoot, 'nexus.run-ledger.jsonl');
+  const runEventLedger = new JsonlRunLedgerWriter(RUN_LEDGER_PATH);
 
   // 4. Policy file (signed — rejects on invalid signature per §15)
   let policyFile = null;
@@ -148,8 +155,15 @@ export async function cmdServeMcp(opts: ServeMcpOptions): Promise<void> {
     evidence: new EvidenceGate(ledger, controlPlaneKey),
   };
 
-  // 12. Pipeline
-  const pipeline = new Pipeline(gates, replayDetector, rateLimiter, db, modeConfig);
+  // 12. Pipeline — F4.9 wires the claim-drift verifier + run-event ledger
+  const claimVerifier = new ReferenceClaimVerifier(async actorIdentifier => {
+    const fresh = await identityProvider.resolveIdentity(actorIdentifier as any);
+    return (fresh ?? {}) as Record<string, unknown>;
+  });
+  const pipeline = new Pipeline(gates, replayDetector, rateLimiter, db, modeConfig, {
+    verifier: claimVerifier,
+    runLedger: runEventLedger,
+  });
 
   // 13. MCP adapter and proxy
   const adapter = new McpAdapter();

@@ -164,6 +164,23 @@ function mockModeConfig(): ModeConfiguration {
   };
 }
 
+// F4.9 — claim-drift dependency mocks for the Pipeline ctor. The
+// verifier always returns 'match' and the ledger writes are no-ops so
+// the exception-safety tests focus solely on Gate-06 throw behavior.
+function mockDriftDeps() {
+  return {
+    verifier: {
+      verify: async () => ({ kind: 'match' as const, currentClaimsHash: 'noop-hash' as any }),
+    },
+    runLedger: {
+      writeEvent: async () => {},
+      getByRunId: async () => [],
+      tail: async () => [],
+      getLatestRunId: async () => null,
+    },
+  };
+}
+
 function makeAction(): Omit<AgentAction, 'delegationSequence'> {
   return {
     actionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
@@ -225,6 +242,17 @@ function makeContext(): PipelineContext {
       maxDelegableRiskTier: 'high',
       allowedSystems: ['vault'],
     },
+    // F4.9 — Gate 01 (mock) sets identityClaims on every passing run.
+    // Mirrored here at context creation so the runGateWithDriftCheck
+    // wrapper sees populated claims; the mock Gate 01 body does not
+    // touch context (pre-existing test design predates the wrapper).
+    identityClaims: {
+      principalIdentity: 'principal-001',
+      roleAssignments: [],
+      capabilityCeilings: [],
+      environmentContext: 'dev',
+      actorClass: 'SUPERVISED_AGENT',
+    },
     delegationContext: null,
     delegationStore: {
       getById: async () => null,
@@ -266,7 +294,8 @@ describe('GATE06-001 — Pipeline exception safety proof', () => {
       mockReplayDetector() as any,
       mockRateLimiter() as any,
       db,
-      mockModeConfig()
+      mockModeConfig(),
+      mockDriftDeps() as any
     );
 
     const result = await pipeline.process(makeAction(), makeContext());
@@ -314,7 +343,8 @@ describe('GATE06-001 — Pipeline exception safety proof', () => {
       mockReplayDetector() as any,
       mockRateLimiter() as any,
       db,
-      mockModeConfig()
+      mockModeConfig(),
+      mockDriftDeps() as any
     );
 
     const result = await pipeline.process(makeAction(), makeContext());

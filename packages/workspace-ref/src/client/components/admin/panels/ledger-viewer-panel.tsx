@@ -267,6 +267,29 @@ function buildEventSummary(eventType: string, detail: Record<string, unknown>): 
     }
     return '⚠ model returned tool_calls (treated as text per Nexus governance)';
   }
+  if (eventType === 'claim_drift_detected') {
+    // F4.9 / Hard Law #14 — NXS/NVG gate runner detected that the
+    // carried claims envelope no longer matches RBAC's current snapshot.
+    // Detail carries the diff (fields list + hashes) — never the claim
+    // values themselves (spec §3.3). The summary surfaces gate +
+    // disposition + changed field list so operators can see exactly
+    // where drift was caught and whether the run was killed.
+    const gate = detail['gateName'];
+    const fields = detail['fieldsChanged'];
+    const disposition = detail['disposition'];
+    const dispLabel =
+      disposition === 'enforce'
+        ? '⛔ DENIED (enforce)'
+        : disposition === 'advisory'
+          ? '⚠ logged (advisory)'
+          : '⚠ logged (observe)';
+    const fieldList =
+      Array.isArray(fields) && fields.length > 0
+        ? fields.filter((v): v is string => typeof v === 'string').join(', ')
+        : '<unspecified>';
+    const gateLabel = typeof gate === 'string' && gate.length > 0 ? gate : 'gate_unknown';
+    return `${dispLabel} · claim drift at ${gateLabel} · fields: ${fieldList}`;
+  }
   if (eventType === 'node_failed') {
     const reason = detail['failureReason'];
     if (typeof reason === 'string' && reason.length > 0) {

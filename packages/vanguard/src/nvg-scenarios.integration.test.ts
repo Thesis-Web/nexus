@@ -98,6 +98,7 @@ function makeRequest(overrides: Partial<NvgOutboundRequest> = {}): NvgOutboundRe
     boundConnectorClasses: [],
     costPreference: 'standard',
     latencyPreference: 'standard',
+    carriedClaims: {},
     ...overrides,
   };
 }
