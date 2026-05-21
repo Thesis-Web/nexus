@@ -23,6 +23,7 @@ import type {
   ToolSchemaDescriptor,
   Uuid,
 } from '@nexus/contracts';
+import { AXIS_NOT_CONSTRAINED } from '@nexus/contracts';
 import { buildToolDescriptorsForAgent, type ConnectorLookup } from './build-tool-schemas.js';
 
 function descriptor(name: string, capability: string, system: string): ToolSchemaDescriptor {
@@ -152,9 +153,14 @@ describe('buildToolDescriptorsForAgent', () => {
         descriptor('read_warehouse', 'read:record:bulk', 'warehouse'),
       ]),
     });
+    // This test deliberately seeds the OCT-axis sentinel into an actor's
+    // allowedSystems to prove the descriptor builder defensively skips
+    // it. Actor.allowedSystems should never carry AXIS_NOT_CONSTRAINED
+    // in production — see the constant's docstring — but the consumer
+    // must not crash or treat it as a real system if it ever leaks in.
     const out = buildToolDescriptorsForAgent(
       actor({
-        allowedSystems: ['*', 'warehouse'],
+        allowedSystems: [AXIS_NOT_CONSTRAINED, 'warehouse'],
         allowedCapabilities: ['read:record:bulk'],
       }),
       reg

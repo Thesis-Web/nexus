@@ -72,14 +72,18 @@ export const CONNECTORS_PLACEHOLDER: DashboardSurfaceStatus = {
       {
         connectorId: 'stub',
         connectorType: 'stub',
-        allowedSystems: ['*'],
+        // Concrete system list — each connector binds to exactly one
+        // target system. The previous placeholder showed `['*']` but
+        // the real connectors.v1.yaml manifest binds stub→'stub' and
+        // vault→'vault'; this preview now matches.
+        allowedSystems: ['stub'],
         configuration: {},
         enabled: true,
       },
       {
         connectorId: 'vault',
         connectorType: 'vault',
-        allowedSystems: ['*'],
+        allowedSystems: ['vault'],
         configuration: {},
         enabled: false,
       },
@@ -252,8 +256,22 @@ export const ACTORS_AGENTS_PLACEHOLDER: DashboardSurfaceStatus = {
         environment: 'reference',
         octLevel: 'OCT-OPEN',
         riskCeiling: 'critical',
-        allowedSystems: ['*'],
-        allowedCapabilities: ['*'],
+        // Concrete system + capability set — matches the real reference
+        // bootstrap seed (see scripts/nexus-bootstrap.ts dev-admin
+        // creation). The previous placeholder used `['*']` which does
+        // not faithfully preview the real seed and would teach
+        // operators to copy a forbidden pattern.
+        allowedSystems: ['stub', 'sales-finance', 'warehouse'],
+        allowedCapabilities: [
+          'read:record:single',
+          'read:record:bulk',
+          'read:record:pii',
+          'create:record:internal',
+          'update:record:internal',
+          'delete:record',
+          'execute:query',
+          'execute:automation',
+        ],
         enabled: true,
       },
       {

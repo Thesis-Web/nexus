@@ -1,0 +1,828 @@
+/**
+ * GOV-AUTHORITY-STRICTNESS-GATE — scripts/gates/no-wildcard-authority.ts
+ *
+ * Production CI gate. Refuses any wildcard / fail-open / fallback-allow /
+ * null-as-allow shortcut in Nexus governance surfaces.
+ *
+ * Rule IDs (each is hard-fail; only the allowlist can suppress, and only
+ * with explicit owner + expiry + exact snippet):
+ *
+ *   GOV-WILD-001  Literal wildcard authority — `"*"` as a value (or in
+ *                 an array of values) under an authority-bearing key in
+ *                 config/manifests/fixtures/schemas/seeds, or the same
+ *                 pattern in TypeScript object literals.
+ *
+ *   GOV-WILD-002  Dangerous identifier names — allowAny, godMode,
+ *                 bypassGovernance, failOpen, etc. — anywhere in source.
+ *
+ *   GOV-WILD-003  Null / undefined / empty array as allow — patterns
+ *                 like `if (!allowedSystems) return true`,
+ *                 `policy ?? 'allow'`, `?? ['*']`, or empty-array
+ *                 interpreted as unrestricted.
+ *
+ *   GOV-WILD-004  Fail-open catch — `catch { return true | allow |
+ *                 OUTCOME_LABEL.ALLOW | FINAL_OUTCOME.EXECUTED |
+ *                 { allowed: true } }`.
+ *
+ *   GOV-WILD-005  Policy fallback allow — `default: 'allow'`, decision
+ *                 functions whose missing-rule branch returns allow.
+ *
+ * Scope (excluding node_modules / dist / build / coverage / .git / docs):
+ *   - config + fixtures + schemas trees: JSON and YAML
+ *   - packages seed dirs (per-package seeds + scripts/seeds): TS
+ *   - packages production source (packages PKG src): TS / TSX
+ *   - scripts directory: TS (excluding the scanner's own test file,
+ *     which contains intentional violation strings as test fixtures —
+ *     the test file uses string concatenation to avoid matching the
+ *     scanner's own regexes; the gate respects that by reading from
+ *     the same source it scans, so concat strings do not match)
+ *
+ * CLI usage:
+ *   pnpm exec tsx scripts/gates/no-wildcard-authority.ts
+ *     # full repo scan, default allowlist, exit 1 on any unallowlisted
+ *     # violation
+ *
+ *   pnpm exec tsx scripts/gates/no-wildcard-authority.ts --json
+ *     # machine-readable output for ci-gate consumption
+ *
+ *   pnpm exec tsx scripts/gates/no-wildcard-authority.ts --scan path/a,path/b
+ *     # scan only the comma-separated paths (used by the unit tests)
+ *
+ *   pnpm exec tsx scripts/gates/no-wildcard-authority.ts --allowlist path
+ *     # alternate allowlist (used by the unit tests)
+ */
+import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
+import * as yaml from 'js-yaml';
+
+// ─── Configuration ────────────────────────────────────────────────────────
+export const RULE_IDS = [
+  'GOV-WILD-001',
+  'GOV-WILD-002',
+  'GOV-WILD-003',
+  'GOV-WILD-004',
+  'GOV-WILD-005',
+] as const;
+export type RuleId = (typeof RULE_IDS)[number];
+
+/**
+ * Authority-bearing field names that may not carry a literal '*' value.
+ * Case-insensitive match. Add any new authority axes here so the gate
+ * keeps pace with new governance surfaces.
+ */
+const AUTHORITY_FIELD_NAMES = [
+  // Capability / system grants
+  'allowedSystems',
+  'permittedSystems',
+  'allowedCapabilities',
+  'permittedCapabilities',
+  'allowedActions',
+  'allowedVerbs',
+  'allowedTargets',
+  'allowedConnectors',
+  'allowedEndpoints',
+  'allowedTables',
+  'allowedModelTiers',
+  'allowedDataClasses',
+  'allowedRoles',
+  // Identity / RBAC scopes
+  'roles',
+  'permissions',
+  'scope',
+  'resourceScope',
+  // Crud + access matrices
+  'targetSystemAccess',
+  'crudRights',
+  'firewallTransitRights',
+  'connectorAccess',
+  'modelAccess',
+  // Firewall transit sub-arrays (each appears under firewallTransitRights)
+  'outbound',
+  'inbound',
+] as const;
+
+const AUTHORITY_FIELD_NAMES_LOWER = new Set(AUTHORITY_FIELD_NAMES.map(n => n.toLowerCase()));
+
+/**
+ * Identifier names that are themselves the violation (Rule B). These are
+ * the names a builder would reach for when they want to fake unlimited
+ * authority. Anywhere they appear in source — as a property key, function
+ * name, type name, variable, or string literal — fails GOV-WILD-002.
+ */
+const DANGEROUS_IDENTIFIERS = [
+  'allowAny',
+  'permitAny',
+  'readAny',
+  'writeAny',
+  'deleteAny',
+  'executeAny',
+  'sendAny',
+  'accessAny',
+  'anySystem',
+  'anyCapability',
+  'anyRole',
+  'anyTarget',
+  'anyConnector',
+  'anyEndpoint',
+  'anyModel',
+  'anyTier',
+  'allSystems',
+  'allCapabilities',
+  'allRoles',
+  'godMode',
+  'superuser',
+  'bypassGovernance',
+  'skipGovernance',
+  'skipAuth',
+  'skipPolicy',
+  'disablePolicy',
+  'disableAuth',
+  'allowByDefault',
+  'defaultAllow',
+  'allowOnError',
+  'failOpen',
+] as const;
+const DANGEROUS_IDENTIFIER_REGEX = new RegExp('\\b(' + DANGEROUS_IDENTIFIERS.join('|') + ')\\b');
+
+// Excluded path segments anywhere in the relative file path.
+const EXCLUDE_DIR_SEGMENTS = new Set([
+  'node_modules',
+  'dist',
+  'build',
+  'coverage',
+  '.git',
+  '.turbo',
+  'docs',
+  // Generated by tsc/turbo — never source of truth
+  '.cache',
+]);
+
+// Files that the gate intentionally never scans because they ARE the gate
+// or are the gate's own test harness. Keep this list short and explicit;
+// no per-package permanent exceptions allowed here.
+const SCANNER_SELF_FILES = new Set([
+  'scripts/gates/no-wildcard-authority.ts',
+  'scripts/gates/no-wildcard-authority.test.ts',
+]);
+
+// ─── Types ────────────────────────────────────────────────────────────────
+export interface Violation {
+  readonly ruleId: RuleId;
+  readonly filePath: string; // repo-relative POSIX path
+  readonly line: number; // 1-indexed
+  readonly snippet: string;
+  readonly detail: string;
+}
+
+export interface AllowlistEntry {
+  readonly ruleId: string;
+  readonly file: string;
+  readonly exactMatch: string;
+  readonly reason: string;
+  readonly owner: string;
+  readonly expiresAt?: string;
+  readonly reviewBy?: string;
+}
+
+export interface Allowlist {
+  readonly entries: ReadonlyArray<AllowlistEntry>;
+}
+
+export interface AllowlistError {
+  readonly index: number;
+  readonly reason: string;
+  readonly raw: unknown;
+}
+
+export interface ScanResult {
+  readonly violations: ReadonlyArray<Violation>;
+  readonly allowlisted: ReadonlyArray<Violation>;
+  readonly allowlistErrors: ReadonlyArray<AllowlistError>;
+}
+
+// ─── Walk ─────────────────────────────────────────────────────────────────
+async function* walk(root: string): AsyncGenerator<string> {
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = await fs.readdir(root, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const e of entries) {
+    if (EXCLUDE_DIR_SEGMENTS.has(e.name)) continue;
+    const full = path.join(root, e.name);
+    if (e.isDirectory()) {
+      yield* walk(full);
+    } else if (e.isFile()) {
+      yield full;
+    }
+  }
+}
+
+function relPosix(repoRoot: string, file: string): string {
+  return path.relative(repoRoot, file).split(path.sep).join('/');
+}
+
+/**
+ * Decide which scanner(s) apply to a given file based on its extension +
+ * path. Returns an empty array for files outside scope.
+ */
+function fileScope(rel: string): Array<'json' | 'yaml' | 'ts'> {
+  if (SCANNER_SELF_FILES.has(rel)) return [];
+  const ext = path.extname(rel).toLowerCase();
+  // Generated d.ts is out of scope.
+  if (rel.endsWith('.d.ts')) return [];
+  // JSON / YAML: only inside the documented config/fixtures/schemas trees,
+  // or inside any seeds dir, or anywhere under packages (e.g. policy
+  // bundle JSON ships inline with packages/policy/...).
+  if (ext === '.json') {
+    if (
+      rel.startsWith('config/') ||
+      rel.startsWith('fixtures/') ||
+      rel.startsWith('schemas/') ||
+      /^packages\/.+\/(fixtures|seeds|config|policy)\//.test(rel) ||
+      /^packages\/.+\/.+\.manifest\.json$/.test(rel)
+    ) {
+      // skip package.json + tsconfig*.json + manifest lockfiles — not authority surfaces
+      if (/(?:^|\/)package\.json$/.test(rel)) return [];
+      if (/^tsconfig.*\.json$/.test(path.basename(rel))) return [];
+      return ['json'];
+    }
+    return [];
+  }
+  if (ext === '.yaml' || ext === '.yml') {
+    if (
+      rel.startsWith('config/') ||
+      rel.startsWith('fixtures/') ||
+      rel.startsWith('schemas/') ||
+      /^packages\/.+\/(fixtures|seeds|config|policy)\//.test(rel)
+    ) {
+      return ['yaml'];
+    }
+    return [];
+  }
+  // TypeScript: governed source + seeds + scripts
+  if (ext === '.ts' || ext === '.tsx') {
+    // Production source
+    if (/^packages\/.+\/src\/.+\.(ts|tsx)$/.test(rel)) return ['ts'];
+    // Seeds (under packages/*/seeds and scripts/seeds)
+    if (/^packages\/.+\/seeds\/.+\.ts$/.test(rel)) return ['ts'];
+    if (rel.startsWith('scripts/seeds/')) return ['ts'];
+    // Any other script (excluding the scanner itself)
+    if (rel.startsWith('scripts/') && !SCANNER_SELF_FILES.has(rel)) {
+      return ['ts'];
+    }
+    return [];
+  }
+  return [];
+}
+
+// ─── JSON / YAML walkers ──────────────────────────────────────────────────
+interface KeyedValue {
+  readonly path: string; // dot-path or [n] for arrays
+  readonly key: string | null;
+  readonly value: unknown;
+}
+
+function* walkObject(
+  value: unknown,
+  parentPath = '',
+  parentKey: string | null = null
+): Generator<KeyedValue> {
+  yield { path: parentPath || '<root>', key: parentKey, value };
+  if (value && typeof value === 'object') {
+    if (Array.isArray(value)) {
+      for (let idx = 0; idx < value.length; idx++) {
+        yield* walkObject(value[idx], `${parentPath}[${idx}]`, parentKey);
+      }
+    } else {
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        yield* walkObject(v, parentPath ? `${parentPath}.${k}` : k, k);
+      }
+    }
+  }
+}
+
+function isAuthorityKey(key: string | null): boolean {
+  if (key === null) return false;
+  return AUTHORITY_FIELD_NAMES_LOWER.has(key.toLowerCase());
+}
+
+function findWildcardInData(rel: string, data: unknown): Violation[] {
+  const out: Violation[] = [];
+  for (const kv of walkObject(data)) {
+    if (!isAuthorityKey(kv.key)) continue;
+    if (typeof kv.value === 'string' && kv.value === '*') {
+      out.push({
+        ruleId: 'GOV-WILD-001',
+        filePath: rel,
+        line: 0,
+        snippet: `${kv.path} = "*"`,
+        detail: `authority field '${kv.key}' carries a literal '*' value`,
+      });
+    } else if (Array.isArray(kv.value)) {
+      kv.value.forEach((entry, idx) => {
+        if (entry === '*') {
+          out.push({
+            ruleId: 'GOV-WILD-001',
+            filePath: rel,
+            line: 0,
+            snippet: `${kv.path}[${idx}] = "*"`,
+            detail: `authority field '${kv.key}' array contains a literal '*' value at index ${idx}`,
+          });
+        }
+      });
+    }
+  }
+  return out;
+}
+
+async function scanJson(repoRoot: string, abs: string, rel: string): Promise<Violation[]> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(abs, 'utf-8');
+  } catch {
+    return [];
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // Malformed JSON — out of scope of this gate.
+    return [];
+  }
+  // unused param suppression
+  void repoRoot;
+  return findWildcardInData(rel, parsed);
+}
+
+async function scanYaml(repoRoot: string, abs: string, rel: string): Promise<Violation[]> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(abs, 'utf-8');
+  } catch {
+    return [];
+  }
+  let parsed: unknown;
+  try {
+    // loadAll handles multi-document YAML; we scan each.
+    const docs = yaml.loadAll(raw);
+    parsed = docs;
+  } catch {
+    return [];
+  }
+  void repoRoot;
+  return findWildcardInData(rel, parsed);
+}
+
+// ─── TypeScript scanners ──────────────────────────────────────────────────
+
+/** A field-name -> wildcard-value pattern in raw source, e.g.
+ *     allowedSystems: ['*']
+ *     "allowedSystems": ["*"]
+ *     allowedSystems = ['*']
+ *  Matches against the documented authority field list.
+ */
+const TS_WILDCARD_PATTERN = (() => {
+  const fields = AUTHORITY_FIELD_NAMES.join('|');
+  // (key)? (assignment) (wildcard literal or array containing wildcard)
+  return new RegExp(
+    `(?:^|[\\s,{(])(["']?)(${fields})\\1\\s*[:=]\\s*` +
+      // value: '*' or "*" or ['*'] or ["*"]
+      `(?:` +
+      `(['"])\\*\\3` + // direct '*' value
+      `|` +
+      `\\[\\s*(['"])\\*\\4\\s*(?:,\\s*['"][^'"]*['"]\\s*)*\\]` + // array containing '*'
+      `)`,
+    'i'
+  );
+})();
+
+/** Null/empty-as-allow patterns. */
+const TS_FALLBACK_ALLOW_PATTERNS: ReadonlyArray<{ regex: RegExp; reason: string }> = [
+  {
+    regex:
+      /if\s*\(\s*!\s*(allowedSystems|allowedCapabilities|policy|rule|policyBundle|ruleSet)\b[^)]*\)\s*(?:\{\s*)?return\s+(true|allow|ALLOW|['"]allow['"])/i,
+    reason: 'absent authority/policy treated as allow',
+  },
+  {
+    regex:
+      /if\s*\(\s*(allowedSystems|allowedCapabilities|policy|rule|policyBundle|ruleSet)\b[^)]*===?\s*(null|undefined)\s*\)\s*(?:\{\s*)?return\s+(true|allow|ALLOW|['"]allow['"])/i,
+    reason: 'null/undefined authority treated as allow',
+  },
+  {
+    regex:
+      /(allowedSystems|allowedCapabilities|policy|rule|policyBundle|ruleSet|systems|capabilities|roles|scope)\s*\?\?\s*\[\s*['"]\*['"]\s*\]/i,
+    reason: 'nullish-coalesce fallback to wildcard authority',
+  },
+  {
+    regex: /(systems|capabilities|roles)\s*\?\?\s*(allSystems|allCapabilities|allRoles)\b/i,
+    reason: 'nullish-coalesce fallback to all-* identifier',
+  },
+];
+
+/** Fail-open catch patterns — catch block returning a permissive value. */
+const TS_FAILOPEN_CATCH_PATTERN =
+  /catch\s*(?:\([^)]*\))?\s*\{\s*(?:[^{}]*\n)?\s*return\s+(?:true|allow|allow\(\s*\)|\{\s*allowed\s*:\s*true|OUTCOME_LABEL\.ALLOW|FINAL_OUTCOME\.EXECUTED|FinalOutcome\.Executed)\b/;
+
+/** Policy fallback allow patterns. */
+const TS_POLICY_FALLBACK_PATTERNS: ReadonlyArray<{ regex: RegExp; reason: string }> = [
+  {
+    regex: /\bdefault(?:Decision|Outcome|Verdict)?\s*:\s*['"]allow['"]/i,
+    reason: 'default policy decision set to allow',
+  },
+  {
+    regex: /\bfallback(?:Decision|Outcome|Verdict)?\s*:\s*['"]allow['"]/i,
+    reason: 'fallback policy decision set to allow',
+  },
+  {
+    regex: /\/\/\s*(?:default|fallback|missing[-\s]?policy|no[-\s]?rule[-\s]?match).*allow/i,
+    reason: 'comment indicates default/fallback/missing-policy → allow',
+  },
+];
+
+/** Lines that should never trigger pattern scanners (false positives). */
+function isUninterestingLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed.length === 0) return true;
+  // Pure block-comment continuation
+  if (trimmed.startsWith('*')) return true;
+  // SPEC-marker comments like `// AMEND-...` are still scanned because the
+  // dangerous-identifier check should not be skipped just for a comment.
+  return false;
+}
+
+function isCommentLine(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith('//') || trimmed.startsWith('*');
+}
+
+function scanTsLines(rel: string, raw: string): Violation[] {
+  const out: Violation[] = [];
+  const lines = raw.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    if (isUninterestingLine(line)) continue;
+    const lineNo = i + 1;
+
+    // GOV-WILD-001 (TS literal wildcard authority)
+    {
+      const m = TS_WILDCARD_PATTERN.exec(line);
+      if (m && !isCommentLine(line)) {
+        out.push({
+          ruleId: 'GOV-WILD-001',
+          filePath: rel,
+          line: lineNo,
+          snippet: line.trim(),
+          detail: `literal wildcard authority on field '${m[2]}'`,
+        });
+      }
+    }
+
+    // GOV-WILD-002 (dangerous identifier names — scan all lines, including
+    // comments, because a comment like `// TODO: bypassGovernance later`
+    // still matters)
+    {
+      const m = DANGEROUS_IDENTIFIER_REGEX.exec(line);
+      if (m) {
+        out.push({
+          ruleId: 'GOV-WILD-002',
+          filePath: rel,
+          line: lineNo,
+          snippet: line.trim(),
+          detail: `dangerous identifier '${m[1]}'`,
+        });
+      }
+    }
+
+    // GOV-WILD-003 (null/empty/?? as allow)
+    if (!isCommentLine(line)) {
+      for (const { regex, reason } of TS_FALLBACK_ALLOW_PATTERNS) {
+        if (regex.test(line)) {
+          out.push({
+            ruleId: 'GOV-WILD-003',
+            filePath: rel,
+            line: lineNo,
+            snippet: line.trim(),
+            detail: reason,
+          });
+          break;
+        }
+      }
+    }
+
+    // GOV-WILD-005 (policy fallback allow patterns — checked per line)
+    for (const { regex, reason } of TS_POLICY_FALLBACK_PATTERNS) {
+      if (regex.test(line)) {
+        out.push({
+          ruleId: 'GOV-WILD-005',
+          filePath: rel,
+          line: lineNo,
+          snippet: line.trim(),
+          detail: reason,
+        });
+        break;
+      }
+    }
+  }
+
+  // GOV-WILD-004 (fail-open catch). Single-pass regex across the whole
+  // text (with `s` flag) to span multiple lines. The first capture
+  // group's location gives us the line number via index counting.
+  {
+    const multilinePattern = new RegExp(TS_FAILOPEN_CATCH_PATTERN.source, 'gs');
+    let m: RegExpExecArray | null;
+    while ((m = multilinePattern.exec(raw)) !== null) {
+      // Locate line number of the `catch` keyword (start of match).
+      const before = raw.slice(0, m.index);
+      const lineNo = before.split(/\r?\n/).length;
+      const snippetEnd = Math.min(m.index + m[0].length, raw.length);
+      const snippet = raw
+        .slice(m.index, snippetEnd)
+        .split(/\r?\n/)
+        .slice(0, 2)
+        .join(' \\n ')
+        .trim();
+      out.push({
+        ruleId: 'GOV-WILD-004',
+        filePath: rel,
+        line: lineNo,
+        snippet,
+        detail: 'catch block returns a permissive value (fail-open)',
+      });
+    }
+  }
+  return out;
+}
+
+async function scanTs(repoRoot: string, abs: string, rel: string): Promise<Violation[]> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(abs, 'utf-8');
+  } catch {
+    return [];
+  }
+  void repoRoot;
+  return scanTsLines(rel, raw);
+}
+
+// ─── Allowlist ────────────────────────────────────────────────────────────
+const RULE_ID_SET: ReadonlySet<string> = new Set(RULE_IDS);
+
+export function validateAllowlist(raw: unknown): {
+  entries: AllowlistEntry[];
+  errors: AllowlistError[];
+} {
+  const entries: AllowlistEntry[] = [];
+  const errors: AllowlistError[] = [];
+  if (raw === null || typeof raw !== 'object') {
+    errors.push({ index: -1, reason: 'allowlist root must be an object', raw });
+    return { entries, errors };
+  }
+  const root = raw as { entries?: unknown };
+  if (!Array.isArray(root.entries)) {
+    errors.push({
+      index: -1,
+      reason: 'allowlist root must have an `entries` array (use [] for empty)',
+      raw,
+    });
+    return { entries, errors };
+  }
+  root.entries.forEach((e, idx) => {
+    if (e === null || typeof e !== 'object') {
+      errors.push({ index: idx, reason: 'entry is not an object', raw: e });
+      return;
+    }
+    const r = e as Record<string, unknown>;
+    const requireField = (name: string, type: 'string'): string | null => {
+      const v = r[name];
+      if (typeof v !== type) return `missing or non-${type} field '${name}'`;
+      if ((v as string).trim().length === 0) return `empty '${name}'`;
+      return null;
+    };
+    const errs: string[] = [];
+    for (const f of ['ruleId', 'file', 'exactMatch', 'reason', 'owner']) {
+      const e2 = requireField(f, 'string');
+      if (e2) errs.push(e2);
+    }
+    const ruleId = String(r['ruleId']);
+    if (!RULE_ID_SET.has(ruleId)) {
+      errs.push(`unknown ruleId '${ruleId}' — must be one of ${[...RULE_ID_SET].join(', ')}`);
+    }
+    const file = String(r['file']);
+    if (file.includes('*') || file.includes('?')) {
+      errs.push(`file glob disallowed — entry must name an exact relative path (got '${file}')`);
+    }
+    if (file.startsWith('/') || file.includes('..')) {
+      errs.push(`file path must be repo-relative without '..' (got '${file}')`);
+    }
+    const exact = String(r['exactMatch']);
+    if (exact.length < 3) {
+      errs.push(`exactMatch must be at least 3 chars to avoid broad suppression`);
+    }
+    if (exact === '*' || /^\s*\*+\s*$/.test(exact)) {
+      errs.push(`exactMatch must not itself be a wildcard string`);
+    }
+    const expiresAt = typeof r['expiresAt'] === 'string' ? (r['expiresAt'] as string) : undefined;
+    const reviewBy = typeof r['reviewBy'] === 'string' ? (r['reviewBy'] as string) : undefined;
+    if (!expiresAt && !reviewBy) {
+      errs.push(`entry must declare expiresAt or reviewBy`);
+    }
+    if (errs.length > 0) {
+      errors.push({ index: idx, reason: errs.join('; '), raw: e });
+      return;
+    }
+    const entry: AllowlistEntry = {
+      ruleId,
+      file,
+      exactMatch: exact,
+      reason: String(r['reason']),
+      owner: String(r['owner']),
+      ...(expiresAt ? { expiresAt } : {}),
+      ...(reviewBy ? { reviewBy } : {}),
+    };
+    entries.push(entry);
+  });
+  return { entries, errors };
+}
+
+export async function loadAllowlist(filePath: string): Promise<{
+  entries: AllowlistEntry[];
+  errors: AllowlistError[];
+}> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(filePath, 'utf-8');
+  } catch {
+    // Missing allowlist is treated as empty (zero suppression). The gate
+    // does not silently allowlist anything that hasn't been written down.
+    return { entries: [], errors: [] };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      entries: [],
+      errors: [{ index: -1, reason: `allowlist JSON parse failed: ${err}`, raw }],
+    };
+  }
+  return validateAllowlist(parsed);
+}
+
+function violationMatchesEntry(v: Violation, e: AllowlistEntry): boolean {
+  if (v.ruleId !== e.ruleId) return false;
+  if (v.filePath !== e.file) return false;
+  return v.snippet.includes(e.exactMatch);
+}
+
+// ─── Scanner orchestration ────────────────────────────────────────────────
+export interface ScanOptions {
+  readonly repoRoot: string;
+  /** Override the file set instead of walking the documented tree. */
+  readonly scanPaths?: ReadonlyArray<string>;
+  readonly allowlist?: Allowlist;
+}
+
+export async function runScan(opts: ScanOptions): Promise<ScanResult> {
+  const allow = opts.allowlist?.entries ?? [];
+  const violations: Violation[] = [];
+
+  async function processFile(abs: string): Promise<void> {
+    const rel = relPosix(opts.repoRoot, abs);
+    const scopes = fileScope(rel);
+    for (const scope of scopes) {
+      let found: Violation[] = [];
+      if (scope === 'json') {
+        found = await scanJson(opts.repoRoot, abs, rel);
+      } else if (scope === 'yaml') {
+        found = await scanYaml(opts.repoRoot, abs, rel);
+      } else if (scope === 'ts') {
+        found = await scanTs(opts.repoRoot, abs, rel);
+      }
+      violations.push(...found);
+    }
+  }
+
+  if (opts.scanPaths && opts.scanPaths.length > 0) {
+    for (const p of opts.scanPaths) {
+      const abs = path.isAbsolute(p) ? p : path.join(opts.repoRoot, p);
+      const stat = await fs.stat(abs).catch(() => null);
+      if (!stat) continue;
+      if (stat.isDirectory()) {
+        for await (const f of walk(abs)) {
+          await processFile(f);
+        }
+      } else {
+        await processFile(abs);
+      }
+    }
+  } else {
+    for await (const abs of walk(opts.repoRoot)) {
+      await processFile(abs);
+    }
+  }
+
+  const unallowed: Violation[] = [];
+  const suppressed: Violation[] = [];
+  for (const v of violations) {
+    const match = allow.find(e => violationMatchesEntry(v, e));
+    if (match) suppressed.push(v);
+    else unallowed.push(v);
+  }
+  return { violations: unallowed, allowlisted: suppressed, allowlistErrors: [] };
+}
+
+// ─── CLI entrypoint ───────────────────────────────────────────────────────
+interface CliFlags {
+  scanPaths?: string[];
+  allowlistPath: string;
+  json: boolean;
+  quiet: boolean;
+}
+
+function parseFlags(argv: string[]): CliFlags {
+  const f: CliFlags = {
+    allowlistPath: 'scripts/gates/no-wildcard-authority.allowlist.json',
+    json: false,
+    quiet: false,
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--scan') {
+      const v = argv[++i] ?? '';
+      f.scanPaths = v.split(',').filter(Boolean);
+    } else if (arg === '--allowlist') {
+      f.allowlistPath = argv[++i] ?? f.allowlistPath;
+    } else if (arg === '--json') {
+      f.json = true;
+    } else if (arg === '--quiet') {
+      f.quiet = true;
+    }
+  }
+  return f;
+}
+
+function formatViolation(v: Violation): string {
+  const where = v.line > 0 ? `${v.filePath}:${v.line}` : v.filePath;
+  return `[${v.ruleId}] ${where}\n   ${v.detail}\n   snippet: ${v.snippet}`;
+}
+
+export async function cli(argv: string[]): Promise<number> {
+  const flags = parseFlags(argv);
+  const repoRoot = process.cwd();
+  const allow = await loadAllowlist(path.join(repoRoot, flags.allowlistPath));
+  if (allow.errors.length > 0) {
+    if (!flags.quiet) {
+      console.error('[GOV-AUTHORITY-STRICTNESS-GATE] allowlist invalid:');
+      for (const e of allow.errors) {
+        console.error(`  entry #${e.index}: ${e.reason}`);
+      }
+    }
+    return 1;
+  }
+  const result = await runScan({
+    repoRoot,
+    allowlist: { entries: allow.entries },
+    ...(flags.scanPaths ? { scanPaths: flags.scanPaths } : {}),
+  });
+  if (flags.json) {
+    const payload = {
+      gate: 'GOV-AUTHORITY-STRICTNESS-GATE',
+      violations: result.violations,
+      allowlisted: result.allowlisted,
+    };
+    console.log(JSON.stringify(payload, null, 2));
+  } else if (!flags.quiet) {
+    if (result.allowlisted.length > 0) {
+      console.error(
+        `[GOV-AUTHORITY-STRICTNESS-GATE] ${result.allowlisted.length} allowlisted (suppressed):`
+      );
+      for (const v of result.allowlisted) {
+        console.error('  ' + formatViolation(v).replace(/\n/g, '\n  '));
+      }
+    }
+    if (result.violations.length === 0) {
+      console.log(`[GOV-AUTHORITY-STRICTNESS-GATE] ✓ clean — no unallowlisted violations`);
+    } else {
+      console.error(`[GOV-AUTHORITY-STRICTNESS-GATE] ✗ ${result.violations.length} violation(s):`);
+      for (const v of result.violations) {
+        console.error(formatViolation(v));
+      }
+    }
+  }
+  return result.violations.length === 0 ? 0 : 1;
+}
+
+const invokedDirectly = (() => {
+  try {
+    const argv1 = process.argv[1] ?? '';
+    return argv1.endsWith('no-wildcard-authority.ts');
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedDirectly) {
+  cli(process.argv.slice(2)).then(code => process.exit(code));
+}

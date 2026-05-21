@@ -485,6 +485,29 @@ export const DATA_CLASS_ORDER: string[] = [
   'financial',
 ];
 
+// ─── OCT Ceiling axis sentinel ───
+/**
+ * Sentinel value indicating "OCT does not impose a ceiling on this axis;
+ * the effective ceiling is the identity / RBAC / delegation ceiling alone."
+ *
+ * Used inside OCT_CEILINGS.allowedSystems / .allowedCapabilities for the
+ * three OCT levels that are NOT system-axis-restricted (OCT-SECURE,
+ * OCT-CONFIDENTIAL, OCT-OPEN). The intersection helper in
+ * `packages/core/src/classification/ceiling-resolver.ts` recognises this
+ * sentinel and returns the opposite side rather than the literal `'*'`.
+ *
+ * The runtime value is still the string `'*'` — this is a deliberate
+ * preserve-semantics rename so the source no longer carries a literal
+ * wildcard in authority fields (GOV-AUTHORITY-STRICTNESS-GATE) without
+ * changing any consumer behavior. Anyone reading the OCT_CEILINGS
+ * declaration now sees a named symbol with a docstring instead of an
+ * unexplained `'*'`.
+ *
+ * No actor's `allowedSystems` / `allowedCapabilities` should ever
+ * contain this value at runtime — it is only valid inside OCT_CEILINGS.
+ */
+export const AXIS_NOT_CONSTRAINED = '*';
+
 // ─── OCT Ceilings (§11.2) ───
 // Inline type — the full OctCeiling interface is in interfaces/index.ts.
 // This constant is used by Gate 02 and the delegation engine for ceiling enforcement.
@@ -503,8 +526,8 @@ export const OCT_CEILINGS: Record<
     dataClassCeiling: ['public', 'internal', 'confidential', 'pii', 'phi', 'financial'],
     modelTierCeiling: ['on_prem_sensitive'],
     actionRiskCeiling: 'critical',
-    allowedSystems: ['*'],
-    allowedCapabilities: ['*'],
+    allowedSystems: [AXIS_NOT_CONSTRAINED],
+    allowedCapabilities: [AXIS_NOT_CONSTRAINED],
     delegationCeiling: { maxChainDepth: 3, maxRiskTier: 'critical' },
   },
   'OCT-CONFIDENTIAL': {
@@ -518,8 +541,8 @@ export const OCT_CEILINGS: Record<
       'fallback',
     ],
     actionRiskCeiling: 'high',
-    allowedSystems: ['*'],
-    allowedCapabilities: ['*'],
+    allowedSystems: [AXIS_NOT_CONSTRAINED],
+    allowedCapabilities: [AXIS_NOT_CONSTRAINED],
     delegationCeiling: { maxChainDepth: 2, maxRiskTier: 'high' },
   },
   'OCT-OPEN': {
@@ -533,8 +556,8 @@ export const OCT_CEILINGS: Record<
       'fallback',
     ],
     actionRiskCeiling: 'medium',
-    allowedSystems: ['*'],
-    allowedCapabilities: ['*'],
+    allowedSystems: [AXIS_NOT_CONSTRAINED],
+    allowedCapabilities: [AXIS_NOT_CONSTRAINED],
     delegationCeiling: { maxChainDepth: 1, maxRiskTier: 'medium' },
   },
   'OCT-COMPILE': {

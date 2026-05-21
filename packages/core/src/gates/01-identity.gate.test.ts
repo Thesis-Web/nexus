@@ -80,7 +80,16 @@ const IDENTITY_CLAIMS: IdentityClaims = {
   capabilityCeilings: [
     {
       allowedSystems: ['stub'],
-      allowedCapabilities: ['*'],
+      // Concrete capability set — Gate 01 validates identity tuple,
+      // not capability membership, so the exact list does not affect
+      // these tests. Concrete values (not wildcards) keep the fixture
+      // honest under GOV-AUTHORITY-STRICTNESS-GATE.
+      allowedCapabilities: [
+        'read:record:single',
+        'read:record:bulk',
+        'create:record:internal',
+        'update:record:internal',
+      ],
       maxRiskTier: 'high',
     },
   ],

@@ -1036,8 +1036,12 @@ export async function bootstrapWorkspace(
   const promptTemplateStore = new SqlitePromptTemplateStore(wsDbPath);
   const secureRailStore = new SqliteSecureRailStore(wsDbPath);
 
-  // ── Elevated auth + catalog (reference implementations) ─────────────────
-  const elevatedAuthProvider = new ReferenceElevatedAuthProvider({ dbPath: wsDbPath });
+  // ── Catalog reader (reference impl) ─────────────────────────────────────
+  // ElevatedAuthProvider construction is deferred until after the
+  // identityProvider is built, because the production-correct elevation
+  // verifier closes over identityProvider.authenticate (api_key_reauth)
+  // and actorRegistry (principal binding). See the
+  // `elevatedAuthProvider` block below.
   // Claude C: claims-filtered catalog reader. Backward-compat — omitted
   // catalogSources yields empty listings, matching prior zero-arg behavior.
   const catalogReader = new ReferenceCatalogReader({
@@ -1118,6 +1122,53 @@ export async function bootstrapWorkspace(
     authProvider,
     jwtAuthProvider
   );
+
+  // ── ElevatedCredentialVerifier — production-correct elevation ─────────
+  // Verifies the `response` posted to /workspace/vault/auth against the
+  // principal's registered authentication factor. For api_key_reauth
+  // we delegate to identityProvider.authenticate (the same path that
+  // backs workspace login) and then bind the resolved actor to the
+  // requested principalId. Mismatch → false → elevation rejected with
+  // "Invalid credential" (no fallback / any-non-empty acceptance per
+  // GOV-AUTHORITY-STRICTNESS-GATE).
+  //
+  // password_reauth and other methods are not implemented in the
+  // reference adapter — they return false (fail-closed) until an
+  // enterprise identity adapter wires them. The ReferenceElevatedAuth-
+  // Provider treats false the same as a wrong credential, so callers
+  // attempting an unsupported method see a generic "Invalid credential"
+  // (intentional — no enumeration leak).
+  const elevatedCredentialVerifier: import('@nexus/contracts').ElevatedCredentialVerifier = {
+    async verify(input) {
+      if (input.method === 'api_key_reauth') {
+        try {
+          const actorIdentifier = await identityProvider.authenticate({
+            type: 'api_key',
+            value: input.response,
+          });
+          const actor = await coreDeps.actorRegistry.get(actorIdentifier as Uuid);
+          if (!actor) return false;
+          // Principal-binding: the api key must belong to an actor
+          // whose principal matches the elevated session principal.
+          // Prevents one principal's key from elevating another's
+          // session.
+          return actor.principalId === input.principalId;
+        } catch {
+          // Invalid api key, deregistered actor, or registry error —
+          // fail closed.
+          return false;
+        }
+      }
+      // No other methods implemented in the reference adapter.
+      return false;
+    },
+  };
+
+  // ── Elevated auth provider (production-correct verifier required) ─────
+  const elevatedAuthProvider = new ReferenceElevatedAuthProvider({
+    dbPath: wsDbPath,
+    credentialVerifier: elevatedCredentialVerifier,
+  });
 
   // ── Seed dev-admin + default agent in canonical NXS ActorRegistry ──────
   const devAdminApiKey = await loadDevAdminApiKey();

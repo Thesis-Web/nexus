@@ -172,6 +172,30 @@ export const ELEVATED_AUTH_METHOD = {
 /** Open string type — enterprise adds custom methods [GWB4-F05] */
 export type ElevatedAuthMethod = string;
 
+/**
+ * Production-correct elevation credential verifier.
+ *
+ * The ElevatedAuthProvider's `verify` step MUST delegate the actual
+ * credential check to an implementation of this port. The composition
+ * root wires a concrete verifier that compares the response against the
+ * principal's registered authentication factor for the requested method
+ * (e.g. for `api_key_reauth` the registered api key; for
+ * `password_reauth` the password hash). Constant-time comparison is
+ * mandatory for any secret-bearing method.
+ *
+ * No fallback / "any non-empty accepts" behavior is allowed in the
+ * reference impl — that posture is what GOV-AUTHORITY-STRICTNESS-GATE
+ * forbids in production. A missing/null verifier in the composition
+ * root must fail fast at startup.
+ */
+export interface ElevatedCredentialVerifier {
+  verify(input: {
+    readonly principalId: string;
+    readonly method: ElevatedAuthMethod;
+    readonly response: string;
+  }): Promise<boolean>;
+}
+
 export interface ElevatedAuthChallengeRequest {
   principalId: string;
   method: ElevatedAuthMethod;

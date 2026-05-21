@@ -16,6 +16,7 @@ import type {
   ElevatedAuthVerifyRequest,
   ElevatedSession,
   ElevatedSessionStatus,
+  ElevatedCredentialVerifier,
   Uuid,
   IsoTimestamp,
 } from '@nexus/contracts';
@@ -37,14 +38,36 @@ const DEFAULT_TIMEOUT_SECONDS = 15 * 60;
 /** Challenge expiry: 5 minutes. */
 const CHALLENGE_EXPIRY_SECONDS = 5 * 60;
 
+export interface ReferenceElevatedAuthProviderOpts {
+  dbPath?: string;
+  timeoutSeconds?: number;
+  /**
+   * Required credential verifier. The provider hands the response
+   * credential to this verifier, which compares it (constant-time)
+   * against the principal's registered authentication factor for the
+   * requested method. The reference impl no longer accepts "any
+   * non-empty response" — that posture is forbidden by
+   * GOV-AUTHORITY-STRICTNESS-GATE in production. The composition root
+   * MUST wire a real verifier; missing/null → constructor throws.
+   */
+  credentialVerifier: ElevatedCredentialVerifier;
+}
+
 export class ReferenceElevatedAuthProvider implements ElevatedAuthProvider {
   private readonly sessionStore: SqliteElevatedSessionStore;
   private readonly challenges: Map<string, ChallengeRecord> = new Map();
   private readonly timeoutSeconds: number;
+  private readonly credentialVerifier: ElevatedCredentialVerifier;
 
-  constructor(opts?: { dbPath?: string; timeoutSeconds?: number }) {
-    this.sessionStore = new SqliteElevatedSessionStore(opts?.dbPath);
-    this.timeoutSeconds = opts?.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS;
+  constructor(opts: ReferenceElevatedAuthProviderOpts) {
+    if (!opts || !opts.credentialVerifier || typeof opts.credentialVerifier.verify !== 'function') {
+      throw new Error(
+        'ReferenceElevatedAuthProvider requires opts.credentialVerifier — wire a real ElevatedCredentialVerifier from the composition root (no fallback / any-non-empty acceptance allowed; see GOV-AUTHORITY-STRICTNESS-GATE)'
+      );
+    }
+    this.sessionStore = new SqliteElevatedSessionStore(opts.dbPath);
+    this.timeoutSeconds = opts.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS;
+    this.credentialVerifier = opts.credentialVerifier;
   }
 
   async challenge(input: ElevatedAuthChallengeRequest): Promise<ElevatedAuthChallenge> {
@@ -94,10 +117,22 @@ export class ReferenceElevatedAuthProvider implements ElevatedAuthProvider {
       throw new Error('Method mismatch');
     }
 
-    // Reference verification: any non-empty response accepted.
-    // Production: real password/key verification via identity provider.
+    // Production-correct verification: delegate the credential check to
+    // the injected ElevatedCredentialVerifier. The verifier compares the
+    // response (e.g. an api key) against the principal's registered
+    // authentication factor using constant-time comparison and returns
+    // a boolean. The previous "any non-empty response accepted" posture
+    // is forbidden by GOV-AUTHORITY-STRICTNESS-GATE — gone.
     if (!input.response || input.response.length === 0) {
       throw new Error('Empty response');
+    }
+    const credentialOk = await this.credentialVerifier.verify({
+      principalId: input.principalId,
+      method: input.method,
+      response: input.response,
+    });
+    if (!credentialOk) {
+      throw new Error('Invalid credential');
     }
 
     // Mark challenge consumed

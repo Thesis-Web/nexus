@@ -1,0 +1,4 @@
+{
+  "_doc": "Allowlist for GOV-AUTHORITY-STRICTNESS-GATE. Every entry suppresses ONE specific violation in ONE specific file. Schema enforced by scripts/gates/no-wildcard-authority.ts. Requirements: ruleId (one of GOV-WILD-001..005), file (exact repo-relative path, no globs/no '..'), exactMatch (substring of the offending snippet, at least 3 chars, not a wildcard itself), reason, owner, AND expiresAt OR reviewBy. Add new entries with explicit owner and expiry. Broad/permanent suppressions are rejected at allowlist validation time.",
+  "entries": []
+}

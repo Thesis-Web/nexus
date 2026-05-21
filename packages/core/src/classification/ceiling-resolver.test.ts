@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { resolveEffectiveCeiling, riskTierMin, intersect } from './ceiling-resolver.js';
-import { OCT_CEILINGS, EVIDENCE_SENTINEL } from '../types/index.js';
+import { OCT_CEILINGS, EVIDENCE_SENTINEL, AXIS_NOT_CONSTRAINED } from '../types/index.js';
 import type { CapabilityCeiling, OctCeiling } from '../types/index.js';
 
 describe('Ceiling Resolver — spec §10.4', () => {
@@ -38,7 +38,7 @@ describe('Ceiling Resolver — spec §10.4', () => {
   it('resolveEffectiveCeiling: OCT-OPEN with medium identity ceiling', () => {
     const identity: CapabilityCeiling = {
       allowedSystems: ['stub'],
-      allowedCapabilities: ['*'],
+      allowedCapabilities: [AXIS_NOT_CONSTRAINED],
       maxRiskTier: 'medium',
     };
     const oct = OCT_CEILINGS['OCT-OPEN'] as OctCeiling;
@@ -51,7 +51,7 @@ describe('Ceiling Resolver — spec §10.4', () => {
   it('resolveEffectiveCeiling: OCT-SECURE with high identity ceiling → OCT wins', () => {
     const identity: CapabilityCeiling = {
       allowedSystems: ['stub', 'vault'],
-      allowedCapabilities: ['*'],
+      allowedCapabilities: [AXIS_NOT_CONSTRAINED],
       maxRiskTier: 'critical',
     };
     const oct = OCT_CEILINGS['OCT-SECURE'] as OctCeiling;
@@ -74,7 +74,7 @@ describe('Ceiling Resolver — spec §10.4', () => {
   it('resolveEffectiveCeiling: OCT-COMPILE uses identity maxRiskTier (defensive)', () => {
     const identity: CapabilityCeiling = {
       allowedSystems: ['stub'],
-      allowedCapabilities: ['*'],
+      allowedCapabilities: [AXIS_NOT_CONSTRAINED],
       maxRiskTier: 'medium',
     };
     const oct = OCT_CEILINGS['OCT-COMPILE'] as OctCeiling;

@@ -684,6 +684,19 @@ async function main(): Promise<void> {
   pass();
 
   // -------------------------------------------------------------------------
+  // GOV-AUTHORITY-STRICTNESS-GATE — fast-fail static scan for wildcard /
+  // fail-open / fallback-allow / null-as-allow shortcuts in governance
+  // surfaces. Runs before unit/integration suites so authority bypasses
+  // fail as early as the typecheck. See
+  // scripts/gates/no-wildcard-authority.ts for rule IDs GOV-WILD-001..005
+  // and the (narrowly-scoped, expiry-bound) allowlist at
+  // scripts/gates/no-wildcard-authority.allowlist.json.
+  // -------------------------------------------------------------------------
+  stepLog('GOV-AUTHORITY-STRICTNESS-GATE — wildcard / fail-open / fallback-allow scan');
+  runCmd('pnpm exec tsx scripts/gates/no-wildcard-authority.ts');
+  pass('no wildcard authority, fail-open, or fallback-allow in governance surfaces');
+
+  // -------------------------------------------------------------------------
   // Step 3: unit tests — exactly 7 gate unit test files + §31.2 coverage
   // §7.4 step 3: "all 7 gate unit test files"
   // §31.2: min 95% line coverage on packages/core/src/gates/

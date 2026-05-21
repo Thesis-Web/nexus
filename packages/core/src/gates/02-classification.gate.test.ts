@@ -55,7 +55,16 @@ const DEFAULT_CLAIMS: IdentityClaims = {
   capabilityCeilings: [
     {
       allowedSystems: ['stub'],
-      allowedCapabilities: ['*'],
+      // Concrete capability set — Gate 02 tests probe OCT/risk
+      // intersection, not capability membership specifically. Concrete
+      // values keep the fixture honest under
+      // GOV-AUTHORITY-STRICTNESS-GATE.
+      allowedCapabilities: [
+        'read:record:single',
+        'read:record:bulk',
+        'create:record:internal',
+        'update:record:internal',
+      ],
       maxRiskTier: 'high',
     },
   ],
@@ -216,7 +225,15 @@ it('denies RISK_CEILING_EXCEEDED when risk tier exceeds OCT ceiling (spec §10.4
     capabilityCeilings: [
       {
         allowedSystems: ['stub'],
-        allowedCapabilities: ['*'],
+        // Concrete capability set covering the test action so the
+        // identity ceiling does not block; the test is asserting risk-
+        // tier denial (RISK_CEILING_EXCEEDED), not capability denial.
+        allowedCapabilities: [
+          'read:record:single',
+          'read:record:bulk',
+          'create:record:internal',
+          'update:record:internal',
+        ],
         maxRiskTier: 'critical', // identity ceiling doesn't block
       },
     ],

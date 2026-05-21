@@ -9,3 +9,8 @@ docs/archive-v0
 docs/**/*.md
 .pnpm-store/
 pnpm-store/
+# keys/ contains generated key material (Ed25519 keypairs, api keys,
+# admin tokens). The dev-admin admin keypair under keys/admins/ ships
+# with the portable product and must not be reflowed by prettier —
+# other keys/* are gitignored secrets.
+keys/

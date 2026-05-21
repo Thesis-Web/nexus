@@ -179,6 +179,7 @@ export type {
   ElevatedSession,
   ElevatedSessionStatus,
   ElevatedAuthProvider,
+  ElevatedCredentialVerifier,
   WorkspaceApprovalBridge,
   WorkspaceUiEventKind,
   WorkspaceUiEvent,
