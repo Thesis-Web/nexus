@@ -41,7 +41,10 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 
-const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');
+// process.cwd() is the repo root for `pnpm gate:no-e2e-skip` (matches the
+// existing no-wildcard-authority gate convention; sidesteps the
+// `import.meta` CJS-target restriction).
+const REPO_ROOT = process.cwd();
 const SCAN_DIR = path.join(REPO_ROOT, 'tests', 'e2e');
 const EXCLUDE_DIRS = new Set(['_acceptance']);
 const ALLOWLIST_PATH = path.join(REPO_ROOT, 'scripts', 'gates', 'no-e2e-skip.allowlist.json');
