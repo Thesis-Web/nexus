@@ -437,9 +437,119 @@ describe('E2E Category 3 — single-agent NXS dispatch (target system read)', ()
     const rows = finalResponseBody['rows'] as ReadonlyArray<Record<string, unknown>>;
     expect(rows[0]?.['customer_code'], 'top customer by revenue').toBe('CUST-001');
   }, 120_000);
-  it('E2E-26-nxs-sales-bulk-pull: sr_manager → Q1 export bulk pull', () => {
-    nxsBlocked('E2E-26', 'sr_manager bulk export — risk-ceiling test', ['HL#5', 'HL#10']);
-  });
+  /**
+   * E2E-26 — sr_manager → Q1 2026 export bulk pull from sales-finance.
+   * POSITIVE SUCCESS-PATH ENVELOPE ONLY.
+   *
+   * What this test proves
+   * ─────────────────────
+   *   - sr_manager (riskCeiling=high, allowedCapabilities includes
+   *     read:record:bulk, allowedSystems includes sales-finance) can
+   *     execute a literal Q1 bulk SELECT on sales_orders through the
+   *     full governed path:
+   *       workspace → orch → NXS Gates 01-07 → postgres-sales-finance
+   *       connector → mailbox → compile → final_response → run_closed.
+   *   - The connector really executes the SELECT (its payload-write
+   *     step at packages/connectors/postgres/postgres.connector.ts
+   *     :444-467 runs unconditionally on success). Seed reality
+   *     (infra/postgres-init/sales-finance/001_schema.sql sales_orders
+   *     inserts):
+   *       SO-1001 status='shipped'    ordered_at='2026-04-15' → Q2
+   *       SO-1002 status='pending'    ordered_at='2026-05-01' → Q2
+   *       SO-1003 status='processing' ordered_at='2026-05-05' → Q2
+   *       SO-1004 status='cancelled'  ordered_at='2026-04-20' → Q2
+   *     Zero rows match the literal Q1-shipped filter, so rowCount=0
+   *     is the truthful seed answer. The gate envelope still fires
+   *     end-to-end (mailbox data-kind item is written; compile
+   *     pass-through emits final_response with the truthful zero-row
+   *     payload). Per the E2E-21 precedent — preserve the catalog's
+   *     literal semantic against fixed-seed data; do not stretch
+   *     query parameters to manufacture rows.
+   *
+   * What this test does NOT prove (unresolved — owner-ruling needed)
+   * ──────────────────────────────────────────────────────────────
+   * The catalog row for E2E-26 (AMEND-nexus-workspace-e2e-smoke-tests
+   * -v0-4-0.md line 123) says "(bulk → high risk)" and "Gate 02 risk
+   * OK for sr_manager, denied at lower role". The "denied at lower
+   * role" half belongs to the dedicated RBAC-differentials slot
+   * E2E-106 (analyst pulling 10000 rows from sales → "Gate 02 denies
+   * (riskCeiling: medium < bulk:high)"). E2E-106 is currently
+   * honest-red on blocker E2E-RBAC-DIFFERENTIALS-CATALOG.
+   *
+   * Independent of who owns the proof, there is a real catalog/runtime
+   * drift that affects whether E2E-106 (and the catalog's "bulk → high
+   * risk" framing for E2E-26) can ever be exercised:
+   *   - Implemented runtime classifies sales-finance bulk reads at
+   *     ≤medium. E2E-21 already passes for sr_analyst whose
+   *     maxRiskTier=medium; by HL#15 symmetric intersection, if the
+   *     action resolved to risk='high' that test would deny.
+   *   - The postgres connector caps results at maxRows=500 for
+   *     sales-finance (config/connectors/connectors.v1.yaml). A
+   *     "10000-row" pull cannot occur at the connector boundary, so
+   *     E2E-106's row-count framing is also unbuildable as written.
+   *   - The `analyst` ladder persona lacks read:record:bulk entirely
+   *     (scripts/seeds/user-ladder-seeds.ts:138-145), so even if the
+   *     runtime classified bulk-on-sales as high, denial would fire
+   *     at Gate 03 CAPABILITY before Gate 02 RISK.
+   *
+   * Logged as F-14 in
+   * docs/acceptance-wall/REPAIR-MODE-FINDINGS-2026-05-21-pass3.md.
+   * Resolution is owner-ruled: either extend the runtime with a
+   * scope-aware risk classifier so "bulk export"-shaped reads tier
+   * up, or amend the catalog so bulk reads on sales-finance are
+   * categorically medium-risk and E2E-106's denial-gate framing is
+   * revised. Until then, the lower-role denial differential is NOT
+   * PROVEN — by this test or anywhere else in the wall.
+   */
+  it('E2E-26-nxs-sales-bulk-pull: sr_manager → Q1 export bulk pull', async () => {
+    const jwt = await harness.jwtFor('sr_manager');
+    const { runId } = await harness.createRun(jwt, {
+      workspaceSocketId: 'reference-workspace',
+      promptMode: 'free_text',
+      prompt: 'Export all orders shipped between 2026-01-01 and 2026-03-31.',
+      agents: [SALES_AGENT_ACTOR_ID],
+      subTasks: [
+        {
+          kind: 'nxs',
+          subTaskKey: 'sales-q1-shipped-export',
+          agentId: SALES_AGENT_ACTOR_ID,
+          taskSummary: 'Bulk-export sales orders with status=shipped for 2026 Q1',
+          expectedOutputSlots: ['rows'],
+          inputSlotReads: [],
+          actionTemplate: {
+            capability: 'read:record:bulk',
+            target: {
+              system: 'sales-finance',
+              resourceType: 'sales_orders',
+              resourceScope: 'bulk',
+            },
+            rawPayload: {
+              sql: 'SELECT order_code, customer_code, status, subtotal, ordered_at FROM sales_orders WHERE status = $1 AND ordered_at >= $2 AND ordered_at < $3 ORDER BY ordered_at',
+              params: ['shipped', '2026-01-01T00:00:00Z', '2026-04-01T00:00:00Z'],
+            },
+          },
+        },
+      ] as ReadonlyArray<unknown>,
+      subTaskEdges: [],
+    });
+    const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 90_000 });
+    const { finalResponseBody } = assertNxsReadForensicEnvelope(snap, {
+      expectedTargetSystem: 'sales-finance',
+      wrongConnectorSystem: 'warehouse',
+    });
+    // Truthful seed assertion: zero shipped orders in Q1 2026. The
+    // connector still executed, all gates still fired, mailbox/compile/
+    // final_response still flowed — the row content is incidental.
+    expect(finalResponseBody['rowCount'], 'Q1-shipped seed row count').toBe(0);
+    // Columns array is present and non-empty — distinguishes "zero rows"
+    // from "query never executed" or "result shape lost downstream".
+    const cols = finalResponseBody['columns'] as ReadonlyArray<string>;
+    expect(cols, 'columns array carries projected SELECT shape').toContain('order_code');
+    expect(cols).toContain('status');
+    expect(cols).toContain('ordered_at');
+    const rows = finalResponseBody['rows'] as ReadonlyArray<Record<string, unknown>>;
+    expect(rows.length, 'rows array empty for zero-match Q1 filter').toBe(0);
+  }, 120_000);
   /**
    * E2E-27 — director → warehouse SKUs/locations under their reorder
    * point. Director persona has bulk + warehouse. The seed has these
