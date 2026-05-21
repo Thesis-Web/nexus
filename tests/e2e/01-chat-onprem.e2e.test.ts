@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { bootHarness, type E2EHarness } from './harness.js';
+import { AcceptanceWallFailure } from './_acceptance/failure.js';
 
 const CHAT_AGENT_ID = '00000000-0000-4000-a000-000000000004';
 const CHAT_WORKSPACE = 'nexus-chat-default';
@@ -69,21 +70,105 @@ describe('E2E Category 1 — chat on-prem (single agent, no contract)', () => {
   }, 120_000);
 
   /**
-   * E2E-02..10 in this file are stubs at the v0.4.0 milestone; each
-   * uses the same shape with a varying prompt. The wall starts here —
-   * additional bodies expand in follow-on patches per the v0.4.0 spec
-   * phasing. Each test that lands is one fewer the audit team can
-   * deride as missing.
+   * E2E-02..10 — chat-on-prem catalog slots. The path through the
+   * chat-on-prem surface is already proven by E2E-01; these slots
+   * simply repeat the path with different prompts and ladder users
+   * to exercise role-based denial differentials at Gate 02/03/04.
+   *
+   * Owner directive 2026-05-21: no `it.skip` in the wall. Each catalog
+   * slot is a real `it()` that throws `AcceptanceWallFailure` until the
+   * body is implemented. The reporter logs every slot in the failure
+   * ledger so unimplemented surface is visible, not hidden.
    */
-  it.skip('E2E-02-chat-time: intern → "what time is it where you are?"', async () => {
-    // tier-1 build queue — see AMEND-nexus-workspace-e2e-smoke-tests-v0-4-0.md §3.1
+  it('E2E-02-chat-time: intern → "what time is it where you are?"', () => {
+    throw new AcceptanceWallFailure({
+      testId: 'E2E-02',
+      failureClass: 'UNIMPLEMENTED_TEST_BODY',
+      reason: 'Test body not implemented. E2E-01 proved the chat-on-prem path; this slot needs a body that posts the prompt as `intern`.',
+      blockedBy: 'E2E-CHAT-ONPREM-CATALOG',
+      owner: 'builder',
+      lawPins: ['HL#2', 'HL#4', 'HL#6', 'HL#11'],
+      nextRecommendedAction: 'Clone the E2E-01 body, switch jwt to `intern`, assert the same forensic envelope.',
+    });
   });
-  it.skip('E2E-03-chat-math: intern → "what is 17 times 23?"', async () => {});
-  it.skip('E2E-04-chat-summarize: analyst → summarize the prompt', async () => {});
-  it.skip('E2E-05-chat-translate: analyst → translate hello world', async () => {});
-  it.skip('E2E-06-chat-poem: sr_analyst → quarterly-reports haiku', async () => {});
-  it.skip('E2E-07-chat-explain: manager → bills receivable vs payable', async () => {});
-  it.skip('E2E-08-chat-list: manager → ops manager qualities list', async () => {});
-  it.skip('E2E-09-chat-define: sr_manager → inventory turnover definition', async () => {});
-  it.skip('E2E-10-chat-followup-pretrained-knowledge: director → PO lifecycle', async () => {});
+  it('E2E-03-chat-math: intern → "what is 17 times 23?"', () => {
+    throw new AcceptanceWallFailure({
+      testId: 'E2E-03',
+      failureClass: 'UNIMPLEMENTED_TEST_BODY',
+      reason: 'Test body not implemented. Math-prompt variant of E2E-01 as `intern`.',
+      blockedBy: 'E2E-CHAT-ONPREM-CATALOG',
+      owner: 'builder',
+      lawPins: ['HL#2', 'HL#11'],
+    });
+  });
+  it('E2E-04-chat-summarize: analyst → summarize the prompt', () => {
+    throw new AcceptanceWallFailure({
+      testId: 'E2E-04',
+      failureClass: 'UNIMPLEMENTED_TEST_BODY',
+      reason: 'Test body not implemented. Summarize-prompt variant of E2E-01 as `analyst`.',
+      blockedBy: 'E2E-CHAT-ONPREM-CATALOG',
+      owner: 'builder',
+      lawPins: ['HL#2', 'HL#11'],
+    });
+  });
+  it('E2E-05-chat-translate: analyst → translate hello world', () => {
+    throw new AcceptanceWallFailure({
+      testId: 'E2E-05',
+      failureClass: 'UNIMPLEMENTED_TEST_BODY',
+      reason: 'Test body not implemented. Translate-prompt variant as `analyst`.',
+      blockedBy: 'E2E-CHAT-ONPREM-CATALOG',
+      owner: 'builder',
+      lawPins: ['HL#2', 'HL#11'],
+    });
+  });
+  it('E2E-06-chat-poem: sr_analyst → quarterly-reports haiku', () => {
+    throw new AcceptanceWallFailure({
+      testId: 'E2E-06',
+      failureClass: 'UNIMPLEMENTED_TEST_BODY',
+      reason: 'Test body not implemented. Creative-prompt variant as `sr_analyst`.',
+      blockedBy: 'E2E-CHAT-ONPREM-CATALOG',
+      owner: 'builder',
+      lawPins: ['HL#2', 'HL#11'],
+    });
+  });
+  it('E2E-07-chat-explain: manager → bills receivable vs payable', () => {
+    throw new AcceptanceWallFailure({
+      testId: 'E2E-07',
+      failureClass: 'UNIMPLEMENTED_TEST_BODY',
+      reason: 'Test body not implemented. Explain-prompt variant as `manager`.',
+      blockedBy: 'E2E-CHAT-ONPREM-CATALOG',
+      owner: 'builder',
+      lawPins: ['HL#2', 'HL#11'],
+    });
+  });
+  it('E2E-08-chat-list: manager → ops manager qualities list', () => {
+    throw new AcceptanceWallFailure({
+      testId: 'E2E-08',
+      failureClass: 'UNIMPLEMENTED_TEST_BODY',
+      reason: 'Test body not implemented. List-prompt variant as `manager`.',
+      blockedBy: 'E2E-CHAT-ONPREM-CATALOG',
+      owner: 'builder',
+      lawPins: ['HL#2', 'HL#11'],
+    });
+  });
+  it('E2E-09-chat-define: sr_manager → inventory turnover definition', () => {
+    throw new AcceptanceWallFailure({
+      testId: 'E2E-09',
+      failureClass: 'UNIMPLEMENTED_TEST_BODY',
+      reason: 'Test body not implemented. Define-prompt variant as `sr_manager`.',
+      blockedBy: 'E2E-CHAT-ONPREM-CATALOG',
+      owner: 'builder',
+      lawPins: ['HL#2', 'HL#11'],
+    });
+  });
+  it('E2E-10-chat-followup-pretrained-knowledge: director → PO lifecycle', () => {
+    throw new AcceptanceWallFailure({
+      testId: 'E2E-10',
+      failureClass: 'UNIMPLEMENTED_TEST_BODY',
+      reason: 'Test body not implemented. Followup-prompt variant as `director`. Pretrained knowledge — no NXS.',
+      blockedBy: 'E2E-CHAT-ONPREM-CATALOG',
+      owner: 'builder',
+      lawPins: ['HL#2', 'HL#11'],
+    });
+  });
 });
