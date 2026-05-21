@@ -77,6 +77,33 @@ async function findFreePort(): Promise<number> {
   });
 }
 
+/**
+ * Read full events for a given runId from the infra run-ledger jsonl
+ * (single file for all runs; entries carry runId for filtering). The
+ * workspace HTTP run-status route exposes only event types — full detail
+ * lives on disk and the harness reads it directly so tests can assert
+ * against detail fields.
+ */
+async function readRunEvents(
+  tmpCwd: string,
+  runId: string
+): Promise<Array<{ eventType: string; detail: Record<string, unknown> }>> {
+  const filePath = path.join(tmpCwd, 'runs', 'infra.run-ledger.jsonl');
+  let raw: string;
+  try {
+    raw = await fs.readFile(filePath, 'utf-8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw err;
+  }
+  return raw
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map(line => JSON.parse(line) as { runId?: string; eventType: string; detail?: Record<string, unknown> })
+    .filter(e => e.runId === runId)
+    .map(e => ({ eventType: e.eventType, detail: e.detail ?? {} }));
+}
+
 async function waitForHealth(baseUrl: string, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -248,25 +275,44 @@ export async function bootHarness(opts?: {
       });
     },
     async waitForRunClosed(jwt, runId, opts2): Promise<RunClosedSnapshot> {
+      // The workspace run-status route only returns { status, eventCount,
+      // eventTypes, lastEvent, rejection? } — the full event detail isn't
+      // exposed by HTTP. To synthesize a RunClosedSnapshot we (1) poll
+      // until status=='closed' (or the run is terminally rejected), then
+      // (2) read full events from the infra run-ledger jsonl on disk
+      // (single file for all runs, filtered by runId).
       const timeoutMs = opts2?.timeoutMs ?? 90_000;
       const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
         try {
           const snap = await getJson<{
-            runClosed?: boolean;
-            finalOutcome?: string | null;
-            closeReason?: string | null;
-            artifactBody?: string | null;
-            ledgerEvents?: Array<{ eventType: string; detail: Record<string, unknown> }>;
+            status?: 'open' | 'closed';
+            eventTypes?: ReadonlyArray<string>;
+            rejection?: { reason: string; reasonDetail: string };
           }>(`/workspace/runs/${encodeURIComponent(runId)}`, jwt);
-          if (snap.runClosed) {
+          const types = snap.eventTypes ?? [];
+          // Closed via run_closed, or terminally rejected by the planner
+          // (rejection means no further events will fire).
+          const isRejected = !!snap.rejection || types.includes('plan_rejected');
+          if (snap.status === 'closed' || isRejected) {
+            const ledgerEvents = await readRunEvents(tmpCwd, runId);
+            const closeEvent = ledgerEvents.find(e => e.eventType === 'run_closed');
+            const rejectEvent = ledgerEvents.find(e => e.eventType === 'plan_rejected');
+            const closeReason = closeEvent
+              ? (closeEvent.detail['closeReason'] as string | undefined) ?? null
+              : rejectEvent
+                ? 'plan_rejected'
+                : null;
+            const finalOutcome = closeEvent
+              ? (closeEvent.detail['finalOutcome'] as string | undefined) ?? null
+              : null;
             return {
               runId,
-              runClosed: true,
-              finalOutcome: snap.finalOutcome ?? null,
-              closeReason: snap.closeReason ?? null,
-              artifactBody: snap.artifactBody ?? null,
-              ledgerEvents: snap.ledgerEvents ?? [],
+              runClosed: snap.status === 'closed',
+              finalOutcome,
+              closeReason,
+              artifactBody: null,
+              ledgerEvents,
             };
           }
         } catch {
@@ -274,20 +320,20 @@ export async function bootHarness(opts?: {
         }
         await new Promise(r => setTimeout(r, 500));
       }
-      throw new Error(`harness: run ${runId} did not close within ${timeoutMs}ms`);
+      // Final read so the timeout error carries diagnostic context.
+      let lastTypes: ReadonlyArray<string> = [];
+      try {
+        const ev = await readRunEvents(tmpCwd, runId);
+        lastTypes = ev.map(e => e.eventType);
+      } catch {
+        // ignore
+      }
+      throw new Error(
+        `harness: run ${runId} did not close within ${timeoutMs}ms; last ledger events: ${JSON.stringify(lastTypes)}`
+      );
     },
     async readLedger(runId) {
-      const filePath = path.join(tmpCwd, 'runs', runId, 'ledger.jsonl');
-      try {
-        const raw = await fs.readFile(filePath, 'utf-8');
-        return raw
-          .split(/\r?\n/)
-          .filter(Boolean)
-          .map(line => JSON.parse(line) as { eventType: string; detail: Record<string, unknown> });
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
-        throw err;
-      }
+      return readRunEvents(tmpCwd, runId);
     },
     async readMailboxItems(runId) {
       const filePath = path.join(tmpCwd, 'runs', 'mailbox', runId + '.jsonl');
