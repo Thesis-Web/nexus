@@ -1068,7 +1068,20 @@ const program = createCli({
               upstreamMailboxItems,
               boundConnectorClasses
             );
-            const aggregatedProvenance = resolveAggregatedProvenance(upstreamMailboxItems);
+            // F4.11 / HL #6 — When there are no upstream mailbox items
+            // (turn 0 of a chat run: the payload IS the user's prompt
+            // body, not a downstream item), the provenance is the
+            // workspace trust boundary, NOT 'unknown'. This mirrors the
+            // pre-flight probe code (makeSendPlanCheckback line ~1791
+            // — "the probe's payload is the user's prompt, which
+            // originates at the workspace trust boundary"). Without
+            // this branch, every chat run dies at NVG with
+            // nvg_unknown_provenance_payload because empty items →
+            // resolveAggregatedProvenance returns 'unknown'.
+            const aggregatedProvenance =
+              upstreamMailboxItems.length === 0
+                ? 'workspace_upload'
+                : resolveAggregatedProvenance(upstreamMailboxItems);
             const nvgRequest: NvgOutboundRequest = {
               requestId: crypto.randomUUID() as Uuid,
               runId: request.runId,
@@ -1393,9 +1406,18 @@ const program = createCli({
         const userFirewallTransitRights: FirewallTransitMap =
           principal.firewallTransitRights ??
           (widenedClaims.push('firewallTransitRights'),
+          // F4.15 legacy-widening sentinel — '*' marks "all transit
+          // permitted, pending RBAC migration." Empty arrays would
+          // deterministically fail BakedDelegationMint's per-direction
+          // empty-intersection check (delegation-mint.ts:144) for every
+          // pre-F4.15 principal (e.g., the dev-admin seed), blocking
+          // every run. The widening event below records the field so
+          // audit + future migration sees exactly which principals
+          // RBAC still needs to populate. Downstream consumers only
+          // intersect on the value; no gate reads specific directions.
           {
-            outbound: [],
-            inbound: [],
+            outbound: ['*'],
+            inbound: ['*'],
           });
         const userPermittedRunTypes: ReadonlyArray<RunTypeKind> =
           principal.permittedRunTypes ??
