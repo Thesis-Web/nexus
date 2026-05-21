@@ -9,12 +9,19 @@ import Database from 'better-sqlite3';
 export function initializeSchema(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS principals (
-      principal_id      TEXT PRIMARY KEY,
-      display_name      TEXT NOT NULL,
-      email             TEXT NOT NULL UNIQUE,
-      registered_at     TEXT NOT NULL,
-      max_risk_tier     TEXT NOT NULL,
-      allowed_systems   TEXT NOT NULL
+      principal_id              TEXT PRIMARY KEY,
+      display_name              TEXT NOT NULL,
+      email                     TEXT NOT NULL UNIQUE,
+      registered_at             TEXT NOT NULL,
+      max_risk_tier             TEXT NOT NULL,
+      allowed_systems           TEXT NOT NULL,
+      -- F4.15 §2.1 — optional user-side capability envelope. JSON-encoded
+      -- string for the arrays, plain string for oct_level. NULL when the
+      -- principal was registered before F4.15 (legacy widening kicks in).
+      permitted_capabilities    TEXT DEFAULT NULL,
+      firewall_transit_rights   TEXT DEFAULT NULL,
+      permitted_run_types       TEXT DEFAULT NULL,
+      oct_level                 TEXT DEFAULT NULL
     );
 
     CREATE TABLE IF NOT EXISTS actors (
@@ -119,6 +126,30 @@ export function migrateSchema(db: Database.Database): void {
   // for the dev-admin actor so existing deployments don't lose admin access.
   if (!names.has('roles'))
     db.exec("ALTER TABLE actors ADD COLUMN roles TEXT NOT NULL DEFAULT '[]'");
+
+  // F4.15 §2.1 / Patch 28 — Principal envelope extended with four optional
+  // fields used by BakedDelegationMint's per-dimension intersection. The
+  // contract was widened in Patch 28 but the SQLite storage layer was not
+  // — every persisted Principal silently dropped these on register/update
+  // and read them back as undefined, which then fell through to the
+  // legacy widening (empty arrays → empty intersection → every run dies
+  // at delegation mint with `delegation_mint_failed: empty intersection
+  // on dimension firewall_rights`). Patch 37 papered over with a wildcard;
+  // the real fix is here: persist the columns so the contract round-trips.
+  const pCols = db.prepare('PRAGMA table_info(principals)').all() as Array<{ name: string }>;
+  const pNames = new Set(pCols.map(c => c.name));
+  if (!pNames.has('permitted_capabilities')) {
+    db.exec('ALTER TABLE principals ADD COLUMN permitted_capabilities TEXT DEFAULT NULL');
+  }
+  if (!pNames.has('firewall_transit_rights')) {
+    db.exec('ALTER TABLE principals ADD COLUMN firewall_transit_rights TEXT DEFAULT NULL');
+  }
+  if (!pNames.has('permitted_run_types')) {
+    db.exec('ALTER TABLE principals ADD COLUMN permitted_run_types TEXT DEFAULT NULL');
+  }
+  if (!pNames.has('oct_level')) {
+    db.exec('ALTER TABLE principals ADD COLUMN oct_level TEXT DEFAULT NULL');
+  }
 }
 
 export function openDatabase(dbPath: string): Database.Database {

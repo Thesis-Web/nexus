@@ -74,6 +74,9 @@ import {
   loadWorkspaceJwtSecret,
   loadDevAdminApiKey,
 } from '../packages/core/src/crypto/key-manager.js';
+
+// ── 10-user ladder seeds (e2e v0.4.0 spec §2) ────────────────────────────────
+import { seedTenUserLadder } from './seeds/user-ladder-seeds.js';
 import { verify } from '../packages/core/src/crypto/verifier.js';
 import { canonicalize } from '../packages/core/src/crypto/canonicalize.js';
 
@@ -1147,7 +1150,46 @@ export async function bootstrapWorkspace(
         registeredAt: now,
         maxDelegableRiskTier: 'critical',
         allowedSystems: DEV_ADMIN_SYSTEMS,
+        // F4.15 §2.1 — full Principal envelope. dev-admin is the
+        // SYSTEM seed — every dimension populated to the maximum so
+        // the per-call BakedDelegationMint intersection never yields
+        // empty for legacy widening. The Patch 28 widening pattern
+        // stays in nexus-main.ts for any pre-F4.15 customer
+        // principal still in persisted SQLite, but the SHIPPED seed
+        // carries the real values directly.
+        permittedCapabilities: DEV_ADMIN_CAPABILITIES as readonly NonEmpty[],
+        firewallTransitRights: {
+          outbound: ['public', 'internal', 'confidential', 'secret'],
+          inbound: ['public', 'internal', 'confidential', 'secret'],
+        },
+        permittedRunTypes: ['chat', 'sectioned', 'secure_rails', 'autonomous'],
+        octLevel: 'OCT-SECURE',
       });
+    } else {
+      // Idempotent F4.15 migration — heal existing dev-admin Principal
+      // records that were registered before this seed was extended.
+      // Without this branch, a sqlite file from before the upgrade
+      // would keep the empty-firewall-rights default and chat would
+      // deterministically die at delegation mint with the
+      // empty-intersection error. Patch 37 (reverted) papered this
+      // over with a wildcard; the actual fix is to populate the seed
+      // with real data-class arrays, here.
+      const existing = await coreDeps.principalRegistry.get(DEV_ADMIN_PRINCIPAL_ID);
+      if (existing && existing.firewallTransitRights === undefined) {
+        await coreDeps.principalRegistry.update(DEV_ADMIN_PRINCIPAL_ID, {
+          ...existing,
+          permittedCapabilities: DEV_ADMIN_CAPABILITIES as readonly NonEmpty[],
+          firewallTransitRights: {
+            outbound: ['public', 'internal', 'confidential', 'secret'],
+            inbound: ['public', 'internal', 'confidential', 'secret'],
+          },
+          permittedRunTypes: ['chat', 'sectioned', 'secure_rails', 'autonomous'],
+          octLevel: 'OCT-SECURE',
+        });
+        console.log(
+          '[workspace-bootstrap] dev-admin principal migrated to F4.15 full envelope (firewall + capabilities + run-types + oct)'
+        );
+      }
     }
     const existingDevAdmin = await coreDeps.actorRegistry.get(DEV_ADMIN_ACTOR_ID);
     if (!existingDevAdmin) {
@@ -1411,6 +1453,17 @@ export async function bootstrapWorkspace(
     console.log(
       '[workspace-bootstrap] nexus-sales-agent + nexus-warehouse-agent seeded (default business agents)'
     );
+
+    // ── 10-user ladder seeds (e2e v0.4.0 spec §2) ─────────────────────────
+    // janitor → CEO with strict-superset capability arrays. Every Principal
+    // carries the full F4.15 envelope. Tests run as one of these users via
+    // keys/users/<role>.apikey loaded by the harness.
+    await seedTenUserLadder({
+      principalRegistry: coreDeps.principalRegistry,
+      actorRegistry: coreDeps.actorRegistry,
+      authProvider,
+      nowIso: now,
+    });
   } else {
     console.log('[workspace-bootstrap] dev-admin key not found — run nexus init');
   }
