@@ -160,88 +160,297 @@ describe('E2E Category 12 — Hard Law surfaces', () => {
   /**
    * E2E-116 — HL#8 mailbox is the only data hub.
    *
-   * Two structural proofs combined:
-   *   (a) NXS dispatch writes mailbox items into per-actor mailboxes
-   *       (mbx-v1-run-<runId>-actor-<actorId>), NOT a shared primary
-   *       mailbox. Reading the mailbox storage shows items isolated by
-   *       (runId, actorId).
-   *   (b) The reference HTTP mailbox route at
-   *       GET /mailbox/runs/:runId/items is bound to the legacy primary
-   *       mailbox manifest record — it CANNOT return items from
-   *       per-actor mailboxes by design, so cross-actor leak via this
-   *       route is structurally impossible. (Logged in
-   *       REPAIR-MODE-FINDINGS-2026-05-21.md as a separate finding —
-   *       the route lacks auth but also lacks access to per-actor
-   *       data, so the isolation invariant holds either way.)
+   * Owner ruling 2026-05-21: the prior body was a cheap green. It
+   * proved that anonymous callers get 401 from /mailbox/* and that a
+   * single mailbox_allocated event carries a per-actor *name shape* —
+   * neither of which establishes that actor A cannot read or
+   * contaminate actor B's mailbox. Per the outline §K (Admin Dashboard,
+   * BAKED), admin auth is the control/inspection plane; "anonymous
+   * gets 401" is the §K boundary, not the §3 mailbox isolation proof.
    *
-   * Drives a real NXS run as sr_analyst, then verifies BOTH proofs:
-   *   - mailbox-items.jsonl contains the dispatched item, tagged with
-   *     the dispatching agent's mailboxId
-   *   - GET /mailbox/runs/:runId/items returns itemCount:0 because the
-   *     primary mailbox is empty for this NXS run (the per-actor
-   *     mailbox is separate)
+   * The production-correct proof is at the storage layer the runtime
+   * actually writes to:
+   *   1. Dispatch TWO agents in ONE run against disjoint target
+   *      systems (sales-agent → sales-finance, warehouse-agent →
+   *      warehouse). The orch coordinator allocates one per-actor
+   *      mailbox per unique agentId in the plan (packages/orch-ref/
+   *      src/run-coordinator.ts:374-379) and emits one
+   *      mailbox_allocated event per allocation.
+   *   2. Each NXS bridge write goes to getMailboxForActor(runId,
+   *      node.agentId) (scripts/nexus-main.ts:741-744). The runtime
+   *      enforces ownership at the write boundary via
+   *      MailboxService.assertMailboxBelongsToActor — any cross-actor
+   *      write throws NexusSecurityViolation with
+   *      MAILBOX_OWNERSHIP_MISMATCH.
+   *   3. Read the on-disk mailbox-items.jsonl this run wrote to and
+   *      assert per-mailbox grouping shows each mailbox contains items
+   *      tagged only to its own actor's agentId (and the disjoint set
+   *      check is symmetric — neither mailboxId appears in the other
+   *      actor's item set).
+   *
+   * The HTTP admin-auth probe is kept ONLY as a secondary §K control-
+   * plane check (admin can audit; agents cannot reach the route). It
+   * is NOT the primary proof.
    */
   it('E2E-116-hl8-mailbox-only-data-hub: per-actor mailbox isolation enforced', async () => {
     const jwt = await harness.jwtFor('sr_analyst');
     const { runId } = await harness.createRun(jwt, {
       workspaceSocketId: 'reference-workspace',
       promptMode: 'free_text',
-      prompt: 'HL#8 isolation probe',
-      agents: [WAREHOUSE_AGENT_ACTOR_ID],
+      prompt: 'HL#8 multi-actor isolation probe',
+      // Two agents, two disjoint target systems. Per Hard Law #15 the
+      // symmetric intersection narrows each delegation to its own
+      // single allowedSystem (sales-agent→sales-finance,
+      // warehouse-agent→warehouse), so the two NXS dispatches cannot
+      // overlap by construction. That sets up the storage-layer
+      // isolation assertion that follows.
+      agents: [SALES_AGENT_ACTOR_ID, WAREHOUSE_AGENT_ACTOR_ID],
       subTasks: [
         {
           kind: 'nxs',
-          subTaskKey: 'isolation-probe',
+          subTaskKey: 'hl8-sales-probe',
+          agentId: SALES_AGENT_ACTOR_ID,
+          taskSummary: 'Sales-agent reads its own system.',
+          expectedOutputSlots: ['rows'],
+          inputSlotReads: [],
+          actionTemplate: {
+            capability: 'read:record:bulk',
+            target: {
+              system: 'sales-finance',
+              resourceType: 'sales_orders',
+              resourceScope: 'bulk',
+            },
+            rawPayload: {
+              sql: 'SELECT order_code FROM sales_orders WHERE customer_code = $1 ORDER BY order_code',
+              params: ['CUST-001'],
+            },
+          },
+        },
+        {
+          kind: 'nxs',
+          subTaskKey: 'hl8-warehouse-probe',
           agentId: WAREHOUSE_AGENT_ACTOR_ID,
-          taskSummary: 'Probe inventory for isolation test',
+          taskSummary: 'Warehouse-agent reads its own system.',
           expectedOutputSlots: ['rows'],
           inputSlotReads: [],
           actionTemplate: {
             capability: 'read:record:bulk',
             target: { system: 'warehouse', resourceType: 'inventory', resourceScope: 'bulk' },
             rawPayload: {
-              sql: "SELECT sku FROM inventory WHERE sku = 'WIDGET-A' LIMIT 1",
-              params: [],
+              sql: 'SELECT sku FROM inventory WHERE sku = $1 LIMIT 1',
+              params: ['WIDGET-A'],
             },
           },
         },
       ] as ReadonlyArray<unknown>,
       subTaskEdges: [],
     });
-    const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 90_000 });
-    expect(snap.closeReason).toBe('completed');
+    const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 120_000 });
+    expect(snap.closeReason, 'multi-actor run must close cleanly').toBe('completed');
 
-    // Proof (a) — mailbox_allocated event carries the per-actor
-    // mailboxId in the expected canonical shape.
-    const mailboxAllocated = snap.ledgerEvents.find(e => e.eventType === 'mailbox_allocated');
-    expect(mailboxAllocated, 'mailbox_allocated event present').toBeDefined();
-    const allocDetail = mailboxAllocated!.detail as Record<string, unknown>;
-    const mailboxId = allocDetail['mailboxId'] as string;
-    const actorId = allocDetail['actorId'] as string;
-    // Canonical per-actor mailbox shape (see
-    // AMEND-nexus-mailbox-pit-v0-2-1 §3.6): mbx-v1-run-<runId>-actor-<actorId>
-    expect(mailboxId, 'per-actor mailbox naming').toContain(`run-${runId}`);
-    expect(mailboxId, 'per-actor mailbox naming').toContain(`actor-${actorId}`);
-    expect(actorId, 'allocation actor matches the dispatching agent').toBe(
-      WAREHOUSE_AGENT_ACTOR_ID
+    // Bridge/dispatch corruption invalidates the isolation proof —
+    // any item written by a fallback or error path can't be trusted to
+    // carry the right (mailboxId, agentId, taskId) provenance. Hard
+    // floor: neither event may appear in this run's ledger.
+    const ledger = snap.ledgerEvents;
+    expect(
+      ledger.some(e => e.eventType === 'nxs_dispatch_bridge_returned_null'),
+      'no bridge-null events (would invalidate mailbox write provenance)'
+    ).toBe(false);
+    expect(
+      ledger.some(e => e.eventType === 'error_dispatch'),
+      'no error_dispatch (would invalidate mailbox write provenance)'
+    ).toBe(false);
+
+    // ── Proof 1: two mailbox_allocated events, distinct mailboxIds ──
+    //
+    // RefRunCoordinator allocates one per-actor mailbox per unique
+    // plan.node.agentId at plan_confirmed step 3.6 (run-coordinator.ts
+    // :374-378). Two NXS sub-tasks with two different agentIds must
+    // therefore yield exactly two events.
+    const allocEvents = ledger.filter(e => e.eventType === 'mailbox_allocated');
+    expect(allocEvents.length, 'one mailbox_allocated event per unique actor in the plan').toBe(2);
+    const allocSales = allocEvents.find(
+      e => (e.detail as Record<string, unknown>)['actorId'] === SALES_AGENT_ACTOR_ID
+    );
+    const allocWarehouse = allocEvents.find(
+      e => (e.detail as Record<string, unknown>)['actorId'] === WAREHOUSE_AGENT_ACTOR_ID
+    );
+    expect(allocSales, 'sales-agent allocation event present').toBeDefined();
+    expect(allocWarehouse, 'warehouse-agent allocation event present').toBeDefined();
+    const salesMailboxId = (allocSales!.detail as Record<string, unknown>)['mailboxId'] as string;
+    const warehouseMailboxId = (allocWarehouse!.detail as Record<string, unknown>)[
+      'mailboxId'
+    ] as string;
+    expect(salesMailboxId, 'sales mailboxId is non-empty').toBeTruthy();
+    expect(warehouseMailboxId, 'warehouse mailboxId is non-empty').toBeTruthy();
+    expect(salesMailboxId, 'per-actor mailboxIds disjoint at allocation').not.toBe(
+      warehouseMailboxId
+    );
+    // Canonical mailbox-pit/v1 shape (mbx-v1-run-<runId>-actor-<actorId>).
+    // The audit decoder relies on this contract; if naming drifts,
+    // assertMailboxBelongsToActor still enforces ownership, but the
+    // audit grep path breaks.
+    expect(salesMailboxId).toContain(`run-${runId}`);
+    expect(salesMailboxId).toContain(`actor-${SALES_AGENT_ACTOR_ID}`);
+    expect(warehouseMailboxId).toContain(`run-${runId}`);
+    expect(warehouseMailboxId).toContain(`actor-${WAREHOUSE_AGENT_ACTOR_ID}`);
+
+    // ── Proof 2: both NXS dispatches actually executed ──
+    //
+    // The mailbox proof below is only meaningful if both actors wrote
+    // — proving "no warehouse items leaked into sales mailbox" by
+    // having neither actor write anything is the cheap pseudo-proof we
+    // are rejecting. Disambiguate each agent's dispatch by the resolved
+    // target system in `detail.target` (the canonical Gate-02-normalized
+    // system identifier emitted by scripts/nexus-main.ts:2388-2402; the
+    // event's top-level actorId is not surfaced through the harness's
+    // RunClosedSnapshot, so target is the load-bearing key).
+    const nxsActions = ledger.filter(e => e.eventType === 'nxs_action');
+    const salesExecuted = nxsActions.some(e => {
+      const d = e.detail as Record<string, unknown>;
+      return d['target'] === 'sales-finance' && d['finalOutcome'] === FINAL_OUTCOME.EXECUTED;
+    });
+    const warehouseExecuted = nxsActions.some(e => {
+      const d = e.detail as Record<string, unknown>;
+      return d['target'] === 'warehouse' && d['finalOutcome'] === FINAL_OUTCOME.EXECUTED;
+    });
+    expect(salesExecuted, 'sales-finance nxs_action reached EXECUTED').toBe(true);
+    expect(warehouseExecuted, 'warehouse nxs_action reached EXECUTED').toBe(true);
+
+    // ── Proof 3: on-disk per-actor mailbox isolation ──
+    //
+    // The mailbox manifest declares storageRoot as the relative path
+    // `runs/mailbox`. The harness spawns the server through
+    // `pnpm --dir <repoRoot> nexus serve`; pnpm changes its own cwd to
+    // repoRoot, and the spawned tsx process inherits repoRoot as its
+    // effective cwd at relative-path resolution time. The on-disk file
+    // therefore lands at <repoRoot>/runs/mailbox/mailbox-items.jsonl —
+    // shared by all harness runs, so we filter by runId.
+    const mboxPath = path.join(process.cwd(), 'runs', 'mailbox', 'mailbox-items.jsonl');
+    const raw = await fs.readFile(mboxPath, 'utf-8');
+    type StoredItem = {
+      mailboxItemId: string;
+      mailboxId: string;
+      runId: string;
+      taskId: string;
+      agentId: string;
+      slotId: string;
+      sourceType: string;
+      provenance: string;
+    };
+    const allItems = raw
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map(line => JSON.parse(line) as StoredItem);
+    const runItems = allItems.filter(i => i.runId === runId);
+    expect(runItems.length, 'multi-actor run produced mailbox items on disk').toBeGreaterThan(0);
+
+    const salesItems = runItems.filter(i => i.mailboxId === salesMailboxId);
+    const warehouseItems = runItems.filter(i => i.mailboxId === warehouseMailboxId);
+    expect(
+      salesItems.length,
+      'sales-agent per-actor mailbox has at least one written item'
+    ).toBeGreaterThan(0);
+    expect(
+      warehouseItems.length,
+      'warehouse-agent per-actor mailbox has at least one written item'
+    ).toBeGreaterThan(0);
+
+    // Per-item provenance: every item in the sales mailbox carries
+    // sales-agent's agentId, the NXS connector provenance, and the
+    // NXS execution-result sourceType. Hard floor — if any one item
+    // deviates the bridge is corrupting writer identity.
+    for (const item of salesItems) {
+      expect(item.agentId, `sales-mailbox item ${item.mailboxItemId} agentId`).toBe(
+        SALES_AGENT_ACTOR_ID
+      );
+      expect(item.provenance, `sales-mailbox item ${item.mailboxItemId} provenance`).toBe(
+        'nxs_connector_result'
+      );
+      expect(item.sourceType, `sales-mailbox item ${item.mailboxItemId} sourceType`).toBe(
+        'nxs_execution_result'
+      );
+    }
+    for (const item of warehouseItems) {
+      expect(item.agentId, `warehouse-mailbox item ${item.mailboxItemId} agentId`).toBe(
+        WAREHOUSE_AGENT_ACTOR_ID
+      );
+      expect(item.provenance, `warehouse-mailbox item ${item.mailboxItemId} provenance`).toBe(
+        'nxs_connector_result'
+      );
+      expect(item.sourceType, `warehouse-mailbox item ${item.mailboxItemId} sourceType`).toBe(
+        'nxs_execution_result'
+      );
+    }
+
+    // Cross-actor leak floor: stated as set membership so the failure
+    // mode is unambiguous in the test report. No warehouse-agent item
+    // appears under the sales mailboxId and vice versa.
+    const salesItemsTaggedToWarehouseAgent = salesItems.filter(
+      i => i.agentId === WAREHOUSE_AGENT_ACTOR_ID
+    );
+    const warehouseItemsTaggedToSalesAgent = warehouseItems.filter(
+      i => i.agentId === SALES_AGENT_ACTOR_ID
+    );
+    expect(
+      salesItemsTaggedToWarehouseAgent.length,
+      'no warehouse-agent items leaked into sales mailbox'
+    ).toBe(0);
+    expect(
+      warehouseItemsTaggedToSalesAgent.length,
+      'no sales-agent items leaked into warehouse mailbox'
+    ).toBe(0);
+
+    // Inverted index: for this run, the set of mailboxIds carrying
+    // sales-agent items must be disjoint from the set carrying
+    // warehouse-agent items. Disjointness here is the structural
+    // expression of HL#8 — the data hub is partitioned by (runId,
+    // actorId) and nothing crosses the seam.
+    const mailboxIdsForSales = new Set(
+      runItems.filter(i => i.agentId === SALES_AGENT_ACTOR_ID).map(i => i.mailboxId)
+    );
+    const mailboxIdsForWarehouse = new Set(
+      runItems.filter(i => i.agentId === WAREHOUSE_AGENT_ACTOR_ID).map(i => i.mailboxId)
+    );
+    const overlap = [...mailboxIdsForSales].filter(id => mailboxIdsForWarehouse.has(id));
+    expect(
+      overlap.length,
+      `mailboxId sets must be disjoint per actor (overlap=${overlap.join(',')})`
+    ).toBe(0);
+    expect(mailboxIdsForSales.has(salesMailboxId)).toBe(true);
+    expect(mailboxIdsForWarehouse.has(warehouseMailboxId)).toBe(true);
+
+    // End-to-end completion proof — assert the final_response ledger
+    // event fired (the harness's RunClosedSnapshot.artifactBody is
+    // structurally null because the snapshot doesn't fetch artifact
+    // payload over HTTP; the ledger event is the on-disk truth that
+    // compile triggered and dispatched a final response back through
+    // the workspace). Existing single-agent tests in 03-nxs-single
+    // use the same ledger-event proof of completion.
+    const types = ledger.map(e => e.eventType);
+    expect(types, 'final_response event present (compile → return fired)').toContain(
+      'final_response'
     );
 
-    // Proof (b) — the reference HTTP mailbox route is mounted under
-    // `/mailbox/*` which is path-scoped to the adminAuth bearer
-    // middleware (packages/interfaces/api/src/routes/index.ts:270-275).
-    // An agent process (no admin token) hitting this route receives
-    // 401 BEFORE the handler runs. That is the HL#8 boundary an agent
-    // sees: the only data-hub it can reach is its own per-actor
-    // mailbox via the in-process MailboxService, not the HTTP route.
+    // ── Secondary check: §K admin control-plane boundary ──
+    //
+    // The reference HTTP mailbox route at /mailbox/* is path-scoped to
+    // adminAuth (packages/interfaces/api/src/routes/index.ts:270-275).
+    // Agents (no admin token) cannot reach it. Per the outline §K,
+    // admin auth is the legitimate read/inspect/config plane — the
+    // 401 confirms anonymous callers (the agent-runtime posture) are
+    // closed out. This is a complement to the storage-layer proof
+    // above, NOT a substitute.
     const res = await fetch(`${harness.baseUrl}/mailbox/runs/${runId}/items`);
     expect(
       res.status,
-      'mailbox route is admin-auth-protected; agent cannot reach it without admin token'
+      'admin HTTP mailbox route closed to anonymous callers (§K control plane)'
     ).toBe(401);
-    const body = (await res.json()) as { ok: boolean; error: string };
-    expect(body.ok).toBe(false);
-    expect(body.error).toMatch(/Unauthorized/i);
-  }, 120_000);
+    const httpBody = (await res.json()) as { ok: boolean; error: string };
+    expect(httpBody.ok).toBe(false);
+    expect(httpBody.error).toMatch(/Unauthorized/i);
+  }, 240_000);
 
   /**
    * E2E-117 — HL#11 compile pass-through (no contract).
