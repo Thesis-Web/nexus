@@ -123,12 +123,29 @@ export async function bootHarness(opts?: {
     NEXUS_LEDGER_PATH: path.join(tmpCwd, 'nexus.ledger.jsonl'),
     NEXUS_RUN_LEDGER_PATH: path.join(tmpCwd, 'runs', 'infra.run-ledger.jsonl'),
   };
+  // The infra run ledger writer opens the file lazily and assumes its
+  // parent directory exists — create it up front. Without this, the
+  // first event (workspace_vault_session_opened on elevation verify)
+  // fails ENOENT and cascades into 400/403 across the admin surface.
+  await fs.mkdir(path.dirname(env.NEXUS_RUN_LEDGER_PATH), { recursive: true });
 
-  const child: ChildProcess = spawn('pnpm', ['nexus', 'serve', '--port', String(port)], {
-    cwd: tmpCwd,
-    env,
-    stdio: opts?.verbose ? 'inherit' : ['ignore', 'pipe', 'pipe'],
-  });
+  // `pnpm nexus serve` resolves the `nexus` script from package.json.
+  // Spawned from a fresh tmp cwd, `pnpm` would walk up looking for a
+  // package.json and fail (ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND). Pass
+  // `--dir <repoRoot>` so pnpm resolves the script against the repo's
+  // package.json while the subprocess's working directory stays
+  // tmpCwd (which is what gives each suite isolated keys/config/
+  // fixtures via the symlinks above + isolated sqlite + ledger via the
+  // env overrides below).
+  const child: ChildProcess = spawn(
+    'pnpm',
+    ['--dir', repoRoot, 'nexus', 'serve', '--port', String(port)],
+    {
+      cwd: tmpCwd,
+      env,
+      stdio: opts?.verbose ? 'inherit' : ['ignore', 'pipe', 'pipe'],
+    }
+  );
 
   const baseUrl = `http://127.0.0.1:${port}`;
   try {
