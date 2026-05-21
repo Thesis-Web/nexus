@@ -177,6 +177,22 @@ export function registerAllRoutes(
     ...(deps.signingCouncilServerSigner !== undefined
       ? { signingCouncilServerSigner: deps.signingCouncilServerSigner }
       : {}),
+    // F4.13 / HL #10 — SignedAdminMutation backing ports. The
+    // withAdminMutation(...) middleware demands these four plus
+    // runLedgerWriter (forwarded above) before applying any admin
+    // mutation; missing any one fails closed with 503 AUDIT_UNAVAILABLE.
+    ...(deps.adminMutationServerSigner !== undefined
+      ? { adminMutationServerSigner: deps.adminMutationServerSigner }
+      : {}),
+    ...(deps.adminMutationVerifier !== undefined
+      ? { adminMutationVerifier: deps.adminMutationVerifier }
+      : {}),
+    ...(deps.adminMutationNonceStore !== undefined
+      ? { adminMutationNonceStore: deps.adminMutationNonceStore }
+      : {}),
+    ...(deps.infraRunIdNamespace !== undefined
+      ? { infraRunIdNamespace: deps.infraRunIdNamespace }
+      : {}),
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

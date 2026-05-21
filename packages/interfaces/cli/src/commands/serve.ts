@@ -41,12 +41,21 @@ import {
   buildModeUnlockDispatcher,
   buildSigningCouncilChangeDispatcher,
   buildPolicyBundleReplaceDispatcher,
+  InMemoryInfraRunIdNamespace,
+  loadAdminPublicKey,
 } from '@nexus/core';
 import { promises as fsPromises } from 'node:fs';
 import * as fsPath from 'node:path';
 import { createHash } from 'node:crypto';
 import type { ModeSigner, ModeSignerState } from '@nexus/api';
-import { createApiServer, wrapWriterWithFanout, type ApiDependencies } from '@nexus/api';
+import {
+  createApiServer,
+  wrapWriterWithFanout,
+  buildAdminMutationServerSigner,
+  buildAdminMutationVerifier,
+  InMemoryAdminMutationNonceStore,
+  type ApiDependencies,
+} from '@nexus/api';
 // ── WS-BOOTSTRAP type seam ──────────────────────────────────────────────────
 export type WorkspaceApiDeps = Partial<
   Pick<
@@ -349,6 +358,27 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
     },
   };
 
+  // ── F4.13 / HL #10 — SignedAdminMutation composition root ────────────────
+  // The withAdminMutation(...) wrapper on every admin-writer mutation
+  // demands four ports + runLedgerWriter. Constructing them here completes
+  // the composition path: every admin write now passes through
+  //   AUTH → ENVELOPE (server-side sign for UI / verify for CLI)
+  //        → VERIFY (Ed25519 against keys/admins/<opener>.public.json)
+  //        → NONCE (per-process replay reject)
+  //        → LEDGER (admin_mutation_intent / _committed / _failed)
+  //        → APPLY
+  // before any state change. Missing any port short-circuits to 503
+  // AUDIT_UNAVAILABLE inside the middleware — see the comments at the
+  // top of signed-admin-mutation.ts.
+  const adminMutationServerSigner = buildAdminMutationServerSigner({
+    loadAdminKeypair,
+  });
+  const adminMutationVerifier = buildAdminMutationVerifier({
+    loadAdminPublicKey,
+  });
+  const adminMutationNonceStore = new InMemoryAdminMutationNonceStore();
+  const infraRunIdNamespace = new InMemoryInfraRunIdNamespace();
+
   const baseDeps: ApiDependencies = {
     actorRegistry: new SqliteActorRegistry(db),
     principalRegistry: new SqlitePrincipalRegistry(db),
@@ -376,6 +406,10 @@ export async function cmdServe(opts: ServeOptions): Promise<void> {
     modeSigner,
     signingCouncil,
     signingCouncilServerSigner,
+    adminMutationServerSigner,
+    adminMutationVerifier,
+    adminMutationNonceStore,
+    infraRunIdNamespace,
     keyDirectory,
     // §4.1 — best-effort: report any admin signing keypair as present.
     // The dashboard panel uses this to show the fallback CLI-instructions

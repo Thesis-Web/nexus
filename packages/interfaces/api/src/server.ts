@@ -85,6 +85,7 @@ import type {
   WorkspaceApprovalBridge,
   ElevatedAuthProvider,
   WorkspaceCatalogReaderPort,
+  InfraRunIdNamespace,
 } from '@nexus/contracts';
 import { registerAllRoutes } from './routes/index.js';
 // Re-export the SSE fanout helpers so the composition root can wrap its
@@ -101,6 +102,28 @@ export { subscribeToRun, broadcastRunEvent, wrapWriterWithFanout } from './route
 // handler prevents the two from drifting under TypeScript strict.
 export type { SecretWriter, ModeSigner, ModeSignerState } from './routes/admin-writer.js';
 import type { SecretWriter } from './routes/admin-writer.js';
+
+// ── F4.13 SignedAdminMutation port re-exports ─────────────────────────────
+// The middleware defines three port interfaces (signer / verifier / nonce
+// store) plus the in-memory nonce store. The two builders for the signer
+// and verifier live alongside in `admin-mutation-port-impls.ts`. All are
+// re-exported here so the composition root can wire them from a single
+// `@nexus/api` import.
+export type {
+  AdminMutationServerSignerPort,
+  AdminMutationVerifierPort,
+  AdminMutationNonceStorePort,
+} from './middleware/signed-admin-mutation.js';
+export { InMemoryAdminMutationNonceStore } from './middleware/signed-admin-mutation.js';
+export {
+  buildAdminMutationServerSigner,
+  buildAdminMutationVerifier,
+} from './middleware/admin-mutation-port-impls.js';
+import type {
+  AdminMutationServerSignerPort,
+  AdminMutationVerifierPort,
+  AdminMutationNonceStorePort,
+} from './middleware/signed-admin-mutation.js';
 
 // ── §23.1 + §11.1 ApiDependencies — constructor injection contract ──────────
 
@@ -179,6 +202,17 @@ export interface ApiDependencies {
 
   // ── §30 Run Ledger (DEF-008) ─────────────────────────────────────────────
   runLedgerWriter?: RunLedgerWriter;
+
+  // ── F4.13 / HL #10 — SignedAdminMutation backing ports ───────────────────
+  // The `withAdminMutation(...)` middleware on every admin-writer mutation
+  // demands these four ports plus runLedgerWriter (above). All four are
+  // required for admin writes to succeed; the middleware fails closed with
+  // 503 AUDIT_UNAVAILABLE when any is missing. Composition root constructs
+  // them in `serve.ts`.
+  adminMutationServerSigner?: AdminMutationServerSignerPort;
+  adminMutationVerifier?: AdminMutationVerifierPort;
+  adminMutationNonceStore?: AdminMutationNonceStorePort;
+  infraRunIdNamespace?: InfraRunIdNamespace;
 
   // ── §9 Operating Modes — read-only (DEF-008) ────────────────────────────
   loadModeConfig?: () => Promise<ModeConfiguration>;

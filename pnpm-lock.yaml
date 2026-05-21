@@ -190,6 +190,9 @@ importers:
       '@nexus/contracts':
         specifier: workspace:*
         version: link:../../contracts
+      '@nexus/core':
+        specifier: workspace:*
+        version: link:../../core
       express:
         specifier: ^4.21.2
         version: 4.22.1

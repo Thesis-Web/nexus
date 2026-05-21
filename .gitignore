@@ -23,6 +23,8 @@ keys/workspace-jwt.secret
 keys/workspace-dev-admin.apikey
 keys/approvers/
 keys/admins/
+# E2E user-ladder seed api keys (scripts/dev/_gen-user-ladder-keys.ts)
+keys/users/
 # Admin-managed API keys (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC)
 keys/secrets.json
 keys/secrets.json.tmp-*

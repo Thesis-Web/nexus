@@ -153,6 +153,20 @@ else
   ok "workspace JWT secret + dev-admin api-key present"
 fi
 
+# Admin signing keypair for the dev-admin principal — required by
+# SigningCouncilServerSigner + AdminMutationServerSigner + ModeSigner.
+# Without it, every admin write fails 412 admin_signing_keypair_missing.
+DEV_ADMIN_PRINCIPAL="00000000-0000-4000-a000-000000000001"
+if [ ! -f "$REPO_ROOT/keys/admins/${DEV_ADMIN_PRINCIPAL}.keypair.json" ] \
+   || [ ! -f "$REPO_ROOT/keys/admins/${DEV_ADMIN_PRINCIPAL}.public.json" ]; then
+  warn "dev-admin signing keypair missing — generating"
+  pnpm exec tsx scripts/dev/_gen-admin-signing-keypair.ts >/dev/null 2>&1 \
+    || fail "admin signing keypair generation failed — \`pnpm exec tsx scripts/dev/_gen-admin-signing-keypair.ts\` for details" 1
+  ok "dev-admin signing keypair generated"
+else
+  ok "dev-admin signing keypair present"
+fi
+
 # ── nexus serve ───────────────────────────────────────────────────────────
 step "nexus serve (port $NEXUS_PORT)"
 

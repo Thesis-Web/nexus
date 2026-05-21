@@ -53,6 +53,13 @@ export default defineConfig({
       // their own tests. Picked up here, not in the package globs.
       'scripts/**/*.test.ts',
       'tests/**/*.test.ts',
+      // F4.13 — SignedAdminMutation port impls (server signer + verifier)
+      // live in packages/interfaces/api/src/middleware/ and ship with
+      // co-located unit tests covering the sign→verify roundtrip plus
+      // every distinct verifier failure mode (kind_mismatch,
+      // expired_envelope, opener_unknown, invalid_signature,
+      // malformed_envelope).
+      'packages/interfaces/api/src/**/*.test.ts',
       // Connector packages are laid out flat (packages/connectors/<name>/
       // <name>.connector.ts), not under src/, so the standard src/**/
       // globs above don't catch them. Pick them up explicitly so unit
