@@ -14,9 +14,24 @@
  *   reporter alongside so the terminal still shows per-test progress.
  */
 import { defineConfig } from 'vitest/config';
+import { fileURLToPath } from 'node:url';
+import * as path from 'node:path';
 import AcceptanceWallReporter from './tests/e2e/_acceptance/reporter.js';
 
+const root = path.dirname(fileURLToPath(import.meta.url));
+
+// E2E tests assert against canonical constants from @nexus/contracts
+// (FINAL_OUTCOME.EXECUTED, etc.) so the wall doesn't drift on string
+// literals. The aliases mirror vitest.config.ts so resolution is
+// identical to the unit-test config.
+const NEXUS_ALIASES = {
+  '@nexus/contracts': path.join(root, 'packages/contracts/src/index.ts'),
+  '@nexus/core': path.join(root, 'packages/core/src/index.ts'),
+  '@nexus/runtime-utils': path.join(root, 'packages/runtime-utils/src/index.ts'),
+};
+
 export default defineConfig({
+  resolve: { alias: NEXUS_ALIASES },
   test: {
     include: ['tests/e2e/**/*.e2e.test.ts'],
     exclude: ['tests/e2e/_acceptance/**'],

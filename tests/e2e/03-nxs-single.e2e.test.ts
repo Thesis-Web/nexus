@@ -6,6 +6,7 @@
  * Gate 02 / 03 / 04 are explicit.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { FINAL_OUTCOME } from '@nexus/contracts';
 import { bootHarness, type E2EHarness } from './harness.js';
 import { AcceptanceWallFailure } from './_acceptance/failure.js';
 
@@ -127,12 +128,16 @@ describe('E2E Category 3 — single-agent NXS dispatch (target system read)', ()
     // assertion is what flips the test red when the connector layer
     // is broken (e.g. password ref unresolved, allowed-table miss,
     // bridge null).
+    // Canonical FINAL_OUTCOME.EXECUTED = 'executed_successfully'
+    // (packages/contracts/src/constants/index.ts:161). The literal
+    // 'executed' is a different value (SIGNING_REQUEST_STATUS.EXECUTED);
+    // the test uses the canonical constant to avoid drift.
     const executedActions = nxsActions.filter(
-      e => (e.detail as Record<string, unknown>)['finalOutcome'] === 'executed'
+      e => (e.detail as Record<string, unknown>)['finalOutcome'] === FINAL_OUTCOME.EXECUTED
     );
     expect(
       executedActions.length,
-      'at least one nxs_action with finalOutcome=executed (warehouse connector actually ran)'
+      `at least one nxs_action with finalOutcome=${FINAL_OUTCOME.EXECUTED} (warehouse connector actually ran)`
     ).toBeGreaterThan(0);
     // Compile produced a final response artifact.
     expect(types).toContain('final_response');
