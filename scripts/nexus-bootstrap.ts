@@ -858,7 +858,30 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
     runLedgerWriter
   );
 
-  // Reference http_callback transport — simple HTTP POST
+  // Reference http_callback transport — simple HTTP POST.
+  //
+  // Env override `NEXUS_COMPILE_RETURN_BASE_URL` (if set, must be a
+  // full URL like `http://127.0.0.1:PORT`) replaces the origin of the
+  // signed manifest URL. The manifest's host+port is the production
+  // self-callback default (`127.0.0.1:7701`); test harnesses bind a
+  // dynamic port and need to relocate the callback without re-signing
+  // the manifest. The path + query are preserved exactly so route
+  // resolution at the receiver is unchanged. Only the network origin
+  // is rewritten — auth/signature/manifest contract are untouched.
+  function resolveCallbackUrl(manifestUrl: string): string {
+    const override = process.env['NEXUS_COMPILE_RETURN_BASE_URL'];
+    if (override === undefined || override.length === 0) return manifestUrl;
+    try {
+      const orig = new URL(manifestUrl);
+      const base = new URL(override);
+      orig.protocol = base.protocol;
+      orig.host = base.host;
+      return orig.toString();
+    } catch {
+      return manifestUrl;
+    }
+  }
+
   const httpCallbackTransport: CompileReturnTransport = {
     endpointType: 'http_callback' as NonEmpty,
     transportVersion: '1.0.0' as NonEmpty,
@@ -866,15 +889,14 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
       endpoint: CompileReturnEndpointRecord,
       request: CompileReturnRequest
     ): Promise<CompileReturnAck> => {
-      const response = await fetch(endpoint.url, {
+      const url = resolveCallbackUrl(endpoint.url);
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
       });
       if (!response.ok) {
-        throw new Error(
-          `Compile-return HTTP callback to '${endpoint.url}' failed: ${response.status}`
-        );
+        throw new Error(`Compile-return HTTP callback to '${url}' failed: ${response.status}`);
       }
       const body = (await response.json()) as { ok: boolean; data: CompileReturnAck };
       return body.data;

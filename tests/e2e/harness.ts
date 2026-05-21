@@ -152,6 +152,13 @@ export async function bootHarness(opts?: {
     NEXUS_DB_PATH: path.join(tmpCwd, 'nexus.db'),
     NEXUS_LEDGER_PATH: path.join(tmpCwd, 'nexus.ledger.jsonl'),
     NEXUS_RUN_LEDGER_PATH: path.join(tmpCwd, 'runs', 'infra.run-ledger.jsonl'),
+    // Relocate the signed compile-return manifest URL (default
+    // `127.0.0.1:7701`) to this harness's dynamic port so the self-
+    // callback after compile_assembly_complete reaches the same server
+    // the run was opened on. The receiver still verifies the signed
+    // request against the manifest's keyId — only the network origin is
+    // rewritten, not auth or signature.
+    NEXUS_COMPILE_RETURN_BASE_URL: `http://127.0.0.1:${port}`,
   };
   // The infra run ledger writer opens the file lazily and assumes its
   // parent directory exists — create it up front. Without this, the
