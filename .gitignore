@@ -22,7 +22,12 @@ keys/admin.token
 keys/workspace-jwt.secret
 keys/workspace-dev-admin.apikey
 keys/approvers/
-keys/admins/
+# keys/admins/ is intentionally NOT gitignored — the default admin
+# signing keypair ships with the portable product so a new system
+# owner can sign in, register their own admin, then delete the default
+# admin user. Owners who fail to rotate inherit a known-key admin;
+# that is a deliberate first-boot ergonomics trade documented in the
+# admin-dashboard onboarding flow.
 # E2E user-ladder seed api keys (scripts/dev/_gen-user-ladder-keys.ts)
 keys/users/
 # Admin-managed API keys (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC)
