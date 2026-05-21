@@ -319,6 +319,22 @@ function getPostgresConnectors(): readonly PostgresConnector[] {
   return _postgresConnectors;
 }
 
+/**
+ * Resolve the dataClass declared by the connector manifest for a target
+ * system. Mirrors the lookup pattern already used by `connectorLookup`
+ * (nexus-main.ts:965) and the pre-flight probe classification at
+ * nexus-main.ts:1735 — the connector manifest is the canonical source.
+ * Returns `null` when the system is not registered; callers must fail
+ * closed in that case rather than substitute a default class.
+ */
+function resolveTargetDataClass(systemType: string): DataClass | null {
+  if (systemType === new StubConnector().systemType) return new StubConnector().dataClass;
+  for (const c of getPostgresConnectors()) {
+    if (c.systemType === systemType) return c.dataClass;
+  }
+  return null;
+}
+
 const program = createCli({
   createNvgService: () => new NvgServiceImpl(),
   createTrailReader: (dir?: string) => new JsonlRoutingTrailReader(dir ?? DEFAULT_TRAIL_DIR),
@@ -722,6 +738,25 @@ const program = createCli({
             governanceDenied: false,
           };
         }
+        const targetDataClass = resolveTargetDataClass(tmpl.target.system);
+        if (targetDataClass === null) {
+          // Connector not registered or unknown — fail closed at the
+          // bridge boundary. The pipeline's Gate 06 would already have
+          // refused the action, but if we reach here without a
+          // dataClass the audit record needs an explicit failure rather
+          // than a silently-blocked mailbox item the operator can't
+          // diagnose.
+          return {
+            success: false,
+            completionMetadata: {
+              evidenceRecordId: nxsResult.evidenceRecord.recordId,
+              finalOutcome,
+            },
+            failureReason: ('nxs_dispatch_bridge_unknown_target_dataclass: ' +
+              tmpl.target.system) as NonEmpty,
+            governanceDenied: false,
+          };
+        }
         const bridged = await bridgeNxsResultToMailbox(nxsResult.evidenceRecord, {
           outputCollector: br.externals.outputCollector,
           payloadsRoot: path.join(DEFAULT_TRAIL_DIR, 'payloads'),
@@ -729,6 +764,7 @@ const program = createCli({
           slotId,
           taskIdOverride: node.nodeId,
           mailboxId: nxsNodeMailboxId,
+          targetDataClass,
         });
         if (bridged === null) {
           return {

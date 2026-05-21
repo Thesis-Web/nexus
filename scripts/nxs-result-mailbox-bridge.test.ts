@@ -21,6 +21,7 @@ import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import { bridgeNxsResultToMailbox } from './nxs-result-mailbox-bridge.js';
 import type {
+  DataClass,
   EvidenceRecord,
   ExecutionResult,
   MailboxItem,
@@ -210,6 +211,8 @@ describe('bridgeNxsResultToMailbox', () => {
       outputCollector: collector,
       payloadsRoot,
       agentOctLevel: 'OCT-OPEN',
+      mailboxId: 'mbx-test' as NonEmpty,
+      targetDataClass: 'internal' as DataClass,
     });
 
     expect(result).not.toBeNull();
@@ -229,6 +232,13 @@ describe('bridgeNxsResultToMailbox', () => {
     expect(ref.octLevel).toBe('OCT-OPEN');
     expect(ref.redactionState).toBe('not_required');
     expect(ref.finalOutcome).toBe(FINAL_OUTCOME.EXECUTED);
+    // Spec §7.3 regression — the bridge MUST propagate the connector's
+    // declared dataClass into resultClassifications, so the mailbox
+    // eligibility check passes for classificationRequired:true mailboxes.
+    // Without this the item is correctly fail-closed-blocked and compile
+    // sees `output_contract_empty`. Two callsites must thread it: the
+    // bridge (here) and the orchestrator dispatcher (scripts/nexus-main.ts).
+    expect(ref.resultClassifications).toEqual(['internal']);
     expect(result!.mailboxItem.mailboxItemId).toBe('00000000-0000-4000-a000-000000000777');
   });
 
@@ -241,6 +251,8 @@ describe('bridgeNxsResultToMailbox', () => {
       outputCollector: collector,
       payloadsRoot,
       agentOctLevel: 'OCT-OPEN',
+      mailboxId: 'mbx-test' as NonEmpty,
+      targetDataClass: 'internal' as DataClass,
     });
     expect(result).not.toBeNull();
     expect(result!.kind).toBe('receipt');
@@ -283,6 +295,8 @@ describe('bridgeNxsResultToMailbox', () => {
       outputCollector: collector,
       payloadsRoot,
       agentOctLevel: 'OCT-OPEN',
+      mailboxId: 'mbx-test' as NonEmpty,
+      targetDataClass: 'internal' as DataClass,
     });
     expect(result).not.toBeNull();
     expect(result!.kind).toBe('receipt');
@@ -305,6 +319,8 @@ describe('bridgeNxsResultToMailbox', () => {
       outputCollector: collector,
       payloadsRoot,
       agentOctLevel: 'OCT-OPEN',
+      mailboxId: 'mbx-test' as NonEmpty,
+      targetDataClass: 'internal' as DataClass,
     });
     expect(result).toBeNull();
     expect(state.writes).toHaveLength(0);
@@ -318,6 +334,8 @@ describe('bridgeNxsResultToMailbox', () => {
       outputCollector: collector,
       payloadsRoot,
       agentOctLevel: 'OCT-OPEN',
+      mailboxId: 'mbx-test' as NonEmpty,
+      targetDataClass: 'internal' as DataClass,
       taskIdOverride: NODE_ID,
     });
     // Without override the taskId would be evidence.actionId. With override
@@ -333,6 +351,8 @@ describe('bridgeNxsResultToMailbox', () => {
       outputCollector: collector,
       payloadsRoot,
       agentOctLevel: 'OCT-OPEN',
+      mailboxId: 'mbx-test' as NonEmpty,
+      targetDataClass: 'internal' as DataClass,
       slotId: 'inventory_query' as NonEmpty,
     });
     expect(state.writes[0]!.slotId).toBe('inventory_query');
@@ -344,6 +364,8 @@ describe('bridgeNxsResultToMailbox', () => {
       outputCollector: collector,
       payloadsRoot,
       agentOctLevel: 'OCT-OPEN',
+      mailboxId: 'mbx-test' as NonEmpty,
+      targetDataClass: 'internal' as DataClass,
       slotId: 'inventory_update' as NonEmpty,
     });
     expect(state.writes[0]!.slotId).toBe('inventory_update');
@@ -356,6 +378,8 @@ describe('bridgeNxsResultToMailbox', () => {
       outputCollector: collector,
       payloadsRoot,
       agentOctLevel: 'OCT-OPEN',
+      mailboxId: 'mbx-test' as NonEmpty,
+      targetDataClass: 'internal' as DataClass,
     });
     expect(state.writes[0]!.executionGrantId).toBeNull();
   });

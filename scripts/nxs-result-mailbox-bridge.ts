@@ -41,6 +41,7 @@ import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import * as path from 'node:path';
 import type {
+  DataClass,
   EvidenceRecord,
   IsoTimestamp,
   MailboxItem,
@@ -88,6 +89,22 @@ export interface BridgeDeps {
    * OutputCollector's MailboxWriteContext.
    */
   readonly mailboxId: NonEmpty;
+  /**
+   * Spec §7.3 — the dataClass declared by the connector manifest for
+   * the target system this action ran against (e.g. postgres-warehouse
+   * declares `dataClass: internal`). The bridge writes it into the
+   * mailbox item's `resultClassifications` so the mailbox eligibility
+   * check (which gates `classificationRequired: true` mailboxes) passes
+   * and compile can read the item. Without this, the item lands with
+   * `resultClassifications: []` and is correctly fail-closed-blocked at
+   * MailboxService.write, leaving compile with no eligible input —
+   * surfacing as `output_contract_empty` and `closeReason: error` after
+   * a fully-successful NXS dispatch. The classification is taken from
+   * the same connector record the orchestrator already binds against
+   * (see `connectorLookup` in nexus-main.ts), so this is the single
+   * authoritative source — not invented, not widened.
+   */
+  readonly targetDataClass: DataClass;
 }
 
 export interface BridgeResult {
@@ -172,12 +189,14 @@ export async function bridgeNxsResultToMailbox(
     sourceType: 'nxs_execution_result',
     resultRef: `file://${resultPath}` as NonEmpty,
     resultDigest,
-    // Connector currently does not classify; default to empty. Mailboxes
-    // configured with classificationRequired=true will reject this — that
-    // surfaces as a fail-closed write at the MailboxService layer, which
-    // is correct: the operator must add classification on a sensitive DB
-    // before writes can flow.
-    resultClassifications: [],
+    // Spec §7.3 — propagate the connector's declared `dataClass` so the
+    // mailbox eligibility check passes for `classificationRequired: true`
+    // mailboxes. The connector manifest is the single authoritative source
+    // for the data classification of this target; the caller resolves it
+    // from the same lookup the orchestrator already binds against, so this
+    // is not widening or inventing — it's threading the declared label
+    // through the result path.
+    resultClassifications: [deps.targetDataClass],
     octLevel: deps.agentOctLevel,
     createdAt: new Date().toISOString() as IsoTimestamp,
     redactionState: 'not_required',
