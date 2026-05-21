@@ -23,6 +23,7 @@
     "build:entry": "esbuild scripts/nexus-main.ts --bundle --platform=node --format=cjs --outfile=dist/nexus-main.js --tsconfig=tsconfig.base.json --external:better-sqlite3 --sourcemap",
     "ci:gate": "tsx scripts/ci-gate.ts",
     "gate:no-wildcard-authority": "tsx scripts/gates/no-wildcard-authority.ts",
+    "gate:no-e2e-skip": "tsx scripts/gates/no-e2e-skip.ts",
     "nexus": "tsx scripts/nexus-main.ts",
     "nexus:mcp": "tsx scripts/nexus-main.ts -- serve-mcp",
     "lexicon:build": "tsx scripts/build-wordnet-lexicon.ts",

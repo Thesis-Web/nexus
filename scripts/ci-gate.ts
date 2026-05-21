@@ -697,6 +697,19 @@ async function main(): Promise<void> {
   pass('no wildcard authority, fail-open, or fallback-allow in governance surfaces');
 
   // -------------------------------------------------------------------------
+  // GOV-E2E-SKIP-GATE — owner directive 2026-05-21: no `it.skip` or
+  // `it.todo` in tests/e2e/**. The acceptance wall must surface every
+  // failure honestly; hidden skips are how the project drifted. Every
+  // catalog slot is a real `it()` that either passes or throws
+  // `AcceptanceWallFailure` with structured metadata (see
+  // tests/e2e/_acceptance/failure.ts + reporter.ts). Gate runs early so
+  // a re-introduced skip fails fast.
+  // -------------------------------------------------------------------------
+  stepLog('GOV-E2E-SKIP-GATE — no hidden skip/todo in the acceptance wall');
+  runCmd('pnpm exec tsx scripts/gates/no-e2e-skip.ts');
+  pass('no hidden it.skip / it.todo / xit / describe.skip in tests/e2e/**');
+
+  // -------------------------------------------------------------------------
   // Step 3: unit tests — exactly 7 gate unit test files + §31.2 coverage
   // §7.4 step 3: "all 7 gate unit test files"
   // §31.2: min 95% line coverage on packages/core/src/gates/
