@@ -1,0 +1,289 @@
+/**
+ * tests/e2e/harness.ts — E2E v0.4.0 §4 — real composition-root harness.
+ *
+ * `bootHarness()` spawns the actual `pnpm nexus serve` process against a
+ * fresh tmp cwd. Tests get a structured handle to log in as one of the
+ * 10 ladder users, issue runs, wait for closure, and inspect the ledger.
+ * No mocks — every gate (NXS pipeline, NVG, SigningCouncil, claim drift,
+ * delegation mint, compile) runs for real.
+ *
+ * Per-suite isolation: each test FILE calls bootHarness() in beforeAll
+ * and shutdown() in afterAll, picking a free port. Suites do not share
+ * state.
+ *
+ * The harness uses Windows-interop-aware path resolution so tests run
+ * from either WSL or a native Linux/Mac shell.
+ */
+import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { createServer } from 'node:net';
+import type { UserLadderRole } from '../../scripts/seeds/user-ladder-seeds.js';
+
+export interface RunPostBody {
+  workspaceSocketId: string;
+  promptMode: 'free_text' | 'sectioned' | 'secure_rails';
+  prompt?: string;
+  agents?: ReadonlyArray<string>;
+  preferredEndpointId?: string;
+  subTasks?: ReadonlyArray<unknown>;
+  subTaskEdges?: ReadonlyArray<unknown>;
+  outputContractTemplateId?: string;
+}
+
+export interface E2EHarness {
+  readonly baseUrl: string;
+  readonly cwd: string;
+  shutdown(): Promise<void>;
+  jwtFor(role: UserLadderRole | 'dev-admin'): Promise<string>;
+  elevatedSessionFor(role: UserLadderRole | 'dev-admin', jwt: string): Promise<string>;
+  createRun(jwt: string, body: RunPostBody): Promise<{ runId: string; planPreview: unknown }>;
+  resolveCheckback(jwt: string, runId: string, allow: boolean): Promise<void>;
+  waitForRunClosed(
+    jwt: string,
+    runId: string,
+    opts?: { timeoutMs?: number }
+  ): Promise<RunClosedSnapshot>;
+  readLedger(
+    runId: string
+  ): Promise<ReadonlyArray<{ eventType: string; detail: Record<string, unknown> }>>;
+  readMailboxItems(runId: string): Promise<ReadonlyArray<unknown>>;
+}
+
+export interface RunClosedSnapshot {
+  readonly runId: string;
+  readonly runClosed: boolean;
+  readonly finalOutcome: string | null;
+  readonly closeReason: string | null;
+  readonly artifactBody: string | null;
+  readonly ledgerEvents: ReadonlyArray<{ eventType: string; detail: Record<string, unknown> }>;
+}
+
+async function findFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.unref();
+    srv.on('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const addr = srv.address();
+      if (addr && typeof addr === 'object') {
+        const port = addr.port;
+        srv.close(() => resolve(port));
+      } else {
+        srv.close(() => reject(new Error('no port')));
+      }
+    });
+  });
+}
+
+async function waitForHealth(baseUrl: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(baseUrl + '/health');
+      if (res.ok) return;
+    } catch {
+      // server not up yet
+    }
+    await new Promise(r => setTimeout(r, 250));
+  }
+  throw new Error(`harness: server failed to become healthy within ${timeoutMs}ms at ${baseUrl}`);
+}
+
+/**
+ * Bring up the composition root in a fresh cwd. Copies the keys + lexicon
+ * fixtures + policy bundle so the boot path finds everything; spawns
+ * `pnpm nexus serve --port <N>` and waits for /health.
+ */
+export async function bootHarness(opts?: {
+  /** Override timeout in ms (default 60_000 — ollama-warmup gives margin). */
+  startupTimeoutMs?: number;
+  /** Inherit-stdio if true; pipes to dev/null otherwise. */
+  verbose?: boolean;
+}): Promise<E2EHarness> {
+  const repoRoot = process.cwd();
+  const tmpCwd = await fs.mkdtemp(path.join(os.tmpdir(), 'nx-e2e-'));
+  // Symlink-clone the configuration the server needs. The composition
+  // root reads CWD-relative paths for keys/, config/, fixtures/. We
+  // need the test to have a separate sqlite + ledger jsonl so suites
+  // don't interfere, but the keys + manifests can be shared with the
+  // repo source.
+  for (const subdir of ['keys', 'config', 'fixtures']) {
+    await fs.symlink(path.join(repoRoot, subdir), path.join(tmpCwd, subdir), 'dir');
+  }
+  // Symlink the planner lexicon submodule too — its loader reads from
+  // fixtures/planner/db-lexicon which is captured by the fixtures
+  // symlink above.
+
+  const port = await findFreePort();
+  const env = {
+    ...process.env,
+    NEXUS_DB_PATH: path.join(tmpCwd, 'nexus.db'),
+    NEXUS_LEDGER_PATH: path.join(tmpCwd, 'nexus.ledger.jsonl'),
+    NEXUS_RUN_LEDGER_PATH: path.join(tmpCwd, 'runs', 'infra.run-ledger.jsonl'),
+  };
+
+  const child: ChildProcess = spawn('pnpm', ['nexus', 'serve', '--port', String(port)], {
+    cwd: tmpCwd,
+    env,
+    stdio: opts?.verbose ? 'inherit' : ['ignore', 'pipe', 'pipe'],
+  });
+
+  const baseUrl = `http://127.0.0.1:${port}`;
+  try {
+    await waitForHealth(baseUrl, opts?.startupTimeoutMs ?? 60_000);
+  } catch (err) {
+    child.kill('SIGTERM');
+    throw err;
+  }
+
+  async function loadApiKey(role: UserLadderRole | 'dev-admin'): Promise<string> {
+    const p =
+      role === 'dev-admin'
+        ? path.join(repoRoot, 'keys', 'workspace-dev-admin.apikey')
+        : path.join(repoRoot, 'keys', 'users', role + '.apikey');
+    return (await fs.readFile(p, 'utf-8')).trim();
+  }
+
+  async function postJson<T>(p: string, jwt: string | null, body: unknown): Promise<T> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
+    const res = await fetch(baseUrl + p, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json()) as { ok: boolean; data?: T; error?: string };
+    if (!data.ok) {
+      throw new Error(`harness: POST ${p} → ${res.status} ${data.error ?? 'unknown'}`);
+    }
+    return data.data as T;
+  }
+
+  async function getJson<T>(p: string, jwt: string): Promise<T> {
+    const res = await fetch(baseUrl + p, {
+      headers: { Authorization: `Bearer ${jwt}` },
+    });
+    const data = (await res.json()) as { ok: boolean; data?: T; error?: string };
+    if (!data.ok) {
+      throw new Error(`harness: GET ${p} → ${res.status} ${data.error ?? 'unknown'}`);
+    }
+    return data.data as T;
+  }
+
+  async function shutdown(): Promise<void> {
+    return new Promise(resolve => {
+      const onExit = (): void => {
+        // Best-effort tmpdir cleanup; ignore errors.
+        void fs.rm(tmpCwd, { recursive: true, force: true }).then(() => resolve());
+      };
+      if (child.killed || child.exitCode !== null) {
+        onExit();
+        return;
+      }
+      child.once('exit', onExit);
+      child.kill('SIGTERM');
+      // Belt-and-suspenders: SIGKILL after 5s if SIGTERM didn't take.
+      setTimeout(() => {
+        if (!child.killed && child.exitCode === null) child.kill('SIGKILL');
+      }, 5000);
+    });
+  }
+
+  return {
+    baseUrl,
+    cwd: tmpCwd,
+    shutdown,
+    async jwtFor(role) {
+      const apiKey = await loadApiKey(role);
+      const data = await postJson<{ token: string }>('/workspace/auth/login', null, {
+        type: 'api_key',
+        value: apiKey,
+      });
+      return data.token;
+    },
+    async elevatedSessionFor(role, jwt) {
+      // Look up the actor's principalId via /workspace/me, run the
+      // challenge → verify cycle with the same API key as proof.
+      const me = await getJson<{ principalId: string }>('/workspace/me', jwt);
+      const apiKey = await loadApiKey(role);
+      const chal = await postJson<{ challengeId: string }>('/workspace/vault/auth', jwt, {
+        action: 'challenge',
+        principalId: me.principalId,
+        method: 'api_key_reauth',
+      });
+      const verified = await postJson<{ elevatedSessionId: string }>('/workspace/vault/auth', jwt, {
+        action: 'verify',
+        principalId: me.principalId,
+        method: 'api_key_reauth',
+        challengeId: chal.challengeId,
+        response: apiKey,
+      });
+      return verified.elevatedSessionId;
+    },
+    async createRun(jwt, body) {
+      return postJson<{ runId: string; planPreview: unknown }>('/workspace/runs', jwt, body);
+    },
+    async resolveCheckback(jwt, runId, allow) {
+      await postJson<unknown>(`/workspace/runs/${encodeURIComponent(runId)}/checkback`, jwt, {
+        decision: allow ? 'allow' : 'deny',
+      });
+    },
+    async waitForRunClosed(jwt, runId, opts2): Promise<RunClosedSnapshot> {
+      const timeoutMs = opts2?.timeoutMs ?? 90_000;
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        try {
+          const snap = await getJson<{
+            runClosed?: boolean;
+            finalOutcome?: string | null;
+            closeReason?: string | null;
+            artifactBody?: string | null;
+            ledgerEvents?: Array<{ eventType: string; detail: Record<string, unknown> }>;
+          }>(`/workspace/runs/${encodeURIComponent(runId)}`, jwt);
+          if (snap.runClosed) {
+            return {
+              runId,
+              runClosed: true,
+              finalOutcome: snap.finalOutcome ?? null,
+              closeReason: snap.closeReason ?? null,
+              artifactBody: snap.artifactBody ?? null,
+              ledgerEvents: snap.ledgerEvents ?? [],
+            };
+          }
+        } catch {
+          // Run record may not yet exist; keep polling.
+        }
+        await new Promise(r => setTimeout(r, 500));
+      }
+      throw new Error(`harness: run ${runId} did not close within ${timeoutMs}ms`);
+    },
+    async readLedger(runId) {
+      const filePath = path.join(tmpCwd, 'runs', runId, 'ledger.jsonl');
+      try {
+        const raw = await fs.readFile(filePath, 'utf-8');
+        return raw
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .map(line => JSON.parse(line) as { eventType: string; detail: Record<string, unknown> });
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+        throw err;
+      }
+    },
+    async readMailboxItems(runId) {
+      const filePath = path.join(tmpCwd, 'runs', 'mailbox', runId + '.jsonl');
+      try {
+        const raw = await fs.readFile(filePath, 'utf-8');
+        return raw
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .map(line => JSON.parse(line));
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+        throw err;
+      }
+    },
+  };
+}

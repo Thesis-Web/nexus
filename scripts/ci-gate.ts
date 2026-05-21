@@ -1951,6 +1951,9 @@ async function main(): Promise<void> {
   stepLog('GOV-16 resolved relative import law');
   enforceGov16ResolvedRelativeImports();
 
+  stepLog('GOV-E2E-COVERAGE e2e v0.4.0 category presence');
+  enforceGovE2eCoverage();
+
   // Step 81 (or 86 with PLANNER-LEXICON gates): integration test gate — opt-in.
   // Real-DB integration suite (postgres connector against the dev docker-compose
   // pair). Skipped unless NEXUS_RUN_INTEGRATION=1 so the gate stays fast in
@@ -5525,6 +5528,52 @@ async function enforceChatTierPlanInvariant(): Promise<void> {
     fail(`CHAT-TIER-02: chat node.expectedOutputSlots does not include 'text'`);
     return;
   }
+}
+
+// ─── GOV-E2E-COVERAGE — e2e v0.4.0 §5 ────────────────────────────────────────
+// Asserts every one of the 12 mandatory e2e categories has a test file
+// at tests/e2e/<NN>-<slug>.e2e.test.ts. Each file must contain at least
+// 10 `it('E2E-NN-...')` test declarations (one per category-test). This
+// gate makes "the wall" a CI-visible structural requirement — you can
+// commit fewer than 10 real bodies per file (the rest skip), but the
+// FILE must exist so the auditor sees the missing-test surface
+// explicitly rather than implicit absence.
+function enforceGovE2eCoverage(): void {
+  const root = path.join('tests', 'e2e');
+  if (!fs.existsSync(root)) {
+    fail(`GOV-E2E-COVERAGE: tests/e2e/ missing (e2e v0.4.0 §3)`);
+  }
+  const required: ReadonlyArray<{ prefix: string; slug: string }> = [
+    { prefix: '01', slug: 'chat-onprem' },
+    { prefix: '02', slug: 'chat-frontier' },
+    { prefix: '03', slug: 'nxs-single' },
+    { prefix: '04', slug: 'multi-no-contract' },
+    { prefix: '05', slug: 'multi-with-contract' },
+    { prefix: '06', slug: 'mixed-tier' },
+    { prefix: '07', slug: 'branching' },
+    { prefix: '08', slug: 'batch-summary' },
+    { prefix: '09', slug: 'multi-source-merge' },
+    { prefix: '10', slug: 'gmail' },
+    { prefix: '11', slug: 'rbac-differentials' },
+    { prefix: '12', slug: 'hard-law-surfaces' },
+  ];
+  const files = fs.existsSync(root) ? fs.readdirSync(root) : [];
+  for (const cat of required) {
+    const matching = files.find(f => f.startsWith(cat.prefix + '-') && f.endsWith('.e2e.test.ts'));
+    if (!matching) {
+      fail(
+        `GOV-E2E-COVERAGE: tests/e2e/ missing category ${cat.prefix}-${cat.slug} (e2e v0.4.0 §3.${parseInt(cat.prefix, 10)})`
+      );
+    }
+    const src = fs.readFileSync(path.join(root, matching!), 'utf-8');
+    const declared = (src.match(/\bit\s*(?:\.skip)?\s*\(\s*['"`]E2E-/g) ?? []).length;
+    if (declared < 10) {
+      fail(
+        `GOV-E2E-COVERAGE: tests/e2e/${matching} declares ${declared} E2E-* test blocks; expected ≥ 10 (e2e v0.4.0 §3.${parseInt(cat.prefix, 10)})`
+      );
+    }
+  }
+  pass('GOV-E2E-COVERAGE e2e v0.4.0 category presence (12 files × ≥10 declarations each)');
 }
 
 main().catch(err => {
