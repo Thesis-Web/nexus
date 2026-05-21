@@ -663,9 +663,21 @@ const program = createCli({
         // canonical capability via the lexicon and capability registry;
         // mismatches surface as denials at Gate 03 / Gate 04 — exactly
         // the governance posture we want.
+        //
+        // F-1 closure (REPAIR-MODE-FINDINGS-2026-05-21.md §F-1) — encode
+        // the full target as JSON so TargetNormalizer.normalize takes
+        // its existing `fromParsed` JSON branch instead of falling
+        // through to the bare-string path that hardcodes
+        // `resourceScope: 'single'`. Without this, a planner template
+        // that declares `target.resourceScope: 'bulk'` silently
+        // classifies as READ_RECORD_SINGLE at Gate 02 (the
+        // dev-warehouse policy currently allows both so the run still
+        // completes, but the classification is provably wrong against
+        // the planner's declared intent). Preserves system,
+        // resourceType, resourceScope, and externalFacing exactly.
         const capabilitySegments = tmpl.capability.split(':');
         const verbFromCap = capabilitySegments[0] ?? tmpl.capability;
-        const rawTarget = tmpl.target.system;
+        const rawTarget = JSON.stringify(tmpl.target);
 
         const action: AgentAction = {
           actionId: crypto.randomUUID() as Uuid,
@@ -2363,6 +2375,21 @@ const program = createCli({
         });
       }
 
+      // Audit-trail target uses the RESOLVED system identifier (set by
+      // Gate 02 from the canonical TargetNormalizer), not the raw adapter
+      // payload. F-1 closure (REPAIR-MODE-FINDINGS-2026-05-21.md) had us
+      // start JSON-encoding the planner-supplied target into
+      // rawAction.rawTarget so the normalizer could honor resourceScope;
+      // exposing rawTarget verbatim here would put a JSON blob in the
+      // run-ledger event detail and break downstream consumers reading
+      // `detail.target` as a system name. Reading from evidence.
+      // actionSummary.resolvedTarget keeps the event clean — and is the
+      // truthful answer to "which system did this dispatch target."
+      const resolvedTarget = evidence.actionSummary.resolvedTarget;
+      const resolvedSystem =
+        typeof resolvedTarget === 'object' && resolvedTarget !== null && 'system' in resolvedTarget
+          ? (resolvedTarget as { system: string }).system
+          : null;
       await coreDeps.runLedgerWriter!.writeEvent({
         runId,
         eventType: 'nxs_action',
@@ -2372,7 +2399,7 @@ const program = createCli({
           actionId: rawAction.actionId,
           tool: rawAction.tool,
           verb: rawAction.rawVerb,
-          target: rawAction.rawTarget,
+          target: resolvedSystem,
           finalOutcome: evidence.finalOutcome,
           evidenceRecordId: evidence.recordId,
           ledgerSequence: evidence.ledgerSequence,
