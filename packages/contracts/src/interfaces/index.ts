@@ -1509,6 +1509,22 @@ export class PolicySignatureError extends NexusError {
   }
 }
 
+/**
+ * Thrown when a policy bundle's rules fail structural validation at load
+ * time. F4.2 §2.3 makes `conditions.octLevels` a required field on every
+ * rule; any bundle whose rules omit it is rejected here (fail-closed at
+ * composition) so the evaluator at `policy/evaluator.ts:55` can rely on
+ * `cond.octLevels.includes(...)` being safe. This catches drift at boot
+ * — not as an eval-time TypeError that produces `error_dispatch` after
+ * Gates 01-03 have already passed.
+ */
+export class PolicyRuleValidationError extends NexusError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PolicyRuleValidationError';
+  }
+}
+
 export class ChainErrorClass extends NexusError {
   public readonly denialCode: DenialCode;
   constructor(message: string, denialCode: DenialCode) {

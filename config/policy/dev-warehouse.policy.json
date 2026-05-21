@@ -19,7 +19,8 @@
           "execute:query"
         ],
         "environments": ["reference"],
-        "targetSystems": ["warehouse", "sales-finance"]
+        "targetSystems": ["warehouse", "sales-finance"],
+        "octLevels": ["OCT-OPEN", "OCT-CONFIDENTIAL"]
       },
       "outcome": "allow",
       "approvalConfig": null,
@@ -35,7 +36,8 @@
         "actorClasses": ["SUPERVISED_AGENT"],
         "capabilities": ["update:record:internal", "create:record:internal"],
         "environments": ["reference"],
-        "targetSystems": ["warehouse", "sales-finance"]
+        "targetSystems": ["warehouse", "sales-finance"],
+        "octLevels": ["OCT-OPEN", "OCT-CONFIDENTIAL"]
       },
       "outcome": "allow",
       "approvalConfig": null,
@@ -45,5 +47,5 @@
       }
     }
   ],
-  "signature": "QqzVMwmdqe_yF8wCMVX-VIHhHLzzgypnD286h3iqld20V-kx9Sk_9jxDsb_ZJTvsu2LhxE4pHWkWeD1gQXiFDw"
+  "signature": "zEoQ5GW7P4hHJJ7yCQgeiSkmbJTWVqxAOCaw957GvjWlleOyRm8Ko2uNwfEPtBsjOeUIcV-r78qYBdRmiaC2DQ"
 }

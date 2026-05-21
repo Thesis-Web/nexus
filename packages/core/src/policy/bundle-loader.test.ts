@@ -62,7 +62,12 @@ const MIN_DEFAULT: Omit<PolicyFile, 'signature'> = {
     {
       ruleId: 'allow-low-read-default' as never,
       priority: 10,
-      conditions: { actorClasses: ['SUPERVISED_AGENT'], capabilities: ['read:record:single'] },
+      conditions: {
+        actorClasses: ['SUPERVISED_AGENT'],
+        capabilities: ['read:record:single'],
+        // F4.2 §2.3 — every rule must declare octLevels; validated at load.
+        octLevels: ['OCT-OPEN'],
+      },
       outcome: 'allow',
     },
   ],
@@ -83,6 +88,8 @@ const EXTRA_BUNDLE: Omit<PolicyFile, 'signature'> = {
         actorClasses: ['SUPERVISED_AGENT'],
         capabilities: ['read:record:bulk'],
         targetSystems: ['warehouse'],
+        // F4.2 §2.3 — every rule must declare octLevels; validated at load.
+        octLevels: ['OCT-OPEN'],
       },
       outcome: 'allow',
     },
@@ -186,7 +193,7 @@ describe('composePolicyBundles', () => {
         {
           ruleId: 'shared-id' as never,
           priority: 5,
-          conditions: { actorClasses: ['SUPERVISED_AGENT'] },
+          conditions: { actorClasses: ['SUPERVISED_AGENT'], octLevels: ['OCT-OPEN'] },
           outcome: 'allow',
         },
       ],
@@ -198,7 +205,7 @@ describe('composePolicyBundles', () => {
         {
           ruleId: 'shared-id' as never,
           priority: 6,
-          conditions: { actorClasses: ['HUMAN'] },
+          conditions: { actorClasses: ['HUMAN'], octLevels: ['OCT-OPEN'] },
           outcome: 'allow',
         },
       ],
@@ -225,13 +232,13 @@ describe('composePolicyBundles', () => {
         {
           ruleId: 'rule-pri-30' as never,
           priority: 30,
-          conditions: {},
+          conditions: { octLevels: ['OCT-OPEN'] },
           outcome: 'allow',
         },
         {
           ruleId: 'rule-pri-10' as never,
           priority: 10,
-          conditions: {},
+          conditions: { octLevels: ['OCT-OPEN'] },
           outcome: 'allow',
         },
       ],
@@ -242,7 +249,7 @@ describe('composePolicyBundles', () => {
         {
           ruleId: 'rule-pri-20' as never,
           priority: 20,
-          conditions: {},
+          conditions: { octLevels: ['OCT-OPEN'] },
           outcome: 'allow',
         },
       ],
