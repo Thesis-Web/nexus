@@ -11,11 +11,7 @@
 import { describe, it } from 'vitest';
 import { AcceptanceWallFailure } from './_acceptance/failure.js';
 
-function branchingBlocked(
-  testId: string,
-  scenario: string,
-  lawPins: ReadonlyArray<string>
-): never {
+function branchingBlocked(testId: string, scenario: string, lawPins: ReadonlyArray<string>): never {
   throw new AcceptanceWallFailure({
     testId,
     failureClass: 'EXTERNAL_DEPENDENCY',
@@ -23,7 +19,8 @@ function branchingBlocked(
     blockedBy: 'FRONTIER-LIVE-OR-FIXTURE-V1',
     owner: 'arch',
     lawPins,
-    nextRecommendedAction: 'Resolve Category 2 + Category 4 blockers, then build a 4-node DAG harness helper.',
+    nextRecommendedAction:
+      'Resolve Category 2 + Category 4 blockers, then build a 4-node DAG harness helper.',
   });
 }
 
@@ -49,11 +46,13 @@ describe('E2E Category 7 — multi-agent BRANCHING (frontier → on-prem → mul
     throw new AcceptanceWallFailure({
       testId: 'E2E-64',
       failureClass: 'UNIMPLEMENTED_TEST_BODY',
-      reason: 'Deep on-prem chain — no frontier dependency. Body not written; needs 4-node sequential DAG harness helper.',
+      reason:
+        'Deep on-prem chain — no frontier dependency. Body not written; needs 4-node sequential DAG harness helper.',
       blockedBy: 'E2E-MULTI-NO-CONTRACT-CATALOG',
       owner: 'builder',
       lawPins: ['HL#4', 'HL#8', 'HL#11'],
-      nextRecommendedAction: 'Build deep-chain DAG harness helper, then assert chain-depth limit / per-node mailbox isolation.',
+      nextRecommendedAction:
+        'Build deep-chain DAG harness helper, then assert chain-depth limit / per-node mailbox isolation.',
     });
   });
   it('E2E-65-branching-with-output: ceo → 4-agent + executive_briefing_v1', () => {
@@ -70,11 +69,13 @@ describe('E2E Category 7 — multi-agent BRANCHING (frontier → on-prem → mul
     throw new AcceptanceWallFailure({
       testId: 'E2E-66',
       failureClass: 'UNIMPLEMENTED_TEST_BODY',
-      reason: 'HL#4 — orch never kills; emits callback to user. Body not written. No frontier dependency.',
+      reason:
+        'HL#4 — orch never kills; emits callback to user. Body not written. No frontier dependency.',
       blockedBy: 'E2E-CALLBACK-FLOW',
       owner: 'builder',
       lawPins: ['HL#4'],
-      nextRecommendedAction: 'Force planner ambiguity (no eligible next agent), assert callback event + user-resolution endpoint.',
+      nextRecommendedAction:
+        'Force planner ambiguity (no eligible next agent), assert callback event + user-resolution endpoint.',
     });
   });
   it('E2E-67-branching-with-secure-rail: ceo → OCT-SECURE branch merges back', () => {
@@ -111,7 +112,8 @@ describe('E2E Category 7 — multi-agent BRANCHING (frontier → on-prem → mul
     throw new AcceptanceWallFailure({
       testId: 'E2E-70',
       failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason: 'Deepest happy path — requires output-contract templates, frontier-fixture, and multi-agent harness.',
+      reason:
+        'Deepest happy path — requires output-contract templates, frontier-fixture, and multi-agent harness.',
       blockedBy: 'OUTPUT-CONTRACT-TEMPLATE-LIBRARY-V1',
       owner: 'arch',
       lawPins: ['HL#6', 'HL#8', 'HL#11'],

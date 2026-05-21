@@ -84,11 +84,13 @@ describe('E2E Category 1 — chat on-prem (single agent, no contract)', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-02',
       failureClass: 'UNIMPLEMENTED_TEST_BODY',
-      reason: 'Test body not implemented. E2E-01 proved the chat-on-prem path; this slot needs a body that posts the prompt as `intern`.',
+      reason:
+        'Test body not implemented. E2E-01 proved the chat-on-prem path; this slot needs a body that posts the prompt as `intern`.',
       blockedBy: 'E2E-CHAT-ONPREM-CATALOG',
       owner: 'builder',
       lawPins: ['HL#2', 'HL#4', 'HL#6', 'HL#11'],
-      nextRecommendedAction: 'Clone the E2E-01 body, switch jwt to `intern`, assert the same forensic envelope.',
+      nextRecommendedAction:
+        'Clone the E2E-01 body, switch jwt to `intern`, assert the same forensic envelope.',
     });
   });
   it('E2E-03-chat-math: intern → "what is 17 times 23?"', () => {
@@ -165,7 +167,8 @@ describe('E2E Category 1 — chat on-prem (single agent, no contract)', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-10',
       failureClass: 'UNIMPLEMENTED_TEST_BODY',
-      reason: 'Test body not implemented. Followup-prompt variant as `director`. Pretrained knowledge — no NXS.',
+      reason:
+        'Test body not implemented. Followup-prompt variant as `director`. Pretrained knowledge — no NXS.',
       blockedBy: 'E2E-CHAT-ONPREM-CATALOG',
       owner: 'builder',
       lawPins: ['HL#2', 'HL#11'],

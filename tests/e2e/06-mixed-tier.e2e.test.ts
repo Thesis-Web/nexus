@@ -44,7 +44,8 @@ describe('E2E Category 6 — multi-agent MIXED on-prem + frontier', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-55',
       failureClass: 'PRODUCT_RUNTIME',
-      reason: 'NXS dispatch bridge returns null (see E2E-23). Mixed-tier-with-NXS depends on NXS pull working first.',
+      reason:
+        'NXS dispatch bridge returns null (see E2E-23). Mixed-tier-with-NXS depends on NXS pull working first.',
       blockedBy: 'NXS-DISPATCH-BRIDGE-RETURNS-NULL',
       owner: 'arch',
       lawPins: ['HL#5', 'HL#6', 'HL#11'],
@@ -55,7 +56,8 @@ describe('E2E Category 6 — multi-agent MIXED on-prem + frontier', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-56',
       failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason: 'Requires both frontier-fixture (Category 2 blocker) AND output-contract templates (Category 5 blocker).',
+      reason:
+        'Requires both frontier-fixture (Category 2 blocker) AND output-contract templates (Category 5 blocker).',
       blockedBy: 'OUTPUT-CONTRACT-TEMPLATE-LIBRARY-V1',
       owner: 'arch',
       lawPins: ['HL#6', 'HL#11'],
@@ -74,11 +76,13 @@ describe('E2E Category 6 — multi-agent MIXED on-prem + frontier', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-60',
       failureClass: 'UNIMPLEMENTED_TEST_BODY',
-      reason: 'NVG tier-ceiling denial path is testable WITHOUT a frontier adapter — the denial fires BEFORE the adapter call. Body not yet written.',
+      reason:
+        'NVG tier-ceiling denial path is testable WITHOUT a frontier adapter — the denial fires BEFORE the adapter call. Body not yet written.',
       blockedBy: 'E2E-MIXED-TIER-CATALOG',
       owner: 'builder',
       lawPins: ['HL#6', 'HL#10'],
-      nextRecommendedAction: 'Post a chat run as `analyst` (low tier) targeting a frontier model; assert NVG denies with tier_ceiling_exceeded BEFORE any adapter call.',
+      nextRecommendedAction:
+        'Post a chat run as `analyst` (low tier) targeting a frontier model; assert NVG denies with tier_ceiling_exceeded BEFORE any adapter call.',
     });
   });
 });

@@ -53,7 +53,8 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-106',
       failureClass: 'UNIMPLEMENTED_TEST_BODY',
-      reason: 'Risk-ceiling differential. Body not written. No external dependency — Gate 04 denies before connector.',
+      reason:
+        'Risk-ceiling differential. Body not written. No external dependency — Gate 04 denies before connector.',
       blockedBy: 'E2E-RBAC-DIFFERENTIALS-CATALOG',
       owner: 'builder',
       lawPins: ['HL#5', 'HL#10'],
@@ -69,7 +70,8 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-109',
       failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason: 'Approval flow surface (Gate 04 require_approval → Gate 05 approval → Gate 06 grant) not exercised end-to-end via HTTP. Body needs harness helper for approval.',
+      reason:
+        'Approval flow surface (Gate 04 require_approval → Gate 05 approval → Gate 06 grant) not exercised end-to-end via HTTP. Body needs harness helper for approval.',
       blockedBy: 'E2E-APPROVAL-FLOW-V1',
       owner: 'builder',
       lawPins: ['HL#5', 'HL#15'],
@@ -81,7 +83,8 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-110',
       failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason: 'No admin endpoint to revoke a capability mid-run. Three options open for owner ratification: (A) test-only harness route gated by NODE_ENV=test, (B) production POST /workspace/admin/principals/<id>/revoke signed mutation, (C) defer.',
+      reason:
+        'No admin endpoint to revoke a capability mid-run. Three options open for owner ratification: (A) test-only harness route gated by NODE_ENV=test, (B) production POST /workspace/admin/principals/<id>/revoke signed mutation, (C) defer.',
       blockedBy: 'ADMIN-REVOKE-ENDPOINT-V1',
       owner: 'owner',
       lawPins: ['HL#14', 'HL#15'],

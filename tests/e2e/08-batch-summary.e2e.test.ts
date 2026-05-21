@@ -62,7 +62,8 @@ describe('E2E Category 8 — batch file pull + LLM summary', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-78',
       failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason: 'F4.12 multi-item digest/quarantine path not built (HANDOFF §F priority #6, structurally blocked on §C.3 test-migration ratification).',
+      reason:
+        'F4.12 multi-item digest/quarantine path not built (HANDOFF §F priority #6, structurally blocked on §C.3 test-migration ratification).',
       blockedBy: 'F4.12-COMPILE-MULTI-ITEM-PASSTHROUGH',
       owner: 'arch',
       lawPins: ['HL#11', 'F4.12'],
@@ -72,7 +73,8 @@ describe('E2E Category 8 — batch file pull + LLM summary', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-79',
       failureClass: 'UNIMPLEMENTED_TEST_BODY',
-      reason: 'HL#4 callback when batch exceeds limits — body not written. No NXS dependency (callback fires at planner).',
+      reason:
+        'HL#4 callback when batch exceeds limits — body not written. No NXS dependency (callback fires at planner).',
       blockedBy: 'E2E-CALLBACK-FLOW',
       owner: 'builder',
       lawPins: ['HL#4'],
@@ -82,7 +84,8 @@ describe('E2E Category 8 — batch file pull + LLM summary', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-80',
       failureClass: 'UNIMPLEMENTED_TEST_BODY',
-      reason: 'Gate 02 (OCT classification) denial — fires BEFORE bridge dispatch, testable now. Body not written.',
+      reason:
+        'Gate 02 (OCT classification) denial — fires BEFORE bridge dispatch, testable now. Body not written.',
       blockedBy: 'E2E-OCT-SURFACE',
       owner: 'builder',
       lawPins: ['HL#5', 'HL#10'],

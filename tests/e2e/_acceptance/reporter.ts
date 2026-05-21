@@ -218,11 +218,15 @@ export default class AcceptanceWallReporter {
     if (blockerCounts.size > 0) {
       lines.push('## Blocker graph');
       lines.push('');
-      lines.push('Tests blocked on the same upstream blocker are grouped here. Resolving a top blocker unblocks every test below it.');
+      lines.push(
+        'Tests blocked on the same upstream blocker are grouped here. Resolving a top blocker unblocks every test below it.'
+      );
       lines.push('');
       const sortedBlockers = [...blockerCounts.entries()].sort((a, b) => b[1].length - a[1].length);
       for (const [blocker, tests] of sortedBlockers) {
-        lines.push(`### \`${blocker}\` — blocks ${tests.length} test${tests.length === 1 ? '' : 's'}`);
+        lines.push(
+          `### \`${blocker}\` — blocks ${tests.length} test${tests.length === 1 ? '' : 's'}`
+        );
         lines.push('');
         for (const t of tests) lines.push(`- ${t}`);
         lines.push('');
@@ -286,7 +290,9 @@ export default class AcceptanceWallReporter {
       lines.push(`- \`${cls}\``);
     }
     lines.push('');
-    lines.push('Source: `tests/e2e/_acceptance/failure.ts`. Repair-mode priority follows owner ratification — typically PRODUCT_RUNTIME and LAW_VIOLATION before UNIMPLEMENTED_*.');
+    lines.push(
+      'Source: `tests/e2e/_acceptance/failure.ts`. Repair-mode priority follows owner ratification — typically PRODUCT_RUNTIME and LAW_VIOLATION before UNIMPLEMENTED_*.'
+    );
     lines.push('');
 
     await fs.writeFile(mdPath, lines.join('\n'), 'utf-8');

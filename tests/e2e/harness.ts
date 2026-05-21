@@ -99,7 +99,10 @@ async function readRunEvents(
   return raw
     .split(/\r?\n/)
     .filter(Boolean)
-    .map(line => JSON.parse(line) as { runId?: string; eventType: string; detail?: Record<string, unknown> })
+    .map(
+      line =>
+        JSON.parse(line) as { runId?: string; eventType: string; detail?: Record<string, unknown> }
+    )
     .filter(e => e.runId === runId)
     .map(e => ({ eventType: e.eventType, detail: e.detail ?? {} }));
 }
@@ -299,12 +302,12 @@ export async function bootHarness(opts?: {
             const closeEvent = ledgerEvents.find(e => e.eventType === 'run_closed');
             const rejectEvent = ledgerEvents.find(e => e.eventType === 'plan_rejected');
             const closeReason = closeEvent
-              ? (closeEvent.detail['closeReason'] as string | undefined) ?? null
+              ? ((closeEvent.detail['closeReason'] as string | undefined) ?? null)
               : rejectEvent
                 ? 'plan_rejected'
                 : null;
             const finalOutcome = closeEvent
-              ? (closeEvent.detail['finalOutcome'] as string | undefined) ?? null
+              ? ((closeEvent.detail['finalOutcome'] as string | undefined) ?? null)
               : null;
             return {
               runId,
