@@ -76,28 +76,98 @@ describe('E2E Category 12 — Hard Law surfaces', () => {
       lawPins: ['HL#4'],
     });
   });
-  it('E2E-113-hl5-nxs-only-action-auth: agent NXS-bypass via side-channel → blocked', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-113',
-      failureClass: 'UNIMPLEMENTED_TEST_BODY',
-      reason:
-        'HL#5 — NXS is the sole action authority. Body should attempt to call a connector directly (no run) and assert refusal at boundary.',
-      blockedBy: 'E2E-HARD-LAW-CATALOG',
-      owner: 'builder',
-      lawPins: ['HL#5'],
-    });
-  });
-  it('E2E-114-hl6-nvg-sole-llm-auth: agent direct LLM call → blocked', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-114',
-      failureClass: 'UNIMPLEMENTED_TEST_BODY',
-      reason:
-        'HL#6 — NVG is the sole LLM authority. Body should attempt to call a model adapter directly and assert refusal.',
-      blockedBy: 'E2E-HARD-LAW-CATALOG',
-      owner: 'builder',
-      lawPins: ['HL#6'],
-    });
-  });
+  /**
+   * E2E-113 — HL#5 NXS is the sole action authority.
+   *
+   * An agent process has no workspace JWT and no admin token (agents are
+   * dispatched-to, not authenticated-as; comment at
+   * scripts/nexus-bootstrap.ts:1450-1452). Concretely, a process that
+   * attempts to bypass NXS by hitting a connector or NXS pipeline route
+   * directly must be refused at the HTTP boundary.
+   *
+   * This test is narrower than E2E-120 (which probes a wide
+   * bypass-paths set): here we focus on the NXS / connector
+   * action-authority surface, with the assertion that an
+   * unauthenticated POST returns an auth-blocked status (401/403),
+   * a not-found (404/405), or — for routes the workspace SPA also
+   * answers — the HTML catch-all. A 2xx with a non-HTML body would
+   * mean the route executed for an agent-shaped caller, which is the
+   * HL#5 violation we're closing out.
+   */
+  it('E2E-113-hl5-nxs-only-action-auth: agent NXS-bypass via side-channel → blocked', async () => {
+    const nxsBypassPaths: ReadonlyArray<{ method: 'GET' | 'POST'; path: string }> = [
+      { method: 'POST', path: '/nxs/dispatch' },
+      { method: 'POST', path: '/nxs/execute' },
+      { method: 'POST', path: '/nxs/gates/06/execute' },
+      { method: 'POST', path: '/nxs/action' },
+      { method: 'POST', path: '/connectors/postgres/execute' },
+      { method: 'POST', path: '/connectors/postgres-sales-finance/execute' },
+      { method: 'POST', path: '/connectors/postgres-warehouse/execute' },
+      { method: 'POST', path: '/connectors/stub/execute' },
+      { method: 'GET', path: '/connectors/postgres-sales-finance/query' },
+      { method: 'POST', path: '/agent/dispatch' },
+      { method: 'POST', path: '/agent/execute' },
+    ];
+
+    for (const probe of nxsBypassPaths) {
+      const res = await fetch(`${harness.baseUrl}${probe.path}`, {
+        method: probe.method,
+        headers: { 'Content-Type': 'application/json' },
+        body: probe.method === 'POST' ? '{}' : undefined,
+      });
+      const contentType = res.headers.get('content-type') ?? '';
+      const isHtmlSpaFallback = res.status === 200 && contentType.includes('text/html');
+      const isAuthBlocked = [401, 403, 404, 405].includes(res.status);
+      const acceptable = isAuthBlocked || isHtmlSpaFallback;
+      expect(
+        acceptable,
+        `HL#5 — NXS/connector bypass route must not be agent-reachable: ${probe.method} ${probe.path} returned ${res.status} ${contentType}`
+      ).toBe(true);
+    }
+  }, 60_000);
+
+  /**
+   * E2E-114 — HL#6 NVG is the sole LLM authority.
+   *
+   * Companion to E2E-113 with the NVG / model adapter surface. An
+   * agent process attempting to call a model adapter directly (or any
+   * NVG-side route) must be refused at the HTTP boundary. The check
+   * shape mirrors E2E-113 / E2E-120 — accept auth-blocked or HTML SPA
+   * fallback; reject 2xx with non-HTML body (which would prove the route
+   * executed for an agent-shaped caller, the HL#6 violation).
+   */
+  it('E2E-114-hl6-nvg-sole-llm-auth: agent direct LLM call → blocked', async () => {
+    const nvgBypassPaths: ReadonlyArray<{ method: 'GET' | 'POST'; path: string }> = [
+      { method: 'POST', path: '/nvg/classify' },
+      { method: 'POST', path: '/nvg/route' },
+      { method: 'POST', path: '/nvg/forward' },
+      { method: 'POST', path: '/nvg/dispatch' },
+      { method: 'POST', path: '/nvg/llm' },
+      { method: 'POST', path: '/nvg/invoke' },
+      { method: 'POST', path: '/llm/ollama/chat' },
+      { method: 'POST', path: '/llm/ollama/generate' },
+      { method: 'POST', path: '/llm/openai/v1/chat/completions' },
+      { method: 'POST', path: '/llm/anthropic/v1/messages' },
+      { method: 'POST', path: '/models/invoke' },
+      { method: 'GET', path: '/llm/route' },
+    ];
+
+    for (const probe of nvgBypassPaths) {
+      const res = await fetch(`${harness.baseUrl}${probe.path}`, {
+        method: probe.method,
+        headers: { 'Content-Type': 'application/json' },
+        body: probe.method === 'POST' ? '{}' : undefined,
+      });
+      const contentType = res.headers.get('content-type') ?? '';
+      const isHtmlSpaFallback = res.status === 200 && contentType.includes('text/html');
+      const isAuthBlocked = [401, 403, 404, 405].includes(res.status);
+      const acceptable = isAuthBlocked || isHtmlSpaFallback;
+      expect(
+        acceptable,
+        `HL#6 — NVG/LLM bypass route must not be agent-reachable: ${probe.method} ${probe.path} returned ${res.status} ${contentType}`
+      ).toBe(true);
+    }
+  }, 60_000);
 
   /**
    * E2E-115 — HL#7 LLM never sees tool descriptors.

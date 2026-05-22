@@ -606,21 +606,121 @@ describe('E2E Category 3 — single-agent NXS dispatch (target system read)', ()
     expect(skus.has('ASSY-100')).toBe(true);
     expect(skus.has('GADGET-X')).toBe(true);
   }, 120_000);
-  it('E2E-28-nxs-sales-delete-denied-for-analyst: analyst → delete ORD-12345 → Gate 03 denied', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-28',
-      failureClass: 'UNIMPLEMENTED_TEST_BODY',
-      reason:
-        'Gate 03 denial fires BEFORE bridge dispatch, so this test does NOT need the bridge fixed. Body not written.',
-      blockedBy: 'E2E-RBAC-DIFFERENTIALS-CATALOG',
-      owner: 'builder',
-      lawPins: ['HL#5'],
-      nextRecommendedAction:
-        'Post analyst delete run against sales-orders; assert Gate 03 denial with capability_missing BEFORE any connector call.',
+  /**
+   * E2E-28 — HL#5 capability-ceiling denial. Analyst attempts a DELETE
+   * against sales_orders. The analyst seed
+   * (scripts/seeds/user-ladder-seeds.ts:133-145) carries
+   * allowedCapabilities=[search:public, synthesize:content,
+   * read:record:single, query:data] — `delete:record:single` is NOT in
+   * the set. Symmetric intersection with the sales-agent
+   * (scripts/nexus-bootstrap.ts:1476-1481, caps =
+   * read:record:single, read:record:bulk, query:data, search:data) on
+   * the delete dimension is therefore empty.
+   *
+   * Either path is the same honest denial: Gate 03 capability-missing
+   * on the user ceiling, or HL#15 empty intersection on capabilities at
+   * mint time. Both fire BEFORE any connector call.
+   *
+   * Hard floor: no nxs_action with finalOutcome=EXECUTED.
+   */
+  it('E2E-28-nxs-sales-delete-denied-for-analyst: analyst → delete ORD-12345 → Gate 03 denied', async () => {
+    const jwt = await harness.jwtFor('analyst');
+    const { runId } = await harness.createRun(jwt, {
+      workspaceSocketId: 'reference-workspace',
+      promptMode: 'free_text',
+      prompt: 'Delete the duplicate sales order ORD-12345.',
+      agents: [SALES_AGENT_ACTOR_ID],
+      subTasks: [
+        {
+          kind: 'nxs',
+          subTaskKey: 'sales-delete-denied',
+          agentId: SALES_AGENT_ACTOR_ID,
+          taskSummary: 'Delete one sales order row',
+          expectedOutputSlots: ['rows'],
+          inputSlotReads: [],
+          actionTemplate: {
+            capability: 'delete:record:single',
+            target: {
+              system: 'sales-finance',
+              resourceType: 'sales_orders',
+              resourceScope: 'single',
+            },
+            rawPayload: {
+              sql: 'DELETE FROM sales_orders WHERE order_code = $1',
+              params: ['ORD-12345'],
+            },
+          },
+        },
+      ] as ReadonlyArray<unknown>,
+      subTaskEdges: [],
     });
-  });
+    const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 90_000 });
+
+    // Two valid denial paths — both prove the ceiling held closed:
+    //   (a) HL#15 mint-time intersection emits delegation_empty_intersection
+    //       on the capabilities dimension (delete:record:single not in
+    //       the user × agent intersection); or
+    //   (b) mint produces a delegation that excludes delete; Gate 03
+    //       (capability evaluator) denies at dispatch.
+    const driftEvents = snap.ledgerEvents.filter(
+      e => e.eventType === 'delegation_empty_intersection'
+    );
+    const nxsActions = snap.ledgerEvents.filter(e => e.eventType === 'nxs_action');
+    const denialThroughDispatch = nxsActions.some(e => {
+      const fo = (e.detail as Record<string, unknown>)['finalOutcome'];
+      return typeof fo === 'string' && fo !== FINAL_OUTCOME.EXECUTED;
+    });
+    expect(
+      driftEvents.length > 0 || denialThroughDispatch,
+      'HL#5 — delete:record:single must be denied (intersection or Gate 03)'
+    ).toBe(true);
+
+    // Hard floor: no nxs_action ever reaches EXECUTED. Any executed
+    // delete on a missing capability would be a HL#5 violation.
+    const executedActions = nxsActions.filter(
+      e => (e.detail as Record<string, unknown>)['finalOutcome'] === FINAL_OUTCOME.EXECUTED
+    );
+    expect(
+      executedActions.length,
+      'no nxs_action may report executed when delete is outside the user × agent intersection'
+    ).toBe(0);
+  }, 120_000);
+
+  /**
+   * E2E-29 — catalog asks "manager → bulk UPDATE on warehouse / mark
+   * batch shipped". Two seed gaps make this unbuildable without widening
+   * (which prompt §1 forbids):
+   *   - manager (user-ladder-seeds.ts:168-189) allowedCapabilities does
+   *     NOT include `update:record:bulk` — that cap appears first at
+   *     director (line 235).
+   *   - warehouse-agent (nexus-bootstrap.ts:1503-1530) allowedCapabilities
+   *     = read:record:single, read:record:bulk, query:data, search:data,
+   *     update:record:internal — `update:record:bulk` is NOT in the agent's
+   *     set either, so even a director-level user × warehouse-agent
+   *     intersection on the bulk-update dimension is empty.
+   *
+   * Even with the prior session's NXS dispatch bridge fix
+   * (43e5ed3), the catalog's "bulk update" framing cannot be exercised
+   * end-to-end against the current seeds. Owner ratification needed to
+   * either (a) widen the warehouse-agent's allowedCapabilities to include
+   * update:record:bulk + lift manager to match, or (b) restate the catalog
+   * row as `update:record:internal` (single-record adjustment) and accept
+   * the persona-deviation pattern established in Pass 2 (memory F-10).
+   */
   it('E2E-29-nxs-warehouse-update-bulk-allowed-for-manager: manager → mark batch shipped', () => {
-    nxsBlocked('E2E-29', 'manager bulk update', ['HL#5', 'HL#11']);
+    throw new AcceptanceWallFailure({
+      testId: 'E2E-29',
+      failureClass: 'UNIMPLEMENTED_SURFACE',
+      reason:
+        "Bridge fix landed (43e5ed3) but the catalog's `bulk update on warehouse` framing is not buildable against the current seeds: neither manager nor warehouse-agent carries `update:record:bulk`. HL#15 intersection on the bulk-update capability dimension is empty regardless of persona substitution.",
+      blockedBy: 'CHAT-AGENT-AND-WRITE-CAPABILITY-SEED-DRIFT',
+      owner: 'owner',
+      lawPins: ['HL#5', 'HL#11', 'HL#15'],
+      suspectedRootCause:
+        'Seed↔catalog drift: catalog row assumes `update:record:bulk` exists on at least one ladder user × business agent intersection; no such pair is seeded today.',
+      nextRecommendedAction:
+        'Owner ratification: either widen warehouse-agent allowedCapabilities + lift manager to match, OR amend catalog row E2E-29 to use `update:record:internal` (single-record adjustment, which warehouse-agent supports today) and document the persona-deviation per the F-10 pattern.',
+    });
   });
   it('E2E-30-nxs-sales-delete-allowed-for-vp: vp → delete duplicate order → Gate 05 approval', () => {
     throw new AcceptanceWallFailure({
