@@ -983,6 +983,248 @@ export interface LexiconGuard {
   readonly then: string;
 }
 
+// ─── AMEND-nexus-lexicon-arena-evidence-layer-v0-1-0 (fourth-layer types) ──
+//
+// Read-model contracts for the path-layer substrate added by the fourth
+// lexicon layer. All authoritative mutation of these records flows through
+// the existing `lexicon_mutation` SigningCouncil 2-of-2 dispatcher — runtime
+// prompt channel MUST NOT mutate them. Runtime may only emit review signals
+// and outcome projections (§2.1 of the AMEND).
+
+export type LexiconPathKind =
+  | 'lexical_term'
+  | 'alias_rule'
+  | 'task_intent'
+  | 'task_capability'
+  | 'target_catalog'
+  | 'workflow_template'
+  | 'workflow_node'
+  | 'workflow_edge'
+  | 'entity'
+  | 'edge'
+  | 'guard'
+  | 'checkback_template';
+
+export type LexiconPathPromotionStatus =
+  | 'candidate'
+  | 'confirmed'
+  | 'contradicted'
+  | 'deprecated'
+  | 'blocked';
+
+export interface LexiconPathProfile {
+  readonly pathId: NonEmpty;
+  readonly pathKind: LexiconPathKind;
+  readonly sourceRef: NonEmpty;
+  readonly arenaId: NonEmpty;
+  /** 0..1 inclusive. */
+  readonly confidenceScore: number;
+  /** 0..1 inclusive. */
+  readonly completenessScore: number;
+  /** 0..1 inclusive. */
+  readonly failureLikelihood: number;
+  readonly promotionStatus: LexiconPathPromotionStatus;
+  readonly coverageCategory?: NonEmpty;
+  readonly notes?: string;
+  readonly createdAt: IsoTimestamp;
+  readonly updatedAt: IsoTimestamp;
+  readonly mutationId: NonEmpty;
+}
+
+export type LexiconPathEvidenceKind =
+  | 'owner_ruling'
+  | 'blueprint_pin'
+  | 'engineering_spec_pin'
+  | 'outline_pin'
+  | 'signed_fixture'
+  | 'unit_test'
+  | 'integration_test'
+  | 'e2e_test'
+  | 'run_outcome'
+  | 'admin_mutation'
+  | 'wordnet_seed'
+  | 'manual_seed';
+
+export interface LexiconPathEvidence {
+  readonly evidenceId: NonEmpty;
+  readonly pathId: NonEmpty;
+  readonly evidenceKind: LexiconPathEvidenceKind;
+  readonly sourceRef: NonEmpty;
+  readonly sourceDigest: NonEmpty;
+  /**
+   * Records from the same `independenceGroup` MUST NOT be counted as
+   * independent confirmations (§4.3 of the AMEND).
+   */
+  readonly independenceGroup: NonEmpty;
+  /** -1..1 inclusive. */
+  readonly confidenceDelta: number;
+  /** Never contains raw secrets or full raw prompt text (§4.3). */
+  readonly evidenceSummary: NonEmpty;
+  readonly createdAt: IsoTimestamp;
+  readonly mutationId: NonEmpty;
+}
+
+export type LexiconPathContradictionKind =
+  | 'semantic_conflict'
+  | 'capability_conflict'
+  | 'target_conflict'
+  | 'slot_contract_conflict'
+  | 'governance_class_conflict'
+  | 'stale_superseded_path'
+  | 'test_failure_conflict';
+
+export type LexiconPathContradictionSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export type LexiconPathContradictionResolverStatus =
+  | 'open'
+  | 'accepted_a'
+  | 'accepted_b'
+  | 'both_deprecated'
+  | 'owner_ruling_required';
+
+export interface LexiconPathContradiction {
+  readonly contradictionId: NonEmpty;
+  readonly pathIdA: NonEmpty;
+  readonly pathIdB: NonEmpty;
+  readonly contradictionKind: LexiconPathContradictionKind;
+  readonly severity: LexiconPathContradictionSeverity;
+  readonly resolverStatus: LexiconPathContradictionResolverStatus;
+  readonly summary: NonEmpty;
+  readonly createdAt: IsoTimestamp;
+  readonly resolvedAt?: IsoTimestamp;
+  readonly mutationId: NonEmpty;
+}
+
+export type LexiconPathRequirementKind =
+  | 'capability'
+  | 'agent'
+  | 'target_system'
+  | 'connector'
+  | 'model_tier_hint'
+  | 'mailbox'
+  | 'compile_template'
+  | 'slot_read'
+  | 'slot_write'
+  | 'approval_channel'
+  | 'admin_signature'
+  | 'policy_bundle'
+  | 'identity_claim'
+  | 'environment';
+
+export interface LexiconPathRequirement {
+  readonly requirementId: NonEmpty;
+  readonly pathId: NonEmpty;
+  readonly requirementKind: LexiconPathRequirementKind;
+  readonly requirementRef: NonEmpty;
+  readonly required: boolean;
+  readonly checkbackIfMissing: boolean;
+  readonly failureCode?: NonEmpty;
+  readonly createdAt: IsoTimestamp;
+  readonly mutationId: NonEmpty;
+}
+
+export type LexiconPathOutcomeKind =
+  | 'planned'
+  | 'executed'
+  | 'checkback_sent'
+  | 'checkback_accepted'
+  | 'checkback_cancelled'
+  | 'rejected_unmappable'
+  | 'rejected_no_capable_agent'
+  | 'rejected_capability_outside_ceiling'
+  | 'rejected_structural_constraint'
+  | 'rejected_malformed'
+  | 'node_failed'
+  | 'node_timed_out'
+  | 'dag_failed'
+  | 'dag_partial_complete'
+  | 'compile_skipped'
+  | 'final_response_emitted';
+
+/**
+ * Run-outcome projection tying a real run/plan back to the planner path
+ * that produced it. Per AMEND §4.6 this is a projection of the Run
+ * Ledger, not a replacement — raw evidence stays in the existing ledgers.
+ */
+export interface LexiconPathOutcome {
+  readonly outcomeId: NonEmpty;
+  readonly pathId: NonEmpty;
+  readonly runId: NonEmpty;
+  readonly planId?: NonEmpty;
+  readonly outcomeKind: LexiconPathOutcomeKind;
+  readonly failureCode?: NonEmpty;
+  readonly failureSummary?: NonEmpty;
+  readonly runLedgerRef?: NonEmpty;
+  readonly evidenceRecordRef?: NonEmpty;
+  readonly createdAt: IsoTimestamp;
+}
+
+export type LexiconCheckbackKind =
+  | 'ambiguous_intent'
+  | 'missing_capability'
+  | 'missing_agent'
+  | 'missing_connector'
+  | 'missing_target_system'
+  | 'missing_slot'
+  | 'missing_compile_template'
+  | 'missing_mailbox'
+  | 'approval_required'
+  | 'admin_signature_required'
+  | 'likely_run_failure'
+  | 'unsupported_path';
+
+export type LexiconCheckbackDefaultAction =
+  | 'cancel'
+  | 'accept_suggestion'
+  | 'choose_option'
+  | 'open_admin_setup'
+  | 'request_owner_ruling';
+
+export interface LexiconCheckbackTemplate {
+  readonly templateId: NonEmpty;
+  readonly checkbackKind: LexiconCheckbackKind;
+  readonly promptTitle: NonEmpty;
+  readonly operatorQuestion: NonEmpty;
+  /** Stringified JSON; safe_options_json in the spec — typed at the reader. */
+  readonly safeOptionsJson: NonEmpty;
+  readonly defaultAction: LexiconCheckbackDefaultAction;
+  readonly createdAt: IsoTimestamp;
+  readonly updatedAt: IsoTimestamp;
+  readonly mutationId: NonEmpty;
+}
+
+export type PathFeasibilityOutcome =
+  | 'executable'
+  | 'typed_checkback'
+  | 'unsupported_path'
+  | 'blocked_path'
+  | 'contradicted_path'
+  | 'likely_failure';
+
+export interface PathFeasibilityMissingRequirement {
+  readonly requirementKind: LexiconPathRequirementKind;
+  readonly requirementRef: NonEmpty;
+  readonly failureCode: NonEmpty | null;
+}
+
+/**
+ * Scoring result emitted by the fourth-layer scorer (package-local in
+ * `@nexus/planner-db-lexicon`) for a single candidate path. The planner
+ * uses this to decide between executable plan, typed checkback, or
+ * lawful unsupported-path. Per AMEND §5.3.
+ */
+export interface PathFeasibilityResult {
+  readonly pathId: NonEmpty;
+  readonly outcome: PathFeasibilityOutcome;
+  readonly confidenceScore: number;
+  readonly completenessScore: number;
+  readonly failureLikelihood: number;
+  readonly missingRequirements: ReadonlyArray<PathFeasibilityMissingRequirement>;
+  readonly openContradictions: ReadonlyArray<NonEmpty>;
+  readonly checkbackTemplateId: NonEmpty | null;
+  readonly evidenceRefs: ReadonlyArray<NonEmpty>;
+}
+
 export type LexiconMutation =
   | { readonly kind: 'entity_add'; readonly entity: LexiconEntity }
   | {
@@ -1015,6 +1257,42 @@ export type LexiconMutation =
       readonly kind: 'guard_update';
       readonly guardId: NonEmpty;
       readonly patch: Partial<LexiconGuard>;
+    }
+  // ── Fourth-layer mutation variants (AMEND §6.1) ────────────────────────
+  | { readonly kind: 'path_profile_add'; readonly profile: LexiconPathProfile }
+  | {
+      readonly kind: 'path_profile_update';
+      readonly pathId: NonEmpty;
+      readonly patch: Partial<LexiconPathProfile>;
+    }
+  | { readonly kind: 'path_profile_disable'; readonly pathId: NonEmpty }
+  | { readonly kind: 'path_evidence_add'; readonly evidence: LexiconPathEvidence }
+  | {
+      readonly kind: 'path_contradiction_add';
+      readonly contradiction: LexiconPathContradiction;
+    }
+  | {
+      readonly kind: 'path_contradiction_resolve';
+      readonly contradictionId: NonEmpty;
+      readonly resolverStatus: LexiconPathContradictionResolverStatus;
+    }
+  | {
+      readonly kind: 'path_requirement_add';
+      readonly requirement: LexiconPathRequirement;
+    }
+  | {
+      readonly kind: 'path_requirement_update';
+      readonly requirementId: NonEmpty;
+      readonly patch: Partial<LexiconPathRequirement>;
+    }
+  | {
+      readonly kind: 'checkback_template_add';
+      readonly template: LexiconCheckbackTemplate;
+    }
+  | {
+      readonly kind: 'checkback_template_update';
+      readonly templateId: NonEmpty;
+      readonly patch: Partial<LexiconCheckbackTemplate>;
     };
 
 export interface LexiconMutationResult {

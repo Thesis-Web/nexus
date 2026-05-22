@@ -90,6 +90,17 @@ const VALID_LEXICON_MUTATION_KINDS = new Set<string>([
   'workflow_template_update',
   'guard_add',
   'guard_update',
+  // ── Fourth-layer (AMEND-nexus-lexicon-arena-evidence-layer-v0-1-0 §6.1)
+  'path_profile_add',
+  'path_profile_update',
+  'path_profile_disable',
+  'path_evidence_add',
+  'path_contradiction_add',
+  'path_contradiction_resolve',
+  'path_requirement_add',
+  'path_requirement_update',
+  'checkback_template_add',
+  'checkback_template_update',
 ]);
 
 function isValidLexiconMutationKind(mut: LexiconMutation): boolean {

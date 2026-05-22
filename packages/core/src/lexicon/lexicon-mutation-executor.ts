@@ -46,6 +46,40 @@ const FIXTURE_PATHS: Record<LexiconMutation['kind'], FixturePath> = {
   },
   guard_add: { file: path.join('fixtures', 'lexicon', 'lexicon_guard.jsonl') },
   guard_update: { file: path.join('fixtures', 'lexicon', 'lexicon_guard.jsonl') },
+  // ── Fourth-layer mutation targets ─────────────────────────────────────
+  // AMEND-nexus-lexicon-arena-evidence-layer-v0-1-0 §6.2 — JSONL backend.
+  // All authoritative path-layer mutation goes through the same 2-of-2
+  // council; each variant routes to one of five new JSONL targets.
+  path_profile_add: {
+    file: path.join('fixtures', 'lexicon', 'lexicon_path_profile.jsonl'),
+  },
+  path_profile_update: {
+    file: path.join('fixtures', 'lexicon', 'lexicon_path_profile.jsonl'),
+  },
+  path_profile_disable: {
+    file: path.join('fixtures', 'lexicon', 'lexicon_path_profile.jsonl'),
+  },
+  path_evidence_add: {
+    file: path.join('fixtures', 'lexicon', 'lexicon_path_evidence.jsonl'),
+  },
+  path_contradiction_add: {
+    file: path.join('fixtures', 'lexicon', 'lexicon_path_contradiction.jsonl'),
+  },
+  path_contradiction_resolve: {
+    file: path.join('fixtures', 'lexicon', 'lexicon_path_contradiction.jsonl'),
+  },
+  path_requirement_add: {
+    file: path.join('fixtures', 'lexicon', 'lexicon_path_requirement.jsonl'),
+  },
+  path_requirement_update: {
+    file: path.join('fixtures', 'lexicon', 'lexicon_path_requirement.jsonl'),
+  },
+  checkback_template_add: {
+    file: path.join('fixtures', 'lexicon', 'lexicon_checkback_template.jsonl'),
+  },
+  checkback_template_update: {
+    file: path.join('fixtures', 'lexicon', 'lexicon_checkback_template.jsonl'),
+  },
 };
 
 export interface JsonlLexiconMutationExecutorDeps {
