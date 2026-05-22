@@ -1788,7 +1788,10 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
   app.post('/workspace/admin/setup/connectors/:connectorId/probe', async (req, res, next) => {
     try {
       const auth = await checkAdminAuth(req, res, deps);
-      if (!auth) return; // checkAdminAuth already sent the rejection
+      if (!auth.ok) {
+        res.status(auth.status).json({ ok: false, error: auth.error });
+        return;
+      }
       if (!deps.manifestWriter) {
         res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
         return;
@@ -1844,7 +1847,10 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
     async (req, res, next) => {
       try {
         const auth = await checkAdminAuth(req, res, deps);
-        if (!auth) return;
+        if (!auth.ok) {
+          res.status(auth.status).json({ ok: false, error: auth.error });
+          return;
+        }
         if (!deps.manifestWriter) {
           res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
           return;
@@ -1882,10 +1888,10 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
           cfgRaw !== null && typeof cfgRaw === 'object' && !Array.isArray(cfgRaw)
             ? (cfgRaw as Record<string, unknown>)
             : {};
-        // Deterministic probe runId — incorporates clock + random, identical
-        // shape to lab/test-bed mailpit-integration RUN_IDs so admin probes
-        // are visually distinguishable from NXS-dispatched runs in Mailpit.
-        const runId = `ADMIN-PROBE-${new Date()
+        // Deterministic probe runId — clock + random. The MailpitConnector
+        // (and any other connector probe handler) is responsible for prefixing
+        // its own probe-message subject; we pass just the unique payload.
+        const runId = `${new Date()
           .toISOString()
           .replace(/[-:.]/g, '')
           .slice(0, 15)}Z-${Math.random().toString(36).slice(2, 8)}`;
