@@ -730,9 +730,10 @@ describe('E2E Category 3 — single-agent NXS dispatch (target system read)', ()
     const executed = nxsActions.some(
       e => (e.detail as Record<string, unknown>)['finalOutcome'] === FINAL_OUTCOME.EXECUTED
     );
-    expect(executed, 'catalog says manager bulk update is ALLOWED — nxs_action must reach EXECUTED').toBe(
-      true
-    );
+    expect(
+      executed,
+      'catalog says manager bulk update is ALLOWED — nxs_action must reach EXECUTED'
+    ).toBe(true);
   }, 120_000);
 
   /**

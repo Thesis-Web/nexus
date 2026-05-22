@@ -82,26 +82,31 @@ describe('E2E Category 7 — multi-agent BRANCHING (frontier → on-prem → mul
   });
 
   it('E2E-61-frontier-then-fan-out: sr_manager → frontier-survey → 3-agent fan-out', async () => {
-    const snap = await createBranching(harness, 'sr_manager', 'Frontier survey then 3-agent fan-out.', [
-      {
-        kind: 'nvg',
-        subTaskKey: 'frontier-survey',
-        agentId: CHAT_AGENT_ACTOR_ID,
-        taskSummary: 'frontier survey',
-        taskPrompt: 'Survey three current trends in supply-chain optimization.',
-        expectedOutputSlots: ['response'],
-        inputSlotReads: [],
-      },
-      ...['focus-a', 'focus-b', 'focus-c'].map(k => ({
-        kind: 'nvg',
-        subTaskKey: k,
-        agentId: CHAT_AGENT_ACTOR_ID,
-        taskSummary: `fan-out leg ${k}`,
-        taskPrompt: `Take one of the surveyed trends and elaborate it in one paragraph (${k}).`,
-        expectedOutputSlots: ['response'],
-        inputSlotReads: [],
-      })),
-    ]);
+    const snap = await createBranching(
+      harness,
+      'sr_manager',
+      'Frontier survey then 3-agent fan-out.',
+      [
+        {
+          kind: 'nvg',
+          subTaskKey: 'frontier-survey',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'frontier survey',
+          taskPrompt: 'Survey three current trends in supply-chain optimization.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+        ...['focus-a', 'focus-b', 'focus-c'].map(k => ({
+          kind: 'nvg',
+          subTaskKey: k,
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: `fan-out leg ${k}`,
+          taskPrompt: `Take one of the surveyed trends and elaborate it in one paragraph (${k}).`,
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        })),
+      ]
+    );
     assertBranchingEnvelope(snap);
   }, 360_000);
 
@@ -201,7 +206,9 @@ describe('E2E Category 7 — multi-agent BRANCHING (frontier → on-prem → mul
         agentId: CHAT_AGENT_ACTOR_ID,
         taskSummary: `stage ${i + 1}`,
         taskPrompt: `Stage ${i + 1}: ${
-          ['outline a project plan', 'expand the outline', 'identify risks', 'propose mitigations'][i]
+          ['outline a project plan', 'expand the outline', 'identify risks', 'propose mitigations'][
+            i
+          ]
         }.`,
         expectedOutputSlots: ['response'],
         inputSlotReads: [],
@@ -458,7 +465,11 @@ describe('E2E Category 7 — multi-agent BRANCHING (frontier → on-prem → mul
           inputSlotReads: [],
           actionTemplate: {
             capability: 'read:record:bulk',
-            target: { system: 'sales-finance', resourceType: 'sales_orders', resourceScope: 'bulk' },
+            target: {
+              system: 'sales-finance',
+              resourceType: 'sales_orders',
+              resourceScope: 'bulk',
+            },
             rawPayload: {
               sql: 'SELECT order_code FROM sales_orders ORDER BY order_code LIMIT 3',
               params: [],

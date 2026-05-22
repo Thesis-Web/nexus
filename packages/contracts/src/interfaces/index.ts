@@ -910,6 +910,25 @@ export interface DelegationMintInput {
   readonly explicitDelegatedScope: ExplicitDelegationScope;
   readonly issuedAt: IsoTimestamp;
   readonly maxChainDepth: number;
+  /**
+   * F-15 owner ruling 2026-05-22: for model-bound tasks (`kind:nvg`,
+   * free_chat, synthesize-only, no connector/system action), the
+   * symmetric `target_systems` intersection MUST NOT fail-closed on
+   * empty — those runs are governed by workspace identity, OCT, NVG
+   * routing/data policy, model tier ceiling, and run ledger, not by
+   * connector-system membership. For NXS / system-action tasks the
+   * intersection stays symmetric and an empty result is still a hard
+   * empty_intersection denial.
+   *
+   * `true`  → enforce target_systems intersection (NXS path).
+   * `false` → compute the intersection (still used for the signed
+   *           delegation body) but allow empty without erroring.
+   *
+   * Other dimensions — capabilities, oct_level, firewall_rights,
+   * run_types, risk_tier — remain symmetric in all cases. No
+   * wildcards, no empty-set widening, no fail-open.
+   */
+  readonly requiresSystemAction: boolean;
 }
 
 /**

@@ -191,7 +191,11 @@ describe('E2E Category 8 — batch file pull + LLM summary', () => {
           inputSlotReads: [],
           actionTemplate: {
             capability: 'read:record:bulk',
-            target: { system: 'sales-finance', resourceType: 'sales_orders', resourceScope: 'bulk' },
+            target: {
+              system: 'sales-finance',
+              resourceType: 'sales_orders',
+              resourceScope: 'bulk',
+            },
             rawPayload: {
               sql: 'SELECT order_code, status FROM sales_orders LIMIT 50',
               params: [],

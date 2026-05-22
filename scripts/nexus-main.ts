@@ -1691,6 +1691,15 @@ const program = createCli({
           explicitDelegatedScope,
           issuedAt: nowIso(),
           maxChainDepth: orchManifest.maxSplitDepth,
+          // F-15 owner ruling 2026-05-22: enforce target_systems
+          // intersection only when this dispatch performs a connector /
+          // system action. The DelegationScope.requiresNxs flag — set
+          // by buildNodeFromSubTask when kind==='nxs' — is the
+          // discriminator. NVG-only (kind:nvg, free_chat) and
+          // secure_handoff nodes pass requiresSystemAction=false; the
+          // chat-agent ladder intersection-empty failure mode is closed
+          // out without widening NXS authority.
+          requiresSystemAction: scope.requiresNxs === true,
         });
 
         if (result.kind === 'empty_intersection') {

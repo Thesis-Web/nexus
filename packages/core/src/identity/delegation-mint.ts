@@ -82,12 +82,25 @@ export class BakedDelegationMint implements DelegationMintPort {
     const explicit = input.explicitDelegatedScope;
 
     // target_systems: user ∩ agent ∩ explicit (string equality).
+    //
+    // F-15 owner ruling 2026-05-22: empty target_systems is a hard
+    // empty_intersection denial ONLY when `input.requiresSystemAction`
+    // is true (NXS / connector-bound dispatch). For model-bound tasks
+    // (kind:nvg, free_chat, synthesize-only) the intersection is still
+    // computed — the resulting set is whatever it is, possibly empty —
+    // and the signed delegation carries that set verbatim. Downstream
+    // NXS gates still fail-closed on `allowedSystems=[]` if someone
+    // attempts a system action with such a delegation; what changes is
+    // ONLY that NVG-bound runs no longer pre-fail at mint time on a
+    // chat-agent whose visibleTargetSystems is disjoint from the
+    // user's. Other dimensions (capabilities / OCT / firewall /
+    // run_types / risk) remain symmetric for ALL tasks.
     const targetSystems = intersectStrings(
       userClaims.permittedTargetSystems,
       agent.visibleTargetSystems,
       explicit.targetSystems
     );
-    if (targetSystems.length === 0) {
+    if (targetSystems.length === 0 && input.requiresSystemAction) {
       return emptyIntersection(
         'target_systems',
         userClaims.permittedTargetSystems,

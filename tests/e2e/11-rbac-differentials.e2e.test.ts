@@ -164,10 +164,7 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
       'gate_05_quorum_required',
       'signing_council_denied',
     ]);
-    const expectQuorumDenial = (
-      snap: RunSnap,
-      label: string
-    ): void => {
+    const expectQuorumDenial = (snap: RunSnap, label: string): void => {
       const types = new Set(snap.ledgerEvents.map(e => e.eventType));
       const quorumFired = [...QUORUM_EVENTS].some(t => types.has(t));
       expect(
@@ -277,8 +274,7 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
     // even if risk classification were missing — those do NOT prove
     // the risk ceiling did its job. Require risk-specific event.
     const riskDenied =
-      types.includes('gate_02_risk_denied') ||
-      types.includes('risk_ceiling_exceeded');
+      types.includes('gate_02_risk_denied') || types.includes('risk_ceiling_exceeded');
     expect(
       riskDenied,
       'E2E-106 — Gate 02 risk denial required (gate_02_risk_denied / risk_ceiling_exceeded); generic capability denial does not satisfy'
@@ -353,18 +349,11 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
   }, 240_000);
 
   it('E2E-109-external-facing-action: vp → Gate 04 approval flow', async () => {
-    const snap = await postNxs(
-      harness,
-      'vp',
-      'compose:email',
-      'gmail',
-      'message',
-      {
-        to: ['external@example.com'],
-        subject: 'External communication',
-        body: 'Body of external comms.',
-      }
-    );
+    const snap = await postNxs(harness, 'vp', 'compose:email', 'gmail', 'message', {
+      to: ['external@example.com'],
+      subject: 'External communication',
+      body: 'Body of external comms.',
+    });
     const types = snap.ledgerEvents.map(e => e.eventType);
     // Catalog: vp external-facing action MUST exercise the Gate 04
     // approval flow. Generic denial / intersection failure does NOT

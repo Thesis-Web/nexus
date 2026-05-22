@@ -26,13 +26,11 @@ const SALES_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000031';
 const WAREHOUSE_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000041';
 const CHAT_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000004';
 
-function assertMultiNoContractEnvelope(
-  snap: {
-    runClosed: boolean;
-    closeReason: string | null;
-    ledgerEvents: ReadonlyArray<{ eventType: string; detail: Record<string, unknown> }>;
-  }
-): void {
+function assertMultiNoContractEnvelope(snap: {
+  runClosed: boolean;
+  closeReason: string | null;
+  ledgerEvents: ReadonlyArray<{ eventType: string; detail: Record<string, unknown> }>;
+}): void {
   const types = snap.ledgerEvents.map(e => e.eventType);
   // Production-shape expectation: the catalog asks for a successful
   // multi-leg fan-out that closes with a final_response artifact.
@@ -338,7 +336,8 @@ describe('E2E Category 4 — multi-agent, no output contract', () => {
           subTaskKey: 'exec-view',
           agentId: CHAT_AGENT_ACTOR_ID,
           taskSummary: 'executive perspective',
-          taskPrompt: 'From an executive perspective, briefly argue for or against a 4-day work week.',
+          taskPrompt:
+            'From an executive perspective, briefly argue for or against a 4-day work week.',
           expectedOutputSlots: ['response'],
           inputSlotReads: [],
         },
@@ -347,7 +346,8 @@ describe('E2E Category 4 — multi-agent, no output contract', () => {
           subTaskKey: 'analyst-view',
           agentId: CHAT_AGENT_ACTOR_ID,
           taskSummary: 'analyst perspective',
-          taskPrompt: 'From an analyst perspective, briefly argue for or against a 4-day work week.',
+          taskPrompt:
+            'From an analyst perspective, briefly argue for or against a 4-day work week.',
           expectedOutputSlots: ['response'],
           inputSlotReads: [],
         },
@@ -390,7 +390,11 @@ describe('E2E Category 4 — multi-agent, no output contract', () => {
           inputSlotReads: [],
           actionTemplate: {
             capability: 'read:record:bulk',
-            target: { system: 'sales-finance', resourceType: 'sales_orders', resourceScope: 'bulk' },
+            target: {
+              system: 'sales-finance',
+              resourceType: 'sales_orders',
+              resourceScope: 'bulk',
+            },
             rawPayload: {
               sql: 'SELECT order_code FROM sales_orders ORDER BY order_code LIMIT 2',
               params: [],

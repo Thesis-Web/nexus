@@ -99,6 +99,10 @@ function makeInput(overrides: Partial<DelegationMintInput> = {}): DelegationMint
     explicitDelegatedScope: makeExplicit(),
     issuedAt: ISSUED_AT,
     maxChainDepth: 2,
+    // Default to the strict NXS path so existing DMF-* tests continue
+    // to assert the original three-way intersection semantics. The
+    // F-15 tests below override this to false for model-bound cases.
+    requiresSystemAction: true,
     ...overrides,
   };
 }
@@ -365,5 +369,182 @@ describe('BakedDelegationMint — DMF-05 OCT intersection lesser-wins', () => {
     expect(result.kind).toBe('success');
     if (result.kind !== 'success') return;
     expect(result.effectiveScope.riskTier).toBe(RISK_TIER.LOW);
+  });
+});
+
+// ─── F-15 scoping (owner ruling 2026-05-22) ─────────────────────────────────
+//
+// Model-bound tasks (kind:nvg, free_chat, synthesize-only, no
+// connector/system action) must NOT fail on empty target_systems
+// intersection; NXS / system-action tasks MUST still fail on it.
+// Capabilities, OCT, firewall, run_types and risk_tier remain
+// symmetric in both cases. No wildcards, no empty-set widening, no
+// fail-open.
+
+describe('BakedDelegationMint — F-15 requiresSystemAction scoping', () => {
+  // Reusable disjoint-system inputs: chat-style agent (allowedSystems
+  // = ['stub']) vs ladder persona (allowedSystems = ['sales-finance']).
+  // Mirrors the production seed shape that triggered F-15.
+  const chatAgentDisjoint = makeAgent({
+    visibleTargetSystems: ['stub' as NonEmpty],
+  });
+  const ladderUserDisjoint = makeUserClaims({
+    permittedTargetSystems: ['sales-finance' as NonEmpty],
+  });
+  const explicitMirrorsUser = makeExplicit({
+    targetSystems: ['sales-finance' as NonEmpty],
+  });
+
+  it('NXS path (requiresSystemAction=true) still fails empty target_systems', async () => {
+    let signerCalls = 0;
+    const trackingSigner: DelegationSigner = async body => {
+      signerCalls++;
+      return {
+        ...body,
+        delegationId: 'should-not-be-issued' as Uuid,
+        signature: 'sig:should-not-emit' as DelegationContext['signature'],
+        environment: 'dev' as DelegationContext['environment'],
+        mintedBy: 'test-engine' as NonEmpty,
+      };
+    };
+    const mint = new BakedDelegationMint({ signer: trackingSigner, newErrorRef: fixedErrorRef });
+    const result = await mint.mint(
+      makeInput({
+        userClaims: ladderUserDisjoint,
+        agentDeclaration: chatAgentDisjoint,
+        explicitDelegatedScope: explicitMirrorsUser,
+        requiresSystemAction: true,
+      })
+    );
+    expect(result.kind).toBe('empty_intersection');
+    if (result.kind !== 'empty_intersection') return;
+    expect(result.dimension).toBe('target_systems');
+    expect(signerCalls).toBe(0);
+  });
+
+  it('NVG path (requiresSystemAction=false) succeeds with empty target_systems', async () => {
+    const mint = new BakedDelegationMint({ signer: fixedSigner, newErrorRef: fixedErrorRef });
+    const result = await mint.mint(
+      makeInput({
+        userClaims: ladderUserDisjoint,
+        agentDeclaration: chatAgentDisjoint,
+        explicitDelegatedScope: explicitMirrorsUser,
+        requiresSystemAction: false,
+      })
+    );
+    expect(result.kind).toBe('success');
+    if (result.kind !== 'success') return;
+    // The intersection is computed verbatim — empty is the literal
+    // result. The signed envelope carries it as `allowedSystems=[]`;
+    // downstream NXS gates fail-closed on this if someone tries a
+    // system action with this delegation.
+    expect(result.effectiveScope.targetSystems).toEqual([]);
+    expect(result.delegation.allowedSystems).toEqual([]);
+  });
+
+  it('NVG path does NOT widen target_systems to all systems or wildcard', async () => {
+    const mint = new BakedDelegationMint({ signer: fixedSigner, newErrorRef: fixedErrorRef });
+    const result = await mint.mint(
+      makeInput({
+        userClaims: ladderUserDisjoint,
+        agentDeclaration: chatAgentDisjoint,
+        explicitDelegatedScope: explicitMirrorsUser,
+        requiresSystemAction: false,
+      })
+    );
+    expect(result.kind).toBe('success');
+    if (result.kind !== 'success') return;
+    // No wildcard sentinel and no membership of either side's
+    // visible/permitted systems. The body carries the literal
+    // intersection (empty here), which is the F-15 invariant.
+    expect(result.effectiveScope.targetSystems).not.toContain('*');
+    expect(result.effectiveScope.targetSystems).not.toContain('any');
+    expect(result.effectiveScope.targetSystems).not.toContain('sales-finance');
+    expect(result.effectiveScope.targetSystems).not.toContain('stub');
+    expect(result.delegation.allowedSystems).not.toContain('*');
+  });
+
+  it('NVG path still fails on empty CAPABILITIES — other dimensions remain symmetric', async () => {
+    let signerCalls = 0;
+    const trackingSigner: DelegationSigner = async body => {
+      signerCalls++;
+      return {
+        ...body,
+        delegationId: 'should-not-be-issued' as Uuid,
+        signature: 'sig:should-not-emit' as DelegationContext['signature'],
+        environment: 'dev' as DelegationContext['environment'],
+        mintedBy: 'test-engine' as NonEmpty,
+      };
+    };
+    const mint = new BakedDelegationMint({ signer: trackingSigner, newErrorRef: fixedErrorRef });
+    const result = await mint.mint(
+      makeInput({
+        userClaims: makeUserClaims({
+          permittedTargetSystems: ['sales-finance' as NonEmpty],
+          permittedCapabilities: ['read'],
+        }),
+        agentDeclaration: makeAgent({
+          visibleTargetSystems: ['stub' as NonEmpty],
+          allowedCapabilities: ['write'],
+        }),
+        explicitDelegatedScope: makeExplicit({
+          targetSystems: ['sales-finance' as NonEmpty],
+          capabilities: ['read'],
+        }),
+        requiresSystemAction: false,
+      })
+    );
+    expect(result.kind).toBe('empty_intersection');
+    if (result.kind !== 'empty_intersection') return;
+    expect(result.dimension).toBe('capabilities');
+    expect(signerCalls).toBe(0);
+  });
+
+  it('NVG path still fails on empty FIREWALL_RIGHTS — other dimensions remain symmetric', async () => {
+    const mint = new BakedDelegationMint({ signer: fixedSigner, newErrorRef: fixedErrorRef });
+    const result = await mint.mint(
+      makeInput({
+        userClaims: makeUserClaims({
+          permittedTargetSystems: ['sales-finance' as NonEmpty],
+          firewallTransitRights: { outbound: ['x' as NonEmpty], inbound: ['y' as NonEmpty] },
+        }),
+        agentDeclaration: makeAgent({
+          visibleTargetSystems: ['stub' as NonEmpty],
+        }),
+        explicitDelegatedScope: makeExplicit({
+          targetSystems: ['sales-finance' as NonEmpty],
+          firewallTransitRights: { outbound: ['z' as NonEmpty], inbound: ['w' as NonEmpty] },
+        }),
+        requiresSystemAction: false,
+      })
+    );
+    expect(result.kind).toBe('empty_intersection');
+    if (result.kind !== 'empty_intersection') return;
+    expect(result.dimension).toBe('firewall_rights');
+  });
+
+  it('NVG path STILL preserves system narrowing when intersection is non-empty (no widening)', async () => {
+    const mint = new BakedDelegationMint({ signer: fixedSigner, newErrorRef: fixedErrorRef });
+    const result = await mint.mint(
+      makeInput({
+        userClaims: makeUserClaims({
+          permittedTargetSystems: ['sales-finance' as NonEmpty, 'warehouse' as NonEmpty],
+        }),
+        agentDeclaration: makeAgent({
+          visibleTargetSystems: ['sales-finance' as NonEmpty],
+        }),
+        explicitDelegatedScope: makeExplicit({
+          targetSystems: ['sales-finance' as NonEmpty],
+        }),
+        requiresSystemAction: false,
+      })
+    );
+    expect(result.kind).toBe('success');
+    if (result.kind !== 'success') return;
+    // The intersection is sales-finance; warehouse must NOT appear
+    // just because the request was model-bound. The F-15 scoping
+    // softens fail-closed on empty; it never widens a non-empty set.
+    expect(result.effectiveScope.targetSystems).toEqual(['sales-finance']);
+    expect(result.delegation.allowedSystems).toEqual(['sales-finance']);
   });
 });

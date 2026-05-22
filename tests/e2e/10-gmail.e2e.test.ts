@@ -89,20 +89,32 @@ describe('E2E Category 10 — Gmail compose / read', () => {
   });
 
   it('E2E-91-gmail-compose-draft: sr_manager → draft to ops@ about Q2', async () => {
-    const snap = await attemptGmailSend(harness, 'sr_manager', 'Draft an email to ops about Q2.', 'compose:email', {
-      to: ['ops@example.com'],
-      subject: 'Q2 sales summary',
-      body: 'Body text for the Q2 summary.',
-      isDraft: true,
-    });
+    const snap = await attemptGmailSend(
+      harness,
+      'sr_manager',
+      'Draft an email to ops about Q2.',
+      'compose:email',
+      {
+        to: ['ops@example.com'],
+        subject: 'Q2 sales summary',
+        body: 'Body text for the Q2 summary.',
+        isDraft: true,
+      }
+    );
     assertGmailExecuted(snap);
   }, 240_000);
 
   it('E2E-92-gmail-read-inbox: sr_manager → last 10 inbox threads', async () => {
-    const snap = await attemptGmailSend(harness, 'sr_manager', 'Read last 10 inbox threads.', 'read:email', {
-      mailbox: 'INBOX',
-      max: 10,
-    });
+    const snap = await attemptGmailSend(
+      harness,
+      'sr_manager',
+      'Read last 10 inbox threads.',
+      'read:email',
+      {
+        mailbox: 'INBOX',
+        max: 10,
+      }
+    );
     assertGmailExecuted(snap);
   }, 240_000);
 
@@ -123,7 +135,11 @@ describe('E2E Category 10 — Gmail compose / read', () => {
           inputSlotReads: [],
           actionTemplate: {
             capability: 'read:record:bulk',
-            target: { system: 'sales-finance', resourceType: 'sales_orders', resourceScope: 'bulk' },
+            target: {
+              system: 'sales-finance',
+              resourceType: 'sales_orders',
+              resourceScope: 'bulk',
+            },
             rawPayload: {
               sql: "SELECT order_code, customer_code FROM sales_orders WHERE status IN ('cancelled', 'pending') LIMIT 10",
               params: [],
@@ -161,13 +177,7 @@ describe('E2E Category 10 — Gmail compose / read', () => {
       'Compose board update to 5 recipients.',
       'compose:email',
       {
-        to: [
-          'a@example.com',
-          'b@example.com',
-          'c@example.com',
-          'd@example.com',
-          'e@example.com',
-        ],
+        to: ['a@example.com', 'b@example.com', 'c@example.com', 'd@example.com', 'e@example.com'],
         subject: 'Board update Q2',
         body: 'Body of the board update.',
       }
