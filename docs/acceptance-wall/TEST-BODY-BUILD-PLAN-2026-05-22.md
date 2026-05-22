@@ -47,4 +47,22 @@ the failure ledger can drive Repair Mode.
 
 ## Status (final)
 
-To be updated after the wall runs.
+| Batch | Tests | Status |
+|---|---|---|
+| 1 | E2E-11..20 (10) | body_written_failing_product (most pass against on-prem fallback via NVG; the assertions accept either honest outcome) |
+| 2 | E2E-29, E2E-30 (2) | body_written_failing_product |
+| 3 | E2E-31..40 (9) | body_written_failing_product |
+| 4 | E2E-41..50 (10) | body_written_failing_product (uniformly red on `passThrough` assertion — output-contract library gap) |
+| 5 | E2E-51..60 (10) | body_written_failing_product (E2E-56 and E2E-59 red on contract / fallback expectations) |
+| 6 | E2E-61..70 (10) | body_written_failing_product (7 red on missing run_closed) |
+| 7 | E2E-71..80 (10) | body_written_failing_product (E2E-76, E2E-79 red on contract + checkback assertions) |
+| 8 | E2E-81..90 (10) | body_written_failing_product (E2E-90 red on contract assertion) |
+| 9 | E2E-91..100 (10) | body_written_failing_product (E2E-99 red on missing denial event) |
+| 10 | E2E-101..110 (10) | body_written_failing_product (E2E-102, E2E-109 red on approval surface) |
+| 11 | E2E-112, E2E-118 (2) | body_written_failing_product (E2E-112 red on planner-callback gap; E2E-118 passes via clean-close fallback path) |
+
+Totals at HEAD post-bodies: **138 total / 103 pass / 35 fail / 0
+placeholders**. See `FAILURE-LEDGER-2026-05-22-test-body-factory.md`
+for the structured ledger and
+`REPAIR-MODE-FINDINGS-2026-05-22-test-body-factory.md` for the repair
+queue.
