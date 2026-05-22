@@ -162,6 +162,26 @@ function App() {
           setRuns(prev => [newRun, ...prev]);
           setActiveRunId(runId);
           runEvents.subscribe(runId);
+          // Planner-rejection counter-suggestion arrived in the synchronous
+          // POST response (preview.rejection = RejectionCheckbackPayload).
+          // The server also writes a `plan_checkback_sent` ledger event so
+          // SSE replay carries the same payload — but if SSE is slow or
+          // drops the modal never appears (this is what blocked the
+          // operator's "I never see a callback land in workspace" path).
+          // Inject the synthetic event into the local events array right
+          // after subscribe() runs its synchronous setEvents([]) reset.
+          // The reducer (run-stage-reducer.ts:399 extractPendingPlannerCheckback)
+          // picks it up immediately; when the real SSE-delivered event
+          // arrives later the reducer keeps the most-recent matching one
+          // (idempotent — same payload).
+          if (preview && preview['rejection'] !== null && preview['rejection'] !== undefined) {
+            runEvents.injectEvent({
+              type: 'plan_checkback_sent',
+              runId,
+              detail: { checkbackPayload: preview['rejection'] as Record<string, unknown> },
+              timestamp: new Date().toISOString(),
+            });
+          }
           // CLAUDE-CODE-FILE-ATTACH Phase A — files were just bound to
           // this run by the server; the workspace file store rejects
           // re-binding a 'bound' file to another run. Clear locally so

@@ -38,6 +38,21 @@ export interface UseRunEventsResult {
   subscribe: (runId: string) => void;
   unsubscribe: () => void;
   refresh: () => void;
+  /**
+   * Append a client-synthesized event to the local events array as if it
+   * had arrived through SSE. Used by `POST /workspace/runs` callers that
+   * receive a planner checkback in the synchronous response: the server
+   * also writes the same event to the run ledger, but if SSE replay is
+   * slow / delayed / fails, the modal would never appear (the reducer
+   * only reads `events[]`). Injecting the synthetic event closes that
+   * race — the SSE replay arrives later, the reducer picks the most-
+   * recent matching event, modal state remains consistent.
+   *
+   * Defensive: only appends when `event.runId` matches the currently-
+   * subscribed run, otherwise drops silently — same guard the live
+   * onmessage handler uses (line `if (event.runId !== runIdRef.current)`).
+   */
+  injectEvent: (event: RunEvent) => void;
 }
 
 export function useRunEvents(): UseRunEventsResult {
@@ -186,6 +201,16 @@ export function useRunEvents(): UseRunEventsResult {
     [unsubscribe, refresh]
   );
 
+  const injectEvent = useCallback((event: RunEvent) => {
+    // Drop if the caller is racing across subscribe boundaries — only the
+    // currently-subscribed run gets the inject. Mirrors the
+    // `if (event.runId !== runIdRef.current) return;` guard on the live
+    // SSE message handler so a stale POST response can't bleed into a
+    // newer subscription.
+    if (runIdRef.current === null || event.runId !== runIdRef.current) return;
+    setEvents(prev => [...prev, event]);
+  }, []);
+
   // Polling fallback — only runs when SSE is unavailable. Cancels itself
   // automatically when the subscription token bumps (next subscribe call).
   function startPolling(token: number): void {
@@ -211,5 +236,5 @@ export function useRunEvents(): UseRunEventsResult {
     [unsubscribe]
   );
 
-  return { events, status, connected, error, subscribe, unsubscribe, refresh };
+  return { events, status, connected, error, subscribe, unsubscribe, refresh, injectEvent };
 }

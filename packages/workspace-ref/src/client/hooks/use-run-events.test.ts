@@ -181,6 +181,106 @@ describe('useRunEvents', () => {
     expect(getRunStatusMock).toHaveBeenCalled();
   });
 
+  it('injectEvent appends a client-synthesized event to events[] for the currently-subscribed run', async () => {
+    // Closes the "callback never lands in workspace" gap: the synchronous
+    // POST /workspace/runs response carries planPreview.rejection (the
+    // RejectionCheckbackPayload) but the modal reducer reads only the
+    // events[] array. If SSE replay is slow or drops, the modal would
+    // never render. injectEvent lets `main.tsx` push the synthetic
+    // `plan_checkback_sent` event into events[] immediately so the
+    // modal renders on the very next React commit; when SSE replay
+    // arrives later the reducer keeps the most-recent matching event
+    // (idempotent — same payload).
+    const { result } = renderHook(() => useRunEvents());
+    await act(async () => {
+      result.current.subscribe('run-inject');
+      await flush();
+    });
+    expect(result.current.events).toEqual([]);
+
+    await act(async () => {
+      result.current.injectEvent({
+        type: 'plan_checkback_sent',
+        runId: 'run-inject',
+        detail: {
+          checkbackPayload: {
+            reason: 'no_capable_agent',
+            reasonDetail: 'No agent has the required capability',
+            recommendedSelectedAgentIds: ['agent-alt-1'],
+          },
+        },
+        timestamp: '2026-05-22T15:00:00.000Z',
+      });
+    });
+
+    expect(result.current.events).toHaveLength(1);
+    const injected = result.current.events[0]!;
+    expect(injected.type).toBe('plan_checkback_sent');
+    expect(injected.runId).toBe('run-inject');
+    expect(injected.detail?.['checkbackPayload']).toBeDefined();
+    expect((injected.detail!['checkbackPayload'] as Record<string, unknown>)['reason']).toBe(
+      'no_capable_agent'
+    );
+
+    // A real SSE-delivered replay arrives — both events coexist; the
+    // reducer (tested separately) picks the most-recent matching one.
+    const es = eventSourcesByOrder[0]!;
+    await act(async () => {
+      es.onmessage?.(
+        new MessageEvent('message', {
+          data: JSON.stringify({
+            type: 'plan_checkback_sent',
+            runId: 'run-inject',
+            detail: {
+              checkbackPayload: {
+                reason: 'no_capable_agent',
+                reasonDetail: 'No agent has the required capability',
+                recommendedSelectedAgentIds: ['agent-alt-1'],
+              },
+            },
+            timestamp: '2026-05-22T15:00:00.123Z',
+          }),
+        })
+      );
+    });
+    expect(result.current.events).toHaveLength(2);
+  });
+
+  it('injectEvent drops events whose runId does not match the subscribed run', async () => {
+    // Cross-run guard: if a delayed POST response from a previous
+    // submission tries to inject after the user has moved to another
+    // run, the inject must NOT bleed into the new run's events.
+    const { result } = renderHook(() => useRunEvents());
+    await act(async () => {
+      result.current.subscribe('run-current');
+      await flush();
+    });
+
+    await act(async () => {
+      result.current.injectEvent({
+        type: 'plan_checkback_sent',
+        runId: 'run-OLD-stale',
+        detail: { checkbackPayload: { reason: 'irrelevant' } },
+        timestamp: '2026-05-22T15:00:00.000Z',
+      });
+    });
+    expect(result.current.events).toEqual([]);
+
+    // Inject with no subscribed run at all is also dropped.
+    await act(async () => {
+      result.current.unsubscribe();
+    });
+    await act(async () => {
+      result.current.injectEvent({
+        type: 'plan_checkback_sent',
+        runId: 'run-current',
+        detail: { checkbackPayload: { reason: 'irrelevant' } },
+        timestamp: '2026-05-22T15:00:00.000Z',
+      });
+    });
+    expect(result.current.events).toEqual([]);
+  });
+
   it('stale onerror from a prior subscription does not flip the new run connected:false', async () => {
     const { result } = renderHook(() => useRunEvents());
 
