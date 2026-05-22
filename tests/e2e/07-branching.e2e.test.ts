@@ -283,14 +283,14 @@ describe('E2E Category 7 — multi-agent BRANCHING (frontier → on-prem → mul
     });
     const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 240_000 });
     const types = snap.ledgerEvents.map(e => e.eventType);
-    // HL#4 — orch never kills the run on ambiguity. A callback must
-    // fire OR plan_rejected with a structured reason (planner refuses
-    // to issue a plan it can't fulfill).
-    const halted =
-      types.includes('plan_checkback_required') || types.includes('plan_rejected');
-    expect(halted, 'ambiguous next agent must surface checkback or plan_rejected, not a silent kill').toBe(
-      true
-    );
+    // HL#4 explicit: ambiguity surfaces a CALLBACK (plan_checkback_required),
+    // not a plan_rejected kill. plan_rejected is the kill path the
+    // catalog is testing AGAINST. Accepting it here would encode the
+    // bug as the expected behavior.
+    expect(
+      types,
+      'HL#4 — ambiguous next agent MUST emit plan_checkback_required (callback, not kill)'
+    ).toContain('plan_checkback_required');
   }, 300_000);
 
   it('E2E-67-branching-with-secure-rail: ceo → OCT-SECURE branch merges back', async () => {

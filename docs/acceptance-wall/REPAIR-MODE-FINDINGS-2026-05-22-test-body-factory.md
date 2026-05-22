@@ -44,15 +44,14 @@ Convention:
 - Repo evidence read: `config/nvg/endpoints.v1.yaml` (openai-gpt enabled, frontier_general tier); orch wrapper at `scripts/nexus-main.ts:1064-1086`
 - Status: OPEN (low priority — observation, not a regression)
 
-## TB-04 — Multi-item compile pass-through reports itemCount=1 (F4.12 gap)
+## TB-04 — Multi-item compile pass-through (F4.12) — CORRECTED 2026-05-22
 
-- Class: UNIMPLEMENTED_SURFACE
-- Severity: high
-- Tests exposing it: E2E-40 (multi-no-contract bundle), every E2E-8x merge test, batch-summary tests
-- First failing surface: `compile_assembly_complete.itemCount === 1` even when two NXS legs each wrote a mailbox item
-- Expected behavior: the F4.12 multi-item pass-through should assemble both items into one FinalResponseArtifact with itemCount=2
-- Repo evidence read: HANDOFF-NEXT-SESSION.md §F priority #6 (F4.12 compile multi-item pass-through structurally blocked on §C.3 test-migration ratification)
-- Status: OPEN — owner-ratification gated
+- Class: (was UNIMPLEMENTED_SURFACE) → **PARTIAL EVIDENCE OF GREEN**
+- Severity: was high → re-triaged
+- Tests exposing it: previously claimed E2E-40 + the E2E-8x merge tests
+- **Correction:** E2E-40 actually PASSES with `itemCount === 2` against the live runtime (verified against `runs/acceptance-wall-2026-05-21/FAILURE-LEDGER.jsonl` at HEAD 4fb0dc8 — E2E-40 does not appear in the failure list). So the strict-asserted single-file two-NXS-leg bundle shape DOES assemble both items. The previous claim that E2E-40 exposed F4.12 was wrong.
+- The remaining F4.12 surface area to verify is the merge-with-LLM-node and contract-driven paths (the multi-source merge E2E-81..89 and batch-summary E2E-71..75 still fail, but on `closeReason='error'` upstream of compile — not on `itemCount`). Until those upstream failures are resolved (F-15 cascade), this finding cannot be re-tested against compile's behavior.
+- Status: PROVEN for the simple 2-NXS-leg case (E2E-40). UNKNOWN for nvg-mixed compile paths until F-15 unblocks them.
 
 ## TB-05 — Gmail / mail connector absent on the seeded connector registry
 

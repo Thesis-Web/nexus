@@ -327,14 +327,16 @@ describe('E2E Category 8 — batch file pull + LLM summary', () => {
       'Summarize if you are permitted.'
     );
     const types = snap.ledgerEvents.map(e => e.eventType);
-    const driftEvents = snap.ledgerEvents.filter(
-      e => e.eventType === 'delegation_empty_intersection'
-    );
-    const denied =
-      types.includes('gate_02_oct_denied') ||
-      types.includes('oct_ceiling_exceeded') ||
-      driftEvents.length > 0 ||
-      types.includes('plan_rejected');
-    expect(denied, 'analyst on OCT-CONFIDENTIAL must surface an explicit denial').toBe(true);
+    // Catalog: Gate 02 OCT denial is the load-bearing surface.
+    // delegation_empty_intersection (capability/system dimension) and
+    // generic plan_rejected do NOT prove the OCT ceiling held — those
+    // would fire even if OCT were misconfigured. Require the
+    // OCT-specific event.
+    const octDenied =
+      types.includes('gate_02_oct_denied') || types.includes('oct_ceiling_exceeded');
+    expect(
+      octDenied,
+      'E2E-80 — OCT-CONFIDENTIAL must deny at Gate 02 (gate_02_oct_denied or oct_ceiling_exceeded); generic denial does not satisfy'
+    ).toBe(true);
   }, 360_000);
 });

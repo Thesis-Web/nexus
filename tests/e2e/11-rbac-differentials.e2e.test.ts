@@ -143,18 +143,39 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
       { sql: 'DELETE FROM sales_orders WHERE status = $1', params: ['cancelled'] }
     );
     const vpTypes = vpSnap.ledgerEvents.map(e => e.eventType);
-    const vpApprovalOrDenial =
-      vpTypes.includes('gate_05_require_approval') ||
-      vpTypes.includes('approval_requested') ||
-      vpTypes.includes('plan_checkback_required') ||
-      vpTypes.includes('plan_rejected') ||
-      vpTypes.includes('delegation_empty_intersection');
-    expect(vpApprovalOrDenial, 'vp bulk delete must surface approval or denial — no silent execution').toBe(
-      true
-    );
+    // Catalog: vp leg MUST go through Gate 05 approval. Generic
+    // denial does NOT satisfy — the audit lens is approval-surface
+    // exercise, not "did the bulk delete fail somehow."
+    expect(
+      vpTypes,
+      'E2E-102 vp leg — Gate 05 approval surface required; generic denial does not satisfy'
+    ).toContain('gate_05_require_approval');
   }, 360_000);
 
   it('E2E-103-policy-override-attempt: manager+ceo both denied without SigningCouncil 2-of-2', async () => {
+    // Catalog: BOTH legs must deny on the SigningCouncil 2-of-2
+    // quorum, not on generic capability ladder. The load-bearing
+    // surface is a quorum_required / signing_council denial event.
+    // Generic capability denial would pass even if the council was
+    // wired wrong — that's the false-green this test is closing.
+    const QUORUM_EVENTS = new Set([
+      'quorum_required',
+      'signing_council_quorum_not_met',
+      'gate_05_quorum_required',
+      'signing_council_denied',
+    ]);
+    const expectQuorumDenial = (
+      snap: RunSnap,
+      label: string
+    ): void => {
+      const types = new Set(snap.ledgerEvents.map(e => e.eventType));
+      const quorumFired = [...QUORUM_EVENTS].some(t => types.has(t));
+      expect(
+        quorumFired,
+        `${label} — SigningCouncil 2-of-2 quorum event required (one of ${[...QUORUM_EVENTS].join(', ')}); generic capability denial does not satisfy`
+      ).toBe(true);
+    };
+
     const managerSnap = await postNxs(
       harness,
       'manager',
@@ -163,7 +184,7 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
       'policy_override',
       { reason: 'manual override attempt' }
     );
-    assertDeniedShape(managerSnap, 'manager policy override');
+    expectQuorumDenial(managerSnap, 'manager policy override');
 
     const ceoSnap = await postNxs(
       harness,
@@ -173,7 +194,7 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
       'policy_override',
       { reason: 'manual override attempt' }
     );
-    assertDeniedShape(ceoSnap, 'ceo policy override (without 2-of-2 council)');
+    expectQuorumDenial(ceoSnap, 'ceo policy override (without 2-of-2 council)');
   }, 360_000);
 
   it('E2E-104-cross-system-confidential: intern denied vs sr_analyst allowed', async () => {
@@ -227,12 +248,18 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
     });
     const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 240_000 });
     const types = snap.ledgerEvents.map(e => e.eventType);
-    const denied =
+    // Catalog: NVG firewall/tier denial is the load-bearing surface.
+    // delegation_empty_intersection and plan_rejected would fire even
+    // if firewall_transit_rights were misconfigured — those do NOT
+    // prove the firewall/tier ceiling did its job.
+    const nvgDenied =
       types.includes('firewall_egress_denied') ||
       types.includes('tier_ceiling_exceeded') ||
-      types.includes('delegation_empty_intersection') ||
-      types.includes('plan_rejected');
-    expect(denied, 'janitor frontier egress must surface a denial').toBe(true);
+      types.includes('firewall_transit_rights_denied');
+    expect(
+      nvgDenied,
+      'E2E-105 — NVG firewall/tier denial required (firewall_egress_denied / tier_ceiling_exceeded / firewall_transit_rights_denied); intersection/plan_rejected do not satisfy'
+    ).toBe(true);
   }, 300_000);
 
   it('E2E-106-bulk-pull-risk-ceiling: analyst → 10k row pull denied (medium < bulk:high)', async () => {
@@ -244,7 +271,18 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
       'sales_orders',
       { sql: 'SELECT order_code FROM sales_orders LIMIT 10000', params: [] }
     );
-    assertDeniedShape(snap, 'analyst 10k-row bulk pull');
+    const types = snap.ledgerEvents.map(e => e.eventType);
+    // Catalog: Gate 02 RISK denial (medium < bulk:high). Generic
+    // capability denial / delegation_empty_intersection would fire
+    // even if risk classification were missing — those do NOT prove
+    // the risk ceiling did its job. Require risk-specific event.
+    const riskDenied =
+      types.includes('gate_02_risk_denied') ||
+      types.includes('risk_ceiling_exceeded');
+    expect(
+      riskDenied,
+      'E2E-106 — Gate 02 risk denial required (gate_02_risk_denied / risk_ceiling_exceeded); generic capability denial does not satisfy'
+    ).toBe(true);
   }, 300_000);
 
   it('E2E-107-chain-depth-ceiling: sr_analyst → chain > maxChainDepth denied', async () => {
@@ -276,11 +314,14 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
     });
     const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 300_000 });
     const types = snap.ledgerEvents.map(e => e.eventType);
-    const denied =
-      types.includes('chain_depth_exceeded') ||
-      types.includes('plan_rejected') ||
-      types.includes('plan_checkback_required');
-    expect(denied, 'sr_analyst over-depth chain must surface ceiling denial').toBe(true);
+    // Catalog: maxChainDepth ceiling — the load-bearing surface is
+    // chain_depth_exceeded. plan_rejected / plan_checkback_required
+    // would fire for many other reasons; accepting them would mask
+    // chain-depth being unconfigured.
+    expect(
+      types,
+      'E2E-107 — chain_depth_exceeded required; generic plan_rejected/checkback does not satisfy'
+    ).toContain('chain_depth_exceeded');
   }, 360_000);
 
   it('E2E-108-environment-mismatch: analyst dev → prod target denied', async () => {
@@ -325,14 +366,14 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
       }
     );
     const types = snap.ledgerEvents.map(e => e.eventType);
-    const surfaced =
-      types.includes('gate_04_require_approval') ||
-      types.includes('gate_05_require_approval') ||
-      types.includes('approval_requested') ||
-      types.includes('plan_checkback_required') ||
-      types.includes('delegation_empty_intersection') ||
-      types.includes('plan_rejected');
-    expect(surfaced, 'vp external-action must surface approval or denial').toBe(true);
+    // Catalog: vp external-facing action MUST exercise the Gate 04
+    // approval flow. Generic denial / intersection failure does NOT
+    // prove the approval surface — that's the false-green this test
+    // is closing.
+    expect(
+      types,
+      'E2E-109 vp external action — Gate 04 approval surface required; denial does not satisfy'
+    ).toContain('gate_04_require_approval');
   }, 300_000);
 
   it('E2E-110-revoked-mid-run: sr_analyst → mid-run RBAC revoke → claim drift', async () => {

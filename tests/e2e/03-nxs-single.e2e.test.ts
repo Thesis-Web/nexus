@@ -691,12 +691,10 @@ describe('E2E Category 3 — single-agent NXS dispatch (target system read)', ()
    * the persona-deviation pattern established in Pass 2 (memory F-10).
    */
   /**
-   * E2E-29 — manager → bulk update warehouse "mark batch shipped".
-   * Per the catalog (HL #5 + HL #11). Expected outcome with current
-   * seeds: empty intersection on capabilities (`update:record:bulk`
-   * not in either manager or warehouse-agent), so the action denies
-   * before any connector call. The test asserts no executed nxs_action
-   * and the canonical denial trail.
+   * E2E-29 — catalog says manager bulk update is ALLOWED. Assert
+   * EXECUTED. With current seeds (`update:record:bulk` outside both
+   * manager and warehouse-agent allowedCapabilities), this body fails
+   * red — exposing the seed/catalog drift, not encoding it as a pass.
    */
   it('E2E-29-nxs-warehouse-update-bulk-allowed-for-manager: manager → mark batch shipped', async () => {
     const jwt = await harness.jwtFor('manager');
@@ -717,7 +715,7 @@ describe('E2E Category 3 — single-agent NXS dispatch (target system read)', ()
             capability: 'update:record:bulk',
             target: { system: 'warehouse', resourceType: 'inventory', resourceScope: 'bulk' },
             rawPayload: {
-              sql: "UPDATE inventory SET location_code = $1 WHERE quantity_on_hand <= 50",
+              sql: 'UPDATE inventory SET location_code = $1 WHERE quantity_on_hand <= 50',
               params: ['STORE-1'],
             },
           },
@@ -726,26 +724,15 @@ describe('E2E Category 3 — single-agent NXS dispatch (target system read)', ()
       subTaskEdges: [],
     });
     const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 90_000 });
-
+    expect(snap.runClosed, 'manager bulk update closes').toBe(true);
+    expect(snap.closeReason, 'manager bulk update closes completed').toBe('completed');
     const nxsActions = snap.ledgerEvents.filter(e => e.eventType === 'nxs_action');
-    const driftEvents = snap.ledgerEvents.filter(
-      e => e.eventType === 'delegation_empty_intersection'
-    );
-    const denialThroughDispatch = nxsActions.some(e => {
-      const fo = (e.detail as Record<string, unknown>)['finalOutcome'];
-      return typeof fo === 'string' && fo !== FINAL_OUTCOME.EXECUTED;
-    });
-    expect(
-      driftEvents.length > 0 || denialThroughDispatch,
-      'update:record:bulk must be denied (empty intersection or Gate 03)'
-    ).toBe(true);
-    const executedActions = nxsActions.filter(
+    const executed = nxsActions.some(
       e => (e.detail as Record<string, unknown>)['finalOutcome'] === FINAL_OUTCOME.EXECUTED
     );
-    expect(
-      executedActions.length,
-      'no executed nxs_action when bulk-update capability is outside intersection'
-    ).toBe(0);
+    expect(executed, 'catalog says manager bulk update is ALLOWED — nxs_action must reach EXECUTED').toBe(
+      true
+    );
   }, 120_000);
 
   /**
@@ -789,37 +776,13 @@ describe('E2E Category 3 — single-agent NXS dispatch (target system read)', ()
       subTaskEdges: [],
     });
     const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 120_000 });
-
     const types = snap.ledgerEvents.map(e => e.eventType);
-    const nxsActions = snap.ledgerEvents.filter(e => e.eventType === 'nxs_action');
-    const approvalRequested =
-      types.includes('gate_05_require_approval') ||
-      types.includes('approval_requested') ||
-      types.includes('plan_checkback_required');
-    const driftEvents = snap.ledgerEvents.filter(
-      e => e.eventType === 'delegation_empty_intersection'
-    );
-    const denied = nxsActions.some(e => {
-      const fo = (e.detail as Record<string, unknown>)['finalOutcome'];
-      return typeof fo === 'string' && fo !== FINAL_OUTCOME.EXECUTED;
-    });
-
-    // The path is acceptable if it surfaces an approval request OR if
-    // the capability ceiling denies the delete deterministically. Any
-    // clean EXECUTED without an approval gate event would violate HL#5
-    // (sales-agent has no delete capability seeded).
+    // Catalog: vp delete MUST go through Gate 05 approval. Generic
+    // capability denial is NOT acceptable as success. The specific
+    // gate_05_require_approval emission is the load-bearing surface.
     expect(
-      approvalRequested || driftEvents.length > 0 || denied,
-      'delete must trigger approval OR be denied; no silent execution'
-    ).toBe(true);
-
-    const executedWithoutApproval = nxsActions.some(e => {
-      const fo = (e.detail as Record<string, unknown>)['finalOutcome'];
-      return fo === FINAL_OUTCOME.EXECUTED && !approvalRequested;
-    });
-    expect(
-      executedWithoutApproval,
-      'no nxs_action may report EXECUTED without an approval gate event'
-    ).toBe(false);
+      types,
+      'E2E-30 catalog requires Gate 05 approval surface; generic denial does not satisfy'
+    ).toContain('gate_05_require_approval');
   }, 180_000);
 });
