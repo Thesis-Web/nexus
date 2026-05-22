@@ -189,6 +189,11 @@ describe('Cross-Domain Identifier Collision Detection (§32a.3)', () => {
     // Default-shipped postgres connectors are enabled in the real
     // manifest; register the type so the loader accepts them.
     connReg.register(stubConnectorFactory('postgres'));
+    // Mailpit T0 connector landed in
+    // config/connectors/connectors.v1.yaml (commit 62c3254
+    // dataClass=internal + enabled=true). Register the stub here so
+    // the loader does not reject the real manifest at boot.
+    connReg.register(stubConnectorFactory('mailpit'));
     const connRecords = await loadConnectorManifest({
       manifestPath: 'config/connectors/connectors.v1.yaml',
       controlPlanePublicKey: publicKey,
