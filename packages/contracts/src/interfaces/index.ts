@@ -1644,6 +1644,19 @@ export type RunEventType =
   // prefix). Same adminOperation: true convention as template_ingested.
   | 'secret_stored'
   | 'secret_removed'
+  // ── Admin diagnostic probes (MAILPIT-INTEGRATION-DRIFT-AUDIT-2026-05-22
+  // OWNER RULING #3 / D-4 closure). Emitted by the admin connector probe
+  // + test-connection routes. Detail shape:
+  //   { connectorId, connectorType, diagnosticKind: 'admin_probe' |
+  //     'admin_test_connection', hasTargetSideEffect: boolean,
+  //     configDigest: 'sha256:<hex>', result: 'ok' | 'failed' | 'denied',
+  //     resultDetail? }
+  // These events are NOT NXS runtime successes and are NOT Evidence
+  // Ledger records — they audit admin connectivity diagnostics so any
+  // probe-side side-effect (e.g. a Mailpit-labeled admin SMTP send) is
+  // attributable to a specific elevated admin + infra run id.
+  | 'admin_probe'
+  | 'admin_test_connection'
   // ── Tool-schema bridge (Phase C buildToolDefinitions) ──────────────────
   // Fired once per NVG turn before classifyAndRoute. Records the exact
   // tool surface presented to the LLM provider. The connector boundary

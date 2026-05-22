@@ -1785,6 +1785,79 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
   // test-connection MAY produce a side effect on the target (e.g. a Mailpit
   // labeled probe message); the handler is responsible for tagging the probe
   // so it's never confused with NXS-dispatched traffic.
+  //
+  // MAILPIT-INTEGRATION-DRIFT-AUDIT-2026-05-22 owner ruling #3 (D-4
+  // closure): both routes emit infrastructure-audit run-ledger events
+  // (`admin_probe` / `admin_test_connection`) carrying infra run id +
+  // admin principal + connector id/type + side-effect flag + redacted
+  // config digest + result status. Event emission is best-effort — a
+  // ledger write failure NEVER turns a successful probe into a failed
+  // response, but the failure is surfaced to the express error handler
+  // for operator visibility.
+
+  // Stable canonical-JSON helper: sorts object keys (recursively) so the
+  // sha256 digest of an admin connector configuration is reproducible
+  // across runs/processes. Keeps secret values intact inside the hash
+  // (secret rotation surfaces as a different digest) but never emits the
+  // raw configuration into the run-ledger detail.
+  function canonicalJsonOf(value: unknown): string {
+    if (value === null || typeof value !== 'object') {
+      return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) {
+      return '[' + value.map(canonicalJsonOf).join(',') + ']';
+    }
+    const obj = value as Record<string, unknown>;
+    const keys = Object.keys(obj).sort();
+    const parts = keys.map(k => JSON.stringify(k) + ':' + canonicalJsonOf(obj[k]));
+    return '{' + parts.join(',') + '}';
+  }
+  function digestConfiguration(configuration: Record<string, unknown>): string {
+    const hex = createHash('sha256').update(canonicalJsonOf(configuration)).digest('hex');
+    return 'sha256:' + hex;
+  }
+
+  async function emitAdminProbeAuditEvent(
+    eventType: 'admin_probe' | 'admin_test_connection',
+    fields: {
+      readonly connectorId: string;
+      readonly connectorType: string;
+      readonly dataClass: string;
+      readonly configuration: Record<string, unknown>;
+      readonly hasTargetSideEffect: boolean;
+      readonly result: 'ok' | 'failed' | 'denied';
+      readonly resultDetail?: Record<string, unknown>;
+      readonly adminPrincipalId: string;
+      readonly adminActorId: string;
+    }
+  ): Promise<void> {
+    if (!deps.runLedgerWriter) return; // no ledger wired → no-op (best effort)
+    const infraRunId = deps.infraRunIdNamespace?.next() ?? (randomUUID() as NonEmpty);
+    try {
+      await deps.runLedgerWriter.writeEvent({
+        runId: infraRunId as never,
+        eventType,
+        timestamp: new Date().toISOString() as never,
+        actorId: fields.adminActorId as never,
+        detail: {
+          adminPrincipalId: fields.adminPrincipalId,
+          connectorId: fields.connectorId,
+          connectorType: fields.connectorType,
+          dataClass: fields.dataClass,
+          diagnosticKind: eventType,
+          hasTargetSideEffect: fields.hasTargetSideEffect,
+          configDigest: digestConfiguration(fields.configuration),
+          result: fields.result,
+          ...(fields.resultDetail !== undefined ? { resultDetail: fields.resultDetail } : {}),
+        },
+      });
+    } catch {
+      // Best effort — never let a ledger write failure flip the probe
+      // result. The drift-audit ruling acknowledges that observability
+      // can degrade while diagnostics keep working.
+    }
+  }
+
   app.post('/workspace/admin/setup/connectors/:connectorId/probe', async (req, res, next) => {
     try {
       const auth = await checkAdminAuth(req, res, deps);
@@ -1829,13 +1902,34 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
         cfgRaw !== null && typeof cfgRaw === 'object' && !Array.isArray(cfgRaw)
           ? (cfgRaw as Record<string, unknown>)
           : {};
-      const result = await handler.probe({
-        connectorId: cid,
-        connectorType,
-        allowedSystems,
-        dataClass: String(record['dataClass'] ?? 'public'),
-        configuration,
-      });
+      const dataClass = String(record['dataClass'] ?? 'public');
+      let result: Awaited<ReturnType<ConnectorProbeHandler['probe']>> | undefined;
+      let probeOk = false;
+      let resultDetail: Record<string, unknown> = {};
+      try {
+        result = await handler.probe({
+          connectorId: cid,
+          connectorType,
+          allowedSystems,
+          dataClass,
+          configuration,
+        });
+        probeOk = result.healthy === true;
+        resultDetail = { healthy: result.healthy, detail: result.detail };
+      } finally {
+        // probe is non-side-effecting by design (reachability check only).
+        await emitAdminProbeAuditEvent('admin_probe', {
+          connectorId: cid,
+          connectorType,
+          dataClass,
+          configuration,
+          hasTargetSideEffect: false,
+          result: result === undefined ? 'failed' : probeOk ? 'ok' : 'failed',
+          resultDetail,
+          adminPrincipalId: auth.principalId,
+          adminActorId: auth.actorId,
+        });
+      }
       res.status(200).json({ ok: true, data: result });
     } catch (err) {
       next(err);
@@ -1888,6 +1982,7 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
           cfgRaw !== null && typeof cfgRaw === 'object' && !Array.isArray(cfgRaw)
             ? (cfgRaw as Record<string, unknown>)
             : {};
+        const dataClass = String(record['dataClass'] ?? 'public');
         // Deterministic probe runId — clock + random. The MailpitConnector
         // (and any other connector probe handler) is responsible for prefixing
         // its own probe-message subject; we pass just the unique payload.
@@ -1895,14 +1990,38 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
           .toISOString()
           .replace(/[-:.]/g, '')
           .slice(0, 15)}Z-${Math.random().toString(36).slice(2, 8)}`;
-        const result = await handler.testConnection({
-          connectorId: cid,
-          connectorType,
-          allowedSystems,
-          dataClass: String(record['dataClass'] ?? 'public'),
-          configuration,
-          runId,
-        });
+        let result: Awaited<ReturnType<ConnectorProbeHandler['testConnection']>> | undefined;
+        let resultDetail: Record<string, unknown> = {};
+        try {
+          result = await handler.testConnection({
+            connectorId: cid,
+            connectorType,
+            allowedSystems,
+            dataClass,
+            configuration,
+            runId,
+          });
+          resultDetail = {
+            ok: result.ok,
+            runId: result.runId,
+            detail: result.detail,
+            ...(result.error !== undefined ? { error: result.error } : {}),
+          };
+        } finally {
+          // test-connection always reaches the target with a labeled probe
+          // payload — explicit side-effect flag.
+          await emitAdminProbeAuditEvent('admin_test_connection', {
+            connectorId: cid,
+            connectorType,
+            dataClass,
+            configuration,
+            hasTargetSideEffect: true,
+            result: result === undefined ? 'failed' : result.ok === true ? 'ok' : 'failed',
+            resultDetail,
+            adminPrincipalId: auth.principalId,
+            adminActorId: auth.actorId,
+          });
+        }
         res.status(result.ok ? 200 : 502).json({ ok: result.ok, data: result });
       } catch (err) {
         next(err);
