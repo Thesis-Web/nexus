@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-22T05:38:22.270Z'
-signature: NfGaxZYQpPKDV-na23aYr7_ppVs_Qi3o-Xx-FkGtBRLElDIqnLfSXWFpgaS4PmXanvKwo18lhyj--dhLMZySCg
+issuedAt: '2026-05-22T06:11:43.878Z'
+signature: skbMwVVc4FSNX6PePJEGeGQUb0M7huMMBbm3msZr6GLREiymfURZaaoFKYs2MvuZuDXK6Z2JwIVigP2U3CtkAg
 body:
   connectors:
     - connectorId: stub
@@ -74,7 +74,7 @@ body:
       connectorType: mailpit
       allowedSystems:
         - mailpit-local
-      dataClass: local-restricted
+      dataClass: internal
       configuration:
         systemType: mailpit-local
         displayLabel: Mailpit (local lab)
@@ -104,4 +104,4 @@ body:
           - nexlabco.test
         queryLimit: 200
         defaultDomain: nexlabco.test
-      enabled: false
+      enabled: true
