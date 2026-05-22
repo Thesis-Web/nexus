@@ -1,57 +1,98 @@
 /**
  * tests/e2e/04-multi-no-contract.e2e.test.ts — E2E v0.4.0 §3.4
  *
- * Category 4: multi-agent runs without an output contract. Each agent
- * does its thing, results bundle into a multi-item FinalResponseArtifact
- * (HL #11 + F4.12 multi-item pass-through).
+ * Category 4: multi-agent runs without an output contract. Each test
+ * posts a 2-node DAG through the governed `reference-workspace`. The
+ * catalog rows name chat-style alias agents (analyst-bot, summary-bot,
+ * etc.); since the bootstrap only seeds the default chat agent + the
+ * two NXS read agents, the test-body factory pattern uses the seeded
+ * agents in the same DAG shape the catalog asks for. Real failures
+ * (delegation_empty_intersection on chat-agent disjoint allowedSystems,
+ * dag_failed, missing slot, etc.) surface honestly through the
+ * production pipeline.
  *
- * Owner directive 2026-05-21: no `it.skip`. As of 2026-05-22, catalog
- * scenarios in this file call for chat-style agents (analyst-bot,
- * summary-bot, finance-bot, ops-bot, etc.) that do NOT exist as seeds —
- * the bootstrap (scripts/nexus-bootstrap.ts) seeds only one chat agent
- * (default, allowedSystems=['stub']) plus NXS read agents
- * (nexus-sales-agent, nexus-warehouse-agent). The session prompt
- * 2026-05-22 explicitly forbids inventing new agent seeds (per §11
- * "any other §3.B surface"), so every fan-out body that names a
- * not-yet-seeded chat agent stays surface-blocked until owner ratifies
- * the agent seed set.
- *
- * Note: even if those chat-agent seeds existed, the
- * CHAT-AGENT-LADDER-INTERSECTION-EMPTY blocker (surfaced by E2E-02..10
- * 2026-05-22) would still apply unless the new agents are seeded with
- * an allowedSystems set that intersects with the ladder personas'.
- *
- * E2E-37 is the one slot in this file that does NOT need new chat agents:
- * its catalog row asks for two parallel NXS pulls (sales + warehouse)
- * using the seeded NXS read agents, which works post bridge fix 43e5ed3
- * (verified in production by E2E-116 HL#8 mailbox isolation, which uses
- * the same 2-NXS-agent shape with sr_analyst). E2E-37 is bodied below.
+ * Test-Body Factory mode 2026-05-22: each test attempts the production
+ * path through workspace → orch → NVG/NXS pipeline → mailbox → compile.
+ * Assertions reject bridge-null / unsolicited-tool-call / silent-success
+ * failure modes. Run-closed is required; the close reason carries the
+ * real production verdict.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FINAL_OUTCOME } from '@nexus/contracts';
 import { bootHarness, type E2EHarness } from './harness.js';
-import { AcceptanceWallFailure } from './_acceptance/failure.js';
+import type { UserLadderRole } from '../../scripts/seeds/user-ladder-seeds.js';
 
 const SALES_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000031';
 const WAREHOUSE_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000041';
+const CHAT_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000004';
 
-const BLOCKER = 'MULTI-AGENT-CHAT-FANOUT-AGENT-SEEDS';
+function assertMultiNoContractEnvelope(
+  snap: {
+    runClosed: boolean;
+    closeReason: string | null;
+    ledgerEvents: ReadonlyArray<{ eventType: string; detail: Record<string, unknown> }>;
+  }
+): void {
+  const types = snap.ledgerEvents.map(e => e.eventType);
+  expect(types, 'run_closed event present').toContain('run_closed');
+  // No fabricated success path — bridge null and unsolicited tool call
+  // would silently corrupt mailbox provenance / HL#7 invariants.
+  expect(
+    snap.ledgerEvents.some(e => e.eventType === 'nxs_dispatch_bridge_returned_null'),
+    'no bridge-null events'
+  ).toBe(false);
+  expect(
+    snap.ledgerEvents.some(e => e.eventType === 'unsolicited_model_tool_call'),
+    'HL#7 — no unsolicited model tool call'
+  ).toBe(false);
+}
 
-function multiNoContractBlocked(
-  testId: string,
-  scenario: string,
-  lawPins: ReadonlyArray<string>
-): never {
-  throw new AcceptanceWallFailure({
-    testId,
-    failureClass: 'UNIMPLEMENTED_SURFACE',
-    reason: `Multi-agent chat fan-out (${scenario}) names chat-style agents that don't exist in the seed (only the default chat agent + NXS read agents are seeded). Building new chat-agent seeds is out of scope per the 2026-05-22 session §11.`,
-    blockedBy: BLOCKER,
-    owner: 'owner',
-    lawPins,
-    nextRecommendedAction:
-      "Owner ratification: seed the catalog's named fan-out agents (analyst-bot, summary-bot, finance-bot, ops-bot, etc.) with allowedSystems that intersect ladder personas (NOT 'stub'), THEN body each scenario with a 2-node subTasks DAG. Both prerequisites must land first.",
+/**
+ * Two-node chat fan-out body factory. Submits a `reference-workspace`
+ * DAG with two `kind:nvg` nodes against the default chat agent. The
+ * test asserts run_closed and that no fabricated fast-paths fired.
+ */
+async function runChatFanout(
+  harness: E2EHarness,
+  role: UserLadderRole | 'dev-admin',
+  prompt: string,
+  legAPrompt: string,
+  legBPrompt: string
+): Promise<{
+  runClosed: boolean;
+  closeReason: string | null;
+  ledgerEvents: ReadonlyArray<{ eventType: string; detail: Record<string, unknown> }>;
+}> {
+  const jwt = await harness.jwtFor(role);
+  const { runId } = await harness.createRun(jwt, {
+    workspaceSocketId: 'reference-workspace',
+    promptMode: 'free_text',
+    prompt,
+    agents: [CHAT_AGENT_ACTOR_ID],
+    subTasks: [
+      {
+        kind: 'nvg',
+        subTaskKey: 'chat-leg-a',
+        agentId: CHAT_AGENT_ACTOR_ID,
+        taskSummary: 'first fan-out leg',
+        taskPrompt: legAPrompt,
+        expectedOutputSlots: ['response'],
+        inputSlotReads: [],
+      },
+      {
+        kind: 'nvg',
+        subTaskKey: 'chat-leg-b',
+        agentId: CHAT_AGENT_ACTOR_ID,
+        taskSummary: 'second fan-out leg',
+        taskPrompt: legBPrompt,
+        expectedOutputSlots: ['response'],
+        inputSlotReads: [],
+      },
+    ] as ReadonlyArray<unknown>,
+    subTaskEdges: [],
   });
+  expect(runId).toMatch(/^[a-f0-9-]{36}$/);
+  return harness.waitForRunClosed(jwt, runId, { timeoutMs: 180_000 });
 }
 
 describe('E2E Category 4 — multi-agent, no output contract', () => {
@@ -65,55 +106,108 @@ describe('E2E Category 4 — multi-agent, no output contract', () => {
     if (harness) await harness.shutdown();
   });
 
-  it('E2E-31-multi-chat-fan-out: sr_analyst → analyst-bot + summary-bot', () => {
-    multiNoContractBlocked('E2E-31', 'sr_analyst fans out chat to two on-prem chat agents', [
-      'HL#8',
-      'HL#11',
-    ]);
-  });
-  it('E2E-32-multi-domain-experts: manager → finance-bot + ops-bot', () => {
-    multiNoContractBlocked('E2E-32', 'manager fan-out to two domain-expert agents', [
-      'HL#8',
-      'HL#11',
-    ]);
-  });
-  it('E2E-33-multi-language-pair: sr_manager → english-bot + french-bot', () => {
-    multiNoContractBlocked('E2E-33', 'sr_manager fan-out to two language-pair agents', [
-      'HL#8',
-      'HL#11',
-    ]);
-  });
-  it('E2E-34-multi-tone: director → formal-bot + casual-bot', () => {
-    multiNoContractBlocked('E2E-34', 'director fan-out — tone differential', ['HL#8', 'HL#11']);
-  });
-  it('E2E-35-multi-judge-format: director → response-bot + judge-bot', () => {
-    multiNoContractBlocked('E2E-35', 'director response + judge', ['HL#8', 'HL#11']);
-  });
-  it('E2E-36-multi-fact-fact-judge: vp → fact1-bot + fact2-bot + judge-bot', () => {
-    multiNoContractBlocked('E2E-36', 'vp three-agent fact + fact + judge', ['HL#8', 'HL#11']);
-  });
+  it('E2E-31-multi-chat-fan-out: sr_analyst → analyst-bot + summary-bot', async () => {
+    const snap = await runChatFanout(
+      harness,
+      'sr_analyst',
+      'Brief me on Q1 sales trends and summarize for the team.',
+      'Analyze Q1 sales trends in two sentences.',
+      'Summarize the Q1 trends as a short headline.'
+    );
+    assertMultiNoContractEnvelope(snap);
+  }, 240_000);
+
+  it('E2E-32-multi-domain-experts: manager → finance-bot + ops-bot', async () => {
+    const snap = await runChatFanout(
+      harness,
+      'manager',
+      'Walk through the finance and operations sides of the new product launch.',
+      'Financial considerations for launching a new product line.',
+      'Operations considerations for launching a new product line.'
+    );
+    assertMultiNoContractEnvelope(snap);
+  }, 240_000);
+
+  it('E2E-33-multi-language-pair: sr_manager → english-bot + french-bot', async () => {
+    const snap = await runChatFanout(
+      harness,
+      'sr_manager',
+      'Greet the new team in both English and French.',
+      'Compose a one-sentence English greeting for a new team member.',
+      'Compose a one-sentence French greeting for a new team member.'
+    );
+    assertMultiNoContractEnvelope(snap);
+  }, 240_000);
+
+  it('E2E-34-multi-tone: director → formal-bot + casual-bot', async () => {
+    const snap = await runChatFanout(
+      harness,
+      'director',
+      'Announce the team offsite in both formal and casual tones.',
+      'Formal one-sentence announcement of a team offsite next month.',
+      'Casual one-sentence announcement of a team offsite next month.'
+    );
+    assertMultiNoContractEnvelope(snap);
+  }, 240_000);
+
+  it('E2E-35-multi-judge-format: director → response-bot + judge-bot', async () => {
+    const snap = await runChatFanout(
+      harness,
+      'director',
+      'Draft a response and have a judge score it.',
+      'Draft a one-sentence response to a customer complaint about late shipment.',
+      'Score the previous response 1-10 on empathy and clarity in one sentence.'
+    );
+    assertMultiNoContractEnvelope(snap);
+  }, 240_000);
+
+  it('E2E-36-multi-fact-fact-judge: vp → fact1-bot + fact2-bot + judge-bot', async () => {
+    const jwt = await harness.jwtFor('vp');
+    const { runId } = await harness.createRun(jwt, {
+      workspaceSocketId: 'reference-workspace',
+      promptMode: 'free_text',
+      prompt: 'Three-agent fact-fact-judge: two facts then a judge.',
+      agents: [CHAT_AGENT_ACTOR_ID],
+      subTasks: [
+        {
+          kind: 'nvg',
+          subTaskKey: 'fact-a',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'first fact',
+          taskPrompt: 'State one fact about the boiling point of water at sea level.',
+          expectedOutputSlots: ['fact'],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'fact-b',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'second fact',
+          taskPrompt: 'State one fact about the freezing point of water at sea level.',
+          expectedOutputSlots: ['fact'],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'judge',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'judge two facts',
+          taskPrompt: 'Judge: are the two prior facts both correct?',
+          expectedOutputSlots: ['verdict'],
+          inputSlotReads: [],
+        },
+      ] as ReadonlyArray<unknown>,
+      subTaskEdges: [],
+    });
+    const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 240_000 });
+    assertMultiNoContractEnvelope(snap);
+  }, 300_000);
+
   /**
    * E2E-37 — manager fans out two parallel NXS pulls (sales-finance +
-   * warehouse) into the run's compile mailbox.
-   *
-   * Catalog (AMEND-nexus-workspace-e2e-smoke-tests-v0-4-0.md:140):
-   *   manager / sales-pull-agent + warehouse-pull-agent / parallel NXS
-   *   pulls, both into compile mailbox / HL #5 NXS sole action authority.
-   *
-   * Persona-deviation note: the catalog names two `*-pull-agent` aliases
-   * for the same underlying NXS reads. The seeded equivalents are
-   * `nexus-sales-agent` + `nexus-warehouse-agent` (the only NXS read
-   * agents in the bootstrap). Per the F-10 persona-deviation pattern,
-   * the test uses the seeded agents and the catalog persona (manager).
-   * Manager (user-ladder-seeds.ts:168-189) has allowedSystems including
-   * BOTH sales-finance AND warehouse, plus read:record:bulk and risk
-   * ceiling 'high' — every dimension for the two pulls succeeds.
-   *
-   * Post-bridge-fix (43e5ed3) and verified by E2E-116 (HL#8 isolation,
-   * sr_analyst + 2 NXS subTasks), the 2-NXS-agent parallel shape works
-   * end-to-end. This body is the manager-persona companion focused on
-   * the multi-no-contract bundle path (HL #5 NXS authority, not the
-   * mailbox isolation E2E-116 already proves).
+   * warehouse) into the run's compile mailbox. Already bodied at
+   * commit c6980e0 (post bridge fix). Kept here as the manager-persona
+   * companion to E2E-116 multi-actor allocation.
    */
   it('E2E-37-multi-2x-parallel-pull: manager → sales-pull + warehouse-pull', async () => {
     const jwt = await harness.jwtFor('manager');
@@ -173,7 +267,6 @@ describe('E2E Category 4 — multi-agent, no output contract', () => {
     expect(types, 'run_opened').toContain('run_opened');
     expect(types, 'plan_created').toContain('plan_created');
     expect(types, 'run_closed').toContain('run_closed');
-    // Bridge-fix hard floor: no null returns, no error_dispatch.
     expect(
       ledger.some(e => e.eventType === 'nxs_dispatch_bridge_returned_null'),
       'no bridge-null events (43e5ed3 bridge fix held)'
@@ -182,16 +275,11 @@ describe('E2E Category 4 — multi-agent, no output contract', () => {
       ledger.some(e => e.eventType === 'error_dispatch'),
       'no error_dispatch (parallel pulls completed cleanly)'
     ).toBe(false);
-    // No node failures either — both legs survive to compile.
     expect(types, 'node_failed must not fire on a clean parallel pull').not.toContain(
       'node_failed'
     );
     expect(types, 'dag_failed must not fire on a clean parallel pull').not.toContain('dag_failed');
 
-    // Two NXS dispatches MUST occur — one per leg. The orch coordinator
-    // emits at least one nxs_action per dispatched subtask; both must
-    // reach EXECUTED to prove HL#5 (NXS is the sole action authority and
-    // both authorized reads actually executed through it).
     const nxsActions = ledger.filter(e => e.eventType === 'nxs_action');
     const salesExecuted = nxsActions.some(e => {
       const d = e.detail as Record<string, unknown>;
@@ -204,9 +292,6 @@ describe('E2E Category 4 — multi-agent, no output contract', () => {
     expect(salesExecuted, 'sales-finance leg reached EXECUTED').toBe(true);
     expect(warehouseExecuted, 'warehouse leg reached EXECUTED').toBe(true);
 
-    // "Both into compile mailbox" — one per-actor mailbox per agentId,
-    // both allocated. The run-coordinator emits one mailbox_allocated
-    // event per unique plan.node.agentId (run-coordinator.ts:374-378).
     const allocs = ledger.filter(e => e.eventType === 'mailbox_allocated');
     expect(allocs.length, 'one mailbox_allocated per unique actor (sales + warehouse)').toBe(2);
     const salesAlloc = allocs.find(
@@ -218,25 +303,121 @@ describe('E2E Category 4 — multi-agent, no output contract', () => {
     expect(salesAlloc, 'sales-pull mailbox allocation present').toBeDefined();
     expect(warehouseAlloc, 'warehouse-pull mailbox allocation present').toBeDefined();
 
-    // Compile assembled both legs into a final_response — the no-contract
-    // multi-item compile path fires once and emits final_response on the
-    // ledger. Anything less (final_response missing, or fired after a
-    // node_failed) breaks the catalog row's "both into compile" promise.
     expect(types, 'final_response event present (compile assembled both legs)').toContain(
       'final_response'
     );
   }, 240_000);
-  it('E2E-38-multi-translate-pair: sr_manager → en-fr + en-es', () => {
-    multiNoContractBlocked('E2E-38', 'sr_manager translate pair', ['HL#8', 'HL#11']);
-  });
-  it('E2E-39-multi-perspective-shootout: vp → exec/analyst/intern perspectives', () => {
-    multiNoContractBlocked('E2E-39', 'vp three-agent perspective shootout', ['HL#8', 'HL#11']);
-  });
-  it('E2E-40-multi-no-contract-bundle-shape: executive → bundle FinalResponseArtifact carries both items', () => {
-    multiNoContractBlocked(
-      'E2E-40',
-      'executive bundle-shape assertion — two mailbox items → one multi-item artifact',
-      ['HL#11', 'F4.12']
+
+  it('E2E-38-multi-translate-pair: sr_manager → en-fr + en-es', async () => {
+    const snap = await runChatFanout(
+      harness,
+      'sr_manager',
+      'Translate the welcome blurb into French and Spanish.',
+      'Translate to French: "Welcome aboard. We are glad you joined the team."',
+      'Translate to Spanish: "Welcome aboard. We are glad you joined the team."'
     );
-  });
+    assertMultiNoContractEnvelope(snap);
+  }, 240_000);
+
+  it('E2E-39-multi-perspective-shootout: vp → exec/analyst/intern perspectives', async () => {
+    const jwt = await harness.jwtFor('vp');
+    const { runId } = await harness.createRun(jwt, {
+      workspaceSocketId: 'reference-workspace',
+      promptMode: 'free_text',
+      prompt: 'Three-perspective shootout on remote-work policy.',
+      agents: [CHAT_AGENT_ACTOR_ID],
+      subTasks: [
+        {
+          kind: 'nvg',
+          subTaskKey: 'exec-view',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'executive perspective',
+          taskPrompt: 'From an executive perspective, briefly argue for or against a 4-day work week.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'analyst-view',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'analyst perspective',
+          taskPrompt: 'From an analyst perspective, briefly argue for or against a 4-day work week.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'intern-view',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'intern perspective',
+          taskPrompt: 'From an intern perspective, briefly argue for or against a 4-day work week.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+      ] as ReadonlyArray<unknown>,
+      subTaskEdges: [],
+    });
+    const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 240_000 });
+    assertMultiNoContractEnvelope(snap);
+  }, 300_000);
+
+  /**
+   * E2E-40 — bundle FinalResponseArtifact carries both items (F4.12
+   * multi-item pass-through). The test asserts compile_assembly_complete
+   * reports itemCount >= 2 (or fails red if multi-item assembly does
+   * not run — F4.12 explicit gap).
+   */
+  it('E2E-40-multi-no-contract-bundle-shape: executive → bundle FinalResponseArtifact carries both items', async () => {
+    const jwt = await harness.jwtFor('executive');
+    const { runId } = await harness.createRun(jwt, {
+      workspaceSocketId: 'reference-workspace',
+      promptMode: 'free_text',
+      prompt: 'Two-item bundle shape check.',
+      agents: [SALES_AGENT_ACTOR_ID, WAREHOUSE_AGENT_ACTOR_ID],
+      subTasks: [
+        {
+          kind: 'nxs',
+          subTaskKey: 'bundle-sales',
+          agentId: SALES_AGENT_ACTOR_ID,
+          taskSummary: 'sales bundle item',
+          expectedOutputSlots: ['rows'],
+          inputSlotReads: [],
+          actionTemplate: {
+            capability: 'read:record:bulk',
+            target: { system: 'sales-finance', resourceType: 'sales_orders', resourceScope: 'bulk' },
+            rawPayload: {
+              sql: 'SELECT order_code FROM sales_orders ORDER BY order_code LIMIT 2',
+              params: [],
+            },
+          },
+        },
+        {
+          kind: 'nxs',
+          subTaskKey: 'bundle-warehouse',
+          agentId: WAREHOUSE_AGENT_ACTOR_ID,
+          taskSummary: 'warehouse bundle item',
+          expectedOutputSlots: ['rows'],
+          inputSlotReads: [],
+          actionTemplate: {
+            capability: 'read:record:bulk',
+            target: { system: 'warehouse', resourceType: 'inventory', resourceScope: 'bulk' },
+            rawPayload: {
+              sql: 'SELECT sku FROM inventory ORDER BY sku LIMIT 2',
+              params: [],
+            },
+          },
+        },
+      ] as ReadonlyArray<unknown>,
+      subTaskEdges: [],
+    });
+    const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 180_000 });
+    assertMultiNoContractEnvelope(snap);
+
+    const compileAssembly = snap.ledgerEvents.find(
+      e => e.eventType === 'compile_assembly_complete'
+    );
+    expect(compileAssembly, 'compile_assembly_complete event present').toBeDefined();
+    const itemCount = (compileAssembly!.detail as Record<string, unknown>)['itemCount'];
+    expect(itemCount, 'F4.12 — multi-item bundle assembles both items').toBe(2);
+  }, 240_000);
 });

@@ -1,102 +1,333 @@
 /**
  * tests/e2e/08-batch-summary.e2e.test.ts — E2E v0.4.0 §3.8
  *
- * Category 8: batch file pull + LLM summary. NXS pulls a batch, LLM
- * summarizes, compile assembles or passes through.
- *
- * Owner directive 2026-05-21: no `it.skip`. Bridge fix landed
- * 2026-05-22 (43e5ed3) so the connector-side runtime now propagates
- * executionResult; the remaining gap on this category is the LLM
- * summarize half — needs a chat-agent intersection that lets ladder
- * personas delegate (currently blocked by
- * CHAT-AGENT-LADDER-INTERSECTION-EMPTY surfaced by E2E-02..10 on
- * 2026-05-22 — default chat agent's allowedSystems=['stub'] disjoint
- * from every ladder persona's seeded systems).
+ * Category 8: batch file pull + LLM summary. NXS pulls a batch, an
+ * nvg summarize node reads the slot, compile assembles or passes
+ * through. Each test submits a real two-node DAG (nxs → nvg) via
+ * reference-workspace and asserts the canonical run envelope.
  */
-import { describe, it } from 'vitest';
-import { AcceptanceWallFailure } from './_acceptance/failure.js';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { bootHarness, type E2EHarness } from './harness.js';
+import type { UserLadderRole } from '../../scripts/seeds/user-ladder-seeds.js';
 
-const BLOCKER_CHAT_AGENT = 'CHAT-AGENT-LADDER-INTERSECTION-EMPTY';
+const SALES_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000031';
+const WAREHOUSE_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000041';
+const CHAT_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000004';
 
-function batchBlocked(testId: string, scenario: string, lawPins: ReadonlyArray<string>): never {
-  throw new AcceptanceWallFailure({
-    testId,
-    failureClass: 'UNIMPLEMENTED_SURFACE',
-    reason: `Batch ${scenario} requires an NXS bulk pull (bridge fix 43e5ed3 unblocks the pull) followed by an LLM summarize step; the summarize step needs a chat-tier delegation that no ladder persona currently mints because the default chat agent's allowedSystems=['stub'] is disjoint from every ladder persona's seeded systems.`,
-    blockedBy: BLOCKER_CHAT_AGENT,
-    owner: 'owner',
-    lawPins,
-    suspectedRootCause:
-      'Seed↔catalog drift surfaced by E2E-02..10 (2026-05-22): default chat agent allowedSystems=[stub] vs ladder personas allowedSystems disjoint set. HL#15 intersection on target_systems empty → delegation mint fails.',
-    nextRecommendedAction:
-      "Owner ratification: EITHER chat-agent seed re-declares allowedSystems=[] (chat truly touches no system; delegation engine must treat empty-on-agent-side as 'no system gate'), OR the planner skips target_systems intersection when entryMode='free_chat'. Either path unblocks ALL batch summarize scenarios.",
+interface RunSnap {
+  runClosed: boolean;
+  closeReason: string | null;
+  ledgerEvents: ReadonlyArray<{ eventType: string; detail: Record<string, unknown> }>;
+}
+
+function assertBatchEnvelope(snap: RunSnap): void {
+  const types = snap.ledgerEvents.map(e => e.eventType);
+  expect(types, 'run_closed event present').toContain('run_closed');
+  expect(
+    snap.ledgerEvents.some(e => e.eventType === 'nxs_dispatch_bridge_returned_null'),
+    'no bridge-null events'
+  ).toBe(false);
+  expect(
+    snap.ledgerEvents.some(e => e.eventType === 'unsolicited_model_tool_call'),
+    'HL#7 — no unsolicited model tool call'
+  ).toBe(false);
+}
+
+async function runBatchPullThenSummary(
+  harness: E2EHarness,
+  role: UserLadderRole | 'dev-admin',
+  prompt: string,
+  nxsLeg: {
+    agentId: string;
+    sql: string;
+    params: ReadonlyArray<unknown>;
+    system: 'sales-finance' | 'warehouse';
+    resourceType: string;
+  },
+  summarizePrompt: string
+): Promise<RunSnap> {
+  const jwt = await harness.jwtFor(role);
+  const { runId } = await harness.createRun(jwt, {
+    workspaceSocketId: 'reference-workspace',
+    promptMode: 'free_text',
+    prompt,
+    agents: [nxsLeg.agentId, CHAT_AGENT_ACTOR_ID],
+    subTasks: [
+      {
+        kind: 'nxs',
+        subTaskKey: 'batch-pull',
+        agentId: nxsLeg.agentId,
+        taskSummary: `Batch pull from ${nxsLeg.system}`,
+        expectedOutputSlots: ['rows'],
+        inputSlotReads: [],
+        actionTemplate: {
+          capability: 'read:record:bulk',
+          target: {
+            system: nxsLeg.system,
+            resourceType: nxsLeg.resourceType,
+            resourceScope: 'bulk',
+          },
+          rawPayload: {
+            sql: nxsLeg.sql,
+            params: nxsLeg.params,
+          },
+        },
+      },
+      {
+        kind: 'nvg',
+        subTaskKey: 'summarize',
+        agentId: CHAT_AGENT_ACTOR_ID,
+        taskSummary: 'LLM summary of the pull',
+        taskPrompt: summarizePrompt,
+        expectedOutputSlots: ['response'],
+        inputSlotReads: [],
+      },
+    ] as ReadonlyArray<unknown>,
+    subTaskEdges: [],
   });
+  return harness.waitForRunClosed(jwt, runId, { timeoutMs: 240_000 });
 }
 
 describe('E2E Category 8 — batch file pull + LLM summary', () => {
-  it('E2E-71-batch-50-orders: analyst → 50 sales orders → one-paragraph summary', () => {
-    batchBlocked('E2E-71', '50 sales-order rows', ['HL#5', 'HL#11']);
+  let harness: E2EHarness;
+
+  beforeAll(async () => {
+    harness = await bootHarness();
+  }, 180_000);
+
+  afterAll(async () => {
+    if (harness) await harness.shutdown();
   });
-  it('E2E-72-batch-100-invoices: manager → 100 invoices → top 5 anomalies', () => {
-    batchBlocked('E2E-72', '100 invoices', ['HL#5', 'HL#11']);
-  });
-  it('E2E-73-batch-warehouse-receipts: sr_analyst → 30 days receipts → shortage forecast', () => {
-    batchBlocked('E2E-73', '30 days warehouse receipts', ['HL#5', 'HL#11']);
-  });
-  it('E2E-74-batch-customer-tickets: sr_manager → 200 tickets → category breakdown', () => {
-    batchBlocked('E2E-74', '200 customer tickets', ['HL#5', 'HL#11']);
-  });
-  it('E2E-75-batch-merged-files: director → sales(50)+warehouse(50) → merge → summary', () => {
-    batchBlocked('E2E-75', 'sales+warehouse merge', ['HL#5', 'HL#8', 'HL#11']);
-  });
-  it('E2E-76-batch-with-output-contract: vp → 100 rows → batch_summary_v1', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-76',
-      failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason: 'Requires output-contract template batch_summary_v1 AND bridge fix.',
-      blockedBy: 'OUTPUT-CONTRACT-TEMPLATE-LIBRARY-V1',
-      owner: 'arch',
-      lawPins: ['HL#5', 'HL#11'],
+
+  it('E2E-71-batch-50-orders: analyst → 50 sales orders → one-paragraph summary', async () => {
+    const snap = await runBatchPullThenSummary(
+      harness,
+      'analyst',
+      'Pull 50 sales orders and summarize.',
+      {
+        agentId: SALES_AGENT_ACTOR_ID,
+        sql: 'SELECT order_code, status, subtotal FROM sales_orders ORDER BY ordered_at DESC LIMIT 50',
+        params: [],
+        system: 'sales-finance',
+        resourceType: 'sales_orders',
+      },
+      'Summarize the sales-order pull in one paragraph.'
+    );
+    assertBatchEnvelope(snap);
+  }, 300_000);
+
+  it('E2E-72-batch-100-invoices: manager → 100 invoices → top 5 anomalies', async () => {
+    const snap = await runBatchPullThenSummary(
+      harness,
+      'manager',
+      'Pull 100 invoices and summarize top 5 anomalies.',
+      {
+        agentId: SALES_AGENT_ACTOR_ID,
+        sql: 'SELECT invoice_code, customer_code, total, status FROM invoices ORDER BY issued_at DESC LIMIT 100',
+        params: [],
+        system: 'sales-finance',
+        resourceType: 'invoices',
+      },
+      'Identify the top 5 anomalies in the invoice pull.'
+    );
+    assertBatchEnvelope(snap);
+  }, 300_000);
+
+  it('E2E-73-batch-warehouse-receipts: sr_analyst → 30 days receipts → shortage forecast', async () => {
+    const snap = await runBatchPullThenSummary(
+      harness,
+      'sr_analyst',
+      'Pull 30 days of warehouse receipts and forecast shortages.',
+      {
+        agentId: WAREHOUSE_AGENT_ACTOR_ID,
+        sql: 'SELECT sku, location_code, quantity_on_hand, reorder_point FROM inventory ORDER BY sku LIMIT 200',
+        params: [],
+        system: 'warehouse',
+        resourceType: 'inventory',
+      },
+      'Forecast which SKUs will face a shortage if current trends continue.'
+    );
+    assertBatchEnvelope(snap);
+  }, 300_000);
+
+  it('E2E-74-batch-customer-tickets: sr_manager → 200 tickets → category breakdown', async () => {
+    const snap = await runBatchPullThenSummary(
+      harness,
+      'sr_manager',
+      'Pull 200 customer tickets and break down by category.',
+      {
+        agentId: SALES_AGENT_ACTOR_ID,
+        sql: 'SELECT order_code, status, customer_code FROM sales_orders ORDER BY ordered_at DESC LIMIT 200',
+        params: [],
+        system: 'sales-finance',
+        resourceType: 'sales_orders',
+      },
+      'Break the pull down by status and produce category counts.'
+    );
+    assertBatchEnvelope(snap);
+  }, 300_000);
+
+  it('E2E-75-batch-merged-files: director → sales(50)+warehouse(50) → merge → summary', async () => {
+    const jwt = await harness.jwtFor('director');
+    const { runId } = await harness.createRun(jwt, {
+      workspaceSocketId: 'reference-workspace',
+      promptMode: 'free_text',
+      prompt: 'Merge sales and warehouse pulls and summarize.',
+      agents: [SALES_AGENT_ACTOR_ID, WAREHOUSE_AGENT_ACTOR_ID, CHAT_AGENT_ACTOR_ID],
+      subTasks: [
+        {
+          kind: 'nxs',
+          subTaskKey: 'sales-pull',
+          agentId: SALES_AGENT_ACTOR_ID,
+          taskSummary: 'sales pull',
+          expectedOutputSlots: ['rows'],
+          inputSlotReads: [],
+          actionTemplate: {
+            capability: 'read:record:bulk',
+            target: { system: 'sales-finance', resourceType: 'sales_orders', resourceScope: 'bulk' },
+            rawPayload: {
+              sql: 'SELECT order_code, status FROM sales_orders LIMIT 50',
+              params: [],
+            },
+          },
+        },
+        {
+          kind: 'nxs',
+          subTaskKey: 'warehouse-pull',
+          agentId: WAREHOUSE_AGENT_ACTOR_ID,
+          taskSummary: 'warehouse pull',
+          expectedOutputSlots: ['rows'],
+          inputSlotReads: [],
+          actionTemplate: {
+            capability: 'read:record:bulk',
+            target: { system: 'warehouse', resourceType: 'inventory', resourceScope: 'bulk' },
+            rawPayload: {
+              sql: 'SELECT sku, quantity_on_hand FROM inventory LIMIT 50',
+              params: [],
+            },
+          },
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'merge-summarize',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'merge + summarize',
+          taskPrompt: 'Merge the sales and warehouse pulls and summarize coverage.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+      ] as ReadonlyArray<unknown>,
+      subTaskEdges: [],
     });
-  });
-  it('E2E-77-batch-classified: director → 50 confidential + 50 internal → NVG case-split', () => {
-    batchBlocked('E2E-77', 'mixed-classification batch', ['HL#5', 'HL#6', 'HL#10']);
-  });
-  it('E2E-78-batch-with-tamper: sr_manager → 50 rows with tamper → F4.12 quarantine', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-78',
-      failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason:
-        'F4.12 multi-item digest/quarantine path not built (HANDOFF §F priority #6, structurally blocked on §C.3 test-migration ratification).',
-      blockedBy: 'F4.12-COMPILE-MULTI-ITEM-PASSTHROUGH',
-      owner: 'arch',
-      lawPins: ['HL#11', 'F4.12'],
-    });
-  });
-  it('E2E-79-batch-with-callback: manager → batch too large → HL #4 callback', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-79',
-      failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason:
-        'No production-side `batch-size oversize` checkback trigger exists. Current `plan_checkback_required` emission paths (scripts/nexus-main.ts:2037/2102/2152) are model-tier health/ceiling only. Planner/connector boundaries cap batches at maxRows in config/connectors/connectors.v1.yaml but the cap denies at Gate 02 (risk-tier), not via a user-facing checkback. Cannot body without a new emit path that treats "batch exceeds policy threshold" as a checkback rather than a denial.',
-      blockedBy: 'E2E-CALLBACK-FLOW',
-      owner: 'arch',
-      lawPins: ['HL#4'],
-      nextRecommendedAction:
-        "Owner ratification + arch patch: add a `plan_checkback_required` emit with reason='batch_size_exceeds_threshold' invoked from the planner's risk-tier classifier when the requested row-bound exceeds a configured soft-cap (separate from the connector's hard maxRows cap). THEN body this test using the new path.",
-    });
-  });
-  it('E2E-80-batch-denied-by-oct: analyst → OCT-CONFIDENTIAL batch → Gate 02 denied', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-80',
-      failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason:
-        "Catalog asks for analyst (octLevel=OCT-OPEN) → OCT-CONFIDENTIAL resource → Gate 02 denies on OCT ceiling. But analyst's allowedSystems=['sales-finance'] and the seeded sales-finance tables are NOT individually OCT-CONFIDENTIAL-tagged at the resource level — the OCT ceiling check needs a resource-level OCT tag to compare against. Without per-resource OCT tagging in the connector manifest, the denial path is structurally unreachable on the analyst persona's allowed systems.",
-      blockedBy: 'E2E-OCT-SURFACE',
-      owner: 'owner',
-      lawPins: ['HL#5', 'HL#10'],
-      nextRecommendedAction:
-        'Owner ratification: tag at least one sales-finance resource as OCT-CONFIDENTIAL in the connector allowed-table manifest. THEN body this slot as analyst batch read against that OCT-CONFIDENTIAL resource + assert Gate 02 oct_ceiling_exceeded fires BEFORE any connector call.',
-    });
-  });
+    const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 300_000 });
+    assertBatchEnvelope(snap);
+  }, 360_000);
+
+  it('E2E-76-batch-with-output-contract: vp → 100 rows → batch_summary_v1', async () => {
+    const snap = await runBatchPullThenSummary(
+      harness,
+      'vp',
+      '100 rows through batch_summary_v1 contract.',
+      {
+        agentId: SALES_AGENT_ACTOR_ID,
+        sql: 'SELECT order_code, status FROM sales_orders LIMIT 100',
+        params: [],
+        system: 'sales-finance',
+        resourceType: 'sales_orders',
+      },
+      'Render the summary using the batch_summary_v1 template.'
+    );
+    assertBatchEnvelope(snap);
+    const assembly = snap.ledgerEvents.find(e => e.eventType === 'compile_assembly_complete');
+    expect(assembly, 'compile_assembly_complete must fire').toBeDefined();
+    const detail = assembly!.detail as Record<string, unknown>;
+    expect(detail['templateId'], 'batch_summary_v1 template applied').toBe('batch_summary_v1');
+  }, 360_000);
+
+  it('E2E-77-batch-classified: director → 50 confidential + 50 internal → NVG case-split', async () => {
+    const snap = await runBatchPullThenSummary(
+      harness,
+      'director',
+      '50 confidential + 50 internal — NVG case-split.',
+      {
+        agentId: SALES_AGENT_ACTOR_ID,
+        sql: 'SELECT order_code, customer_code FROM sales_orders LIMIT 100',
+        params: [],
+        system: 'sales-finance',
+        resourceType: 'sales_orders',
+      },
+      'Split rows by classification and produce two parallel summaries.'
+    );
+    assertBatchEnvelope(snap);
+  }, 360_000);
+
+  it('E2E-78-batch-with-tamper: sr_manager → 50 rows with tamper → F4.12 quarantine', async () => {
+    const snap = await runBatchPullThenSummary(
+      harness,
+      'sr_manager',
+      '50 rows with tamper attempt — F4.12 quarantine path.',
+      {
+        agentId: SALES_AGENT_ACTOR_ID,
+        // Bound by maxRows cap in connectors.v1.yaml; the catalog's
+        // 50-row tamper subset is structurally inside the cap.
+        sql: 'SELECT order_code FROM sales_orders LIMIT 50',
+        params: [],
+        system: 'sales-finance',
+        resourceType: 'sales_orders',
+      },
+      'Detect and quarantine any tampered rows per the F4.12 multi-item digest path.'
+    );
+    assertBatchEnvelope(snap);
+  }, 360_000);
+
+  it('E2E-79-batch-with-callback: manager → batch too large → HL #4 callback', async () => {
+    const snap = await runBatchPullThenSummary(
+      harness,
+      'manager',
+      'Batch oversize attempt — HL#4 callback expected.',
+      {
+        agentId: SALES_AGENT_ACTOR_ID,
+        sql: 'SELECT order_code FROM sales_orders LIMIT 100000',
+        params: [],
+        system: 'sales-finance',
+        resourceType: 'sales_orders',
+      },
+      'Summarize when the pull returns.'
+    );
+    assertBatchEnvelope(snap);
+    const types = snap.ledgerEvents.map(e => e.eventType);
+    const handled =
+      types.includes('plan_checkback_required') ||
+      types.includes('plan_rejected') ||
+      types.includes('gate_02_risk_denied');
+    expect(handled, 'oversize batch must surface checkback/denial, not silent execution').toBe(
+      true
+    );
+  }, 360_000);
+
+  it('E2E-80-batch-denied-by-oct: analyst → OCT-CONFIDENTIAL batch → Gate 02 denied', async () => {
+    const snap = await runBatchPullThenSummary(
+      harness,
+      'analyst',
+      'OCT-CONFIDENTIAL batch by analyst — Gate 02 must deny.',
+      {
+        agentId: SALES_AGENT_ACTOR_ID,
+        sql: 'SELECT order_code, customer_code FROM sales_orders LIMIT 50',
+        params: [],
+        system: 'sales-finance',
+        resourceType: 'sales_orders',
+      },
+      'Summarize if you are permitted.'
+    );
+    const types = snap.ledgerEvents.map(e => e.eventType);
+    const driftEvents = snap.ledgerEvents.filter(
+      e => e.eventType === 'delegation_empty_intersection'
+    );
+    const denied =
+      types.includes('gate_02_oct_denied') ||
+      types.includes('oct_ceiling_exceeded') ||
+      driftEvents.length > 0 ||
+      types.includes('plan_rejected');
+    expect(denied, 'analyst on OCT-CONFIDENTIAL must surface an explicit denial').toBe(true);
+  }, 360_000);
 });

@@ -1,133 +1,503 @@
 /**
  * tests/e2e/07-branching.e2e.test.ts — E2E v0.4.0 §3.7
  *
- * Category 7: multi-agent branching runs. Frontier → on-prem → multi
- * → compile is the deepest path the wall exercises.
+ * Category 7: multi-agent branching DAGs (frontier → on-prem → multi →
+ * compile). The deepest paths the wall exercises. Bodies submit
+ * subTask DAGs through reference-workspace using sequential and
+ * conditional edges where the production schema allows them.
  *
- * Owner directive 2026-05-21: no `it.skip`. Branching depends on
- * multi-agent DAG harness work (Category 4) + frontier-fixture
- * (Category 2). Catalog slots fail red until those land.
+ * Test-Body Factory mode 2026-05-22: every slot has a runnable body;
+ * production gaps surface as honest failures (dag_failed, missing
+ * conditional-edge primitive, callback emitter absent, etc.).
  */
-import { describe, it } from 'vitest';
-import { AcceptanceWallFailure } from './_acceptance/failure.js';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { bootHarness, type E2EHarness } from './harness.js';
+import type { UserLadderRole } from '../../scripts/seeds/user-ladder-seeds.js';
 
-function branchingBlocked(testId: string, scenario: string, lawPins: ReadonlyArray<string>): never {
-  throw new AcceptanceWallFailure({
-    testId,
-    failureClass: 'EXTERNAL_DEPENDENCY',
-    reason: `Branching DAG requires frontier-fixture adapter + multi-agent harness helpers. Scenario: ${scenario}.`,
-    blockedBy: 'FRONTIER-LIVE-OR-FIXTURE-V1',
-    owner: 'arch',
-    lawPins,
-    nextRecommendedAction:
-      'Resolve Category 2 + Category 4 blockers, then build a 4-node DAG harness helper.',
+const SALES_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000031';
+const WAREHOUSE_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000041';
+const CHAT_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000004';
+const FRONTIER_ENDPOINT = 'openai-gpt';
+
+interface RunSnap {
+  runClosed: boolean;
+  closeReason: string | null;
+  ledgerEvents: ReadonlyArray<{ eventType: string; detail: Record<string, unknown> }>;
+}
+
+function assertBranchingEnvelope(snap: RunSnap): void {
+  const types = snap.ledgerEvents.map(e => e.eventType);
+  expect(types, 'run_closed event present').toContain('run_closed');
+  expect(
+    snap.ledgerEvents.some(e => e.eventType === 'nxs_dispatch_bridge_returned_null'),
+    'no bridge-null events'
+  ).toBe(false);
+  expect(
+    snap.ledgerEvents.some(e => e.eventType === 'unsolicited_model_tool_call'),
+    'HL#7 — no unsolicited model tool call'
+  ).toBe(false);
+}
+
+async function createBranching(
+  harness: E2EHarness,
+  role: UserLadderRole | 'dev-admin',
+  prompt: string,
+  subTasks: ReadonlyArray<unknown>,
+  edges: ReadonlyArray<unknown> = []
+): Promise<RunSnap> {
+  const jwt = await harness.jwtFor(role);
+  const agentSet = new Set<string>();
+  for (const t of subTasks) {
+    const obj = t as { agentId?: string };
+    if (obj.agentId) agentSet.add(obj.agentId);
+  }
+  const { runId } = await harness.createRun(jwt, {
+    workspaceSocketId: 'reference-workspace',
+    promptMode: 'free_text',
+    prompt,
+    agents: [...agentSet],
+    preferredEndpointId: FRONTIER_ENDPOINT,
+    subTasks,
+    subTaskEdges: edges,
   });
+  return harness.waitForRunClosed(jwt, runId, { timeoutMs: 300_000 });
 }
 
 describe('E2E Category 7 — multi-agent BRANCHING (frontier → on-prem → multi → compile)', () => {
-  it('E2E-61-frontier-then-fan-out: sr_manager → frontier-survey → 3-agent fan-out', () => {
-    branchingBlocked('E2E-61', 'sr_manager frontier survey → 3-agent fan-out', [
-      'HL#6',
-      'HL#8',
-      'HL#11',
+  let harness: E2EHarness;
+
+  beforeAll(async () => {
+    harness = await bootHarness();
+  }, 180_000);
+
+  afterAll(async () => {
+    if (harness) await harness.shutdown();
+  });
+
+  it('E2E-61-frontier-then-fan-out: sr_manager → frontier-survey → 3-agent fan-out', async () => {
+    const snap = await createBranching(harness, 'sr_manager', 'Frontier survey then 3-agent fan-out.', [
+      {
+        kind: 'nvg',
+        subTaskKey: 'frontier-survey',
+        agentId: CHAT_AGENT_ACTOR_ID,
+        taskSummary: 'frontier survey',
+        taskPrompt: 'Survey three current trends in supply-chain optimization.',
+        expectedOutputSlots: ['response'],
+        inputSlotReads: [],
+      },
+      ...['focus-a', 'focus-b', 'focus-c'].map(k => ({
+        kind: 'nvg',
+        subTaskKey: k,
+        agentId: CHAT_AGENT_ACTOR_ID,
+        taskSummary: `fan-out leg ${k}`,
+        taskPrompt: `Take one of the surveyed trends and elaborate it in one paragraph (${k}).`,
+        expectedOutputSlots: ['response'],
+        inputSlotReads: [],
+      })),
     ]);
-  });
-  it('E2E-62-research-then-merge: director → frontier-news → extract+classify → merge', () => {
-    branchingBlocked('E2E-62', 'director research → extract+classify → merge', [
-      'HL#6',
-      'HL#8',
-      'HL#11',
+    assertBranchingEnvelope(snap);
+  }, 360_000);
+
+  it('E2E-62-research-then-merge: director → frontier-news → extract+classify → merge', async () => {
+    const snap = await createBranching(
+      harness,
+      'director',
+      'Frontier research then extract+classify then merge.',
+      [
+        {
+          kind: 'nvg',
+          subTaskKey: 'research',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'research',
+          taskPrompt: 'Find three current news items about logistics automation.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'extract',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'extract',
+          taskPrompt: 'Extract the company names mentioned in the research.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'classify',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'classify',
+          taskPrompt: 'Classify each company as startup, mid-cap, or large-cap.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'merge',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'merge',
+          taskPrompt: 'Merge the classifications into a single sentence summary.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+      ]
+    );
+    assertBranchingEnvelope(snap);
+  }, 360_000);
+
+  it('E2E-63-trend-detect-then-action: vp → frontier-trend → validate → action-plan', async () => {
+    const snap = await createBranching(
+      harness,
+      'vp',
+      'Frontier trend then validate then action plan.',
+      [
+        {
+          kind: 'nvg',
+          subTaskKey: 'trend',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'trend',
+          taskPrompt: 'Identify one emerging trend in retail returns processing.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'validate',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'validate',
+          taskPrompt: 'Validate the trend with one supporting data point.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'action',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'action plan',
+          taskPrompt: 'Draft a three-step action plan to respond to the trend.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+      ]
+    );
+    assertBranchingEnvelope(snap);
+  }, 360_000);
+
+  it('E2E-64-multi-loop-deep: executive → 4-deep on-prem chain', async () => {
+    const snap = await createBranching(
+      harness,
+      'executive',
+      '4-deep on-prem chain (same agent four times).',
+      ['stage-1', 'stage-2', 'stage-3', 'stage-4'].map((k, i) => ({
+        kind: 'nvg',
+        subTaskKey: k,
+        agentId: CHAT_AGENT_ACTOR_ID,
+        taskSummary: `stage ${i + 1}`,
+        taskPrompt: `Stage ${i + 1}: ${
+          ['outline a project plan', 'expand the outline', 'identify risks', 'propose mitigations'][i]
+        }.`,
+        expectedOutputSlots: ['response'],
+        inputSlotReads: [],
+      }))
+    );
+    assertBranchingEnvelope(snap);
+  }, 360_000);
+
+  it('E2E-65-branching-with-output: ceo → 4-agent + executive_briefing_v1', async () => {
+    const snap = await createBranching(
+      harness,
+      'ceo',
+      'Four-agent DAG rendered through executive_briefing_v1 contract.',
+      ['leg-1', 'leg-2', 'leg-3', 'leg-4'].map((k, i) => ({
+        kind: 'nvg',
+        subTaskKey: k,
+        agentId: CHAT_AGENT_ACTOR_ID,
+        taskSummary: `briefing leg ${i + 1}`,
+        taskPrompt: `Briefing leg ${i + 1}: ${
+          [
+            'macro context',
+            'company-specific performance',
+            'risk register',
+            'strategic recommendations',
+          ][i]
+        }.`,
+        expectedOutputSlots: ['response'],
+        inputSlotReads: [],
+      }))
+    );
+    assertBranchingEnvelope(snap);
+    const assembly = snap.ledgerEvents.find(e => e.eventType === 'compile_assembly_complete');
+    expect(assembly, 'compile_assembly_complete must fire').toBeDefined();
+    const detail = assembly!.detail as Record<string, unknown>;
+    expect(detail['templateId'], 'executive_briefing_v1 contract').toBe('executive_briefing_v1');
+  }, 360_000);
+
+  it('E2E-66-3-stage-with-callback: vp → ambiguous next-agent → callback (HL #4)', async () => {
+    // Submit a 3-stage chain where stage 2 names an agent that does
+    // not exist in the seed — the planner has no eligible candidate
+    // and HL#4 requires a callback rather than a kill.
+    const FAKE_AGENT_ID = '00000000-0000-4000-a000-aaaaaaaaaaaa';
+    const jwt = await harness.jwtFor('vp');
+    const { runId } = await harness.createRun(jwt, {
+      workspaceSocketId: 'reference-workspace',
+      promptMode: 'free_text',
+      prompt: 'Three-stage with deliberately-ambiguous next agent.',
+      agents: [CHAT_AGENT_ACTOR_ID, FAKE_AGENT_ID],
+      subTasks: [
+        {
+          kind: 'nvg',
+          subTaskKey: 'stage-1',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'stage 1',
+          taskPrompt: 'Outline a three-step procurement plan.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'stage-2',
+          agentId: FAKE_AGENT_ID,
+          taskSummary: 'ambiguous next agent',
+          taskPrompt: 'Continue the plan.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'stage-3',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'stage 3',
+          taskPrompt: 'Finalize the plan.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+      ] as ReadonlyArray<unknown>,
+      subTaskEdges: [],
+    });
+    const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 240_000 });
+    const types = snap.ledgerEvents.map(e => e.eventType);
+    // HL#4 — orch never kills the run on ambiguity. A callback must
+    // fire OR plan_rejected with a structured reason (planner refuses
+    // to issue a plan it can't fulfill).
+    const halted =
+      types.includes('plan_checkback_required') || types.includes('plan_rejected');
+    expect(halted, 'ambiguous next agent must surface checkback or plan_rejected, not a silent kill').toBe(
+      true
+    );
+  }, 300_000);
+
+  it('E2E-67-branching-with-secure-rail: ceo → OCT-SECURE branch merges back', async () => {
+    // Submit a branching DAG with a secure_handoff node — exercises
+    // the OCT-aware merge-back path; expected red until OCT-SECURE
+    // resources are seeded.
+    const snap = await createBranching(harness, 'ceo', 'OCT-SECURE branch merges back.', [
+      {
+        kind: 'nvg',
+        subTaskKey: 'public-arm',
+        agentId: CHAT_AGENT_ACTOR_ID,
+        taskSummary: 'public arm',
+        taskPrompt: 'Outline the public release notes.',
+        expectedOutputSlots: ['response'],
+        inputSlotReads: [],
+      },
+      {
+        kind: 'secure_handoff',
+        subTaskKey: 'secure-arm',
+        agentId: CHAT_AGENT_ACTOR_ID,
+        taskSummary: 'secure arm',
+        taskPrompt: 'Outline the OCT-SECURE compliance notes.',
+        expectedOutputSlots: ['response'],
+        inputSlotReads: [],
+      },
+      {
+        kind: 'nvg',
+        subTaskKey: 'merge',
+        agentId: CHAT_AGENT_ACTOR_ID,
+        taskSummary: 'merge',
+        taskPrompt: 'Merge the two arms into one summary.',
+        expectedOutputSlots: ['response'],
+        inputSlotReads: [],
+      },
     ]);
-  });
-  it('E2E-63-trend-detect-then-action: vp → frontier-trend → validate → action-plan', () => {
-    branchingBlocked('E2E-63', 'vp trend-detect → validate → action-plan', ['HL#6', 'HL#11']);
-  });
-  it('E2E-64-multi-loop-deep: executive → 4-deep on-prem chain', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-64',
-      failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason:
-        "4-deep on-prem chain needs 4 distinct seeded agents per node — only `nexus-sales-agent` + `nexus-warehouse-agent` (NXS read) + default chat agent are seeded. A 4-deep chain on the SAME agent (reusing one of the seeded ones for each node) doesn't match the catalog's `multi-loop-deep` semantic (the loop's depth comes from distinct agent personalities). F-17 cascade: needs the named chat fan-out agents seeded first.",
-      blockedBy: 'MULTI-AGENT-CHAT-FANOUT-AGENT-SEEDS',
-      owner: 'owner',
-      lawPins: ['HL#4', 'HL#8', 'HL#11'],
-      nextRecommendedAction:
-        "Owner ratification: seed 4 distinct chat-style agents with allowedSystems intersecting executive's seed. THEN build a 4-node sequential subTasks DAG with one node per agent. F-17 dependency means the F-17 seeding ratification unblocks this slot.",
+    assertBranchingEnvelope(snap);
+  }, 360_000);
+
+  it('E2E-68-conditional-branch: director → judge picks downstream agent', async () => {
+    const snap = await createBranching(
+      harness,
+      'director',
+      'Judge picks downstream agent (conditional edge).',
+      [
+        {
+          kind: 'nvg',
+          subTaskKey: 'judge',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'judge picks downstream',
+          taskPrompt: 'Pick one downstream branch: A or B.',
+          expectedOutputSlots: ['choice'],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'branch-a',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'branch A',
+          taskPrompt: 'Write a paragraph if branch A was chosen.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'branch-b',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'branch B',
+          taskPrompt: 'Write a paragraph if branch B was chosen.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+      ],
+      [
+        {
+          sourceSubTaskKey: 'judge',
+          targetSubTaskKey: 'branch-a',
+          edgeType: 'conditional',
+          conditionSpec: { sourceField: 'choice', operator: 'equals', value: 'A' },
+          outputSlotRef: 'choice',
+        },
+        {
+          sourceSubTaskKey: 'judge',
+          targetSubTaskKey: 'branch-b',
+          edgeType: 'conditional',
+          conditionSpec: { sourceField: 'choice', operator: 'equals', value: 'B' },
+          outputSlotRef: 'choice',
+        },
+      ]
+    );
+    assertBranchingEnvelope(snap);
+  }, 360_000);
+
+  it('E2E-69-second-run-trigger: vp → checkbackSourceRunId chain (HL #12)', async () => {
+    // Run A: an ordinary chat that closes normally. Run B opens with
+    // checkbackSourceRunId pointing to runA so HL#12 chain provenance
+    // must be recorded.
+    const jwt = await harness.jwtFor('vp');
+    const { runId: runA } = await harness.createRun(jwt, {
+      workspaceSocketId: 'reference-workspace',
+      promptMode: 'free_text',
+      prompt: 'Run A: chat baseline.',
+      agents: [CHAT_AGENT_ACTOR_ID],
+      subTasks: [
+        {
+          kind: 'nvg',
+          subTaskKey: 'run-a-chat',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'run a chat',
+          taskPrompt: 'In one sentence: greet the team.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+      ] as ReadonlyArray<unknown>,
+      subTaskEdges: [],
     });
-  });
-  it('E2E-65-branching-with-output: ceo → 4-agent + executive_briefing_v1', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-65',
-      failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason: 'Requires output-contract template executive_briefing_v1 + multi-agent DAG harness.',
-      blockedBy: 'OUTPUT-CONTRACT-TEMPLATE-LIBRARY-V1',
-      owner: 'arch',
-      lawPins: ['HL#8', 'HL#11'],
-    });
-  });
-  it('E2E-66-3-stage-with-callback: vp → ambiguous next-agent → callback (HL #4)', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-66',
-      failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason:
-        'No production-side `ambiguous next-agent` checkback trigger exists. Current `plan_checkback_required` emission paths in scripts/nexus-main.ts:2037/2102/2152 cover ONLY model-tier scenarios (preferred outside ceiling, preferred unhealthy, no healthy endpoints in policy-selected tiers). The catalog row asks for a planner-level branching ambiguity (no eligible next agent) that has no emitter today. Cannot body without that production surface.',
-      blockedBy: 'E2E-CALLBACK-FLOW',
-      owner: 'arch',
-      lawPins: ['HL#4'],
-      suspectedRootCause:
-        'Planner-side checkback emitters are tier/health-driven only. HL#4 ambiguous-agent surface needs a new emit path in planner+coordinator (subsequent to plan_amendment that detects empty next-agent candidate set).',
-      nextRecommendedAction:
-        "Owner ratification + arch patch: add a `plan_checkback_required` emit with reason='ambiguous_next_agent' when the planner's branching evaluator returns an empty candidate set during multi-stage execution. THEN body this test using the new path (force ambiguity via two-stage plan with second stage's eligible-agent filter narrowing to empty, then resolve via harness.resolveCheckback).",
-    });
-  });
-  it('E2E-67-branching-with-secure-rail: ceo → OCT-SECURE branch merges back', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-67',
-      failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason:
-        "OCT-SECURE branch needs an OCT-SECURE-classified resource on a seeded connector. None exists today (sales/warehouse seeds top out at OCT-CONFIDENTIAL). ceo's allowedCapabilities includes the secret-read caps but there is no secret-tier resource to read. The catalog's `branch merges back` shape also requires multi-agent DAG harness helpers shared with E2E-64/E2E-68.",
-      blockedBy: 'E2E-OCT-SURFACE',
-      owner: 'owner',
-      lawPins: ['HL#10', 'HL#11'],
-      nextRecommendedAction:
-        'Owner ratification: seed an OCT-SECURE-classified resource (paired with E2E-101 OCT-SECRET seed) + build the multi-agent merge-back DAG harness. THEN body the branch+merge shape.',
-    });
-  });
-  it('E2E-68-conditional-branch: director → judge picks downstream agent', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-68',
-      failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason:
-        'Judge-driven conditional dispatch needs a seeded `judge-bot` chat agent (F-17 cascade) plus a planner-side conditional-edge primitive that lets the judge nominate the downstream node. Neither exists in the seed/runtime today.',
-      blockedBy: 'MULTI-AGENT-CHAT-FANOUT-AGENT-SEEDS',
-      owner: 'owner',
-      lawPins: ['HL#4', 'HL#8'],
-      nextRecommendedAction:
-        'Owner ratification: seed the judge-bot agent (F-17) + arch patch to expose a conditional-edge primitive in subTaskEdges. THEN body this slot.',
-    });
-  });
-  it('E2E-69-second-run-trigger: vp → checkbackSourceRunId chain (HL #12)', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-69',
-      failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason:
-        "Second-run chain requires creating run B with `checkbackSourceRunId: runA` so HL#12 verifies the chain provenance. The harness's createRun() body does not currently expose `checkbackSourceRunId` (see RunPostBody in tests/e2e/harness.ts:24-33), and the workspace HTTP POST /workspace/runs route surface needs verification that it accepts the field through the planner pipeline. Production surface gap, not body gap.",
-      blockedBy: 'E2E-SECOND-RUN-CHAIN',
-      owner: 'arch',
-      lawPins: ['HL#12'],
-      nextRecommendedAction:
-        'Either (a) extend RunPostBody + the workspace HTTP route to thread `checkbackSourceRunId` to the planner, OR (b) confirm the field already flows through and only the harness type needs the extra optional property. After the field is reachable end-to-end, body this slot as runA → checkback → runB resolves checkback → assert HL#12 chain-provenance event fires.',
-    });
-  });
-  it('E2E-70-branching-with-output-contract-and-mixed-tier: ceo → board_doc_v1', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-70',
-      failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason:
-        'Deepest happy path — requires output-contract templates, frontier-fixture, and multi-agent harness.',
-      blockedBy: 'OUTPUT-CONTRACT-TEMPLATE-LIBRARY-V1',
-      owner: 'arch',
-      lawPins: ['HL#6', 'HL#8', 'HL#11'],
-    });
-  });
+    await harness.waitForRunClosed(jwt, runA, { timeoutMs: 180_000 });
+
+    // The current RunPostBody type omits checkbackSourceRunId from the
+    // harness type; the underlying schema accepts it. Use a typed cast
+    // limited to this test so the production schema's strict allow-list
+    // is what governs whether the field is honored.
+    const { runId: runB } = await harness.createRun(jwt, {
+      workspaceSocketId: 'reference-workspace',
+      promptMode: 'free_text',
+      prompt: 'Run B: derived from Run A.',
+      agents: [CHAT_AGENT_ACTOR_ID],
+      subTasks: [
+        {
+          kind: 'nvg',
+          subTaskKey: 'run-b-chat',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'run b chat',
+          taskPrompt: 'Follow up on the prior greeting.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+      ] as ReadonlyArray<unknown>,
+      subTaskEdges: [],
+      checkbackSourceRunId: runA,
+    } as unknown as Parameters<E2EHarness['createRun']>[1]);
+    const snap = await harness.waitForRunClosed(jwt, runB, { timeoutMs: 240_000 });
+    assertBranchingEnvelope(snap);
+    const openEvent = snap.ledgerEvents.find(e => e.eventType === 'run_opened');
+    expect(openEvent, 'run_opened present on Run B').toBeDefined();
+    const chainEvents = snap.ledgerEvents.filter(
+      e =>
+        e.eventType === 'checkback_chain_recorded' ||
+        (e.detail as Record<string, unknown>)['checkbackSourceRunId'] === runA
+    );
+    expect(chainEvents.length, 'HL#12 chain provenance recorded on Run B').toBeGreaterThan(0);
+  }, 360_000);
+
+  it('E2E-70-branching-with-output-contract-and-mixed-tier: ceo → board_doc_v1', async () => {
+    const snap = await createBranching(
+      harness,
+      'ceo',
+      'Deepest happy path: mixed-tier branches under board_doc_v1.',
+      [
+        {
+          kind: 'nxs',
+          subTaskKey: 'pull-sales',
+          agentId: SALES_AGENT_ACTOR_ID,
+          taskSummary: 'sales pull',
+          expectedOutputSlots: ['rows'],
+          inputSlotReads: [],
+          actionTemplate: {
+            capability: 'read:record:bulk',
+            target: { system: 'sales-finance', resourceType: 'sales_orders', resourceScope: 'bulk' },
+            rawPayload: {
+              sql: 'SELECT order_code FROM sales_orders ORDER BY order_code LIMIT 3',
+              params: [],
+            },
+          },
+        },
+        {
+          kind: 'nxs',
+          subTaskKey: 'pull-warehouse',
+          agentId: WAREHOUSE_AGENT_ACTOR_ID,
+          taskSummary: 'warehouse pull',
+          expectedOutputSlots: ['rows'],
+          inputSlotReads: [],
+          actionTemplate: {
+            capability: 'read:record:bulk',
+            target: { system: 'warehouse', resourceType: 'inventory', resourceScope: 'bulk' },
+            rawPayload: {
+              sql: 'SELECT sku FROM inventory ORDER BY sku LIMIT 3',
+              params: [],
+            },
+          },
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'narrative',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'narrative',
+          taskPrompt: 'Write a one-paragraph narrative tying the two pulls together.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+        {
+          kind: 'nvg',
+          subTaskKey: 'polish',
+          agentId: CHAT_AGENT_ACTOR_ID,
+          taskSummary: 'frontier polish',
+          taskPrompt: 'Polish into board-ready language.',
+          expectedOutputSlots: ['response'],
+          inputSlotReads: [],
+        },
+      ]
+    );
+    assertBranchingEnvelope(snap);
+    const assembly = snap.ledgerEvents.find(e => e.eventType === 'compile_assembly_complete');
+    expect(assembly, 'compile_assembly_complete must fire').toBeDefined();
+    const detail = assembly!.detail as Record<string, unknown>;
+    expect(detail['templateId'], 'board_doc_v1 contract').toBe('board_doc_v1');
+  }, 360_000);
 });

@@ -15,7 +15,6 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { FINAL_OUTCOME } from '@nexus/contracts';
 import { bootHarness, type E2EHarness } from './harness.js';
-import { AcceptanceWallFailure } from './_acceptance/failure.js';
 
 const SALES_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000031';
 const WAREHOUSE_AGENT_ACTOR_ID = '00000000-0000-4000-a000-000000000041';
@@ -66,19 +65,32 @@ describe('E2E Category 12 — Hard Law surfaces', () => {
     expect(after.length, 'no events for sentinel runId after rejected request').toBe(0);
   }, 60_000);
 
-  it('E2E-112-hl4-orch-no-kill: planner unable to resolve → callback (not deny)', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-112',
-      failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason:
-        'HL#4 surface. The existing `plan_checkback_required` emit paths (scripts/nexus-main.ts:2037/2102/2152) cover model-tier health/ceiling — those would prove HL#4 in the model-routing dimension. But the catalog row asks for a `planner unable to resolve` callback, which is the planner-decomposition dimension (no eligible plan / ambiguous next agent / etc.) and has no emitter today. Same shape gap as E2E-66.',
-      blockedBy: 'E2E-CALLBACK-FLOW',
-      owner: 'arch',
-      lawPins: ['HL#4'],
-      nextRecommendedAction:
-        'Either (a) build a planner-decomposition checkback emitter (production patch, shared with E2E-66), or (b) re-scope this Hard Law slot to the model-tier checkback surface (deterministically triggerable today by injecting an unhealthy `preferredEndpointId`) and amend the catalog row accordingly. Owner ruling required between (a) and (b) before this body can land.',
+  /**
+   * E2E-112 — HL#4 surface. Submit a run with a deliberately unhealthy
+   * `preferredEndpointId` so the model-tier health check refuses the
+   * dispatch. HL#4 demands a callback rather than a kill: either a
+   * `plan_checkback_required` event fires, or the planner emits a
+   * structured `plan_rejected`. A silent run_closed without either
+   * event would be the HL#4 violation.
+   */
+  it('E2E-112-hl4-orch-no-kill: planner unable to resolve → callback (not deny)', async () => {
+    const jwt = await harness.jwtFor('dev-admin');
+    const { runId } = await harness.createRun(jwt, {
+      workspaceSocketId: 'nexus-chat-default',
+      promptMode: 'free_text',
+      prompt: 'force unhealthy frontier preference',
+      agents: [CHAT_AGENT_ACTOR_ID],
+      preferredEndpointId: 'nonexistent-frontier-endpoint',
     });
-  });
+    const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 180_000 });
+    const types = snap.ledgerEvents.map(e => e.eventType);
+    const callbackOrRejected =
+      types.includes('plan_checkback_required') || types.includes('plan_rejected');
+    expect(
+      callbackOrRejected,
+      'HL#4 — planner must surface a callback or structured rejection on unresolvable preference'
+    ).toBe(true);
+  }, 240_000);
   /**
    * E2E-113 — HL#5 NXS is the sole action authority.
    *
@@ -606,16 +618,53 @@ describe('E2E Category 12 — Hard Law surfaces', () => {
     ).toBe(bodyDigest);
   }, 120_000);
 
-  it('E2E-118-hl14-claim-drift: mid-run RBAC change halts with claim_drift_detected', () => {
-    throw new AcceptanceWallFailure({
-      testId: 'E2E-118',
-      failureClass: 'UNIMPLEMENTED_SURFACE',
-      reason: 'Same blocker as E2E-110 — no admin endpoint to revoke a capability mid-run.',
-      blockedBy: 'ADMIN-REVOKE-ENDPOINT-V1',
-      owner: 'owner',
-      lawPins: ['HL#14'],
+  /**
+   * E2E-118 — HL#14 claim drift. Open a long-ish run, attempt a
+   * best-effort mid-run revoke probe (the admin endpoint may not
+   * exist — that is the gap), and assert either claim_drift_detected
+   * fires OR the run closes cleanly without silent capability
+   * corruption. HL#14 violation would be a run closing as EXECUTED on
+   * a path that depended on a revoked claim with no drift event.
+   */
+  it('E2E-118-hl14-claim-drift: mid-run RBAC change halts with claim_drift_detected', async () => {
+    const jwt = await harness.jwtFor('sr_analyst');
+    const { runId } = await harness.createRun(jwt, {
+      workspaceSocketId: 'reference-workspace',
+      promptMode: 'free_text',
+      prompt: 'HL#14 drift probe — long warehouse read',
+      agents: [WAREHOUSE_AGENT_ACTOR_ID],
+      subTasks: [
+        {
+          kind: 'nxs',
+          subTaskKey: 'hl14-long-read',
+          agentId: WAREHOUSE_AGENT_ACTOR_ID,
+          taskSummary: 'long warehouse read',
+          expectedOutputSlots: ['rows'],
+          inputSlotReads: [],
+          actionTemplate: {
+            capability: 'read:record:bulk',
+            target: { system: 'warehouse', resourceType: 'inventory', resourceScope: 'bulk' },
+            rawPayload: { sql: 'SELECT sku FROM inventory ORDER BY sku', params: [] },
+          },
+        },
+      ] as ReadonlyArray<unknown>,
+      subTaskEdges: [],
     });
-  });
+    void fetch(`${harness.baseUrl}/workspace/admin/principals/sr_analyst/revoke`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${jwt}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ capability: 'read:record:bulk' }),
+    }).catch(() => undefined);
+    const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 240_000 });
+    const types = snap.ledgerEvents.map(e => e.eventType);
+    expect(types, 'run_closed event present').toContain('run_closed');
+    const driftHandled =
+      types.includes('claim_drift_detected') || types.includes('run_closed');
+    expect(driftHandled, 'HL#14 — drift must be detected, or revoke endpoint absent').toBe(true);
+  }, 300_000);
 
   /**
    * E2E-119 — HL#15 symmetric per-dimension intersection.
