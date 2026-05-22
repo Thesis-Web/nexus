@@ -101,6 +101,11 @@ export { subscribeToRun, broadcastRunEvent, wrapWriterWithFanout } from './route
 // they are the same symbol. Keeping the definition adjacent to the route
 // handler prevents the two from drifting under TypeScript strict.
 export type { SecretWriter, ModeSigner, ModeSignerState } from './routes/admin-writer.js';
+export type {
+  ConnectorProbeHandler,
+  ConnectorProbeResult,
+  ConnectorTestResult,
+} from './routes/admin-writer.js';
 import type { SecretWriter } from './routes/admin-writer.js';
 
 // ── F4.13 SignedAdminMutation port re-exports ─────────────────────────────
@@ -387,6 +392,19 @@ export interface ApiDependencies {
   compileReturnRecords?: readonly CompileReturnEndpointRecord[];
   /** Model endpoints (NVG) for admin-setup models_nvg surface. */
   endpoints?: readonly ModelEndpoint[];
+
+  /**
+   * Connector probe + test-connection handler registry, keyed by connectorType.
+   * Populated by the composition root in nexus-main.ts (where both the
+   * connector implementation packages and admin-writer deps are in scope).
+   * Consumed by /workspace/admin/setup/connectors/:id/probe and
+   * /workspace/admin/setup/connectors/:id/test-connection. Optional —
+   * absent → both routes 501.
+   */
+  connectorProbeHandlers?: ReadonlyMap<
+    string,
+    import('./routes/admin-writer.js').ConnectorProbeHandler
+  >;
 
   // ── SPEC-ADMIN-WRITER §3 — Manifest writer for admin dashboard mutations ──
   /** Generic YAML manifest writer (endpoints + connectors). Injected from serve. */

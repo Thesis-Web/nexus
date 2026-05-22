@@ -49,6 +49,7 @@ import {
 } from '@nexus/connector-postgres';
 import {
   buildMailpitConnector,
+  mailpitConfigFromManifestRecord,
   type MailpitConnectorFactoryConfig,
   type MailpitConnector,
 } from '@nexus/connector-mailpit';
@@ -364,44 +365,11 @@ async function ensureMailpitConnectors(br: BootstrapResult): Promise<void> {
         `[bootstrap] connector '${record.connectorId}' (mailpit) configuration is missing systemType.`
       );
     }
-    const tlsMode = (typeof cfg['tlsMode'] === 'string' ? cfg['tlsMode'] : 'none') as
-      | 'none'
-      | 'starttls'
-      | 'tls';
-    const authMode = (typeof cfg['authMode'] === 'string' ? cfg['authMode'] : 'none') as
-      | 'none'
-      | 'plain';
-    const sendersRaw = cfg['allowedSenders'];
-    const recipientsRaw = cfg['allowedRecipients'];
-    const domainsRaw = cfg['allowedDomains'];
-    const allowedSenders = Array.isArray(sendersRaw)
-      ? sendersRaw.filter((s): s is string => typeof s === 'string')
-      : [];
-    const allowedRecipients = Array.isArray(recipientsRaw)
-      ? recipientsRaw.filter((s): s is string => typeof s === 'string')
-      : [];
-    const allowedDomains = Array.isArray(domainsRaw)
-      ? domainsRaw.filter((s): s is string => typeof s === 'string')
-      : [];
-    const factoryConfig: MailpitConnectorFactoryConfig = {
+    const factoryConfig: MailpitConnectorFactoryConfig = mailpitConfigFromManifestRecord(record, {
       systemType: systemTypeRaw as NonEmpty,
       dataClass: record.dataClass,
-      smtpHost: typeof cfg['smtpHost'] === 'string' ? cfg['smtpHost'] : '127.0.0.1',
-      smtpPort: typeof cfg['smtpPort'] === 'number' ? cfg['smtpPort'] : 1025,
-      apiBaseUrl:
-        typeof cfg['apiBaseUrl'] === 'string' ? cfg['apiBaseUrl'] : 'http://127.0.0.1:8025',
-      tlsMode,
-      authMode,
-      allowedSenders,
-      allowedRecipients,
-      allowedDomains,
-      queryLimit: typeof cfg['queryLimit'] === 'number' ? cfg['queryLimit'] : 200,
       payloadsRoot,
-      ...(typeof cfg['displayLabel'] === 'string' ? { displayLabel: cfg['displayLabel'] } : {}),
-      ...(typeof cfg['defaultDomain'] === 'string' ? { defaultDomain: cfg['defaultDomain'] } : {}),
-      ...(typeof cfg['smtpTimeoutMs'] === 'number' ? { smtpTimeoutMs: cfg['smtpTimeoutMs'] } : {}),
-      ...(typeof cfg['httpTimeoutMs'] === 'number' ? { httpTimeoutMs: cfg['httpTimeoutMs'] } : {}),
-    };
+    });
     built.push(buildMailpitConnector(factoryConfig));
     console.log(
       `[bootstrap] mailpit connector '${record.connectorId}' constructed for system '${systemTypeRaw}'`
@@ -481,6 +449,66 @@ const program = createCli({
       storageLabel: br.secretsStorageLabel,
     };
 
+    // ── Connector probe handler registry (admin diagnostic surface) ────
+    // Keyed by connectorType. The composition root is the only place where
+    // both the connector implementation packages and the admin-writer route
+    // dependencies are in scope, so the wiring lives here. Probes do not
+    // mutate the manifest and do not enter the runtime Gate 01-07 chain;
+    // the routes that consume this map are explicitly outside NXS dispatch.
+    const connectorProbeHandlers = new Map<string, import('@nexus/api').ConnectorProbeHandler>();
+    const probePayloadsRoot = path.join(DEFAULT_TRAIL_DIR, 'admin-probes');
+    connectorProbeHandlers.set('mailpit', {
+      probe: async record => {
+        const systemTypeRaw = record.configuration['systemType'];
+        const systemType =
+          typeof systemTypeRaw === 'string' && systemTypeRaw.length > 0
+            ? (systemTypeRaw as NonEmpty)
+            : (record.connectorId as NonEmpty);
+        const cfg = mailpitConfigFromManifestRecord(record, {
+          systemType,
+          dataClass: record.dataClass as DataClass,
+          payloadsRoot: probePayloadsRoot,
+        });
+        const c = buildMailpitConnector(cfg);
+        const r = await c.probe();
+        return {
+          probedAt: new Date().toISOString(),
+          connectorId: record.connectorId,
+          connectorType: record.connectorType,
+          healthy: r.healthy,
+          detail: { smtp: r.smtp, api: r.api },
+        };
+      },
+      testConnection: async record => {
+        const systemTypeRaw = record.configuration['systemType'];
+        const systemType =
+          typeof systemTypeRaw === 'string' && systemTypeRaw.length > 0
+            ? (systemTypeRaw as NonEmpty)
+            : (record.connectorId as NonEmpty);
+        const cfg = mailpitConfigFromManifestRecord(record, {
+          systemType,
+          dataClass: record.dataClass as DataClass,
+          payloadsRoot: probePayloadsRoot,
+        });
+        const c = buildMailpitConnector(cfg);
+        const r = await c.testConnection({ runId: record.runId });
+        const out: import('@nexus/api').ConnectorTestResult = {
+          probedAt: new Date().toISOString(),
+          connectorId: record.connectorId,
+          connectorType: record.connectorType,
+          ok: r.ok,
+          runId: r.runId,
+          detail: {
+            sent: r.sent,
+            retrieved: r.retrieved,
+            durationMs: r.durationMs,
+          },
+          ...(r.error !== undefined ? { error: r.error } : {}),
+        };
+        return out;
+      },
+    });
+
     // ── ORCH-WIRE-001: Step 22 — Orchestrator assembly ──────────────────
     const orchManifest = br.externals.orchestratorSockets[0];
     if (!orchManifest) {
@@ -498,6 +526,7 @@ const program = createCli({
         endpoints: br.endpoints,
         computeDigest,
         secretWriter,
+        connectorProbeHandlers,
       };
     }
     console.log('[orch-wire] Step 22: assembling orchestrator...');
@@ -2594,6 +2623,8 @@ const program = createCli({
       },
       // CLAUDE-CODE-SECRET-MANAGEMENT-SPEC — admin secret onboarding (write-only port).
       secretWriter,
+      // Admin diagnostic surface — probe/test-connection handler registry.
+      connectorProbeHandlers,
     };
   },
 });

@@ -1185,6 +1185,64 @@ export function buildMailpitConnector(
 }
 
 /**
+ * Translate a connector manifest record's `configuration` object into a
+ * fully-typed MailpitConnectorFactoryConfig. Centralises the field-shape
+ * defaulting + type-narrowing so both the composition-root bootstrap
+ * (ensureMailpitConnectors) and the admin probe handler use exactly the
+ * same translation rules. systemType / dataClass / payloadsRoot come from
+ * the manifest envelope (not configuration), and are passed explicitly.
+ */
+export function mailpitConfigFromManifestRecord(
+  record: {
+    readonly configuration: Record<string, unknown>;
+  },
+  envelope: {
+    readonly systemType: NonEmpty;
+    readonly dataClass: DataClass;
+    readonly payloadsRoot: string;
+  }
+): MailpitConnectorFactoryConfig {
+  const cfg = record.configuration;
+  const tlsMode = (typeof cfg['tlsMode'] === 'string' ? cfg['tlsMode'] : 'none') as
+    | 'none'
+    | 'starttls'
+    | 'tls';
+  const authMode = (typeof cfg['authMode'] === 'string' ? cfg['authMode'] : 'none') as
+    | 'none'
+    | 'plain';
+  const sendersRaw = cfg['allowedSenders'];
+  const recipientsRaw = cfg['allowedRecipients'];
+  const domainsRaw = cfg['allowedDomains'];
+  const allowedSenders = Array.isArray(sendersRaw)
+    ? sendersRaw.filter((s): s is string => typeof s === 'string')
+    : [];
+  const allowedRecipients = Array.isArray(recipientsRaw)
+    ? recipientsRaw.filter((s): s is string => typeof s === 'string')
+    : [];
+  const allowedDomains = Array.isArray(domainsRaw)
+    ? domainsRaw.filter((s): s is string => typeof s === 'string')
+    : [];
+  return {
+    systemType: envelope.systemType,
+    dataClass: envelope.dataClass,
+    smtpHost: typeof cfg['smtpHost'] === 'string' ? cfg['smtpHost'] : '127.0.0.1',
+    smtpPort: typeof cfg['smtpPort'] === 'number' ? cfg['smtpPort'] : 1025,
+    apiBaseUrl: typeof cfg['apiBaseUrl'] === 'string' ? cfg['apiBaseUrl'] : 'http://127.0.0.1:8025',
+    tlsMode,
+    authMode,
+    allowedSenders,
+    allowedRecipients,
+    allowedDomains,
+    queryLimit: typeof cfg['queryLimit'] === 'number' ? cfg['queryLimit'] : 200,
+    payloadsRoot: envelope.payloadsRoot,
+    ...(typeof cfg['displayLabel'] === 'string' ? { displayLabel: cfg['displayLabel'] } : {}),
+    ...(typeof cfg['defaultDomain'] === 'string' ? { defaultDomain: cfg['defaultDomain'] } : {}),
+    ...(typeof cfg['smtpTimeoutMs'] === 'number' ? { smtpTimeoutMs: cfg['smtpTimeoutMs'] } : {}),
+    ...(typeof cfg['httpTimeoutMs'] === 'number' ? { httpTimeoutMs: cfg['httpTimeoutMs'] } : {}),
+  };
+}
+
+/**
  * ConnectorFactory registered at bootstrap step 1c. Like the postgres and
  * stub factories, this is a no-op whose only job is to satisfy the manifest
  * loader's connectorType-presence check (§12.3.48 invariant 2). Real

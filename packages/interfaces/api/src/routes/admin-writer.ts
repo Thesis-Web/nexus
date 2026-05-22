@@ -1045,6 +1045,70 @@ export interface AdminWriterRouteDeps {
    * transactional → false. SQLite-backed variant → true.
    */
   readonly runLedgerSupportsTransactionalRollback?: boolean;
+  /**
+   * Connector probe handler registry — keyed by connectorType. Each handler
+   * knows how to:
+   *  1. probe()           — lightweight reachability check (TCP / HTTP /info)
+   *  2. testConnection()  — heavyweight diagnostic that exercises the real
+   *                         target with a labeled probe payload, then verifies
+   *                         the round-trip through the target's own API.
+   *
+   * Used only by /workspace/admin/setup/connectors/:id/probe and
+   * /workspace/admin/setup/connectors/:id/test-connection. NEVER on the
+   * runtime dispatch path — probes are admin diagnostics, governance-scoped
+   * by elevated session but explicitly OUTSIDE the NXS Gate 01–07 chain.
+   * Per-probe side effects (e.g. a Mailpit-side admin probe message) must
+   * carry an explicit "admin probe" label so they cannot be confused with
+   * NXS-dispatched traffic.
+   *
+   * Absent map → both probe routes return 501. Map present but missing a
+   * handler for the connectorType → 501 with the missing type in the error.
+   */
+  readonly connectorProbeHandlers?: ReadonlyMap<string, ConnectorProbeHandler>;
+}
+
+/**
+ * Connector-type-specific probe + test-connection capability surface, injected
+ * by the composition root. Living outside the runtime Connector interface
+ * keeps the runtime dispatch surface clean: a stub or future connector that
+ * has no admin-probe support simply doesn't register a handler, and the probe
+ * routes 501 cleanly.
+ */
+export interface ConnectorProbeHandler {
+  /** Connector manifest entry shape this handler accepts. */
+  probe(record: {
+    readonly connectorId: string;
+    readonly connectorType: string;
+    readonly allowedSystems: readonly string[];
+    readonly dataClass: string;
+    readonly configuration: Record<string, unknown>;
+  }): Promise<ConnectorProbeResult>;
+  testConnection(record: {
+    readonly connectorId: string;
+    readonly connectorType: string;
+    readonly allowedSystems: readonly string[];
+    readonly dataClass: string;
+    readonly configuration: Record<string, unknown>;
+    readonly runId: string;
+  }): Promise<ConnectorTestResult>;
+}
+
+export interface ConnectorProbeResult {
+  readonly probedAt: string;
+  readonly connectorId: string;
+  readonly connectorType: string;
+  readonly healthy: boolean;
+  readonly detail: Readonly<Record<string, unknown>>;
+}
+
+export interface ConnectorTestResult {
+  readonly probedAt: string;
+  readonly connectorId: string;
+  readonly connectorType: string;
+  readonly ok: boolean;
+  readonly runId: string;
+  readonly detail: Readonly<Record<string, unknown>>;
+  readonly error?: string;
 }
 
 /**
@@ -1707,6 +1771,137 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
         }
       },
     })
+  );
+
+  // ─── Connector probe + test-connection (admin diagnostic surface) ──────────
+  //
+  // Both routes:
+  //  - require an elevated admin session (checkAdminAuth)
+  //  - read the connector manifest entry by ID (404 if missing)
+  //  - dispatch to the handler registered for the connectorType (501 if none)
+  //  - DO NOT go through withAdminMutation — probes don't mutate the manifest
+  //  - DO NOT fire NXS Gate 01–07 — they are admin connectivity diagnostics
+  //
+  // test-connection MAY produce a side effect on the target (e.g. a Mailpit
+  // labeled probe message); the handler is responsible for tagging the probe
+  // so it's never confused with NXS-dispatched traffic.
+  app.post('/workspace/admin/setup/connectors/:connectorId/probe', async (req, res, next) => {
+    try {
+      const auth = await checkAdminAuth(req, res, deps);
+      if (!auth) return; // checkAdminAuth already sent the rejection
+      if (!deps.manifestWriter) {
+        res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
+        return;
+      }
+      if (!deps.connectorProbeHandlers) {
+        res.status(501).json({ ok: false, error: 'Connector probe registry not configured' });
+        return;
+      }
+      const cid = String(req.params['connectorId'] ?? '');
+      if (cid.length === 0) {
+        res.status(400).json({ ok: false, error: 'connectorId path param required' });
+        return;
+      }
+      const entries = await deps.manifestWriter.readEntries(MANIFEST_CONNECTORS, 'connectors');
+      const record = entries.find(e => e['connectorId'] === cid);
+      if (record === undefined) {
+        res.status(404).json({ ok: false, error: `connector '${cid}' not found in manifest` });
+        return;
+      }
+      const connectorType = String(record['connectorType'] ?? '');
+      const handler = deps.connectorProbeHandlers.get(connectorType);
+      if (handler === undefined) {
+        res.status(501).json({
+          ok: false,
+          error: `no probe handler registered for connectorType '${connectorType}'`,
+        });
+        return;
+      }
+      const allowedSystemsRaw = record['allowedSystems'];
+      const allowedSystems = Array.isArray(allowedSystemsRaw)
+        ? allowedSystemsRaw.filter((s): s is string => typeof s === 'string')
+        : [];
+      const cfgRaw = record['configuration'];
+      const configuration =
+        cfgRaw !== null && typeof cfgRaw === 'object' && !Array.isArray(cfgRaw)
+          ? (cfgRaw as Record<string, unknown>)
+          : {};
+      const result = await handler.probe({
+        connectorId: cid,
+        connectorType,
+        allowedSystems,
+        dataClass: String(record['dataClass'] ?? 'public'),
+        configuration,
+      });
+      res.status(200).json({ ok: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post(
+    '/workspace/admin/setup/connectors/:connectorId/test-connection',
+    async (req, res, next) => {
+      try {
+        const auth = await checkAdminAuth(req, res, deps);
+        if (!auth) return;
+        if (!deps.manifestWriter) {
+          res.status(501).json({ ok: false, error: 'Manifest writer not configured' });
+          return;
+        }
+        if (!deps.connectorProbeHandlers) {
+          res.status(501).json({ ok: false, error: 'Connector probe registry not configured' });
+          return;
+        }
+        const cid = String(req.params['connectorId'] ?? '');
+        if (cid.length === 0) {
+          res.status(400).json({ ok: false, error: 'connectorId path param required' });
+          return;
+        }
+        const entries = await deps.manifestWriter.readEntries(MANIFEST_CONNECTORS, 'connectors');
+        const record = entries.find(e => e['connectorId'] === cid);
+        if (record === undefined) {
+          res.status(404).json({ ok: false, error: `connector '${cid}' not found in manifest` });
+          return;
+        }
+        const connectorType = String(record['connectorType'] ?? '');
+        const handler = deps.connectorProbeHandlers.get(connectorType);
+        if (handler === undefined) {
+          res.status(501).json({
+            ok: false,
+            error: `no probe handler registered for connectorType '${connectorType}'`,
+          });
+          return;
+        }
+        const allowedSystemsRaw = record['allowedSystems'];
+        const allowedSystems = Array.isArray(allowedSystemsRaw)
+          ? allowedSystemsRaw.filter((s): s is string => typeof s === 'string')
+          : [];
+        const cfgRaw = record['configuration'];
+        const configuration =
+          cfgRaw !== null && typeof cfgRaw === 'object' && !Array.isArray(cfgRaw)
+            ? (cfgRaw as Record<string, unknown>)
+            : {};
+        // Deterministic probe runId — incorporates clock + random, identical
+        // shape to lab/test-bed mailpit-integration RUN_IDs so admin probes
+        // are visually distinguishable from NXS-dispatched runs in Mailpit.
+        const runId = `ADMIN-PROBE-${new Date()
+          .toISOString()
+          .replace(/[-:.]/g, '')
+          .slice(0, 15)}Z-${Math.random().toString(36).slice(2, 8)}`;
+        const result = await handler.testConnection({
+          connectorId: cid,
+          connectorType,
+          allowedSystems,
+          dataClass: String(record['dataClass'] ?? 'public'),
+          configuration,
+          runId,
+        });
+        res.status(result.ok ? 200 : 502).json({ ok: result.ok, data: result });
+      } catch (err) {
+        next(err);
+      }
+    }
   );
 
   // ═══ SURFACE 5: Identity providers — AMEND-nexus-admin-dashboard §3.1 ═══

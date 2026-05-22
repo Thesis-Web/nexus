@@ -193,6 +193,10 @@ export function registerAllRoutes(
     ...(deps.infraRunIdNamespace !== undefined
       ? { infraRunIdNamespace: deps.infraRunIdNamespace }
       : {}),
+    // Connector probe registry — admin diagnostic surface.
+    ...(deps.connectorProbeHandlers !== undefined
+      ? { connectorProbeHandlers: deps.connectorProbeHandlers }
+      : {}),
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
