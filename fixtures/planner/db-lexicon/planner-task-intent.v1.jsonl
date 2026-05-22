@@ -1,4 +1,11 @@
-{"schemaVersion":"v1","recordCount":3,"contentDigest":"9dc8d02699d7f25e9a0b0ad25004e16b728f833be45362eeab5d0412b69ca001","signedAt":"2026-05-12T18:59:13.766Z","signature":"_JyipZoUoZNXCuBCg_Sm5DZVLXudAiPY3_cDn7EDWtFq1IjTLCaQrLsVEmEnt7sUPftpx6CvmwxHdqtBxHlMCw"}
+{"schemaVersion":"v1","recordCount":10,"contentDigest":"8892b2bda0669d4fac4e562bd1aac5caffe859b05e5e587654c4e94e15758a19","signedAt":"2026-05-22T05:40:53.351Z","signature":"Y1F6J-V0JDUdAj34dC7AZkkzXJ_RdU6OhdHv_HPI9fshcIs9T64sftmEvr0WtfOZJCTrRrxMBsjB9tD4wJU5Cw"}
 {"description":"Read current warehouse inventory for the target row, compute an adjustment from the receiving-delta operand, write the new value back.","intentId":"inventory.adjust_from_receiving","name":"read update inventory_row receiving_delta"}
 {"description":"Read a document and produce a synthesized summary.","intentId":"document.summarize","name":"synthesize document_text"}
 {"description":"Search sales records using a deterministic query.","intentId":"sales.search_records","name":"search sales_record"}
+{"description":"Pull the most recent slice of the user mail inbox. Single NXS read against the mail target; returns message metadata for downstream review.","intentId":"mail.read_inbox_recent","name":"read email_inbox recent_inbox"}
+{"description":"Search the mail inbox using deterministic operator syntax (from:, to:, subject:, free text). Single NXS read with a search query.","intentId":"mail.search_inbox","name":"search email_message"}
+{"description":"Compose a single new email message and dispatch it through the governed mail target. NVG drafts the body if needed; NXS sends.","intentId":"mail.compose_send","name":"create send email_message"}
+{"description":"Reply to a specific message within a thread, preserving In-Reply-To and References headers so threading is honored.","intentId":"mail.reply_in_thread","name":"create send email_thread"}
+{"description":"Three-step canonical flow: NXS reads recent inbox → NVG classifies which messages match a target intent (e.g. sales orders) → NXS sends a templated response per match.","intentId":"mail.respond_with_template","name":"read synthesize send sales_email order_received_template"}
+{"description":"NXS reads inbox slice → NVG synthesizes a plain-english summary of the messages.","intentId":"mail.summarize_inbox","name":"read synthesize email_inbox"}
+{"description":"Archive a single message in the mail target (update its label / archive state). Single NXS update.","intentId":"mail.archive_message","name":"update email_message"}

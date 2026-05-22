@@ -1,4 +1,11 @@
-{"schemaVersion":"v1","recordCount":3,"contentDigest":"087ff9bfbfc181e8cd380068ccac550165a496fc553acc0011d4fd61b823625d","signedAt":"2026-05-12T18:59:13.771Z","signature":"fWrTZjx2FheYobmeL9Jy0o9POYNGxNx2HGCnfm27XC-yGxvpOL30SPQ3R8t_IdmKn6i8q_pKuN6SO-tq3OY4Dw"}
+{"schemaVersion":"v1","recordCount":10,"contentDigest":"56c84b3b5c81965812cd395c58602e15f8e30d3c8fe52a757ad965e06f8686c1","signedAt":"2026-05-22T05:40:53.354Z","signature":"pCBJk3qVzRbO4Wagn69hVeziCxUZUbpeM4YjL-G2o7upyFMnBtE-87RNlMTqVBcrlC8uJUbVRQCqyD9j2mKCCQ"}
 {"intentId":"inventory.adjust_from_receiving","requiredCapabilities":["read:record:single","update:record:internal"]}
 {"intentId":"document.summarize","requiredCapabilities":["read:record:single"]}
 {"intentId":"sales.search_records","requiredCapabilities":["search:data"]}
+{"intentId":"mail.read_inbox_recent","requiredCapabilities":["read:record:bulk"]}
+{"intentId":"mail.search_inbox","requiredCapabilities":["search:data"]}
+{"intentId":"mail.compose_send","requiredCapabilities":["synthesize:content","send:message:external"]}
+{"intentId":"mail.reply_in_thread","requiredCapabilities":["read:record:single","send:message:external"]}
+{"intentId":"mail.respond_with_template","requiredCapabilities":["read:record:bulk","synthesize:content","send:message:external"]}
+{"intentId":"mail.summarize_inbox","requiredCapabilities":["read:record:bulk","synthesize:content"]}
+{"intentId":"mail.archive_message","requiredCapabilities":["update:record:internal"]}

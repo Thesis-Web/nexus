@@ -1,4 +1,12 @@
-{"schemaVersion":"v1","recordCount":3,"contentDigest":"e1e778457f096592d3f8e48da8eab2ca85c601b1bc4d63ee88d0f417ba24c58e","signedAt":"2026-05-12T18:59:13.761Z","signature":"pdM_12a9SQBkpWGn4eHUR5m_17tQifbL0m3kID9PP7EOO5jyx032dWGpOlqasXi0sVMycpTnmSyb6m43FSGDBg"}
+{"schemaVersion":"v1","recordCount":11,"contentDigest":"51894e39fe82efad1006b67d5cdf2b590d4f6579f0f3ecfffe20d26753460605","signedAt":"2026-05-22T05:40:53.347Z","signature":"qt-jNQCRyodB41DFWV3vxgxnzCsKaSymbe8nLwHZElFCNWUwLfeO_rYEftWH3E1MBixEKMdVjfYTYBWv3nOSAQ"}
 {"canonicalTerm":"delete","rawTerm":"delete everything","reason":"Catastrophic action — operator must use explicit per-record delete flow","status":"blocked"}
 {"canonicalTerm":"delete","rawTerm":"drop table","reason":"Direct DDL prohibited — use governed delete capabilities","status":"blocked"}
 {"canonicalTerm":"export","rawTerm":"export everything","reason":"Bulk export of every record requires human review before plan-time approval","status":"review_required"}
+{"canonicalTerm":"send","rawTerm":"send to everyone","reason":"Bulk send to all-of-mailbox is risk-tier high — requires human review at plan time","status":"review_required"}
+{"canonicalTerm":"send","rawTerm":"reply to all","reason":"Reply-all multiplies blast radius — review required before plan-time approval","status":"review_required"}
+{"canonicalTerm":"send","rawTerm":"mass email","reason":"Mass-email pattern requires human review before plan-time approval","status":"review_required"}
+{"canonicalTerm":"send","rawTerm":"spam everyone","reason":"Spam pattern explicitly blocked","status":"blocked"}
+{"canonicalTerm":"delete","rawTerm":"delete all mail","reason":"Bulk mailbox wipe is catastrophic — use per-message archive flow instead","status":"blocked"}
+{"canonicalTerm":"delete","rawTerm":"delete all emails","reason":"Bulk mailbox wipe is catastrophic — use per-message archive flow instead","status":"blocked"}
+{"canonicalTerm":"delete","rawTerm":"empty inbox","reason":"Bulk mailbox wipe is catastrophic — use per-message archive flow instead","status":"blocked"}
+{"canonicalTerm":"update","rawTerm":"unsubscribe all","reason":"Bulk unsubscribe affects external systems — review required","status":"review_required"}

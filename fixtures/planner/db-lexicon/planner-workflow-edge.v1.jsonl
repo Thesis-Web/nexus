@@ -1,3 +1,8 @@
-{"schemaVersion":"v1","recordCount":2,"contentDigest":"bac294e4a7f5f56d75c1d4cb54e0d69ebefecd384523252c1c878203ee0af009","signedAt":"2026-05-12T18:59:13.782Z","signature":"tugQwcE5qTLMIZZgRY3tn5BgfrHR7Mz5uYCCnsJs2uoLcjvAn85SZKjPB93UGJZzM9qvbYdnIGerehFnqMghAw"}
+{"schemaVersion":"v1","recordCount":7,"contentDigest":"edfb06b6ac0b2fa16dfa4800796b6e3954ff5992eb5f58b5dcaf832b458220cd","signedAt":"2026-05-22T05:40:53.367Z","signature":"BwU4IpnqxnMKbg3yeTY2DUt0fj6v6UHT1ti-uslzbzLRf-1rJrHnZNd1YGh7dFkxrLMES_LeIFX-DcA0Wa_CAg"}
 {"edgeType":"data_dependency","outputSlotRef":"inventory_current","sourceNodeKey":"read_inventory","targetNodeKey":"compute_adjusted_units","templateId":"workflow_inventory_adjust_from_receiving_v1"}
 {"edgeType":"data_dependency","outputSlotRef":"adjusted_units","sourceNodeKey":"compute_adjusted_units","targetNodeKey":"write_inventory","templateId":"workflow_inventory_adjust_from_receiving_v1"}
+{"edgeType":"data_dependency","outputSlotRef":"draft_body","sourceNodeKey":"compose_message_body","targetNodeKey":"send_composed_message","templateId":"workflow_mail_compose_send_v1"}
+{"edgeType":"data_dependency","outputSlotRef":"parent_message","sourceNodeKey":"read_parent_message","targetNodeKey":"send_reply_message","templateId":"workflow_mail_reply_in_thread_v1"}
+{"edgeType":"data_dependency","outputSlotRef":"inbox_messages","sourceNodeKey":"read_recent_for_classify","targetNodeKey":"classify_sales_emails","templateId":"workflow_mail_respond_with_template_v1"}
+{"edgeType":"data_dependency","outputSlotRef":"matched_message_ids","sourceNodeKey":"classify_sales_emails","targetNodeKey":"send_template_responses","templateId":"workflow_mail_respond_with_template_v1"}
+{"edgeType":"data_dependency","outputSlotRef":"inbox_messages","sourceNodeKey":"read_inbox_for_summary","targetNodeKey":"summarize_inbox_messages","templateId":"workflow_mail_summarize_inbox_v1"}

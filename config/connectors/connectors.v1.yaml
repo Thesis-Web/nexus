@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-11T18:14:04.911Z'
-signature: ywXLWMIV8doqvRkezqdFSQqZNz6ovassPw_kUJUDwV_jsBh580tSS6wd5KE075gtLIiLvKCchIsLDn3AnFlQAw
+issuedAt: '2026-05-22T05:38:22.270Z'
+signature: NfGaxZYQpPKDV-na23aYr7_ppVs_Qi3o-Xx-FkGtBRLElDIqnLfSXWFpgaS4PmXanvKwo18lhyj--dhLMZySCg
 body:
   connectors:
     - connectorId: stub
@@ -70,3 +70,38 @@ body:
           - shipments
           - shipment_lines
       enabled: true
+    - connectorId: mailpit-local
+      connectorType: mailpit
+      allowedSystems:
+        - mailpit-local
+      dataClass: local-restricted
+      configuration:
+        systemType: mailpit-local
+        displayLabel: Mailpit (local lab)
+        smtpHost: 127.0.0.1
+        smtpPort: 1025
+        apiBaseUrl: http://127.0.0.1:8025
+        tlsMode: none
+        authMode: none
+        allowedSenders:
+          - admin@nexlabco.test
+          - notifications@nexlabco.test
+          - sales@nexlabco.test
+          - support@nexlabco.test
+          - engineering@nexlabco.test
+        allowedRecipients:
+          - owner@nexlabco.test
+          - approvals@nexlabco.test
+          - ap@nexlabco.test
+          - purchasing@nexlabco.test
+          - receiving@nexlabco.test
+          - ops@nexlabco.test
+          - sales@nexlabco.test
+          - support@nexlabco.test
+          - engineering@nexlabco.test
+          - notifications@nexlabco.test
+        allowedDomains:
+          - nexlabco.test
+        queryLimit: 200
+        defaultDomain: nexlabco.test
+      enabled: false

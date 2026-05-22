@@ -1,4 +1,4 @@
-{"schemaVersion":"v1","recordCount":22,"contentDigest":"68b418da9458c028222b57eb394ab45489db74a26b3e897bced23ea8f40c165c","signedAt":"2026-05-12T18:59:13.728Z","signature":"wwrJQO69Zn-VHpdKyeKezu8jjiKAmhFqvyRCMFYsmALJGqV4S7OsLweBLXaiQASFpmJN2rjkJdh4RKudRtBxCA"}
+{"schemaVersion":"v1","recordCount":85,"contentDigest":"ca802625d9a45dff03e61c752849b21cd6090774782f7670590b4a6ff9dff461","signedAt":"2026-05-22T05:40:53.314Z","signature":"KRN2m8mmuN1dzpV8f5RmmKcBRcjBBtTSCjdxOhfKU6QaMfg78K8PYwfKy2h9M5nUE0vsikXET_ctXpqx1z3ZDA"}
 {"canonicalTerm":"read","phraseClass":"verb","rawTerm":"pull","source":"manual_v1"}
 {"canonicalTerm":"read","phraseClass":"verb","rawTerm":"fetch","source":"manual_v1"}
 {"canonicalTerm":"read","phraseClass":"verb","rawTerm":"get","source":"manual_v1"}
@@ -21,3 +21,66 @@
 {"canonicalTerm":"receiving_delta","phraseClass":"business_phrase","rawTerm":"from receiving today","source":"manual_v1"}
 {"canonicalTerm":"amount_operand","phraseClass":"business_phrase","rawTerm":"by amount","source":"manual_v1"}
 {"canonicalTerm":"plain_english","phraseClass":"business_phrase","rawTerm":"in plain english","source":"manual_v1"}
+{"canonicalTerm":"read","phraseClass":"verb","rawTerm":"check","source":"mail_seed_v1"}
+{"canonicalTerm":"read","phraseClass":"verb","rawTerm":"check on","source":"mail_seed_v1"}
+{"canonicalTerm":"read","phraseClass":"verb","rawTerm":"peek","source":"mail_seed_v1"}
+{"canonicalTerm":"read","phraseClass":"verb","rawTerm":"browse","source":"mail_seed_v1"}
+{"canonicalTerm":"read","phraseClass":"verb","rawTerm":"scan","source":"mail_seed_v1"}
+{"canonicalTerm":"read","phraseClass":"verb","rawTerm":"poll","source":"mail_seed_v1"}
+{"canonicalTerm":"read","phraseClass":"verb","rawTerm":"view","source":"mail_seed_v1"}
+{"canonicalTerm":"read","phraseClass":"verb","rawTerm":"open","source":"mail_seed_v1"}
+{"canonicalTerm":"read","phraseClass":"verb","rawTerm":"reread","source":"mail_seed_v1"}
+{"canonicalTerm":"send","phraseClass":"verb","rawTerm":"mail","source":"mail_seed_v1"}
+{"canonicalTerm":"send","phraseClass":"verb","rawTerm":"email","source":"mail_seed_v1"}
+{"canonicalTerm":"send","phraseClass":"verb","rawTerm":"reply","source":"mail_seed_v1"}
+{"canonicalTerm":"send","phraseClass":"verb","rawTerm":"respond","source":"mail_seed_v1"}
+{"canonicalTerm":"send","phraseClass":"verb","rawTerm":"respond to","source":"mail_seed_v1"}
+{"canonicalTerm":"send","phraseClass":"verb","rawTerm":"follow up","source":"mail_seed_v1"}
+{"canonicalTerm":"send","phraseClass":"verb","rawTerm":"forward","source":"mail_seed_v1"}
+{"canonicalTerm":"send","phraseClass":"verb","rawTerm":"fwd","source":"mail_seed_v1"}
+{"canonicalTerm":"send","phraseClass":"verb","rawTerm":"notify","source":"mail_seed_v1"}
+{"canonicalTerm":"send","phraseClass":"verb","rawTerm":"acknowledge","source":"mail_seed_v1"}
+{"canonicalTerm":"send","phraseClass":"verb","rawTerm":"ack","source":"mail_seed_v1"}
+{"canonicalTerm":"send","phraseClass":"verb","rawTerm":"dispatch","source":"mail_seed_v1"}
+{"canonicalTerm":"send","phraseClass":"verb","rawTerm":"deliver","source":"mail_seed_v1"}
+{"canonicalTerm":"create","phraseClass":"verb","rawTerm":"compose","source":"mail_seed_v1"}
+{"canonicalTerm":"create","phraseClass":"verb","rawTerm":"draft","source":"mail_seed_v1"}
+{"canonicalTerm":"create","phraseClass":"verb","rawTerm":"write up","source":"mail_seed_v1"}
+{"canonicalTerm":"create","phraseClass":"verb","rawTerm":"prepare","source":"mail_seed_v1"}
+{"canonicalTerm":"update","phraseClass":"verb","rawTerm":"archive","source":"mail_seed_v1"}
+{"canonicalTerm":"update","phraseClass":"verb","rawTerm":"star","source":"mail_seed_v1"}
+{"canonicalTerm":"update","phraseClass":"verb","rawTerm":"flag","source":"mail_seed_v1"}
+{"canonicalTerm":"update","phraseClass":"verb","rawTerm":"label","source":"mail_seed_v1"}
+{"canonicalTerm":"update","phraseClass":"verb","rawTerm":"tag","source":"mail_seed_v1"}
+{"canonicalTerm":"update","phraseClass":"verb","rawTerm":"mark read","source":"mail_seed_v1"}
+{"canonicalTerm":"update","phraseClass":"verb","rawTerm":"mark unread","source":"mail_seed_v1"}
+{"canonicalTerm":"update","phraseClass":"verb","rawTerm":"unarchive","source":"mail_seed_v1"}
+{"canonicalTerm":"synthesize","phraseClass":"verb","rawTerm":"classify","source":"mail_seed_v1"}
+{"canonicalTerm":"synthesize","phraseClass":"verb","rawTerm":"categorize","source":"mail_seed_v1"}
+{"canonicalTerm":"search","phraseClass":"verb","rawTerm":"hunt","source":"mail_seed_v1"}
+{"canonicalTerm":"search","phraseClass":"verb","rawTerm":"locate","source":"mail_seed_v1"}
+{"canonicalTerm":"email_message","phraseClass":"noun","rawTerm":"email","source":"mail_seed_v1"}
+{"canonicalTerm":"email_message","phraseClass":"noun","rawTerm":"emails","source":"mail_seed_v1"}
+{"canonicalTerm":"email_message","phraseClass":"noun","rawTerm":"mail","source":"mail_seed_v1"}
+{"canonicalTerm":"email_message","phraseClass":"noun","rawTerm":"message","source":"mail_seed_v1"}
+{"canonicalTerm":"email_message","phraseClass":"noun","rawTerm":"messages","source":"mail_seed_v1"}
+{"canonicalTerm":"email_inbox","phraseClass":"noun","rawTerm":"inbox","source":"mail_seed_v1"}
+{"canonicalTerm":"email_inbox","phraseClass":"noun","rawTerm":"mailbox","source":"mail_seed_v1"}
+{"canonicalTerm":"email_draft","phraseClass":"noun","rawTerm":"drafts","source":"mail_seed_v1"}
+{"canonicalTerm":"email_draft","phraseClass":"noun","rawTerm":"draft","source":"mail_seed_v1"}
+{"canonicalTerm":"email_thread","phraseClass":"noun","rawTerm":"thread","source":"mail_seed_v1"}
+{"canonicalTerm":"email_thread","phraseClass":"noun","rawTerm":"conversation","source":"mail_seed_v1"}
+{"canonicalTerm":"email_attachment","phraseClass":"noun","rawTerm":"attachment","source":"mail_seed_v1"}
+{"canonicalTerm":"email_attachment","phraseClass":"noun","rawTerm":"attachments","source":"mail_seed_v1"}
+{"canonicalTerm":"recent_inbox","phraseClass":"business_phrase","rawTerm":"new emails","source":"mail_seed_v1"}
+{"canonicalTerm":"recent_inbox","phraseClass":"business_phrase","rawTerm":"new messages","source":"mail_seed_v1"}
+{"canonicalTerm":"recent_inbox","phraseClass":"business_phrase","rawTerm":"unread mail","source":"mail_seed_v1"}
+{"canonicalTerm":"recent_inbox","phraseClass":"business_phrase","rawTerm":"last hour","source":"mail_seed_v1"}
+{"canonicalTerm":"recent_inbox","phraseClass":"business_phrase","rawTerm":"today","source":"mail_seed_v1"}
+{"canonicalTerm":"sales_email","phraseClass":"business_phrase","rawTerm":"sales email","source":"mail_seed_v1"}
+{"canonicalTerm":"sales_email","phraseClass":"business_phrase","rawTerm":"sales emails","source":"mail_seed_v1"}
+{"canonicalTerm":"order_received_template","phraseClass":"business_phrase","rawTerm":"order received","source":"mail_seed_v1"}
+{"canonicalTerm":"vendor_email","phraseClass":"business_phrase","rawTerm":"vendor email","source":"mail_seed_v1"}
+{"canonicalTerm":"customer_email","phraseClass":"business_phrase","rawTerm":"customer email","source":"mail_seed_v1"}
+{"canonicalTerm":"internal_email","phraseClass":"business_phrase","rawTerm":"internal email","source":"mail_seed_v1"}
+{"canonicalTerm":"thank_you_template","phraseClass":"business_phrase","rawTerm":"thank you note","source":"mail_seed_v1"}

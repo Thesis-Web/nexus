@@ -1,7 +1,16 @@
-{"schemaVersion":"v1","recordCount":6,"contentDigest":"62700fc83829c25e67828392583077f7a98661dcfb6745c7db66b5bc50bfb8a3","signedAt":"2026-05-12T18:59:13.773Z","signature":"fuXRf5NIBa__L7uGgcenaydtEvYHpbZqIo-QtqGp950KwvnOz1GxNntRNymC2WLlcAbSt2UsWRjVPTnZ1ny_Bw"}
+{"schemaVersion":"v1","recordCount":15,"contentDigest":"d8cae6e69e4d59e70c3777bd3ca736f6812fd391e6ee4b53e2edac7fc5c2ae73","signedAt":"2026-05-22T05:40:53.357Z","signature":"u1vAMWidjg_Ajq6_Gedrn0csqd3hJfnhguVptu5tDPQsLsU657mdmW0SekCq-A74X6u9ZW1p1G47pot3YyXHCQ"}
 {"businessTerm":"inventory_row","resourceScope":"single","resourceType":"inventory","system":"warehouse"}
 {"businessTerm":"product_a","resourceScope":"single","resourceType":"inventory","system":"warehouse"}
 {"businessTerm":"product_b","resourceScope":"single","resourceType":"inventory","system":"warehouse"}
 {"businessTerm":"document_text","resourceScope":"single","resourceType":"document","system":"stub"}
 {"businessTerm":"sales_record","resourceScope":"collection","resourceType":"sales_record","system":"sales-finance"}
 {"businessTerm":"customer_record","resourceScope":"single","resourceType":"customer","system":"sales-finance"}
+{"businessTerm":"email_inbox","resourceScope":"bulk","resourceType":"inbox","system":"mailpit-local"}
+{"businessTerm":"recent_inbox","resourceScope":"bulk","resourceType":"inbox","system":"mailpit-local"}
+{"businessTerm":"email_message","resourceScope":"single","resourceType":"message","system":"mailpit-local"}
+{"businessTerm":"email_thread","resourceScope":"collection","resourceType":"thread","system":"mailpit-local"}
+{"businessTerm":"email_draft","resourceScope":"single","resourceType":"draft","system":"mailpit-local"}
+{"businessTerm":"sales_email","resourceScope":"bulk","resourceType":"message","system":"mailpit-local"}
+{"businessTerm":"vendor_email","resourceScope":"bulk","resourceType":"message","system":"mailpit-local"}
+{"businessTerm":"customer_email","resourceScope":"bulk","resourceType":"message","system":"mailpit-local"}
+{"businessTerm":"internal_email","resourceScope":"bulk","resourceType":"message","system":"mailpit-local"}
