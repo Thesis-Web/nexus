@@ -1,0 +1,25 @@
+{
+  "name": "@nexus/connector-mailpit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/mailpit.connector.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@nexus/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.30",
+    "typescript": "^5.8.3"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/mailpit.connector.d.ts",
+      "import": "./dist/mailpit.connector.js"
+    }
+  },
+  "types": "./dist/mailpit.connector.d.ts"
+}

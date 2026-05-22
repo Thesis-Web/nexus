@@ -47,6 +47,11 @@ import {
   type PostgresConnectorFactoryConfig,
   type PostgresConnector,
 } from '@nexus/connector-postgres';
+import {
+  buildMailpitConnector,
+  type MailpitConnectorFactoryConfig,
+  type MailpitConnector,
+} from '@nexus/connector-mailpit';
 import { createCli } from '@nexus/cli';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
@@ -211,6 +216,7 @@ async function getBootstrap(): Promise<BootstrapResult> {
     // postgres connector is the first ship-with-defaults target; the secret
     // source has already been wired into the bootstrap's transport context.
     await ensurePostgresConnectors(_bootstrapResult);
+    await ensureMailpitConnectors(_bootstrapResult);
   }
   return _bootstrapResult;
 }
@@ -319,6 +325,95 @@ function getPostgresConnectors(): readonly PostgresConnector[] {
   return _postgresConnectors;
 }
 
+// ---------------------------------------------------------------------------
+// Mailpit connector instances — composition root.
+// One instance per enabled manifest entry of connectorType=mailpit. Each
+// instance owns its own SMTP/HTTP-API endpoint pair against a local Mailpit
+// substrate. Built once at bootstrap. Mirror of the postgres pattern above.
+//
+// Configuration shape on the manifest entry:
+//   {
+//     systemType: NonEmpty,               // gate-06 lookup key, also in allowedSystems
+//     smtpHost: string,                   // default 127.0.0.1
+//     smtpPort: number,                   // default 1025
+//     apiBaseUrl: string,                 // default http://127.0.0.1:8025
+//     tlsMode: 'none' | 'starttls' | 'tls',  // only 'none' in v0.1
+//     authMode: 'none' | 'plain',         // only 'none' in v0.1
+//     allowedSenders: string[],           // concrete addresses, no wildcards
+//     allowedRecipients: string[],        // concrete addresses, no wildcards
+//     allowedDomains: string[],           // concrete domain literals, no wildcards
+//     queryLimit?: number,                // default 200
+//     displayLabel?: string,
+//     defaultDomain?: string,
+//     smtpTimeoutMs?: number,
+//     httpTimeoutMs?: number,
+//   }
+// ---------------------------------------------------------------------------
+let _mailpitConnectors: readonly MailpitConnector[] = [];
+
+async function ensureMailpitConnectors(br: BootstrapResult): Promise<void> {
+  if (_mailpitConnectors.length > 0) return;
+  const payloadsRoot = path.join(DEFAULT_TRAIL_DIR, 'payloads');
+  const built: MailpitConnector[] = [];
+  for (const record of br.externals.connectorRecords) {
+    if (record.connectorType !== 'mailpit') continue;
+    const cfg = record.configuration;
+    const systemTypeRaw = cfg['systemType'];
+    if (typeof systemTypeRaw !== 'string' || systemTypeRaw.length === 0) {
+      throw new Error(
+        `[bootstrap] connector '${record.connectorId}' (mailpit) configuration is missing systemType.`
+      );
+    }
+    const tlsMode = (typeof cfg['tlsMode'] === 'string' ? cfg['tlsMode'] : 'none') as
+      | 'none'
+      | 'starttls'
+      | 'tls';
+    const authMode = (typeof cfg['authMode'] === 'string' ? cfg['authMode'] : 'none') as
+      | 'none'
+      | 'plain';
+    const sendersRaw = cfg['allowedSenders'];
+    const recipientsRaw = cfg['allowedRecipients'];
+    const domainsRaw = cfg['allowedDomains'];
+    const allowedSenders = Array.isArray(sendersRaw)
+      ? sendersRaw.filter((s): s is string => typeof s === 'string')
+      : [];
+    const allowedRecipients = Array.isArray(recipientsRaw)
+      ? recipientsRaw.filter((s): s is string => typeof s === 'string')
+      : [];
+    const allowedDomains = Array.isArray(domainsRaw)
+      ? domainsRaw.filter((s): s is string => typeof s === 'string')
+      : [];
+    const factoryConfig: MailpitConnectorFactoryConfig = {
+      systemType: systemTypeRaw as NonEmpty,
+      dataClass: record.dataClass,
+      smtpHost: typeof cfg['smtpHost'] === 'string' ? cfg['smtpHost'] : '127.0.0.1',
+      smtpPort: typeof cfg['smtpPort'] === 'number' ? cfg['smtpPort'] : 1025,
+      apiBaseUrl:
+        typeof cfg['apiBaseUrl'] === 'string' ? cfg['apiBaseUrl'] : 'http://127.0.0.1:8025',
+      tlsMode,
+      authMode,
+      allowedSenders,
+      allowedRecipients,
+      allowedDomains,
+      queryLimit: typeof cfg['queryLimit'] === 'number' ? cfg['queryLimit'] : 200,
+      payloadsRoot,
+      ...(typeof cfg['displayLabel'] === 'string' ? { displayLabel: cfg['displayLabel'] } : {}),
+      ...(typeof cfg['defaultDomain'] === 'string' ? { defaultDomain: cfg['defaultDomain'] } : {}),
+      ...(typeof cfg['smtpTimeoutMs'] === 'number' ? { smtpTimeoutMs: cfg['smtpTimeoutMs'] } : {}),
+      ...(typeof cfg['httpTimeoutMs'] === 'number' ? { httpTimeoutMs: cfg['httpTimeoutMs'] } : {}),
+    };
+    built.push(buildMailpitConnector(factoryConfig));
+    console.log(
+      `[bootstrap] mailpit connector '${record.connectorId}' constructed for system '${systemTypeRaw}'`
+    );
+  }
+  _mailpitConnectors = built;
+}
+
+function getMailpitConnectors(): readonly MailpitConnector[] {
+  return _mailpitConnectors;
+}
+
 /**
  * Resolve the dataClass declared by the connector manifest for a target
  * system. Mirrors the lookup pattern already used by `connectorLookup`
@@ -330,6 +425,9 @@ function getPostgresConnectors(): readonly PostgresConnector[] {
 function resolveTargetDataClass(systemType: string): DataClass | null {
   if (systemType === new StubConnector().systemType) return new StubConnector().dataClass;
   for (const c of getPostgresConnectors()) {
+    if (c.systemType === systemType) return c.dataClass;
+  }
+  for (const c of getMailpitConnectors()) {
     if (c.systemType === systemType) return c.dataClass;
   }
   return null;
@@ -351,6 +449,7 @@ const program = createCli({
     // and only the stub is registered, which is correct — those paths
     // never dispatch through Gate 06.
     for (const c of getPostgresConnectors()) reg.register(c);
+    for (const c of getMailpitConnectors()) reg.register(c);
     return reg;
   },
   bootstrapNvgService: async () => {
@@ -1014,6 +1113,9 @@ const program = createCli({
             get(systemType) {
               if (systemType === 'stub') return new StubConnector();
               for (const c of getPostgresConnectors()) {
+                if (c.systemType === systemType) return c;
+              }
+              for (const c of getMailpitConnectors()) {
                 if (c.systemType === systemType) return c;
               }
               return null;

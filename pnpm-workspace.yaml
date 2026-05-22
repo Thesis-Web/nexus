@@ -7,6 +7,7 @@ packages:
   - 'packages/connectors/vault'
   - 'packages/connectors/stub'
   - 'packages/connectors/postgres'
+  - 'packages/connectors/mailpit'
   - 'packages/identity-ref'
   - 'packages/orch-ref'
   - 'packages/planners/db-lexicon'

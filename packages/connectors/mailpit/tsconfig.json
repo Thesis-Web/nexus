@@ -1,0 +1,21 @@
+{
+  "extends": "../../../tsconfig.package-build.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true
+  },
+  "include": ["*.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/dist/**",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/*.integration.test.ts",
+    "**/*.threat.test.ts",
+    "**/*.replay.test.ts"
+  ]
+}

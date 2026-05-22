@@ -356,6 +356,12 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   // per-instance passwords resolve fail-closed.
   const { PostgresConnectorFactory } = await import('@nexus/connector-postgres');
   connectorFactoryRegistry.register(new PostgresConnectorFactory());
+  // Mailpit connector factory (default-shipped local-mail target system).
+  // Like postgres above, no-op factory that satisfies the manifest loader's
+  // connectorType-presence check (§12.3.48 invariant 2). Real MailpitConnector
+  // instances are constructed in scripts/nexus-main.ts ensureMailpitConnectors().
+  const { MailpitConnectorFactory } = await import('@nexus/connector-mailpit');
+  connectorFactoryRegistry.register(new MailpitConnectorFactory());
 
   // 1d. Approval channel factory registry (§12.3.47)
   const channelFactoryRegistry = new ApprovalChannelFactoryRegistry();

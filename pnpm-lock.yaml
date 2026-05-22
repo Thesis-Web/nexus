@@ -98,6 +98,19 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/connectors/mailpit:
+    dependencies:
+      '@nexus/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^20.17.30
+        version: 20.19.39
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/connectors/postgres:
     dependencies:
       '@nexus/contracts':
