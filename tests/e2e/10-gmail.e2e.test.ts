@@ -23,25 +23,25 @@ interface RunSnap {
   ledgerEvents: ReadonlyArray<{ eventType: string; detail: Record<string, unknown> }>;
 }
 
-function assertGmailEnvelope(snap: RunSnap): void {
+function assertGmailExecuted(snap: RunSnap): void {
+  // Catalog expects the email action to actually fire. Without the
+  // Gmail connector, no nxs_action with target='gmail' will reach
+  // EXECUTED — this assertion surfaces that gap as honest red.
   const types = snap.ledgerEvents.map(e => e.eventType);
-  expect(types, 'run_closed event present').toContain('run_closed');
+  expect(snap.runClosed, 'run closed').toBe(true);
+  expect(snap.closeReason, 'gmail run closes completed').toBe('completed');
+  expect(types, 'final_response event present').toContain('final_response');
   expect(
     snap.ledgerEvents.some(e => e.eventType === 'nxs_dispatch_bridge_returned_null'),
     'no bridge-null events'
   ).toBe(false);
-  // No silent execution of a gmail send — the catalog requires every
-  // gmail path to either be denied OR pass through governed approval.
   const nxsActions = snap.ledgerEvents.filter(e => e.eventType === 'nxs_action');
-  const executedGmail = nxsActions.filter(e => {
+  const executedGmail = nxsActions.some(e => {
     const d = e.detail as Record<string, unknown>;
     const target = (d['target'] ?? d['targetSystem'] ?? d['system']) as string | undefined;
     return target === 'gmail' && d['finalOutcome'] === FINAL_OUTCOME.EXECUTED;
   });
-  expect(
-    executedGmail.length,
-    'no gmail nxs_action may report EXECUTED on a missing connector'
-  ).toBe(0);
+  expect(executedGmail, 'gmail nxs_action must reach EXECUTED on a wired connector').toBe(true);
 }
 
 async function attemptGmailSend(
@@ -95,7 +95,7 @@ describe('E2E Category 10 — Gmail compose / read', () => {
       body: 'Body text for the Q2 summary.',
       isDraft: true,
     });
-    assertGmailEnvelope(snap);
+    assertGmailExecuted(snap);
   }, 240_000);
 
   it('E2E-92-gmail-read-inbox: sr_manager → last 10 inbox threads', async () => {
@@ -103,7 +103,7 @@ describe('E2E Category 10 — Gmail compose / read', () => {
       mailbox: 'INBOX',
       max: 10,
     });
-    assertGmailEnvelope(snap);
+    assertGmailExecuted(snap);
   }, 240_000);
 
   it('E2E-93-gmail-compose-from-batch: director → customer follow-ups for order issues', async () => {
@@ -151,7 +151,7 @@ describe('E2E Category 10 — Gmail compose / read', () => {
       subTaskEdges: [],
     });
     const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 240_000 });
-    assertGmailEnvelope(snap);
+    assertGmailExecuted(snap);
   }, 300_000);
 
   it('E2E-94-gmail-compose-multi-recipient: vp → board update to 5 recipients', async () => {
@@ -172,7 +172,7 @@ describe('E2E Category 10 — Gmail compose / read', () => {
         body: 'Body of the board update.',
       }
     );
-    assertGmailEnvelope(snap);
+    assertGmailExecuted(snap);
   }, 240_000);
 
   it('E2E-95-gmail-read-classify: director → classify inbox by topic', async () => {
@@ -209,7 +209,7 @@ describe('E2E Category 10 — Gmail compose / read', () => {
       subTaskEdges: [],
     });
     const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 240_000 });
-    assertGmailEnvelope(snap);
+    assertGmailExecuted(snap);
   }, 300_000);
 
   it('E2E-96-gmail-search: sr_manager → emails containing "invoice" last 30 days', async () => {
@@ -220,7 +220,7 @@ describe('E2E Category 10 — Gmail compose / read', () => {
       'read:email',
       { query: 'invoice newer_than:30d', max: 25 }
     );
-    assertGmailEnvelope(snap);
+    assertGmailExecuted(snap);
   }, 240_000);
 
   it('E2E-97-gmail-compose-with-attachment: director → email referencing sales PDF', async () => {
@@ -236,7 +236,7 @@ describe('E2E Category 10 — Gmail compose / read', () => {
         attachments: [{ filename: 'sales.pdf', mimeType: 'application/pdf' }],
       }
     );
-    assertGmailEnvelope(snap);
+    assertGmailExecuted(snap);
   }, 240_000);
 
   it('E2E-98-gmail-denied-low-clearance: intern lacks compose:email → Gate 03 denied', async () => {
@@ -335,6 +335,6 @@ describe('E2E Category 10 — Gmail compose / read', () => {
       subTaskEdges: [],
     });
     const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 240_000 });
-    assertGmailEnvelope(snap);
+    assertGmailExecuted(snap);
   }, 300_000);
 });

@@ -34,9 +34,15 @@ function assertMultiNoContractEnvelope(
   }
 ): void {
   const types = snap.ledgerEvents.map(e => e.eventType);
+  // Production-shape expectation: the catalog asks for a successful
+  // multi-leg fan-out that closes with a final_response artifact.
+  expect(snap.runClosed, 'run closed').toBe(true);
+  expect(snap.closeReason, 'multi-leg run closes completed').toBe('completed');
   expect(types, 'run_closed event present').toContain('run_closed');
-  // No fabricated success path — bridge null and unsolicited tool call
-  // would silently corrupt mailbox provenance / HL#7 invariants.
+  expect(types, 'final_response event present').toContain('final_response');
+  expect(types, 'no node_failed').not.toContain('node_failed');
+  expect(types, 'no dag_failed').not.toContain('dag_failed');
+  expect(types, 'no error_dispatch').not.toContain('error_dispatch');
   expect(
     snap.ledgerEvents.some(e => e.eventType === 'nxs_dispatch_bridge_returned_null'),
     'no bridge-null events'

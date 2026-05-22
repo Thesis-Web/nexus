@@ -660,10 +660,12 @@ describe('E2E Category 12 — Hard Law surfaces', () => {
     }).catch(() => undefined);
     const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 240_000 });
     const types = snap.ledgerEvents.map(e => e.eventType);
-    expect(types, 'run_closed event present').toContain('run_closed');
-    const driftHandled =
-      types.includes('claim_drift_detected') || types.includes('run_closed');
-    expect(driftHandled, 'HL#14 — drift must be detected, or revoke endpoint absent').toBe(true);
+    // HL#14 production-shape: a mid-run revoke MUST surface
+    // claim_drift_detected. Absent admin revoke endpoint → no drift
+    // event → honest red.
+    expect(types, 'HL#14 — claim_drift_detected must fire on mid-run revoke').toContain(
+      'claim_drift_detected'
+    );
   }, 300_000);
 
   /**

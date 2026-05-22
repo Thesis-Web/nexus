@@ -22,7 +22,14 @@ interface RunSnap {
 
 function assertBatchEnvelope(snap: RunSnap): void {
   const types = snap.ledgerEvents.map(e => e.eventType);
+  // Production-shape: catalog asks for NXS pull + LLM summary → final_response.
+  expect(snap.runClosed, 'run closed').toBe(true);
+  expect(snap.closeReason, 'batch + summary closes completed').toBe('completed');
   expect(types, 'run_closed event present').toContain('run_closed');
+  expect(types, 'final_response event present').toContain('final_response');
+  expect(types, 'no node_failed').not.toContain('node_failed');
+  expect(types, 'no dag_failed').not.toContain('dag_failed');
+  expect(types, 'no error_dispatch').not.toContain('error_dispatch');
   expect(
     snap.ledgerEvents.some(e => e.eventType === 'nxs_dispatch_bridge_returned_null'),
     'no bridge-null events'

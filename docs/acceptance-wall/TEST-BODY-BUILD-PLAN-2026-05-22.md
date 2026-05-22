@@ -61,8 +61,13 @@ the failure ledger can drive Repair Mode.
 | 10 | E2E-101..110 (10) | body_written_failing_product (E2E-102, E2E-109 red on approval surface) |
 | 11 | E2E-112, E2E-118 (2) | body_written_failing_product (E2E-112 red on planner-callback gap; E2E-118 passes via clean-close fallback path) |
 
-Totals at HEAD post-bodies: **138 total / 103 pass / 35 fail / 0
-placeholders**. See `FAILURE-LEDGER-2026-05-22-test-body-factory.md`
-for the structured ledger and
-`REPAIR-MODE-FINDINGS-2026-05-22-test-body-factory.md` for the repair
-queue.
+Totals at HEAD post-bodies (tightened assertions, 2026-05-22 re-run
+after owner caught the over-loose first pass): **138 total / 46 pass
+/ 92 fail / 0 placeholders**. The first-pass 103/35 reflected loose
+`run_closed event present` checks that silently accepted
+`closeReason='error'`; the tightened helpers now require
+`closeReason='completed' + final_response event present` per §7.5 of
+the Test-Body Factory prompt. See
+`FAILURE-LEDGER-2026-05-22-test-body-factory.md` for the structured
+ledger and `REPAIR-MODE-FINDINGS-2026-05-22-test-body-factory.md` for
+the repair queue.

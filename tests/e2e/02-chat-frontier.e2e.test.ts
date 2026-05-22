@@ -41,11 +41,16 @@ async function runFrontierChat(
 }
 
 function assertFrontierEnvelope(snap: RunClosedSnapshot): void {
-  // Either the run completed against the frontier endpoint, OR it was
-  // denied deterministically. Both are honest outcomes. The test
-  // rejects only the fabricated / dropped failure modes (bridge null,
-  // unsolicited model tool call, mid-pipeline error_dispatch).
+  // Production-shape: catalog asks for a successful frontier chat
+  // execution. The persona's allowed tier must permit frontier; the
+  // adapter must reach OpenAI; compile must emit a final_response.
   const types = snap.ledgerEvents.map(e => e.eventType);
+  expect(snap.runClosed, 'run closed').toBe(true);
+  expect(snap.closeReason, 'frontier chat closes completed').toBe('completed');
+  expect(types, 'run_closed event present').toContain('run_closed');
+  expect(types, 'final_response event present').toContain('final_response');
+  expect(types, 'no node_failed').not.toContain('node_failed');
+  expect(types, 'no error_dispatch').not.toContain('error_dispatch');
   expect(
     snap.ledgerEvents.some(e => e.eventType === 'nxs_dispatch_bridge_returned_null'),
     'no bridge-null events'
@@ -54,8 +59,6 @@ function assertFrontierEnvelope(snap: RunClosedSnapshot): void {
     snap.ledgerEvents.some(e => e.eventType === 'unsolicited_model_tool_call'),
     'HL#7 — model emitted no unsolicited tool call'
   ).toBe(false);
-  // Run lifecycle event must be present regardless of outcome.
-  expect(types, 'run_closed event present').toContain('run_closed');
 }
 
 describe('E2E Category 2 — chat frontier (single agent, requires online search)', () => {

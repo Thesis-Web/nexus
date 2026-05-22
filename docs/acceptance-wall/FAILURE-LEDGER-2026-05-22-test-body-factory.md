@@ -1,118 +1,118 @@
-# Nexus E2E Acceptance Wall — Failure Ledger 2026-05-22 (Test-Body Factory)
+# Nexus E2E Acceptance Wall — Failure Ledger 2026-05-22 (Test-Body Factory, tightened)
 
-Generated: 2026-05-22 (post test-body factory commit 20041a3, on top of
-the body work from commits ea600a0 / c6980e0 / 43e5ed3).
+Generated 2026-05-22T17:40:38Z. Tightened-assertion re-run after owner
+feedback that the first pass was over-counting passes by accepting
+`run_closed event present` instead of requiring `closeReason='completed'
++ final_response event present`.
 
-Source command:
+Source commands:
 
-    pnpm typecheck     # clean
-    pnpm gate:no-e2e-skip   # 0 matched
-    pnpm test:e2e      # 138 tests, 103 passed, 35 failed
-
-Baseline at session entry (a725b52, baseline ledger from 2026-05-21):
-
-    138 tests, 19 passed, 119 failed.
-
-Test-Body Factory delta: **+84 net passes**. Every remaining failure
-below is honest production red, not a missing test body.
+    pnpm typecheck       # clean
+    pnpm gate:no-e2e-skip  # 0 matched
+    pnpm test:e2e        # 138 tests / 46 pass / 92 fail / 0 placeholders
 
 ## Summary
 
-| metric | baseline (a725b52) | post body-build (8db2f4d) | this run (HEAD) |
+| metric | baseline (a725b52) | first pass (loose assertions) | tightened (HEAD) |
 | --- | --- | --- | --- |
-| total tests | 138 | 138 | 138 |
-| passing | 19 | 36 | **103** |
-| failing | 119 | 102 | **35** |
-| placeholder slots (AcceptanceWallFailure throws) | 119 | 102 | **0** |
+| total tests | 138 | 138 | **138** |
+| passing | 19 | 103 | **46** |
+| failing | 119 | 35 | **92** |
+| placeholder slots | 119 | 0 | **0** |
 
-## Failure breakdown by root cause
+The first-pass count (103/35) was inflated. The loose envelope helpers
+in batches 3-8 only checked `run_closed event present` + `no bridge
+null`, so any run that closed with `closeReason='error'` or
+`plan_rejected` silently counted as a pass. The tightened helpers now
+require `closeReason='completed' + final_response event present + no
+node_failed + no dag_failed + no error_dispatch`, which is the
+production-shape success the catalog actually asks for.
 
-| # | Root cause | Tests | Class |
-| --- | --- | --- | --- |
-| 1 | Chat-agent ladder intersection empty (F-15) | 9 (E2E-02..10) | PRODUCT_RUNTIME |
-| 2 | Output-contract template library not built (TB-01, TB-02) | 12 (E2E-41..50, E2E-56, E2E-65, E2E-70, E2E-76, E2E-90) | UNIMPLEMENTED_SURFACE |
-| 3 | NVG/orch path on non-trivial DAG closes before run_closed event captured (run-coordinator timing or `error_dispatch` cascade) | 7 (E2E-61, E2E-62, E2E-64, E2E-65, E2E-67, E2E-70) | PRODUCT_RUNTIME |
-| 4 | HL#12 checkbackSourceRunId provenance event not emitted | 1 (E2E-69) | UNIMPLEMENTED_SURFACE |
-| 5 | HL#4 planner-decomposition checkback emitter absent | 3 (E2E-79, E2E-112, E2E-59) | UNIMPLEMENTED_SURFACE |
-| 6 | Gate 04/05 approval surface not exercised | 2 (E2E-102 vp leg, E2E-109) | UNIMPLEMENTED_SURFACE |
-| 7 | NVG firewall_egress_denied / OCT-CONFIDENTIAL outbound emitter absent | 1 (E2E-99) | UNIMPLEMENTED_SURFACE |
+## Honest failure distribution
 
-## Class totals
+Grouped by first-failing assertion message (from
+`runs/acceptance-wall-2026-05-21/FAILURE-LEDGER.jsonl`):
+
+| count | failing assertion | dominant root cause |
+| --- | --- | --- |
+| 10 | `multi-source merge closes completed: expected 'error'` | F-15 chat-agent intersection (merge nvg node) |
+| 10 | `mixed-tier run closes completed: expected 'error'` | F-15 chat-agent intersection (kind=nvg nodes) |
+| 10 | `frontier chat closes completed: expected 'error'` | F-15 chat-agent intersection (frontier preferred) |
+| 9 | `expected 'error' not to be 'error'` (E2E-02..10) | F-15 chat-agent intersection via `nexus-chat-default` |
+| 9 | `batch + summary closes completed: expected 'error'` | F-15 chat-agent intersection (summarize nvg node) |
+| 10 | `passThrough=false: expected undefined to be false` (E2E-41..50) | Output-contract template library not built (TB-01) |
+| 8 | `multi-leg run closes completed: expected 'error'` | F-15 chat-agent intersection (chat fan-out) |
+| 6 | `run closed: expected false to be true` | Run never reached run_closed (timeout / dispatch hang) |
+| 5 | `gmail run closes completed: expected null` | Run never closed (no gmail connector path) |
+| 3 | `branching DAG closes completed: expected 'error'` | F-15 chat-agent intersection (branching nvg nodes) |
+| 2 | `gmail run closes completed: expected 'error'` | Gmail send attempted through chat path; closes error |
+| 2 | `HL#14 — claim_drift_detected must fire on mid-run revoke` | Admin revoke endpoint absent → no drift emit (TB-07) |
+| 1 | `vp external-action must surface approval or denial` | Gate 04 approval surface not exercised through HTTP |
+| 1 | `vp bulk delete must surface approval or denial` | Gate 05 approval surface not exercised through HTTP |
+| 1 | `vp SECRET read must reach EXECUTED on a seeded resource` | No OCT-SECRET-tagged resource seeded |
+| 1 | `sr_analyst cross-system warehouse read must reach EXECUTED` | sr_analyst→warehouse intersection narrowing |
+| 1 | `analyst OCT-CONFIDENTIAL outbound must surface a denial` | NVG firewall_egress_denied emitter absent |
+| 1 | `env-mismatch request must surface a denial event` | No env-tagged connector to deny against |
+| 1 | `HL#4 — planner must surface a callback or rejection` | Planner-decomposition checkback emitter absent (TB-06) |
+| 1 | `vp bulk delete must surface approval or denial` (dup label) | — |
+
+## Root-cause concentration
+
+- **~60 tests** fail because the F-15 chat-agent ladder intersection
+  empty cascades across every workspace that uses chat-style nvg
+  nodes. Resolving F-15 should unblock the dominant slice.
+- **10 tests** fail purely on the output-contract template library
+  gap (TB-01).
+- **~12 tests** fail on specific denial/approval/drift emitter gaps
+  (TB-06, TB-07, TB-10, etc.).
+
+## Class totals (manual triage)
 
 | class | count |
 | --- | --- |
-| PRODUCT_RUNTIME | 16 |
-| UNIMPLEMENTED_SURFACE | 19 |
+| PRODUCT_RUNTIME (F-15 cascade + dispatch hangs) | ~60 |
+| UNIMPLEMENTED_SURFACE (template lib, approval surface, drift emitter) | ~30 |
+| CONNECTOR_MISSING (Gmail) | ~7 (subset of the F-15 cascade) |
 | EXTERNAL_DEPENDENCY | 0 |
-| CONNECTOR_MISSING | 0 (all gmail bodies pass-by-denial as expected) |
 | HARNESS_GAP | 0 |
 | CATALOG_DRIFT | 0 |
-| UNCLASSIFIED | 0 |
 
-(The reporter emits every row as `UNCLASSIFIED` because the new bodies
-do not throw `AcceptanceWallFailure` — they fail with native
-`AssertionError`. The classification above is from manual triage and
-is also captured per-test in `REPAIR-MODE-FINDINGS-2026-05-22-test-body-factory.md`.)
+(The reporter labels everything UNCLASSIFIED because new bodies use
+native `AssertionError` instead of `AcceptanceWallFailure`; manual
+triage classification is the table above and the per-finding
+breakdown in `REPAIR-MODE-FINDINGS-2026-05-22-test-body-factory.md`.)
 
-## Failing tests (full list)
+## Notable passes (46 honest greens)
 
-| # | Test | File | Failure |
-| --- | --- | --- | --- |
-| 1 | E2E-02-chat-time | 01-chat-onprem | closeReason='error' (F-15 cascade) |
-| 2 | E2E-03-chat-math | 01-chat-onprem | closeReason='error' |
-| 3 | E2E-04-chat-summarize | 01-chat-onprem | closeReason='error' |
-| 4 | E2E-05-chat-translate | 01-chat-onprem | closeReason='error' |
-| 5 | E2E-06-chat-poem | 01-chat-onprem | closeReason='error' |
-| 6 | E2E-07-chat-explain | 01-chat-onprem | closeReason='error' |
-| 7 | E2E-08-chat-list | 01-chat-onprem | closeReason='error' |
-| 8 | E2E-09-chat-define | 01-chat-onprem | closeReason='error' |
-| 9 | E2E-10-chat-followup | 01-chat-onprem | closeReason='error' |
-| 10 | E2E-41-table-monthly-sales | 05-multi-with-contract | passThrough=undefined |
-| 11 | E2E-42-prose-quarterly-review | 05-multi-with-contract | passThrough=undefined |
-| 12 | E2E-43-mixed-prose-table | 05-multi-with-contract | passThrough=undefined |
-| 13 | E2E-44-file-bundle | 05-multi-with-contract | passThrough=undefined |
-| 14 | E2E-45-guarded-confidential | 05-multi-with-contract | passThrough=undefined |
-| 15 | E2E-46-judge-decision-table | 05-multi-with-contract | passThrough=undefined |
-| 16 | E2E-47-multi-source-merge | 05-multi-with-contract | passThrough=undefined |
-| 17 | E2E-48-citation-formatted | 05-multi-with-contract | passThrough=undefined |
-| 18 | E2E-49-email-draft | 05-multi-with-contract | passThrough=undefined |
-| 19 | E2E-50-financial-summary-template | 05-multi-with-contract | passThrough=undefined |
-| 20 | E2E-56-mixed-with-output-contract | 06-mixed-tier | compile_assembly_complete missing |
-| 21 | E2E-59-mixed-fallback | 06-mixed-tier | unhealthy endpoint dropped silently |
-| 22 | E2E-61-frontier-then-fan-out | 07-branching | run_closed event missing |
-| 23 | E2E-62-research-then-merge | 07-branching | run_closed event missing |
-| 24 | E2E-64-multi-loop-deep | 07-branching | run_closed event missing |
-| 25 | E2E-65-branching-with-output | 07-branching | run_closed event missing |
-| 26 | E2E-67-branching-with-secure-rail | 07-branching | run_closed event missing |
-| 27 | E2E-69-second-run-trigger | 07-branching | HL#12 chain provenance not recorded |
-| 28 | E2E-70-branching-with-output-contract-and-mixed-tier | 07-branching | run_closed event missing |
-| 29 | E2E-76-batch-with-output-contract | 08-batch-summary | compile_assembly_complete missing |
-| 30 | E2E-79-batch-with-callback | 08-batch-summary | oversize batch silent |
-| 31 | E2E-90-cross-system-audit | 09-multi-source-merge | compile_assembly_complete missing |
-| 32 | E2E-99-gmail-compose-secure-data-denied | 10-gmail | denial event not emitted |
-| 33 | E2E-102-bulk-delete | 11-rbac-differentials | vp approval surface absent |
-| 34 | E2E-109-external-facing-action | 11-rbac-differentials | approval surface absent |
-| 35 | E2E-112-hl4-orch-no-kill | 12-hard-law-surfaces | planner-decomposition callback missing |
-
-See `runs/acceptance-wall-2026-05-21/FAILURE-LEDGER.jsonl` and the
-companion `.md` for the raw reporter output (overwritten on every wall
-run; this dated file is the immutable snapshot).
-
-## Notable passes (proving the wall works)
-
-- All 12-hard-law-surfaces tests except E2E-112 pass — HL#1/#5/#6/#7/#8/#11/#15/#16 surfaces are honest green.
-- E2E-37 manager 2x parallel NXS pull executes both legs (commit c6980e0 stuck).
-- E2E-116 multi-actor mailbox isolation continues to pass post-bodies.
-- E2E-117 HL#11 compile pass-through digest match holds.
-- All E2E-21..30 NXS single-agent tests pass.
-- The 9-multi-source-merge denials all surface honestly without bridge null or unsolicited tool calls.
+- 00-phase-0 spine (11 tests) — server lifecycle, auth, admin write.
+- 00b-persona-RBAC-seeds (6 tests) — seed shape proof.
+- 01-chat-onprem E2E-01 (1 test) — dev-admin chat baseline.
+- 03-nxs-single E2E-21..28 (8 tests) — NXS single-agent reads + the
+  delete-denied differential.
+- 04-multi-no-contract E2E-37 + E2E-40 (2 tests) — the two slots with
+  strict NXS-pair assertions.
+- 12-hard-law E2E-111, E2E-113..117, E2E-119, E2E-120 (8 tests) —
+  HL#1, HL#5, HL#6, HL#7, HL#8, HL#11, HL#15, HL#16 surfaces all
+  honestly green.
+- Plus the explicit-denial RBAC differentials (E2E-101 janitor leg,
+  E2E-103 manager + ceo legs, E2E-104 intern leg, E2E-105 janitor
+  frontier, E2E-106 analyst bulk pull, E2E-107 chain depth) — denials
+  fire deterministically.
 
 ## Next mode
 
-PRODUCT REPAIR MODE using this ledger. The top three repair targets:
-1. **F-15 chat-agent ladder intersection** — closes E2E-02..10 + opens
-   E2E-31..40 / E2E-51..58 / E2E-71..75 mixed-chat paths.
-2. **Output-contract template library + workspace route plumbing
-   (TB-01, TB-02)** — closes E2E-41..50 + adjacent contract tests.
+PRODUCT REPAIR MODE using this ledger. Top three repair targets,
+ranked by failure count unblocked:
+
+1. **F-15 chat-agent ladder intersection empty** — closes ~60 tests
+   in one stroke. Owner ratification options open in F-15 logs.
+2. **Output-contract template library + workspace-route plumbing
+   (TB-01, TB-02)** — closes 10 tests in E2E-41..50 + a handful of
+   contract assertions in adjacent files.
 3. **HL#4 planner-decomposition checkback emitter (TB-06)** — closes
-   E2E-79, E2E-112, E2E-59 + arms the HL#4 surface broadly.
+   E2E-79, E2E-112, E2E-59 and arms the HL#4 surface across the wall.
+
+After repair mode lands these three, the wall should swing from
+46/92 to roughly 105/33 passing. The remaining ~33 will be the
+specific denial-emitter / approval-flow / admin-endpoint gaps
+(TB-05..TB-12) that need targeted patches.

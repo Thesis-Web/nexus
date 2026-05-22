@@ -105,9 +105,9 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
     );
     assertDeniedShape(janitorSnap, 'janitor SECRET read');
 
-    // Higher-role leg: vp attempts the same. Acceptable outcomes:
-    // run closes (executed, or denied at connector for missing resource)
-    // but the denial-shape assertion applies only to the janitor leg.
+    // Higher-role leg: vp must reach EXECUTED on the SECRET-tier read.
+    // Without an OCT-SECRET-classified resource seeded, the connector
+    // path denies on missing table → fails honestly.
     const vpSnap = await postNxs(
       harness,
       'vp',
@@ -116,7 +116,11 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
       'customer_payment_tokens',
       { sql: 'SELECT token_id FROM customer_payment_tokens LIMIT 1', params: [] }
     );
-    expect(vpSnap.ledgerEvents.length, 'vp run produced events').toBeGreaterThan(0);
+    const vpNxs = vpSnap.ledgerEvents.filter(e => e.eventType === 'nxs_action');
+    const vpExecuted = vpNxs.some(
+      e => (e.detail as Record<string, unknown>)['finalOutcome'] === FINAL_OUTCOME.EXECUTED
+    );
+    expect(vpExecuted, 'vp SECRET read must reach EXECUTED on a seeded resource').toBe(true);
   }, 360_000);
 
   it('E2E-102-bulk-delete: analyst denied vs vp Gate 05 approval', async () => {
@@ -191,7 +195,13 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
       'inventory',
       { sql: 'SELECT sku FROM inventory LIMIT 1', params: [] }
     );
-    expect(srAnalystSnap.ledgerEvents.length, 'sr_analyst run produced events').toBeGreaterThan(0);
+    const srAnalystNxs = srAnalystSnap.ledgerEvents.filter(e => e.eventType === 'nxs_action');
+    const srAnalystExecuted = srAnalystNxs.some(
+      e => (e.detail as Record<string, unknown>)['finalOutcome'] === FINAL_OUTCOME.EXECUTED
+    );
+    expect(srAnalystExecuted, 'sr_analyst cross-system warehouse read must reach EXECUTED').toBe(
+      true
+    );
   }, 360_000);
 
   it('E2E-105-firewall-egress-denied-by-role: janitor → frontier denied at NVG', async () => {
@@ -292,12 +302,13 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
       }
     );
     const types = snap.ledgerEvents.map(e => e.eventType);
-    const handled =
+    // Production-shape: an env-mismatch request must EXPLICITLY deny —
+    // a silent final_response that ignored the env hint is the gap.
+    const denied =
       types.includes('environment_mismatch') ||
       types.includes('plan_rejected') ||
-      types.includes('delegation_empty_intersection') ||
-      types.includes('final_response');
-    expect(handled, 'env-mismatch request must surface an event chain (no silent drop)').toBe(true);
+      types.includes('delegation_empty_intersection');
+    expect(denied, 'env-mismatch request must surface a denial event').toBe(true);
   }, 240_000);
 
   it('E2E-109-external-facing-action: vp → Gate 04 approval flow', async () => {
@@ -366,12 +377,12 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
 
     const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 240_000 });
     const types = snap.ledgerEvents.map(e => e.eventType);
-    // Either claim_drift fires (HL#14 expected behavior), or the run
-    // closes normally (revoke endpoint absent — gap surfaced by the
-    // claim_drift_detected absence + ledger silence on revoke).
-    expect(types, 'run_closed event present').toContain('run_closed');
-    const driftHandled =
-      types.includes('claim_drift_detected') || types.includes('run_closed');
-    expect(driftHandled, 'mid-run revoke must surface claim_drift or close cleanly').toBe(true);
+    // HL#14 production-shape: a mid-run revoke MUST emit
+    // claim_drift_detected. The absence of an admin revoke endpoint
+    // means the drift never fires today; the test fails honestly on
+    // the missing event.
+    expect(types, 'HL#14 — claim_drift_detected must fire on mid-run revoke').toContain(
+      'claim_drift_detected'
+    );
   }, 360_000);
 });
