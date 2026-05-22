@@ -8,8 +8,12 @@
  *    the failure summary from EvidenceRecord
  *  - Successful execution but payload file missing (write-only outcome) →
  *    mailbox item written with kind:'receipt', status:'success'
- *  - executionResult === null → no mailbox write (returns null)
- *  - Custom slotId override is honored on both data + receipt paths
+ *  - executionResult === null (Gate 06 never ran) → mailbox item written
+ *    with kind:'denial_receipt' carrying the deciding gate's denialCode,
+ *    reason, and finalOutcome. (Was previously: returns null + no write.
+ *    That behavior was NXS-DISPATCH-BRIDGE-RETURNS-NULL — silently
+ *    dropping NXS's governance denial.)
+ *  - Custom slotId override is honored on data + receipt + denial_receipt
  *  - Sentinel grantId ('NOT_APPLICABLE') becomes null on the reference
  *  - resultRef carries a file:// URL pointing at the on-disk payload
  *  - I/O error other than ENOENT propagates (do not silently swallow)
@@ -96,6 +100,8 @@ function makeEvidence(opts: {
   grantId?: string;
   errorType?: string | null;
   errorMessage?: string | null;
+  finalOutcomeOverride?: EvidenceRecord['finalOutcome'];
+  gateDecisions?: EvidenceRecord['gateDecisions'];
 }): EvidenceRecord {
   const exec: ExecutionResult | null = opts.executionNull
     ? null
@@ -151,7 +157,7 @@ function makeEvidence(opts: {
       extractedAt: new Date().toISOString() as IsoTimestamp,
     } as never,
     delegationContextSnapshot: {} as never,
-    gateDecisions: [],
+    gateDecisions: opts.gateDecisions ?? [],
     policyRuleId: 'test-rule',
     policyOutcome: 'allow',
     approvalRequired: false,
@@ -170,7 +176,9 @@ function makeEvidence(opts: {
       approvalLinkage: 'NOT_APPLICABLE' as never,
     },
     executionResult: exec,
-    finalOutcome: opts.status === 'failure' ? FINAL_OUTCOME.DENIED_OTHER : FINAL_OUTCOME.EXECUTED,
+    finalOutcome:
+      opts.finalOutcomeOverride ??
+      (opts.status === 'failure' ? FINAL_OUTCOME.DENIED_OTHER : FINAL_OUTCOME.EXECUTED),
     threatEvents: [],
     compilerView: {} as never,
     previousHash: '0'.repeat(64) as never,
@@ -312,18 +320,108 @@ describe('bridgeNxsResultToMailbox', () => {
     expect(body.errorMessage).toBeNull();
   });
 
-  it('returns null when executionResult is missing', async () => {
-    await writePayload('{}');
+  it('synthesizes a denial_receipt when executionResult is null (Gate 06 never ran)', async () => {
+    // NXS-DISPATCH-BRIDGE-RETURNS-NULL closure: when the pipeline denies
+    // pre-execution (Gates 01-05) the evidence has executionResult=null
+    // but still carries the deciding gate's denialCode + reason +
+    // finalOutcome. The bridge must surface that denial as a mailbox
+    // item so compile can include it in the run's final response
+    // (HL#4 orch-never-kills + HL#8 mailbox-is-only-seam).
     const { collector, state } = fakeCollector();
-    const result = await bridgeNxsResultToMailbox(makeEvidence({ executionNull: true }), {
-      outputCollector: collector,
-      payloadsRoot,
-      agentOctLevel: 'OCT-OPEN',
-      mailboxId: 'mbx-test' as NonEmpty,
-      targetDataClass: 'internal' as DataClass,
-    });
-    expect(result).toBeNull();
-    expect(state.writes).toHaveLength(0);
+    const denyingDecision = {
+      gateId: 'gate.04.policy' as NonEmpty,
+      gateOrder: 4,
+      plane: 'control' as const,
+      outcome: 'deny',
+      reason: 'policy denied: forbidden verb DROP on warehouse' as NonEmpty,
+      denialCode: 'POLICY_DENIED_VERB' as never,
+      policyRuleId: 'warehouse.forbidden_verbs.v1',
+      evaluatedAt: '2026-05-22T12:34:56.789Z' as IsoTimestamp,
+      durationMs: 3,
+      metadata: {},
+    };
+    const result = await bridgeNxsResultToMailbox(
+      makeEvidence({
+        executionNull: true,
+        finalOutcomeOverride: FINAL_OUTCOME.DENIED_POLICY,
+        gateDecisions: [
+          {
+            gateId: 'gate.01.identity' as NonEmpty,
+            gateOrder: 1,
+            plane: 'control',
+            outcome: 'pass',
+            reason: 'identity verified' as NonEmpty,
+            denialCode: null,
+            policyRuleId: null,
+            evaluatedAt: '2026-05-22T12:34:56.700Z' as IsoTimestamp,
+            durationMs: 1,
+            metadata: {},
+          },
+          denyingDecision,
+        ],
+      }),
+      {
+        outputCollector: collector,
+        payloadsRoot,
+        agentOctLevel: 'OCT-OPEN',
+        mailboxId: 'mbx-test' as NonEmpty,
+        targetDataClass: 'internal' as DataClass,
+      }
+    );
+    expect(result.kind).toBe('denial_receipt');
+    expect(state.writes).toHaveLength(1);
+
+    const receiptPath = path.join(payloadsRoot, RUN_ID, `${ACTION_ID}.denial-receipt.json`);
+    expect(result.payloadPath).toBe(receiptPath);
+
+    const body = JSON.parse(await fs.readFile(receiptPath, 'utf-8'));
+    expect(body.kind).toBe('nxs_denial_receipt');
+    expect(body.finalOutcome).toBe(FINAL_OUTCOME.DENIED_POLICY);
+    expect(body.decidingGateId).toBe('gate.04.policy');
+    expect(body.decidingGateOutcome).toBe('deny');
+    expect(body.denialCode).toBe('POLICY_DENIED_VERB');
+    expect(body.denialReason).toBe('policy denied: forbidden verb DROP on warehouse');
+    expect(body.policyRuleId).toBe('warehouse.forbidden_verbs.v1');
+    expect(body.evidenceRecordId).toBe(RECORD_ID);
+
+    // Mailbox reference carries finalOutcome + resultRef pointing at the
+    // synthesized denial receipt file.
+    const ref = state.writes[0]!;
+    expect(ref.finalOutcome).toBe(FINAL_OUTCOME.DENIED_POLICY);
+    expect(ref.resultRef).toBe(`file://${receiptPath}`);
+    expect(ref.sourceType).toBe('nxs_execution_result');
+  });
+
+  it('synthesizes a denial_receipt even when no deciding gate is present (non-enforcing skip)', async () => {
+    // In observe/advisory mode, Gates 05-06 are skipped and the
+    // evidence's gateDecisions may carry only pass/allow entries.
+    // Bridge must still synthesize a receipt that carries finalOutcome
+    // alone — compile gets at least the high-level disposition.
+    const { collector, state } = fakeCollector();
+    const result = await bridgeNxsResultToMailbox(
+      makeEvidence({
+        executionNull: true,
+        finalOutcomeOverride: FINAL_OUTCOME.EXPIRED,
+        gateDecisions: [],
+      }),
+      {
+        outputCollector: collector,
+        payloadsRoot,
+        agentOctLevel: 'OCT-OPEN',
+        mailboxId: 'mbx-test' as NonEmpty,
+        targetDataClass: 'internal' as DataClass,
+      }
+    );
+    expect(result.kind).toBe('denial_receipt');
+    expect(state.writes).toHaveLength(1);
+
+    const receiptPath = path.join(payloadsRoot, RUN_ID, `${ACTION_ID}.denial-receipt.json`);
+    const body = JSON.parse(await fs.readFile(receiptPath, 'utf-8'));
+    expect(body.finalOutcome).toBe(FINAL_OUTCOME.EXPIRED);
+    expect(body.decidingGateId).toBeNull();
+    expect(body.decidingGateOutcome).toBeNull();
+    expect(body.denialCode).toBeNull();
+    expect(body.denialReason).toBe(FINAL_OUTCOME.EXPIRED);
   });
 
   it('honors a taskIdOverride so nxs_dispatch nodes are addressable by nodeId', async () => {

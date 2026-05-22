@@ -897,6 +897,12 @@ const program = createCli({
             governanceDenied: false,
           };
         }
+        // Bridge now always produces a BridgeResult — even when Gate 06
+        // never ran (denial pre-execution or observe/advisory mode), the
+        // bridge synthesizes a denial receipt so NXS's decision lands in
+        // the mailbox. HL#4 (orch never kills) + HL#8 (mailbox is the
+        // only seam) — the prior `bridged === null` branch silently lost
+        // governance denials; that was NXS-DISPATCH-BRIDGE-RETURNS-NULL.
         const bridged = await bridgeNxsResultToMailbox(nxsResult.evidenceRecord, {
           outputCollector: br.externals.outputCollector,
           payloadsRoot: path.join(DEFAULT_TRAIL_DIR, 'payloads'),
@@ -906,18 +912,6 @@ const program = createCli({
           mailboxId: nxsNodeMailboxId,
           targetDataClass,
         });
-        if (bridged === null) {
-          return {
-            success: false,
-            completionMetadata: {
-              evidenceRecordId: nxsResult.evidenceRecord.recordId,
-              finalOutcome,
-            },
-            failureReason:
-              'nxs_dispatch_bridge_returned_null: evidence had no executionResult' as NonEmpty,
-            governanceDenied: false,
-          };
-        }
         console.log(
           '[orch-wire] nxs_dispatch mailbox item:',
           bridged.mailboxItem.mailboxItemId,
@@ -1151,20 +1145,48 @@ const program = createCli({
             },
           };
           // Default-secure Nexus architecture: LLMs NEVER receive tool
-          // descriptors. Orch is the deterministic authority that decides
-          // what NXS work fires; the LLM is a transformer/summarizer over
-          // mailbox contents only. Allowing the model to emit tool_use
-          // blocks (the SDK-default round-trip pattern) is a governance
-          // bypass — the model could request tools it shouldn't, or call
-          // write tools for a read-only prompt. Future plugin slot:
-          // `on-prem-llm-planner-v0` planner type can expose tools at
-          // planner-time, never at NVG-time. See memory:
+          // descriptors for TARGETED-SYSTEM tools. Orch is the
+          // deterministic authority that decides what NXS work fires;
+          // the LLM is a transformer/summarizer over mailbox contents
+          // only. Allowing the model to emit tool_use blocks (the
+          // SDK-default round-trip pattern) against connectors that
+          // reach a targeted system would be a governance bypass — the
+          // model could request tools it shouldn't, or call write tools
+          // for a read-only prompt. NXS is the sole action authority
+          // (HL#5); any tool that hits a targeted system goes through
+          // NXS Gate 01–07, never through the model's tool-use channel.
+          //
+          // What the LLM CAN do at the provider side: frontier and
+          // helper LLMs already own their own tools (web search, code
+          // execution, image inputs, etc.) — those are the provider's
+          // business, not Nexus's. Nexus governs what leaves the
+          // firewall and what comes back; what the external LLM does
+          // with its own toolkit on data we hand it is not Nexus's
+          // governance surface.
+          //
+          // Future helper-LLM adapters (langraph / open-claw / other
+          // claw-shaped helpers / MCP-routed sub-LLMs) MAY ship tool
+          // descriptors for THOSE helper tools when permissions and
+          // configs allow it. The hard rule that survives: any tool a
+          // helper LLM is offered MUST NOT be a direct path to a
+          // targeted-system call — those still route through NXS. The
+          // helper LLM is a planner/transformer over its own tools;
+          // it is not a way to bypass NXS.
+          //
+          // Today this site forces `toolDescriptors = []` because no
+          // helper-LLM adapter has landed yet. When one lands, the
+          // adapter will own its own descriptor surface (gated by the
+          // helper's permission config), and this site will pass the
+          // helper-side descriptors through while still stripping any
+          // descriptor whose target lives in a targeted-system
+          // connector. See memory:
           //   feedback_llm_governance_model.md
           //   feedback_nexus_architecture_layers.md
-          // The agent's reachable tool surface is still used by orch for
-          // binding-axis classification — that's why we still compute
-          // `boundConnectorClasses` below. We just don't ship the
-          // descriptors to the LLM.
+          //
+          // The agent's reachable tool surface is still used by orch
+          // for binding-axis classification — that's why we still
+          // compute `boundConnectorClasses` below. We just don't ship
+          // targeted-system descriptors to the LLM.
           const agentReachableTools = buildToolDescriptorsForAgent(agent, connectorLookup);
           const toolDescriptors: typeof agentReachableTools = [];
           const toolSchemaDigest: Sha256Hex | null = null;

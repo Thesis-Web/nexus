@@ -33,9 +33,25 @@
  *   slot) so the orchestrator's round-trip loop can feed every tool call
  *   back to the LLM uniformly: tool_result content is always the file bytes.
  *
- * Returns null only when:
- *   - executionResult is null on the evidence (truly nothing happened — no
- *     receipt to synthesize, the audit record itself is the trail).
+ * Denial-receipt branch (Gate 06 never ran):
+ *   When executionResult IS null on the evidence — Gate 06 was skipped
+ *   because the pipeline denied at Gates 01–05 (auth / RBAC / classification
+ *   / delegation / policy / approval) or ran in observe/advisory mode —
+ *   the bridge synthesizes a denial receipt from the evidence's
+ *   `gateDecisions[]` + `finalOutcome` and writes
+ *   runs/payloads/<runId>/<actionId>.denial-receipt.json. NXS's decision
+ *   still lands in the per-actor mailbox so compile can include the denial
+ *   reason in the run's final response.
+ *
+ *   Hard Law #4 (orch never kills) + #8 (mailbox is the only seam) require
+ *   this: when NXS denies, the decision is governance output, not silent
+ *   loss. Returning null here would force the orchestrator to fail-close
+ *   the node with no surface, which is what
+ *   `NXS-DISPATCH-BRIDGE-RETURNS-NULL` actually was — the bridge swallowing
+ *   the denial.
+ *
+ * Never returns null. Every legitimate evidence record produces a
+ * BridgeResult; unexpected I/O errors propagate as exceptions.
  */
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -110,58 +126,86 @@ export interface BridgeDeps {
 export interface BridgeResult {
   readonly mailboxItem: MailboxItem;
   /** Absolute path to the file the mailbox item references — either the
-   * connector-emitted payload OR a synthesized receipt JSON. Round-trip
-   * callers read this to build the next NVG turn's tool_result message. */
+   * connector-emitted payload, a synthesized receipt JSON, or a synthesized
+   * denial receipt JSON. Round-trip callers read this to build the next
+   * NVG turn's tool_result message (when applicable) and compile reads
+   * the same file for assembly. */
   readonly payloadPath: string;
   readonly resultDigest: Sha256Hex;
-  /** Discriminates data vs receipt so callers can log + classify accordingly.
-   * Both flow through the same OutputCollector entry point. */
-  readonly kind: 'data' | 'receipt';
+  /**
+   * Discriminates the three branches so callers can log + classify
+   * accordingly. All three flow through the same OutputCollector entry
+   * point.
+   *
+   *   'data'            connector wrote a payload file; we hashed it.
+   *   'receipt'         connector executed (success or failure) but no
+   *                     payload file — receipt synthesized from
+   *                     `executionResult`.
+   *   'denial_receipt'  Gate 06 never ran (pre-execution denial or
+   *                     non-enforcing mode); receipt synthesized from
+   *                     `gateDecisions[]` + `finalOutcome` so the
+   *                     denial still lands in the mailbox.
+   */
+  readonly kind: 'data' | 'receipt' | 'denial_receipt';
 }
 
 /**
  * Build an NxsOutputReference from an EvidenceRecord + the on-disk payload
- * file the connector wrote (or a synthesized receipt when no payload exists),
- * then write a mailbox item via the composition-root OutputCollector.
+ * file the connector wrote (or a synthesized receipt when no payload exists,
+ * or a synthesized denial receipt when Gate 06 never ran), then write a
+ * mailbox item via the composition-root OutputCollector.
  *
- * Returns null only when evidence.executionResult is itself null — there is
- * nothing to receipt and the audit record holds the trail directly.
+ * Never returns null. NXS's decision — execute, error, deny — always lands
+ * in the mailbox so HL#4 (orch never kills) + HL#8 (mailbox is the only
+ * seam) hold. Unexpected I/O errors propagate as exceptions; the caller's
+ * try/catch surfaces them to the express error handler.
  */
 export async function bridgeNxsResultToMailbox(
   evidence: EvidenceRecord,
   deps: BridgeDeps
-): Promise<BridgeResult | null> {
+): Promise<BridgeResult> {
   const exec = evidence.executionResult;
-  if (exec === null) return null;
-
-  const payloadPath = path.join(deps.payloadsRoot, evidence.runId, `${evidence.actionId}.json`);
-
-  let bytes: Buffer | null = null;
-  if (exec.status === 'success') {
-    try {
-      bytes = await fs.readFile(payloadPath);
-    } catch (err: unknown) {
-      const code = (err as { code?: string } | null)?.code;
-      // ENOENT is the expected miss for write-only successes — fall through
-      // to receipt synthesis. Any other error is a real I/O problem we must
-      // surface so operators see it (e.g. permissions, ENOTDIR, EIO).
-      if (code !== 'ENOENT') throw err;
-    }
-  }
 
   let resultPath: string;
   let resultDigest: Sha256Hex;
-  let kind: 'data' | 'receipt';
+  let kind: 'data' | 'receipt' | 'denial_receipt';
 
-  if (bytes !== null) {
-    resultPath = payloadPath;
-    resultDigest = createHash('sha256').update(bytes).digest('hex') as Sha256Hex;
-    kind = 'data';
+  if (exec === null) {
+    // Gate 06 never ran. NXS still has a decision (in gateDecisions[]
+    // + finalOutcome) — synthesize a denial receipt so the mailbox
+    // carries it. This is what fixes NXS-DISPATCH-BRIDGE-RETURNS-NULL:
+    // the bridge no longer silently drops a governance denial.
+    const denial = await synthesizeDenialReceipt(evidence, deps.payloadsRoot);
+    resultPath = denial.receiptPath;
+    resultDigest = denial.digest;
+    kind = 'denial_receipt';
   } else {
-    const receipt = await synthesizeReceipt(evidence, deps.payloadsRoot);
-    resultPath = receipt.receiptPath;
-    resultDigest = receipt.digest;
-    kind = 'receipt';
+    const payloadPath = path.join(deps.payloadsRoot, evidence.runId, `${evidence.actionId}.json`);
+
+    let bytes: Buffer | null = null;
+    if (exec.status === 'success') {
+      try {
+        bytes = await fs.readFile(payloadPath);
+      } catch (err: unknown) {
+        const code = (err as { code?: string } | null)?.code;
+        // ENOENT is the expected miss for write-only successes — fall
+        // through to receipt synthesis. Any other error is a real I/O
+        // problem we must surface so operators see it (permissions,
+        // ENOTDIR, EIO).
+        if (code !== 'ENOENT') throw err;
+      }
+    }
+
+    if (bytes !== null) {
+      resultPath = payloadPath;
+      resultDigest = createHash('sha256').update(bytes).digest('hex') as Sha256Hex;
+      kind = 'data';
+    } else {
+      const receipt = await synthesizeReceipt(evidence, deps.payloadsRoot);
+      resultPath = receipt.receiptPath;
+      resultDigest = receipt.digest;
+      kind = 'receipt';
+    }
   }
 
   const grantId = (() => {
@@ -251,6 +295,54 @@ async function synthesizeReceipt(
   };
 
   const body = JSON.stringify(receipt, null, 2);
+  await fs.writeFile(receiptPath, body, { encoding: 'utf-8', mode: 0o600 });
+  const digest = createHash('sha256').update(body).digest('hex') as Sha256Hex;
+  return { receiptPath, digest };
+}
+
+/**
+ * Synthesize a denial receipt for the case where Gate 06 never ran (the
+ * pipeline denied at Gates 01–05 or operated in observe/advisory mode).
+ *
+ * Inputs the evidence record's `finalOutcome` + the first non-allow,
+ * non-pass `gateDecisions[]` entry to surface the deciding gate, its
+ * `denialCode`, `reason`, and `policyRuleId`. Compile reads this file
+ * during assembly so the run's final response can explain WHY NXS
+ * refused the action, rather than silently dropping the node.
+ *
+ * The file is written as a sibling of the data + (success-but-no-data)
+ * receipt files, with the `.denial-receipt.json` suffix so a directory
+ * listing distinguishes all three at a glance.
+ */
+async function synthesizeDenialReceipt(
+  evidence: EvidenceRecord,
+  payloadsRoot: string
+): Promise<SynthesizedReceipt> {
+  const dir = path.join(payloadsRoot, evidence.runId);
+  await fs.mkdir(dir, { recursive: true });
+  const receiptPath = path.join(dir, `${evidence.actionId}.denial-receipt.json`);
+
+  // Find the deciding gate — the first GateDecision whose outcome is
+  // neither 'pass' nor 'allow'. Covers 'deny' and 'error' explicitly and
+  // any future outcome that is not a positive admission.
+  const decidingGate =
+    evidence.gateDecisions.find(d => d.outcome !== 'pass' && d.outcome !== 'allow') ?? null;
+
+  const denialReceipt = {
+    kind: 'nxs_denial_receipt',
+    actionId: evidence.actionId,
+    runId: evidence.runId,
+    evidenceRecordId: evidence.recordId,
+    finalOutcome: evidence.finalOutcome,
+    decidingGateId: decidingGate?.gateId ?? null,
+    decidingGateOutcome: decidingGate?.outcome ?? null,
+    decidedAt: decidingGate?.evaluatedAt ?? null,
+    denialCode: decidingGate?.denialCode ?? null,
+    denialReason: decidingGate?.reason ?? evidence.finalOutcome,
+    policyRuleId: decidingGate?.policyRuleId ?? null,
+  };
+
+  const body = JSON.stringify(denialReceipt, null, 2);
   await fs.writeFile(receiptPath, body, { encoding: 'utf-8', mode: 0o600 });
   const digest = createHash('sha256').update(body).digest('hex') as Sha256Hex;
   return { receiptPath, digest };
