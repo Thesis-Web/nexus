@@ -5,14 +5,26 @@
  * does its thing, results bundle into a multi-item FinalResponseArtifact
  * (HL #11 + F4.12 multi-item pass-through).
  *
- * Owner directive 2026-05-21: no `it.skip`. Catalog slots fail red with
- * structured detail; the multi-agent dispatch path itself is unproven
- * end-to-end (no real multi-node E2E has landed yet).
+ * Owner directive 2026-05-21: no `it.skip`. As of 2026-05-22, catalog
+ * scenarios in this file call for chat-style agents (analyst-bot,
+ * summary-bot, finance-bot, ops-bot, etc.) that do NOT exist as seeds —
+ * the bootstrap (scripts/nexus-bootstrap.ts) seeds only one chat agent
+ * (default, allowedSystems=['stub']) plus NXS read agents
+ * (nexus-sales-agent, nexus-warehouse-agent). The session prompt
+ * 2026-05-22 explicitly forbids inventing new agent seeds (per §11
+ * "any other §3.B surface"), so every fan-out body that names a
+ * not-yet-seeded chat agent stays surface-blocked until owner ratifies
+ * the agent seed set.
+ *
+ * Note: even if those chat-agent seeds existed, the
+ * CHAT-AGENT-LADDER-INTERSECTION-EMPTY blocker (surfaced by E2E-02..10
+ * 2026-05-22) would still apply unless the new agents are seeded with
+ * an allowedSystems set that intersects with the ladder personas'.
  */
 import { describe, it } from 'vitest';
 import { AcceptanceWallFailure } from './_acceptance/failure.js';
 
-const BLOCKER = 'E2E-MULTI-NO-CONTRACT-CATALOG';
+const BLOCKER = 'MULTI-AGENT-CHAT-FANOUT-AGENT-SEEDS';
 
 function multiNoContractBlocked(
   testId: string,
@@ -21,13 +33,13 @@ function multiNoContractBlocked(
 ): never {
   throw new AcceptanceWallFailure({
     testId,
-    failureClass: 'UNIMPLEMENTED_TEST_BODY',
-    reason: `Multi-agent no-contract DAG dispatch is unproven via HTTP E2E; needs harness work + sample agents. Scenario: ${scenario}.`,
+    failureClass: 'UNIMPLEMENTED_SURFACE',
+    reason: `Multi-agent chat fan-out (${scenario}) names chat-style agents that don't exist in the seed (only the default chat agent + NXS read agents are seeded). Building new chat-agent seeds is out of scope per the 2026-05-22 session §11.`,
     blockedBy: BLOCKER,
-    owner: 'builder',
+    owner: 'owner',
     lawPins,
     nextRecommendedAction:
-      'Build harness helper that posts a 2-node subTasks DAG with two chat agents, then assert: per-agent mailbox isolation, per-agent NVG event, compile multi-item bundle, no contract template invocation.',
+      "Owner ratification: seed the catalog's named fan-out agents (analyst-bot, summary-bot, finance-bot, ops-bot, etc.) with allowedSystems that intersect ladder personas (NOT 'stub'), THEN body each scenario with a 2-node subTasks DAG. Both prerequisites must land first.",
   });
 }
 

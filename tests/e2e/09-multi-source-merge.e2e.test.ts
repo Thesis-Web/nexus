@@ -5,25 +5,29 @@
  * report. Exercises mailbox-per-actor (HL #8) + per-connector data
  * classification (F4.11).
  *
- * Owner directive 2026-05-21: no `it.skip`. Every multi-source scenario
- * needs two NXS pulls before merge — blocked on the NXS dispatch
- * bridge bug (see E2E-23).
+ * Owner directive 2026-05-21: no `it.skip`. Bridge fix landed
+ * 2026-05-22 (43e5ed3) so both upstream NXS pulls now run. The
+ * remaining blocker on every merge scenario is the F4.12 multi-item
+ * compile pass-through (HANDOFF §F priority #6, structurally blocked
+ * on §C.3 test-migration ratification by audit/arch) — compile today
+ * proves single-item pass-through (E2E-117) but the multi-source
+ * merge requires assembling two mailbox items into one artifact.
  */
 import { describe, it } from 'vitest';
 import { AcceptanceWallFailure } from './_acceptance/failure.js';
 
-const BRIDGE_BLOCKER = 'NXS-DISPATCH-BRIDGE-RETURNS-NULL';
+const F412_BLOCKER = 'F4.12-COMPILE-MULTI-ITEM-PASSTHROUGH';
 
 function mergeBlocked(testId: string, scenario: string, lawPins: ReadonlyArray<string>): never {
   throw new AcceptanceWallFailure({
     testId,
-    failureClass: 'PRODUCT_RUNTIME',
-    reason: `Multi-source merge ${scenario} requires two successful NXS pulls; bridge currently returns null (see E2E-23).`,
-    blockedBy: BRIDGE_BLOCKER,
+    failureClass: 'UNIMPLEMENTED_SURFACE',
+    reason: `Multi-source merge ${scenario} now runs both upstream NXS pulls (bridge fix 43e5ed3 + per-actor mailbox isolation proven by E2E-116). The remaining gap is the compile-side multi-item assembly path (F4.12), which today proves single-item pass-through (E2E-117) but lacks the multi-mailbox merge surface this scenario requires.`,
+    blockedBy: F412_BLOCKER,
     owner: 'arch',
     lawPins,
     nextRecommendedAction:
-      'Fix bridge. Then build merge harness helper: post a DAG with two NXS pull nodes feeding a compile node; assert per-actor mailbox isolation and merge correctness.',
+      'Owner-ratification path forward is §C.3 test-migration ratification by audit/arch (per HANDOFF-NEXT-SESSION.md §F priority #6); once that lands, compile assembles a deterministic merge artifact and these scenarios can be bodied as 2-node DAGs (pattern: E2E-116 multi-actor allocation + merged compile output).',
   });
 }
 

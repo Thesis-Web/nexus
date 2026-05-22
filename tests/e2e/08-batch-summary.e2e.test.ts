@@ -4,28 +4,32 @@
  * Category 8: batch file pull + LLM summary. NXS pulls a batch, LLM
  * summarizes, compile assembles or passes through.
  *
- * Owner directive 2026-05-21: no `it.skip`. Every batch scenario starts
- * with an NXS pull — they all transitively block on the NXS dispatch
- * bridge bug (see E2E-23 failure) until the bridge returns a real
- * executionResult.
+ * Owner directive 2026-05-21: no `it.skip`. Bridge fix landed
+ * 2026-05-22 (43e5ed3) so the connector-side runtime now propagates
+ * executionResult; the remaining gap on this category is the LLM
+ * summarize half — needs a chat-agent intersection that lets ladder
+ * personas delegate (currently blocked by
+ * CHAT-AGENT-LADDER-INTERSECTION-EMPTY surfaced by E2E-02..10 on
+ * 2026-05-22 — default chat agent's allowedSystems=['stub'] disjoint
+ * from every ladder persona's seeded systems).
  */
 import { describe, it } from 'vitest';
 import { AcceptanceWallFailure } from './_acceptance/failure.js';
 
-const BRIDGE_BLOCKER = 'NXS-DISPATCH-BRIDGE-RETURNS-NULL';
+const BLOCKER_CHAT_AGENT = 'CHAT-AGENT-LADDER-INTERSECTION-EMPTY';
 
 function batchBlocked(testId: string, scenario: string, lawPins: ReadonlyArray<string>): never {
   throw new AcceptanceWallFailure({
     testId,
-    failureClass: 'PRODUCT_RUNTIME',
-    reason: `Batch ${scenario} cannot run until the NXS dispatch bridge returns a real executionResult (see E2E-23). nxs_action emits finalOutcome=error_dispatch, then bridge returns null.`,
-    blockedBy: BRIDGE_BLOCKER,
-    owner: 'arch',
+    failureClass: 'UNIMPLEMENTED_SURFACE',
+    reason: `Batch ${scenario} requires an NXS bulk pull (bridge fix 43e5ed3 unblocks the pull) followed by an LLM summarize step; the summarize step needs a chat-tier delegation that no ladder persona currently mints because the default chat agent's allowedSystems=['stub'] is disjoint from every ladder persona's seeded systems.`,
+    blockedBy: BLOCKER_CHAT_AGENT,
+    owner: 'owner',
     lawPins,
     suspectedRootCause:
-      'scripts/nexus-main.ts NXS dispatch bridge — Gates 01-07 run but executionResult is not propagated back; bridge sees null and emits nxs_dispatch_bridge_returned_null.',
+      'Seed↔catalog drift surfaced by E2E-02..10 (2026-05-22): default chat agent allowedSystems=[stub] vs ladder personas allowedSystems disjoint set. HL#15 intersection on target_systems empty → delegation mint fails.',
     nextRecommendedAction:
-      'Fix the bridge first. Once E2E-23 passes, build batch-pull harness helper, then write each scenario body.',
+      "Owner ratification: EITHER chat-agent seed re-declares allowedSystems=[] (chat truly touches no system; delegation engine must treat empty-on-agent-side as 'no system gate'), OR the planner skips target_systems intersection when entryMode='free_chat'. Either path unblocks ALL batch summarize scenarios.",
   });
 }
 
