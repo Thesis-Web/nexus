@@ -94,6 +94,25 @@ fixture-adapter parrot survived four sessions because nobody re-grep'd.
 The API-key parrot lasted half a turn because I assumed `file:X`
 secretRef meant a literal file at `keys/X` without reading parseKeyName.
 
+**Second escalation (post owner review of the post-escalation rationale)**:
+my second correction also added a hyperbolic cost/CI framing — "live
+OpenAI calls would run on every pnpm test:e2e once a frontier body
+lands, that's a cost-budget ratification." Owner pushback: "frontier
+is only part of everything, and not needed for EVERY RUN." Correct.
+Only frontier-bodied tests would call OpenAI. Per-test cost on a short
+gpt-4o prompt is fractions of a cent. There is no automated CI for
+e2e in this repo (pnpm test:e2e is local). The "deterministic CI"
+framing was a test-assertion concern (don't assert on completion
+content), not a blocker on "every run."
+
+Pattern: each time I "corrected" the previous wrong claim, I padded with
+a new wrong claim. Three wrong claims in one turn, each killed by owner
+review. The lesson reinforces F-19's rule but extends it: not only
+"verify named artifacts" but also "do not pad rationale with
+hypothetical concerns (cost, CI, determinism) that you have not
+measured." Rationales must be either verifiable from the repo or
+explicitly flagged as `unverified: needs-runtime-check`.
+
 **Evidence (verified 2026-05-22 against HEAD `7048e7a`)**:
 
 - `grep -rn "frontier_fixture\|frontier-fixture"` across

@@ -45,12 +45,12 @@ describe('E2E Category 6 — multi-agent MIXED on-prem + frontier', () => {
       testId: 'E2E-55',
       failureClass: 'UNIMPLEMENTED_SURFACE',
       reason:
-        "Two real blockers, verified against repo state 2026-05-22 at HEAD ea600a0 (frontier-key claim from prior commit was wrong — OPENAI_API_KEY is in keys/secrets.json under VaultSecretSource and the openai-gpt endpoint is enabled=true): (1) On-prem summarize leg: needs an agent declaring synthesize:content (CAP_SUMMARIZE). Only the default chat agent carries it (scripts/nexus-bootstrap.ts:1361-1362 allowedCapabilities=[read:record:single, search:data, synthesize:content], allowedSystems=['stub']). F-15 blocks sr_manager (allowedSystems=[sales-finance, warehouse, gmail]) from minting against it on the target_systems dimension. (2) Multi-stage NXS→LLM→LLM DAG: every current passing E2E uses subTasks `kind: nxs` only; whether `kind: nvg` / `kind: chat` flow through the planner pipeline for a multi-stage chained plan is not exercised by any green test. Cost note: a live OpenAI frontier-polish call WILL run on `pnpm test:e2e` once the body lands, since the key resolves — that's non-deterministic per-run and costs money on every CI run unless gated.",
+        "Verified at HEAD 343ed2f: the nxs-pull leg works (E2E-37 proves manager 2x NXS; sr_manager has the same systems). The on-prem summarize and frontier-polish legs need an agent declaring synthesize:content (CAP_SUMMARIZE) — only the default chat agent carries it (scripts/nexus-bootstrap.ts:1361-1362, allowedSystems=['stub']). Whether F-15's chat-agent intersection-empty applies to a kind=nvg subTask in a governed_only workspace (vs a free_chat workspace) is unverified — needs runtime confirmation. Also unverified: whether the orch planner supports subTasks beyond `kind: nxs` in a multi-stage chain (every green E2E uses kind=nxs only). OpenAI endpoint IS wired and resolvable via vault, so the frontier-polish leg itself is not blocked on credentials.",
       blockedBy: 'CHAT-AGENT-LADDER-INTERSECTION-EMPTY',
-      owner: 'owner',
+      owner: 'arch',
       lawPins: ['HL#5', 'HL#6', 'HL#11'],
       nextRecommendedAction:
-        'Resolve F-15 for the on-prem summarize leg, confirm subTask kinds beyond `nxs` are pipeline-supported, AND owner-ratify whether live OpenAI frontier calls are acceptable in `pnpm test:e2e` (deterministic CI question — separate from the wired-or-not question). Cheaper alternative: amend the catalog row to an on-prem-only 3-stage shape (nxs-pull → onprem-summarize-A → onprem-format-B).',
+        'Confirm (a) whether F-15 applies to kind=nvg / kind=chat subTasks in governed_only workspaces, and (b) whether the orch pipeline supports a 3-stage NXS→summarize→polish subTask chain end-to-end. Both are read-the-runtime questions, not owner-ratification. After verification, body or surface-block based on what the runtime actually does.',
     });
   });
   it('E2E-56-mixed-with-output-contract: vp → board doc with frontier research', () => {
