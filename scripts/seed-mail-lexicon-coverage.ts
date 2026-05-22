@@ -2,20 +2,33 @@
 /**
  * scripts/seed-mail-lexicon-coverage.ts
  *
- * One-shot script that adds comprehensive email / mail-target lexicon
- * coverage to the planner-db-lexicon JSONL fixtures, then re-signs all
- * 8 fixtures with the control-plane key.
+ * STATUS (2026-05-22, drift audit): test-fixture seeding tool only.
  *
- * Why this exists in a script (not directly through the admin SigningCouncil
- * route): the lexicon-mutation SigningCouncil flow requires TWO distinct
- * admin keypairs to land each individual mutation. The default install ships
- * with ONE admin keypair under keys/admins/. Owner explicitly approved baking
- * email-domain coverage into the fixtures while the second-admin-keypair
- * onboarding flow lands separately. Every record this script adds is something
- * the SigningCouncil flow could also produce — see admin-writer.ts §lexicon
- * routes; the script just bypasses the 2-of-2 threshold for the initial bake.
+ *   This script writes to fixtures/planner/db-lexicon/*.v1.jsonl and re-
+ *   signs them with the control-plane key (default keys/dev.keypair.json).
+ *   It does NOT exercise the admin SigningCouncil `lexicon_mutation`
+ *   flow, and it is NOT proof that admin lexicon mutation through the
+ *   dashboard works for these records.
  *
- * Records added cover the owner-described scenarios:
+ *   The admin SigningCouncil `lexicon_mutation` operation targets a
+ *   different fixture store entirely (fixtures/lexicon/lexicon_*.jsonl)
+ *   per packages/core/src/lexicon/lexicon-mutation-executor.ts:33–49.
+ *   The planner-db-lexicon store has no admin-mutation surface today;
+ *   whether it should is an open owner ruling — see
+ *   docs/acceptance-wall/MAILPIT-INTEGRATION-DRIFT-AUDIT-2026-05-22.md
+ *   §"OWNER RULING REQUIRED" #2.
+ *
+ *   Until that ruling lands, this script must be treated as
+ *   developer-only fixture seeding. It must not be cited as evidence
+ *   that the admin lexicon mutation path works for the email scenarios
+ *   below, and it must not be run in production environments.
+ *
+ *   Prior session's claim that an owner "explicitly approved" this
+ *   bake-in is documented in the audit referenced above and is
+ *   currently disclaimed pending ruling.
+ *
+ * Owner-described scenarios the records cover (planner-db-lexicon
+ * resolver / orchestrator routing only — not admin-path proof):
  *   - "check my email for new messages"           → mail.read_inbox_recent
  *   - "search inbox for X"                         → mail.search_inbox
  *   - "send/compose/draft an email"                → mail.compose_send
@@ -26,18 +39,18 @@
  *     (NXS read → NVG summarize)
  *
  * Pre-existing intent records, target catalog, workflow templates, and
- * lexical terms are left untouched. Re-running the script is idempotent at
- * the record level: each addition is keyed by (rawTerm, canonicalTerm) for
- * lexical terms and (intentId / templateId / nodeKey / etc.) for the others.
- * If a record with the same key already exists, the script skips it.
+ * lexical terms are left untouched. Re-running the script is idempotent
+ * at the record level: each addition is keyed by (rawTerm, canonicalTerm)
+ * for lexical terms and (intentId / templateId / nodeKey / etc.) for the
+ * others. If a record with the same key already exists, the script
+ * skips it.
  *
- * Run from repo root:
+ * Run from repo root (developer environments only):
  *   pnpm exec tsx scripts/seed-mail-lexicon-coverage.ts
  *
- * Then re-sign:
- *   pnpm exec tsx scripts/sign-planner-lexicon-fixtures.ts
- *
- * (This script invokes the signing step itself at the end.)
+ * The script invokes scripts/sign-planner-lexicon-fixtures.ts at the
+ * end to re-sign the 8 planner-db-lexicon fixtures with the control-
+ * plane key.
  */
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
