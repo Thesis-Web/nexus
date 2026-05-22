@@ -68,6 +68,32 @@ this session) as if it names a known production artifact under build.
 It does not. Owner called this out mid-session against the E2E-55
 rationale I wrote earlier in the same turn.
 
+**Severity escalation (post owner review of F-19 itself)**: my first
+correction of the E2E-55 rationale was ALSO wrong — I claimed
+"FRONTIER-API-KEYS-ABSENT" because `keys/` did not contain a literal
+file named `OPENAI_API_KEY`. I had stopped at one level of verification.
+The actual resolver is `VaultSecretSource` (packages/vanguard/src/
+transport/secrets/vault-secret-source.ts:114-118): `parseKeyName()`
+strips the `file:` prefix and uses the remaining string as the lookup
+key in `keys/secrets.json` (an AES-256-GCM encrypted map decrypted with
+`keys/vault.key`). The vault map contains `OPENAI_API_KEY:
+vault:v1:...` — encrypted, present, resolvable. `openai-gpt` endpoint
+is enabled=true. **OpenAI is wired and ready.** Only ANTHROPIC_API_KEY
+is absent (and anthropic-claude is enabled=false anyway).
+
+Corrected in HEAD &lt;follow-up&gt;: E2E-55's rationale now states only the
+two real blockers (F-15 on the on-prem summarize leg + multi-stage
+NXS→LLM→LLM DAG kind uncertainty) plus a cost-note that live OpenAI
+calls WILL run on `pnpm test:e2e` once the body lands, since the key
+resolves — a separate deterministic-CI / cost-budget owner ratification
+question, NOT a "key absent" blocker.
+
+**Root cause for F-19 + escalation**: both errors were the same shape —
+describing a blocker confidently without tracing it to runtime. The
+fixture-adapter parrot survived four sessions because nobody re-grep'd.
+The API-key parrot lasted half a turn because I assumed `file:X`
+secretRef meant a literal file at `keys/X` without reading parseKeyName.
+
 **Evidence (verified 2026-05-22 against HEAD `7048e7a`)**:
 
 - `grep -rn "frontier_fixture\|frontier-fixture"` across
