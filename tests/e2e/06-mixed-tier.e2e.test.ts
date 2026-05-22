@@ -45,12 +45,12 @@ describe('E2E Category 6 — multi-agent MIXED on-prem + frontier', () => {
       testId: 'E2E-55',
       failureClass: 'EXTERNAL_DEPENDENCY',
       reason:
-        "Post bridge-fix (43e5ed3), the nxs-pull leg works (proven by E2E-21..27 + E2E-37). The blocker now is the frontier-polish leg, which requires the frontier-fixture adapter for deterministic CI. Additionally, the on-prem summarize → frontier polish chain requires F-15 resolution so the chat agent's intersection succeeds for sr_manager (currently allowedSystems=['sales-finance', 'warehouse', 'gmail'] vs chat agent ['stub'] — empty intersection).",
-      blockedBy: 'FRONTIER-LIVE-OR-FIXTURE-V1',
-      owner: 'arch',
+        'Three compounding blockers, verified against repo state 2026-05-22: (1) Frontier-polish leg: config/nvg/endpoints.v1.yaml declares real frontier endpoints (openai-gpt enabled=true, anthropic-claude enabled=false) and adapters exist (openai-chat-v1, anthropic-messages-v1 in packages/), but their `secretRef: file:OPENAI_API_KEY` / `file:ANTHROPIC_API_KEY` point at files that DO NOT exist in keys/ today (only workspace-dev-admin.apikey + admin keypair are present). A live frontier call cannot resolve secrets, so the leg cannot execute. (2) On-prem summarize leg: needs an agent with synthesize:content (CAP_SUMMARIZE). Only the default chat agent declares it in the seed; F-15 blocks sr_manager (allowedSystems=[sales-finance, warehouse, gmail]) from minting against it (chat agent allowedSystems=[stub]). (3) Multi-stage NXS→LLM→LLM DAG: needs subTaskEdges chaining and subTask `kind: nvg` / `kind: chat`; only `kind: nxs` is exercised in any current passing test. The `frontier-fixture adapter` framing in older repair-mode docs is a PROPOSED resolution, not in-flight work — no fixture adapter exists in packages/.',
+      blockedBy: 'FRONTIER-API-KEYS-ABSENT',
+      owner: 'owner',
       lawPins: ['HL#5', 'HL#6', 'HL#11'],
       nextRecommendedAction:
-        'Build frontier-fixture adapter (Category 2 blocker) AND resolve F-15 chat-agent intersection. THEN body this slot as a 3-stage subTasks DAG: NXS pull (sales-finance) → chat summarize (default chat agent) → frontier polish (fixture endpoint).',
+        'Owner ratification + setup: provision OPENAI_API_KEY (or ANTHROPIC_API_KEY) at keys/<NAME>, AND resolve F-15 for the on-prem summarize leg, AND confirm subTask kinds beyond `nxs` are pipeline-supported. Cheaper alternative ratification: amend the catalog row to an on-prem-only 3-stage shape (nxs-pull → onprem-summarize-A → onprem-format-B), which removes the frontier dependency entirely.',
     });
   });
   it('E2E-56-mixed-with-output-contract: vp → board doc with frontier research', () => {
