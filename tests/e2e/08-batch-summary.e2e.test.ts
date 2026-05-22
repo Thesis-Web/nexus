@@ -76,25 +76,27 @@ describe('E2E Category 8 — batch file pull + LLM summary', () => {
   it('E2E-79-batch-with-callback: manager → batch too large → HL #4 callback', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-79',
-      failureClass: 'UNIMPLEMENTED_TEST_BODY',
+      failureClass: 'UNIMPLEMENTED_SURFACE',
       reason:
-        'HL#4 callback when batch exceeds limits — body not written. No NXS dependency (callback fires at planner).',
+        'No production-side `batch-size oversize` checkback trigger exists. Current `plan_checkback_required` emission paths (scripts/nexus-main.ts:2037/2102/2152) are model-tier health/ceiling only. Planner/connector boundaries cap batches at maxRows in config/connectors/connectors.v1.yaml but the cap denies at Gate 02 (risk-tier), not via a user-facing checkback. Cannot body without a new emit path that treats "batch exceeds policy threshold" as a checkback rather than a denial.',
       blockedBy: 'E2E-CALLBACK-FLOW',
-      owner: 'builder',
+      owner: 'arch',
       lawPins: ['HL#4'],
+      nextRecommendedAction:
+        "Owner ratification + arch patch: add a `plan_checkback_required` emit with reason='batch_size_exceeds_threshold' invoked from the planner's risk-tier classifier when the requested row-bound exceeds a configured soft-cap (separate from the connector's hard maxRows cap). THEN body this test using the new path.",
     });
   });
   it('E2E-80-batch-denied-by-oct: analyst → OCT-CONFIDENTIAL batch → Gate 02 denied', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-80',
-      failureClass: 'UNIMPLEMENTED_TEST_BODY',
+      failureClass: 'UNIMPLEMENTED_SURFACE',
       reason:
-        'Gate 02 (OCT classification) denial — fires BEFORE bridge dispatch, testable now. Body not written.',
+        "Catalog asks for analyst (octLevel=OCT-OPEN) → OCT-CONFIDENTIAL resource → Gate 02 denies on OCT ceiling. But analyst's allowedSystems=['sales-finance'] and the seeded sales-finance tables are NOT individually OCT-CONFIDENTIAL-tagged at the resource level — the OCT ceiling check needs a resource-level OCT tag to compare against. Without per-resource OCT tagging in the connector manifest, the denial path is structurally unreachable on the analyst persona's allowed systems.",
       blockedBy: 'E2E-OCT-SURFACE',
-      owner: 'builder',
+      owner: 'owner',
       lawPins: ['HL#5', 'HL#10'],
       nextRecommendedAction:
-        'Post analyst batch run against confidential resource; assert Gate 02 denial with oct_ceiling_exceeded BEFORE any connector call.',
+        'Owner ratification: tag at least one sales-finance resource as OCT-CONFIDENTIAL in the connector allowed-table manifest. THEN body this slot as analyst batch read against that OCT-CONFIDENTIAL resource + assert Gate 02 oct_ceiling_exceeded fires BEFORE any connector call.',
     });
   });
 });

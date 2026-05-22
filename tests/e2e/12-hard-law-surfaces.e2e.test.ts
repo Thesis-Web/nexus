@@ -69,11 +69,14 @@ describe('E2E Category 12 — Hard Law surfaces', () => {
   it('E2E-112-hl4-orch-no-kill: planner unable to resolve → callback (not deny)', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-112',
-      failureClass: 'UNIMPLEMENTED_TEST_BODY',
-      reason: 'HL#4 — orch never kills. Body not written.',
+      failureClass: 'UNIMPLEMENTED_SURFACE',
+      reason:
+        'HL#4 surface. The existing `plan_checkback_required` emit paths (scripts/nexus-main.ts:2037/2102/2152) cover model-tier health/ceiling — those would prove HL#4 in the model-routing dimension. But the catalog row asks for a `planner unable to resolve` callback, which is the planner-decomposition dimension (no eligible plan / ambiguous next agent / etc.) and has no emitter today. Same shape gap as E2E-66.',
       blockedBy: 'E2E-CALLBACK-FLOW',
-      owner: 'builder',
+      owner: 'arch',
       lawPins: ['HL#4'],
+      nextRecommendedAction:
+        'Either (a) build a planner-decomposition checkback emitter (production patch, shared with E2E-66), or (b) re-scope this Hard Law slot to the model-tier checkback surface (deterministically triggerable today by injecting an unhealthy `preferredEndpointId`) and amend the catalog row accordingly. Owner ruling required between (a) and (b) before this body can land.',
     });
   });
   /**

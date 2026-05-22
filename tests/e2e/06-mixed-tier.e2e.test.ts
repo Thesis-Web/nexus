@@ -43,13 +43,14 @@ describe('E2E Category 6 — multi-agent MIXED on-prem + frontier', () => {
   it('E2E-55-mixed-with-nxs: sr_manager → nxs-pull → onprem-summarize → frontier-polish', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-55',
-      failureClass: 'PRODUCT_RUNTIME',
+      failureClass: 'EXTERNAL_DEPENDENCY',
       reason:
-        'NXS dispatch bridge returns null (see E2E-23). Mixed-tier-with-NXS depends on NXS pull working first.',
-      blockedBy: 'NXS-DISPATCH-BRIDGE-RETURNS-NULL',
+        "Post bridge-fix (43e5ed3), the nxs-pull leg works (proven by E2E-21..27 + E2E-37). The blocker now is the frontier-polish leg, which requires the frontier-fixture adapter for deterministic CI. Additionally, the on-prem summarize → frontier polish chain requires F-15 resolution so the chat agent's intersection succeeds for sr_manager (currently allowedSystems=['sales-finance', 'warehouse', 'gmail'] vs chat agent ['stub'] — empty intersection).",
+      blockedBy: 'FRONTIER-LIVE-OR-FIXTURE-V1',
       owner: 'arch',
       lawPins: ['HL#5', 'HL#6', 'HL#11'],
-      nextRecommendedAction: 'Fix NXS dispatch bridge then build out this scenario.',
+      nextRecommendedAction:
+        'Build frontier-fixture adapter (Category 2 blocker) AND resolve F-15 chat-agent intersection. THEN body this slot as a 3-stage subTasks DAG: NXS pull (sales-finance) → chat summarize (default chat agent) → frontier polish (fixture endpoint).',
     });
   });
   it('E2E-56-mixed-with-output-contract: vp → board doc with frontier research', () => {
@@ -75,14 +76,16 @@ describe('E2E Category 6 — multi-agent MIXED on-prem + frontier', () => {
   it('E2E-60-mixed-denied-by-tier-ceiling: analyst → frontier denied at NVG', () => {
     throw new AcceptanceWallFailure({
       testId: 'E2E-60',
-      failureClass: 'UNIMPLEMENTED_TEST_BODY',
+      failureClass: 'UNIMPLEMENTED_SURFACE',
       reason:
-        'NVG tier-ceiling denial path is testable WITHOUT a frontier adapter — the denial fires BEFORE the adapter call. Body not yet written.',
-      blockedBy: 'E2E-MIXED-TIER-CATALOG',
-      owner: 'builder',
+        "Catalog row persona is `analyst`. Reaching NVG tier-ceiling requires the chat path (free_text → NVG classify/route → adapter denied on user.maxRiskTier < frontier). But the default chat agent's allowedSystems=['stub'] is disjoint from analyst's allowedSystems=['sales-finance'] — F-15 fires `delegation_empty_intersection` on target_systems BEFORE NVG runs, so the tier-ceiling assertion can never fire on the analyst persona. Either F-15 must resolve first (then this body becomes a clone of the E2E-02..10 chat pattern with a frontier-tier prompt + tier_ceiling_exceeded assertion), OR a separate non-chat NVG entry path must exist for tier denial.",
+      blockedBy: 'CHAT-AGENT-LADDER-INTERSECTION-EMPTY',
+      owner: 'owner',
       lawPins: ['HL#6', 'HL#10'],
+      suspectedRootCause:
+        'F-15 cascade (REPAIR-MODE-FINDINGS-2026-05-22-body-build.md): non-`dev-admin` ladder personas cannot mint a chat delegation against the default chat agent. Pre-NVG denial pre-empts the tier-ceiling test surface.',
       nextRecommendedAction:
-        'Post a chat run as `analyst` (low tier) targeting a frontier model; assert NVG denies with tier_ceiling_exceeded BEFORE any adapter call.',
+        'Land any F-15 resolution option (chat agent allowedSystems=[] + intersection law treats empty-on-agent-side as no-system-gate, OR planner skips target_systems intersection when entryMode=free_chat). After that lands, body this slot as `analyst` chat run with a frontier-tier prompt + assert `tier_ceiling_exceeded` (or the equivalent NVG denial event) fires BEFORE any frontier adapter call.',
     });
   });
 });
