@@ -1269,7 +1269,22 @@ const program = createCli({
               upstreamMailboxItems,
               boundConnectorClasses
             );
-            const aggregatedProvenance = resolveAggregatedProvenance(upstreamMailboxItems);
+            // The user prompt (initialMessages includes one user message
+            // populated from node.taskPrompt ?? request.prompt at line
+            // ~1117) arrives via the workspace POST that opened this run
+            // — its provenance is `workspace_upload`, a trusted §3.3
+            // source. Contribute it to the aggregator alongside upstream
+            // mailbox items. The aggregator picks the LEAST trusted of
+            // the union, so a downstream leg with `agent_output` upstream
+            // items still resolves to `agent_output` (and the §3.3
+            // empty-labels case split doesn't fire because the upstream
+            // items also supply validLabels); a fresh-prompt leg with no
+            // upstream items resolves to `workspace_upload` (trusted),
+            // letting the §3.3 case split floor classification to
+            // 'internal' instead of quarantining the dispatch.
+            const aggregatedProvenance = resolveAggregatedProvenance(upstreamMailboxItems, [
+              'workspace_upload',
+            ]);
             const nvgRequest: NvgOutboundRequest = {
               requestId: crypto.randomUUID() as Uuid,
               runId: request.runId,

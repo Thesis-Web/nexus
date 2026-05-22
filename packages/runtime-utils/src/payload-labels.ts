@@ -61,19 +61,26 @@ const PROVENANCE_TRUST_RANK: Record<ProvenanceSource, number> = {
 
 /**
  * Compute the aggregate provenance for an NVG dispatch from the
- * upstream MailboxItems the slice reads. Returns the LEAST trusted
- * source — i.e. one untrusted item poisons the aggregate so the gate
- * sees the weakest claim. If `items` is empty the aggregate is
- * `unknown` (no provenance to point to) so the gate's §3.3 case split
+ * upstream MailboxItems the slice reads, plus any caller-supplied
+ * `additionalSources` that contribute non-mailbox provenance signals
+ * (e.g. the user prompt itself, which a workspace POST contributes as
+ * `workspace_upload`). Returns the LEAST trusted source across the
+ * union — one untrusted item poisons the aggregate so the gate sees
+ * the weakest claim. If both `items` and `additionalSources` are
+ * empty the aggregate is `unknown` so the gate's §3.3 case split
  * quarantines in enforce mode.
  */
 export function resolveAggregatedProvenance(
-  items: ReadonlyArray<Pick<MailboxItem, 'provenance'>>
+  items: ReadonlyArray<Pick<MailboxItem, 'provenance'>>,
+  additionalSources: ReadonlyArray<ProvenanceSource> = []
 ): ProvenanceSource {
-  if (items.length === 0) return 'unknown';
-  let weakest: ProvenanceSource = items[0]!.provenance;
-  for (let i = 1; i < items.length; i++) {
-    const candidate = items[i]!.provenance;
+  const sources: ProvenanceSource[] = [];
+  for (const item of items) sources.push(item.provenance);
+  for (const source of additionalSources) sources.push(source);
+  if (sources.length === 0) return 'unknown';
+  let weakest: ProvenanceSource = sources[0]!;
+  for (let i = 1; i < sources.length; i++) {
+    const candidate = sources[i]!;
     if (PROVENANCE_TRUST_RANK[candidate] < PROVENANCE_TRUST_RANK[weakest]) {
       weakest = candidate;
     }

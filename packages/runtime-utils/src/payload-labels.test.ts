@@ -74,6 +74,36 @@ describe('resolveAggregatedProvenance', () => {
       ])
     ).toBe('unknown');
   });
+
+  it('contributes additionalSources alongside item provenances (weakest wins)', () => {
+    // Downstream leg: upstream agent_output items + user-prompt
+    // contribution workspace_upload → weakest is agent_output. The
+    // upstream items' labels keep the §3.3 case split from firing.
+    expect(
+      resolveAggregatedProvenance(
+        [makeItem('a', ['internal'], 'agent_output')],
+        ['workspace_upload']
+      )
+    ).toBe('agent_output');
+  });
+
+  it('returns the additionalSources weakest when items are empty', () => {
+    // Chat first-leg path: no upstream items, the user prompt
+    // contribution is `workspace_upload`. The aggregator returns
+    // workspace_upload (trusted), letting NVG §3.3 floor empty-labels
+    // dispatches to 'internal' rather than quarantining as unknown.
+    expect(resolveAggregatedProvenance([], ['workspace_upload'])).toBe('workspace_upload');
+  });
+
+  it('picks the LEAST trusted across multiple additionalSources', () => {
+    expect(resolveAggregatedProvenance([], ['workspace_upload', 'agent_output'])).toBe(
+      'agent_output'
+    );
+  });
+
+  it('falls back to unknown when items + additionalSources are both empty', () => {
+    expect(resolveAggregatedProvenance([], [])).toBe('unknown');
+  });
 });
 
 describe('aggregatePayloadLabels', () => {
