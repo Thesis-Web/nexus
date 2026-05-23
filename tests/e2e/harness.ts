@@ -302,16 +302,24 @@ export async function bootHarness(opts?: {
           }>(`/workspace/runs/${encodeURIComponent(runId)}`, jwt);
           const types = snap.eventTypes ?? [];
           // Closed via run_closed, or terminally rejected by the planner
-          // (rejection means no further events will fire).
-          const isRejected = !!snap.rejection || types.includes('plan_rejected');
+          // (rejection means no further events will fire). HL#4 revision
+          // (component outline §HL #4, Owner-Ratified 2026-05-23) added
+          // `planner_infeasible` as the canonical name; `plan_rejected`
+          // retained as legacy alias.
+          const isRejected =
+            !!snap.rejection ||
+            types.includes('plan_rejected') ||
+            types.includes('planner_infeasible');
           if (snap.status === 'closed' || isRejected) {
             const ledgerEvents = await readRunEvents(tmpCwd, runId);
             const closeEvent = ledgerEvents.find(e => e.eventType === 'run_closed');
-            const rejectEvent = ledgerEvents.find(e => e.eventType === 'plan_rejected');
+            const rejectEvent = ledgerEvents.find(
+              e => e.eventType === 'planner_infeasible' || e.eventType === 'plan_rejected'
+            );
             const closeReason = closeEvent
               ? ((closeEvent.detail['closeReason'] as string | undefined) ?? null)
               : rejectEvent
-                ? 'plan_rejected'
+                ? rejectEvent.eventType
                 : null;
             const finalOutcome = closeEvent
               ? ((closeEvent.detail['finalOutcome'] as string | undefined) ?? null)

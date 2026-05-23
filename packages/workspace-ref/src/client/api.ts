@@ -77,7 +77,9 @@ export async function createRun(input: Record<string, unknown>): Promise<ApiResp
  * `PlanCheckbackModal` for both the Accept-Suggestions and Cancel-Run
  * paths after a preferred-agents preflight rejection.
  *
- * Server emits a `run_cancelled` ledger event with the supplied reason.
+ * Server emits a `user_cancelled_run` ledger event (HL#4 revision —
+ * canonical name; legacy alias `run_cancelled` retained for back-compat)
+ * with the supplied reason.
  * Idempotent (calling twice is harmless — the run is already closed
  * from the first call's perspective; subsequent ledger events are
  * audit-only).

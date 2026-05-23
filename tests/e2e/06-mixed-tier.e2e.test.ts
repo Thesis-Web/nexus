@@ -35,6 +35,7 @@ function assertMixedTierEnvelope(snap: RunSnap): void {
   expect(types, 'final_response event present').toContain('final_response');
   expect(types, 'no node_failed').not.toContain('node_failed');
   expect(types, 'no dag_failed').not.toContain('dag_failed');
+  expect(types, 'no dag_step_error').not.toContain('dag_step_error');
   expect(types, 'no error_dispatch').not.toContain('error_dispatch');
   expect(
     snap.ledgerEvents.some(e => e.eventType === 'nxs_dispatch_bridge_returned_null'),
@@ -327,6 +328,7 @@ describe('E2E Category 6 — multi-agent MIXED on-prem + frontier', () => {
     const fallbackHandled =
       types.includes('plan_checkback_required') ||
       types.includes('plan_rejected') ||
+      types.includes('planner_infeasible') ||
       types.includes('final_response');
     expect(fallbackHandled, 'unhealthy preferred endpoint must be handled (no silent drop)').toBe(
       true
@@ -361,6 +363,7 @@ describe('E2E Category 6 — multi-agent MIXED on-prem + frontier', () => {
       types.includes('tier_ceiling_exceeded') ||
       types.includes('delegation_empty_intersection') ||
       types.includes('plan_rejected') ||
+      types.includes('planner_infeasible') ||
       types.includes('plan_checkback_required');
     expect(denied, 'analyst (low tier) requesting frontier must surface a denial').toBe(true);
   }, 300_000);

@@ -276,7 +276,7 @@ describe('ORCH-15: Full lifecycle', () => {
     expect(deps.triggerCompile).toHaveBeenCalledWith(request.runId);
   });
 
-  it('compile_skipped does NOT call triggerCompile', async () => {
+  it('compile_not_applicable does NOT call triggerCompile', async () => {
     const agentId = uuid();
     const agent = makeAgent(agentId);
     const manifest = makeManifest();
@@ -340,7 +340,7 @@ describe('ORCH-16: Run Ledger events', () => {
     expect(dagCompletedIdx).toBeLessThan(compileTriggeredIdx);
   });
 
-  it('emits compile_skipped + final_response + run_closed for failed DAG', async () => {
+  it('emits compile_not_applicable + final_response + run_closed for failed DAG', async () => {
     const agentId = uuid();
     const agent = makeAgent(agentId);
     const manifest = makeManifest();
@@ -367,8 +367,11 @@ describe('ORCH-16: Run Ledger events', () => {
 
     const eventTypes = ledger.events.map(e => e.eventType);
 
-    expect(eventTypes).toContain('dag_failed');
-    expect(eventTypes).toContain('compile_skipped');
+    // HL#4 revision (component outline §HL #4, Owner-Ratified 2026-05-23):
+    // canonical names are dag_step_error / compile_not_applicable. Legacy
+    // names retained in RunEventType as aliases but no longer emitted.
+    expect(eventTypes).toContain('dag_step_error');
+    expect(eventTypes).toContain('compile_not_applicable');
     expect(eventTypes).toContain('final_response');
     expect(eventTypes).toContain('run_closed');
     expect(eventTypes).not.toContain('compile_triggered');

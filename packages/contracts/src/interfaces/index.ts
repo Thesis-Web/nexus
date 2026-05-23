@@ -1628,6 +1628,18 @@ export type RunEventType =
   | 'plan_checkback_required'
   | 'plan_checkback_resolved'
   | 'plan_confirmed'
+  // ── HL#4 revision (component outline §HL #4, Owner-Ratified 2026-05-23) ─
+  // `plan_rejected` is the legacy name for the orchestration-infeasibility
+  // event the run coordinator emits when the planner cannot produce a valid
+  // plan. The canonical name under the revised HL#4 is `planner_infeasible`
+  // — orch has zero governance authority, so a planner-side infeasibility is
+  // not a governance-deny; it is an orchestration callback signal. The
+  // legacy name stays in the union because historical ledger files and the
+  // run-stage-reducer still reference it; new emissions use the canonical
+  // name. KNOWN GAP: full planner-infeasibility-to-workspace-callback UX is
+  // not yet built — current interim behavior closes any user-rejected plan
+  // with closeReason='user_cancelled' (see run-coordinator.ts).
+  | 'planner_infeasible'
   | 'plan_rejected'
   | 'node_dispatched'
   | 'node_completed'
@@ -1639,8 +1651,18 @@ export type RunEventType =
   | 'plan_amended'
   | 'dag_completed'
   | 'dag_partial_complete'
+  // `dag_step_error` is the canonical name under HL#4 revision; emitted by
+  // the run coordinator when DAG execution surfaces a step-level error.
+  // Legacy `dag_failed` retained for back-compat (UI reducer + historical
+  // ledgers).
+  | 'dag_step_error'
   | 'dag_failed'
   | 'compile_triggered'
+  // `compile_not_applicable` is the canonical name under HL#4 revision —
+  // compile is "not applicable" (pass-through path of HL#11) rather than
+  // "skipped" (a status word that implied a skip-as-failure). Legacy
+  // `compile_skipped` retained for back-compat.
+  | 'compile_not_applicable'
   | 'compile_skipped'
   // ── Workspace-Ref Run Ledger Events (AMEND-nexus-spec-workspace §8.1) ──────
   | 'workspace_vault_session_opened'
@@ -1655,6 +1677,11 @@ export type RunEventType =
   // carries metadata only (fileId, filename, mediaType, sizeChars) —
   // NEVER the content (Phase A §5: ledger entries stay bounded).
   | 'workspace_file_attached'
+  // `user_cancelled_run` is the canonical name under HL#4 revision —
+  // names the cancel as user-initiated (vs. governance-initiated, which
+  // orch is forbidden from doing). Legacy `run_cancelled` retained for
+  // back-compat (UI reducer + historical ledgers).
+  | 'user_cancelled_run'
   | 'run_cancelled'
   // ── Admin secret onboarding (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC) ──────────
   // Credential-lifecycle audit: emitted on successful POST/DELETE against

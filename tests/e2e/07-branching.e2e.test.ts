@@ -34,6 +34,7 @@ function assertBranchingEnvelope(snap: RunSnap): void {
   expect(types, 'final_response event present').toContain('final_response');
   expect(types, 'no node_failed').not.toContain('node_failed');
   expect(types, 'no dag_failed').not.toContain('dag_failed');
+  expect(types, 'no dag_step_error').not.toContain('dag_step_error');
   expect(types, 'no error_dispatch').not.toContain('error_dispatch');
   expect(
     snap.ledgerEvents.some(e => e.eventType === 'nxs_dispatch_bridge_returned_null'),

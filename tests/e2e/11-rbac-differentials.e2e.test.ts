@@ -37,8 +37,11 @@ function assertDeniedShape(snap: RunSnap, label: string): void {
     return typeof fo === 'string' && fo !== FINAL_OUTCOME.EXECUTED;
   });
   expect(
-    driftEvents.length > 0 || denied || types.includes('plan_rejected'),
-    `${label} — must be denied (intersection / dispatch denial / plan_rejected)`
+    driftEvents.length > 0 ||
+      denied ||
+      types.includes('plan_rejected') ||
+      types.includes('planner_infeasible'),
+    `${label} — must be denied (intersection / dispatch denial / planner_infeasible|plan_rejected)`
   ).toBe(true);
 
   const executed = nxsActions.filter(
@@ -344,6 +347,7 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
     const denied =
       types.includes('environment_mismatch') ||
       types.includes('plan_rejected') ||
+      types.includes('planner_infeasible') ||
       types.includes('delegation_empty_intersection');
     expect(denied, 'env-mismatch request must surface a denial event').toBe(true);
   }, 240_000);

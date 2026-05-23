@@ -199,7 +199,15 @@ export class RefRunCoordinator implements RunCoordinator {
 
     if ('rejected' in planResult && (planResult as PlanRejection).rejected) {
       const rejection = planResult as PlanRejection;
-      await this.writeLedger(request.runId, 'plan_rejected', {
+      // HL#4 revision (component outline §HL #4, Owner-Ratified 2026-05-23):
+      // orch has zero governance authority. Planner infeasibility is an
+      // orchestration callback signal, not a governance-deny. Emit the
+      // canonical `planner_infeasible` event. KNOWN GAP: the full
+      // planner-infeasibility-to-workspace-callback UX is not yet built —
+      // the run coordinator returns the OrchestratorPlanPreview to the caller
+      // and the workspace UI surfaces the rejection / alternatives modal;
+      // the dedicated callback queue is a future session.
+      await this.writeLedger(request.runId, 'planner_infeasible', {
         reason: rejection.reason,
         reasonDetail: rejection.reasonDetail,
         suggestedCount: rejection.suggestedAlternatives.length,
@@ -266,7 +274,8 @@ export class RefRunCoordinator implements RunCoordinator {
       this.orchestratorActorId
     );
     if (validation.failed) {
-      await this.writeLedger(request.runId, 'plan_rejected', {
+      // HL#4 revision — malformed plan is an orchestration infeasibility.
+      await this.writeLedger(request.runId, 'planner_infeasible', {
         reason: 'malformed_request',
         reasonDetail: validation.reason,
         suggestedCount: 0,
@@ -293,7 +302,12 @@ export class RefRunCoordinator implements RunCoordinator {
       await this.writeLedger(request.runId, 'plan_checkback_sent', { planId: plan.planId });
       const confirmed = await sendPlanCheckback(preview);
       if (!confirmed) {
-        await this.writeLedger(request.runId, 'plan_rejected', {
+        // HL#4 revision — a user-rejected plan IS a user cancellation, not
+        // a planner-side infeasibility. Emit the canonical
+        // `user_cancelled_run` event under the user-initiated terminal
+        // class. The workspace surfaces the rejection / alternatives modal
+        // off the returned OrchestratorPlanPreview.
+        await this.writeLedger(request.runId, 'user_cancelled_run', {
           reason: 'user_rejected_plan',
         });
         // CHECKBACK-spec Part 4: a user-rejected checkback must close the run
@@ -455,15 +469,19 @@ export class RefRunCoordinator implements RunCoordinator {
         },
       });
     } catch (_executorError: unknown) {
-      // Executor threw — terminal error path [§7.2 step 6]
-      await this.writeLedger(request.runId, 'dag_failed', {
+      // Executor threw — terminal error path [§7.2 step 6]. Under HL#4
+      // revision the canonical name is `dag_step_error` (the executor
+      // surfaced a step-level error; not a governance-deny). Compile is
+      // emitted as `compile_not_applicable` because there is nothing to
+      // assemble (HL#11 pass-through path).
+      await this.writeLedger(request.runId, 'dag_step_error', {
         planId: plan.planId,
         completedCount: 0,
         failedCount: 0,
         skippedCount: 0,
         reason: 'executor_error',
       });
-      await this.writeLedger(request.runId, 'compile_skipped', {
+      await this.writeLedger(request.runId, 'compile_not_applicable', {
         planId: plan.planId,
         runId: request.runId,
         reason: 'executor_error',
@@ -487,17 +505,18 @@ export class RefRunCoordinator implements RunCoordinator {
 
     // 7. Terminal classification — cancelled check FIRST [§7.3]
     if (dagResult.finalState.cancelled) {
-      await this.writeLedger(request.runId, 'run_cancelled', {
+      // HL#4 revision — canonical user-initiated terminal event.
+      await this.writeLedger(request.runId, 'user_cancelled_run', {
         planId: plan.planId,
         runId: request.runId,
         totalSkipped: dagResult.skippedNodes.length,
         totalCompleted: dagResult.completedNodes.length,
         reason: 'user_cancelled',
       });
-      await this.writeLedger(request.runId, 'compile_skipped', {
+      await this.writeLedger(request.runId, 'compile_not_applicable', {
         planId: plan.planId,
         runId: request.runId,
-        reason: 'run_cancelled',
+        reason: 'user_cancelled_run',
       });
       await this.writeLedger(request.runId, 'final_response', {
         planId: plan.planId,
@@ -509,7 +528,7 @@ export class RefRunCoordinator implements RunCoordinator {
         planId: plan.planId,
         runId: request.runId,
         closedBy: 'orch-ref',
-        reason: 'run_cancelled',
+        reason: 'user_cancelled_run',
       });
       return this.buildPlanPreview(request, plan);
     }
@@ -540,7 +559,10 @@ export class RefRunCoordinator implements RunCoordinator {
         skippedCount: dagResult.skippedNodes.length,
       });
     } else {
-      await this.writeLedger(request.runId, 'dag_failed', {
+      // HL#4 revision — DAG produced no compile-eligible nodes; orch logs
+      // the step-error state. Run closure is decided below by the compile
+      // eligibility branch.
+      await this.writeLedger(request.runId, 'dag_step_error', {
         planId: plan.planId,
         completedCount: dagResult.completedNodes.length,
         failedCount: dagResult.failedNodes.length,
@@ -562,7 +584,10 @@ export class RefRunCoordinator implements RunCoordinator {
       });
       await deps.triggerCompile(request.runId);
     } else {
-      await this.writeLedger(request.runId, 'compile_skipped', {
+      // HL#4 revision — nothing to compile (HL#11 pass-through, but with
+      // no eligible results). Emit `compile_not_applicable` (canonical
+      // name) and close with the same reason string.
+      await this.writeLedger(request.runId, 'compile_not_applicable', {
         planId: plan.planId,
         runId: request.runId,
         reason: 'no_eligible_results',
@@ -577,7 +602,7 @@ export class RefRunCoordinator implements RunCoordinator {
         planId: plan.planId,
         runId: request.runId,
         closedBy: 'orch-ref',
-        reason: 'compile_skipped',
+        reason: 'compile_not_applicable',
       });
     }
 

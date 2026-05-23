@@ -271,7 +271,10 @@ describe('E2E Category 10 — Gmail compose / read', () => {
       return typeof fo === 'string' && fo !== FINAL_OUTCOME.EXECUTED;
     });
     expect(
-      driftEvents.length > 0 || denied || types.includes('plan_rejected'),
+      driftEvents.length > 0 ||
+        denied ||
+        types.includes('plan_rejected') ||
+        types.includes('planner_infeasible'),
       'intern compose:email must be denied (capability outside intersection)'
     ).toBe(true);
   }, 240_000);
@@ -294,7 +297,8 @@ describe('E2E Category 10 — Gmail compose / read', () => {
       types.includes('oct_ceiling_exceeded') ||
       types.includes('firewall_egress_denied') ||
       types.includes('delegation_empty_intersection') ||
-      types.includes('plan_rejected');
+      types.includes('plan_rejected') ||
+      types.includes('planner_infeasible');
     expect(denied, 'analyst OCT-CONFIDENTIAL outbound must surface a denial').toBe(true);
   }, 240_000);
 

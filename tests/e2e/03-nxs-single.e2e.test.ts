@@ -43,6 +43,12 @@ function assertNxsReadForensicEnvelope(
   // No node failures, no bridge-returned-null, no dag_failed.
   expect(types, 'node_failed must not fire on a successful read').not.toContain('node_failed');
   expect(types, 'dag_failed must not fire on a successful read').not.toContain('dag_failed');
+  // HL#4 revision (component outline §HL #4, Owner-Ratified 2026-05-23): the
+  // canonical step-error event is `dag_step_error`. Happy-path must reject
+  // both the legacy and canonical names so a rename cannot mask a regression.
+  expect(types, 'dag_step_error must not fire on a successful read').not.toContain(
+    'dag_step_error'
+  );
 
   const nxsActions = snap.ledgerEvents.filter(e => e.eventType === 'nxs_action');
   expect(nxsActions.length, 'at least one nxs_action').toBeGreaterThan(0);
