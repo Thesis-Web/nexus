@@ -34,7 +34,8 @@ function assertMixedTierEnvelope(snap: RunSnap): void {
   expect(types, 'run_closed event present').toContain('run_closed');
   expect(types, 'final_response event present').toContain('final_response');
   expect(types, 'no node_failed').not.toContain('node_failed');
-  expect(types, 'no dag_failed').not.toContain('dag_failed');
+  // HL#4 canonical (legacy `dag_failed` alias removed from RunEventType
+  // 2026-05-23 — fix-spec post-consolidation).
   expect(types, 'no dag_step_error').not.toContain('dag_step_error');
   expect(types, 'no error_dispatch').not.toContain('error_dispatch');
   expect(
@@ -325,9 +326,9 @@ describe('E2E Category 6 — multi-agent MIXED on-prem + frontier', () => {
     // or run completes against an on-prem fallback endpoint, or the run
     // rejects deterministically with a tier/endpoint error.
     const types = snap.ledgerEvents.map(e => e.eventType);
+    // HL#4 canonical names (legacy `plan_rejected` alias removed 2026-05-23).
     const fallbackHandled =
       types.includes('plan_checkback_required') ||
-      types.includes('plan_rejected') ||
       types.includes('planner_infeasible') ||
       types.includes('final_response');
     expect(fallbackHandled, 'unhealthy preferred endpoint must be handled (no silent drop)').toBe(
@@ -359,10 +360,10 @@ describe('E2E Category 6 — multi-agent MIXED on-prem + frontier', () => {
     const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 240_000 });
     assertMixedTierEnvelope(snap);
     const types = snap.ledgerEvents.map(e => e.eventType);
+    // HL#4 canonical names (legacy `plan_rejected` alias removed 2026-05-23).
     const denied =
       types.includes('tier_ceiling_exceeded') ||
       types.includes('delegation_empty_intersection') ||
-      types.includes('plan_rejected') ||
       types.includes('planner_infeasible') ||
       types.includes('plan_checkback_required');
     expect(denied, 'analyst (low tier) requesting frontier must surface a denial').toBe(true);

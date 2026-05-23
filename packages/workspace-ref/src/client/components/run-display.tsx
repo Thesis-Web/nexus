@@ -98,14 +98,15 @@ export function RunDisplay({ runId, events, status, planRejection }: RunDisplayP
 
   // Plan rejection from the synchronous POST /workspace/runs response is
   // surfaced here as a synthesised denial — the SSE stream also delivers
-  // plan_rejected, but the synchronous path can land first on a fast reject.
-  // computeRunTimeline already lifts plan_rejected events into a denial; this
-  // path covers the local, pre-SSE rejection.
+  // planner_infeasible, but the synchronous path can land first on a fast
+  // reject. computeRunTimeline already lifts planner_infeasible events into
+  // a denial; this path covers the local, pre-SSE rejection. (HL#4 canonical
+  // — legacy `plan_rejected` alias removed 2026-05-23.)
   const synchronousRejectFailure: RunTimelineState['failure'] =
     planRejection != null && timeline.failure === null
       ? {
           stageId: 'planning',
-          code: planRejection.reason || 'plan_rejected',
+          code: planRejection.reason || 'planner_infeasible',
           message: planRejection.reasonDetail || '',
           governanceDenied: true,
         }

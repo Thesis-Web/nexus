@@ -270,11 +270,9 @@ describe('E2E Category 10 — Gmail compose / read', () => {
       const fo = (e.detail as Record<string, unknown>)['finalOutcome'];
       return typeof fo === 'string' && fo !== FINAL_OUTCOME.EXECUTED;
     });
+    // HL#4 canonical (legacy `plan_rejected` alias removed 2026-05-23).
     expect(
-      driftEvents.length > 0 ||
-        denied ||
-        types.includes('plan_rejected') ||
-        types.includes('planner_infeasible'),
+      driftEvents.length > 0 || denied || types.includes('planner_infeasible'),
       'intern compose:email must be denied (capability outside intersection)'
     ).toBe(true);
   }, 240_000);
@@ -293,11 +291,11 @@ describe('E2E Category 10 — Gmail compose / read', () => {
       }
     );
     const types = snap.ledgerEvents.map(e => e.eventType);
+    // HL#4 canonical (legacy `plan_rejected` alias removed 2026-05-23).
     const denied =
       types.includes('oct_ceiling_exceeded') ||
       types.includes('firewall_egress_denied') ||
       types.includes('delegation_empty_intersection') ||
-      types.includes('plan_rejected') ||
       types.includes('planner_infeasible');
     expect(denied, 'analyst OCT-CONFIDENTIAL outbound must surface a denial').toBe(true);
   }, 240_000);

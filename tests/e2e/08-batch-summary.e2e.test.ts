@@ -28,7 +28,7 @@ function assertBatchEnvelope(snap: RunSnap): void {
   expect(types, 'run_closed event present').toContain('run_closed');
   expect(types, 'final_response event present').toContain('final_response');
   expect(types, 'no node_failed').not.toContain('node_failed');
-  expect(types, 'no dag_failed').not.toContain('dag_failed');
+  // HL#4 canonical (legacy `dag_failed` alias removed 2026-05-23).
   expect(types, 'no dag_step_error').not.toContain('dag_step_error');
   expect(types, 'no error_dispatch').not.toContain('error_dispatch');
   expect(
@@ -308,9 +308,9 @@ describe('E2E Category 8 — batch file pull + LLM summary', () => {
     );
     assertBatchEnvelope(snap);
     const types = snap.ledgerEvents.map(e => e.eventType);
+    // HL#4 canonical names (legacy `plan_rejected` alias removed 2026-05-23).
     const handled =
       types.includes('plan_checkback_required') ||
-      types.includes('plan_rejected') ||
       types.includes('planner_infeasible') ||
       types.includes('gate_02_risk_denied');
     expect(handled, 'oversize batch must surface checkback/denial, not silent execution').toBe(
@@ -335,9 +335,10 @@ describe('E2E Category 8 — batch file pull + LLM summary', () => {
     const types = snap.ledgerEvents.map(e => e.eventType);
     // Catalog: Gate 02 OCT denial is the load-bearing surface.
     // delegation_empty_intersection (capability/system dimension) and
-    // generic plan_rejected do NOT prove the OCT ceiling held — those
-    // would fire even if OCT were misconfigured. Require the
-    // OCT-specific event.
+    // generic planner_infeasible do NOT prove the OCT ceiling held —
+    // those would fire even if OCT were misconfigured. Require the
+    // OCT-specific event. (HL#4 canonical name; legacy `plan_rejected`
+    // alias removed 2026-05-23.)
     const octDenied =
       types.includes('gate_02_oct_denied') || types.includes('oct_ceiling_exceeded');
     expect(

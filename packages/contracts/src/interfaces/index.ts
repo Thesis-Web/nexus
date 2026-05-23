@@ -1629,18 +1629,15 @@ export type RunEventType =
   | 'plan_checkback_resolved'
   | 'plan_confirmed'
   // ── HL#4 revision (component outline §HL #4, Owner-Ratified 2026-05-23) ─
-  // `plan_rejected` is the legacy name for the orchestration-infeasibility
-  // event the run coordinator emits when the planner cannot produce a valid
-  // plan. The canonical name under the revised HL#4 is `planner_infeasible`
-  // — orch has zero governance authority, so a planner-side infeasibility is
+  // `planner_infeasible` is the canonical orchestration-infeasibility event
+  // the run coordinator emits when the planner cannot produce a valid plan.
+  // Orch has zero governance authority, so a planner-side infeasibility is
   // not a governance-deny; it is an orchestration callback signal. The
-  // legacy name stays in the union because historical ledger files and the
-  // run-stage-reducer still reference it; new emissions use the canonical
-  // name. KNOWN GAP: full planner-infeasibility-to-workspace-callback UX is
-  // not yet built — current interim behavior closes any user-rejected plan
-  // with closeReason='user_cancelled' (see run-coordinator.ts).
+  // legacy alias `plan_rejected` was removed 2026-05-23 (fix-spec post-
+  // consolidation) — historical ledger files that still contain it are
+  // handled by the default/unknown-event fallback path in the UI stage
+  // reducer; new code MUST use `planner_infeasible`.
   | 'planner_infeasible'
-  | 'plan_rejected'
   | 'node_dispatched'
   | 'node_completed'
   | 'node_failed'
@@ -1653,17 +1650,18 @@ export type RunEventType =
   | 'dag_partial_complete'
   // `dag_step_error` is the canonical name under HL#4 revision; emitted by
   // the run coordinator when DAG execution surfaces a step-level error.
-  // Legacy `dag_failed` retained for back-compat (UI reducer + historical
-  // ledgers).
+  // The legacy alias `dag_failed` was removed 2026-05-23 (fix-spec post-
+  // consolidation); historical ledger files fall through the UI reducer's
+  // unknown-event path.
   | 'dag_step_error'
-  | 'dag_failed'
   | 'compile_triggered'
   // `compile_not_applicable` is the canonical name under HL#4 revision —
   // compile is "not applicable" (pass-through path of HL#11) rather than
-  // "skipped" (a status word that implied a skip-as-failure). Legacy
-  // `compile_skipped` retained for back-compat.
+  // "skipped" (a status word that implied a skip-as-failure). The legacy
+  // alias `compile_skipped` was removed 2026-05-23 (fix-spec post-
+  // consolidation); historical ledger files fall through the UI reducer's
+  // unknown-event path.
   | 'compile_not_applicable'
-  | 'compile_skipped'
   // ── Workspace-Ref Run Ledger Events (AMEND-nexus-spec-workspace §8.1) ──────
   | 'workspace_vault_session_opened'
   | 'workspace_vault_session_closed'
@@ -1679,10 +1677,10 @@ export type RunEventType =
   | 'workspace_file_attached'
   // `user_cancelled_run` is the canonical name under HL#4 revision —
   // names the cancel as user-initiated (vs. governance-initiated, which
-  // orch is forbidden from doing). Legacy `run_cancelled` retained for
-  // back-compat (UI reducer + historical ledgers).
+  // orch is forbidden from doing). The legacy alias `run_cancelled` was
+  // removed 2026-05-23 (fix-spec post-consolidation); historical ledger
+  // files fall through the UI reducer's unknown-event path.
   | 'user_cancelled_run'
-  | 'run_cancelled'
   // ── Admin secret onboarding (CLAUDE-CODE-SECRET-MANAGEMENT-SPEC) ──────────
   // Credential-lifecycle audit: emitted on successful POST/DELETE against
   // /workspace/admin/setup/secrets. Detail carries keyName + admin actor

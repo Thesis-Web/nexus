@@ -7,8 +7,9 @@
  * conditional edges where the production schema allows them.
  *
  * Test-Body Factory mode 2026-05-22: every slot has a runnable body;
- * production gaps surface as honest failures (dag_failed, missing
- * conditional-edge primitive, callback emitter absent, etc.).
+ * production gaps surface as honest failures (dag_step_error, missing
+ * conditional-edge primitive, callback emitter absent, etc.). HL#4
+ * canonical event names — legacy `dag_failed` alias removed 2026-05-23.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { bootHarness, type E2EHarness } from './harness.js';
@@ -33,7 +34,7 @@ function assertBranchingEnvelope(snap: RunSnap): void {
   expect(types, 'run_closed event present').toContain('run_closed');
   expect(types, 'final_response event present').toContain('final_response');
   expect(types, 'no node_failed').not.toContain('node_failed');
-  expect(types, 'no dag_failed').not.toContain('dag_failed');
+  // HL#4 canonical (legacy `dag_failed` alias removed 2026-05-23).
   expect(types, 'no dag_step_error').not.toContain('dag_step_error');
   expect(types, 'no error_dispatch').not.toContain('error_dispatch');
   expect(
@@ -292,9 +293,10 @@ describe('E2E Category 7 — multi-agent BRANCHING (frontier → on-prem → mul
     const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 240_000 });
     const types = snap.ledgerEvents.map(e => e.eventType);
     // HL#4 explicit: ambiguity surfaces a CALLBACK (plan_checkback_required),
-    // not a plan_rejected kill. plan_rejected is the kill path the
-    // catalog is testing AGAINST. Accepting it here would encode the
-    // bug as the expected behavior.
+    // not a planner_infeasible kill. planner_infeasible is the kill path
+    // the catalog is testing AGAINST — accepting it here would encode the
+    // bug as the expected behavior. (HL#4 canonical name; legacy
+    // `plan_rejected` alias removed from RunEventType 2026-05-23.)
     expect(
       types,
       'HL#4 — ambiguous next agent MUST emit plan_checkback_required (callback, not kill)'

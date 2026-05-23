@@ -116,14 +116,17 @@ function summarizeRuns(entries: RunLedgerEntry[]): RunSummary[] {
 }
 
 function deriveStatus(prior: RunSummary['status'], entry: RunLedgerEntry): RunSummary['status'] {
-  // run_cancelled is an explicit terminal state.
-  if (entry.eventType === 'run_cancelled') return 'cancelled';
-  // plan_rejected / node_failed / dag_failed are non-terminal denial signals.
-  // We keep them as 'denied' until run_closed clarifies the cause.
+  // user_cancelled_run is an explicit terminal state (HL#4 canonical name;
+  // the legacy `run_cancelled` alias was removed 2026-05-23).
+  if (entry.eventType === 'user_cancelled_run') return 'cancelled';
+  // planner_infeasible / node_failed / dag_step_error are non-terminal
+  // denial signals (HL#4 canonical names; legacy aliases plan_rejected /
+  // dag_failed were removed 2026-05-23). We keep them as 'denied' until
+  // run_closed clarifies the cause.
   if (
-    entry.eventType === 'plan_rejected' ||
+    entry.eventType === 'planner_infeasible' ||
     entry.eventType === 'node_failed' ||
-    entry.eventType === 'dag_failed'
+    entry.eventType === 'dag_step_error'
   ) {
     return 'denied';
   }

@@ -30,7 +30,7 @@ function assertMergeEnvelope(snap: RunSnap): void {
   expect(types, 'run_closed event present').toContain('run_closed');
   expect(types, 'final_response event present').toContain('final_response');
   expect(types, 'no node_failed').not.toContain('node_failed');
-  expect(types, 'no dag_failed').not.toContain('dag_failed');
+  // HL#4 canonical (legacy `dag_failed` alias removed 2026-05-23).
   expect(types, 'no dag_step_error').not.toContain('dag_step_error');
   expect(types, 'no error_dispatch').not.toContain('error_dispatch');
   expect(

@@ -413,9 +413,11 @@ describe('db-lexicon planner integration — Scenario 3: preflight reject + coun
     expect(trace?.preflightOutcome).toBe('preferred_agents_insufficient_alternatives_suggested');
     expect(trace?.planOutcome).toBe('plan_rejected_no_capable_agent');
 
-    // All three ledger events present per §9.2 scenario 3 assertions
+    // All three ledger events present per §9.2 scenario 3 assertions.
+    // HL#4 canonical event name (legacy `plan_rejected` alias removed from
+    // RunEventType 2026-05-23 — fix-spec post-consolidation).
     const eventTypes = ledger.events.map(e => e.eventType);
-    expect(eventTypes).toContain('plan_rejected');
+    expect(eventTypes).toContain('planner_infeasible');
     expect(eventTypes).toContain('planner_plan_trace');
     expect(eventTypes).toContain('plan_checkback_sent');
 

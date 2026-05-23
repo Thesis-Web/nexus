@@ -182,11 +182,14 @@ function StatusPill({ status }: { status: AdminLedgerRunSummary['status'] }) {
 }
 
 function eventClass(eventType: string): string {
+  // HL#4 canonical event names; legacy aliases (plan_rejected, dag_failed,
+  // run_cancelled) were removed from RunEventType 2026-05-23. Historical
+  // ledger files with the old strings flow through the default class below.
   if (
-    eventType === 'plan_rejected' ||
+    eventType === 'planner_infeasible' ||
     eventType === 'node_failed' ||
-    eventType === 'dag_failed' ||
-    eventType === 'run_cancelled'
+    eventType === 'dag_step_error' ||
+    eventType === 'user_cancelled_run'
   ) {
     return 'nx-ledger-event--error';
   }
@@ -626,9 +629,9 @@ function TrailPane({
     //  3. The run dispatched normally but trail entries are missing —
     //     genuine gap (data loss, e.g. trail file truncated externally).
     //     Surface this honestly; don't pretend everything is fine.
-    const rejected = runEvents.some(e => e.eventType === 'plan_rejected');
+    const rejected = runEvents.some(e => e.eventType === 'planner_infeasible');
     const cancelled = runEvents.some(
-      e => e.eventType === 'run_cancelled' || e.eventType === 'plan_checkback_resolved'
+      e => e.eventType === 'user_cancelled_run' || e.eventType === 'plan_checkback_resolved'
     );
     const dispatched = runEvents.some(e => e.eventType === 'node_dispatched');
 
@@ -638,7 +641,7 @@ function TrailPane({
           <h4>No NVG routing trail entries for this run.</h4>
           <p>
             The planner rejected this run before it reached NVG, so no routing decisions were made.
-            Check the <em>Run Events</em> tab for the <code>plan_rejected</code> event detail.
+            Check the <em>Run Events</em> tab for the <code>planner_infeasible</code> event detail.
           </p>
         </div>
       );

@@ -120,7 +120,7 @@ describe('computeRunTimeline', () => {
         { decision: 'deny', reason: 'user_denied' },
         '2026-05-09T00:02:03.000Z'
       ),
-      ev('plan_rejected', { reason: 'user_rejected_plan' }, '2026-05-09T00:02:04.000Z'),
+      ev('planner_infeasible', { reason: 'user_rejected_plan' }, '2026-05-09T00:02:04.000Z'),
       ev('run_closed', { closeReason: 'user_cancelled' }, '2026-05-09T00:02:05.000Z'),
     ];
 
@@ -531,7 +531,7 @@ describe('computeRunTimeline — pendingPlannerCheckback extraction', () => {
   it('extracts the planner-checkback payload when present in plan_checkback_sent.detail', () => {
     const events: RunEvent[] = [
       ev('run_opened', { promptDigest: 'abc' }, '2026-05-13T00:00:00.000Z'),
-      ev('plan_rejected', { reason: 'no_capable_agent' }, '2026-05-13T00:00:01.000Z'),
+      ev('planner_infeasible', { reason: 'no_capable_agent' }, '2026-05-13T00:00:01.000Z'),
       ev(
         'plan_checkback_sent',
         {
@@ -568,7 +568,7 @@ describe('computeRunTimeline — pendingPlannerCheckback extraction', () => {
   it('clears the pending planner checkback when plan_created arrives after', () => {
     const events: RunEvent[] = [
       ev('run_opened', { promptDigest: 'abc' }, '2026-05-13T00:00:00.000Z'),
-      ev('plan_rejected', { reason: 'no_capable_agent' }, '2026-05-13T00:00:01.000Z'),
+      ev('planner_infeasible', { reason: 'no_capable_agent' }, '2026-05-13T00:00:01.000Z'),
       ev(
         'plan_checkback_sent',
         { reason: 'no_capable_agent', checkbackPayload: PLANNER_CHECKBACK_PAYLOAD },
@@ -586,7 +586,7 @@ describe('computeRunTimeline — pendingPlannerCheckback extraction', () => {
   it('clears when run_closed arrives after the checkback', () => {
     const events: RunEvent[] = [
       ev('run_opened', { promptDigest: 'abc' }, '2026-05-13T00:00:00.000Z'),
-      ev('plan_rejected', { reason: 'no_capable_agent' }, '2026-05-13T00:00:01.000Z'),
+      ev('planner_infeasible', { reason: 'no_capable_agent' }, '2026-05-13T00:00:01.000Z'),
       ev(
         'plan_checkback_sent',
         { reason: 'no_capable_agent', checkbackPayload: PLANNER_CHECKBACK_PAYLOAD },
@@ -598,16 +598,22 @@ describe('computeRunTimeline — pendingPlannerCheckback extraction', () => {
     expect(timeline.pendingPlannerCheckback).toBeNull();
   });
 
-  it('clears when run_cancelled arrives after the checkback (Cancel-Run path)', () => {
+  it('clears when user_cancelled_run arrives after the checkback (Cancel-Run path)', () => {
     const events: RunEvent[] = [
       ev('run_opened', { promptDigest: 'abc' }, '2026-05-13T00:00:00.000Z'),
-      ev('plan_rejected', { reason: 'no_capable_agent' }, '2026-05-13T00:00:01.000Z'),
+      ev('planner_infeasible', { reason: 'no_capable_agent' }, '2026-05-13T00:00:01.000Z'),
       ev(
         'plan_checkback_sent',
         { reason: 'no_capable_agent', checkbackPayload: PLANNER_CHECKBACK_PAYLOAD },
         '2026-05-13T00:00:02.000Z'
       ),
-      ev('run_cancelled', { reason: 'user_cancelled_after_checkback' }, '2026-05-13T00:00:03.000Z'),
+      // HL#4 canonical event name; legacy `run_cancelled` alias removed
+      // from RunEventType 2026-05-23 (fix-spec post-consolidation).
+      ev(
+        'user_cancelled_run',
+        { reason: 'user_cancelled_after_checkback' },
+        '2026-05-13T00:00:03.000Z'
+      ),
     ];
     const timeline = computeRunTimeline(events);
     expect(timeline.pendingPlannerCheckback).toBeNull();
@@ -646,7 +652,7 @@ describe('computeRunTimeline — pendingPlannerCheckback extraction', () => {
     };
     const events: RunEvent[] = [
       ev('run_opened', { promptDigest: 'abc' }, '2026-05-13T00:00:00.000Z'),
-      ev('plan_rejected', { reason: 'no_capable_agent' }, '2026-05-13T00:00:01.000Z'),
+      ev('planner_infeasible', { reason: 'no_capable_agent' }, '2026-05-13T00:00:01.000Z'),
       ev(
         'plan_checkback_sent',
         { reason: 'no_capable_agent', checkbackPayload: CHAT_CHECKBACK_PAYLOAD },

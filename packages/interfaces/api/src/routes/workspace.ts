@@ -1031,7 +1031,9 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
       }
 
       const isClosed = events.some(e => e.eventType === 'run_closed');
-      const rejectionEvent = events.find(e => e.eventType === 'plan_rejected');
+      // HL#4 canonical: planner_infeasible (the legacy `plan_rejected` alias
+      // was removed from RunEventType 2026-05-23).
+      const rejectionEvent = events.find(e => e.eventType === 'planner_infeasible');
 
       res.json({
         ok: true,
@@ -1447,7 +1449,7 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
 
       await deps.runLedgerWriter.writeEvent({
         runId,
-        eventType: 'run_cancelled',
+        eventType: 'user_cancelled_run',
         timestamp: nowIso(),
         actorId: principalId as Uuid,
         detail: {

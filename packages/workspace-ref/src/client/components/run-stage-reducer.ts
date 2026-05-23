@@ -16,18 +16,24 @@
 // that fall outside the stage map are buffered onto the closest stage but
 // never crash the timeline.
 //
-// Failure rendering (spec §"Denial Rendering"):
-//   - node_failed with governanceDenied=true              → 'denied' at NVG Wall
-//   - node_failed with governanceDenied=false             → 'error'  at NVG Wall
-//   - plan_rejected / planner_infeasible                  → 'denied' at Planning
-//   - dag_failed / dag_step_error                         → 'error'  at Agent Response
-//   - compile_skipped / compile_not_applicable            → 'skipped' at Compile
-//   - compile_guard_halt                                  → 'error'  at Compile
-//   - run_closed with closeReason !== 'completed'         → 'error' at Run Closed
-// HL#4 revision (component outline §HL #4, Owner-Ratified 2026-05-23):
-// canonical names are planner_infeasible / dag_step_error /
-// compile_not_applicable / user_cancelled_run. Legacy names are accepted
-// for back-compat across historical ledgers.
+// Failure rendering (spec §"Denial Rendering") — HL#4 canonical names:
+//   - node_failed with governanceDenied=true   → 'denied' at NVG Wall
+//   - node_failed with governanceDenied=false  → 'error'  at NVG Wall
+//   - planner_infeasible                       → 'denied' at Planning
+//   - dag_step_error                           → 'error'  at Agent Response
+//   - compile_not_applicable                   → 'skipped' at Compile
+//   - compile_guard_halt                       → 'error'  at Compile
+//   - run_closed with closeReason !== 'completed' → 'error' at Run Closed
+//
+// HL#4 revision (component outline §HL #4, Owner-Ratified 2026-05-23 +
+// fix-spec post-consolidation 2026-05-23): the legacy aliases
+// `plan_rejected`, `dag_failed`, `compile_skipped`, `run_cancelled` were
+// REMOVED from RunEventType. Historical ledger files (pre-2026-05-23) may
+// still contain those strings; they flow through the unknown-event
+// fallback path in this reducer (no stage match → buffered onto closest
+// stage, no crash) rather than being explicit cases. Do NOT add the legacy
+// names back to make historical rendering "look nicer" — the fallback is
+// the contract.
 //
 // Layer rule: this file lives in workspace-ref/client and depends on the
 // workspace SSE event shape (use-run-events.ts) and the Layer 2 RunEventType
@@ -237,8 +243,7 @@ const STAGE_DEFS: ReadonlyArray<StageDef> = [
       'plan_created',
       'plan_checkback_sent',
       'plan_confirmed',
-      'plan_rejected', // legacy alias; run-coordinator emits planner_infeasible
-      'planner_infeasible', // HL#4 revision (component outline 2026-05-23)
+      'planner_infeasible', // HL#4 canonical (legacy `plan_rejected` removed 2026-05-23)
     ]),
   },
   {
@@ -266,8 +271,7 @@ const STAGE_DEFS: ReadonlyArray<StageDef> = [
       'partial_result',
       'node_completed',
       'dag_completed',
-      'dag_failed', // legacy alias; run-coordinator emits dag_step_error
-      'dag_step_error', // HL#4 revision (component outline 2026-05-23)
+      'dag_step_error', // HL#4 canonical (legacy `dag_failed` removed 2026-05-23)
       'dag_partial_complete',
     ]),
   },
@@ -284,8 +288,7 @@ const STAGE_DEFS: ReadonlyArray<StageDef> = [
       'compile_guard_fired',
       'compile_guard_halt',
       'compile_assembly_complete',
-      'compile_skipped', // legacy alias; run-coordinator emits compile_not_applicable
-      'compile_not_applicable', // HL#4 revision (component outline 2026-05-23)
+      'compile_not_applicable', // HL#4 canonical (legacy `compile_skipped` removed 2026-05-23)
     ]),
   },
   {
@@ -296,7 +299,11 @@ const STAGE_DEFS: ReadonlyArray<StageDef> = [
   {
     id: 'run_closed',
     label: 'Run closed',
-    events: new Set(['run_closed']),
+    // `user_cancelled_run` is the HL#4 canonical user-cancel terminal event;
+    // it pairs with `run_closed` in the same lifecycle position so it lives
+    // on this stage. (Legacy `run_cancelled` alias removed 2026-05-23 —
+    // historical replays fall through the unknown-event fallback.)
+    events: new Set(['run_closed', 'user_cancelled_run']),
   },
 ];
 
@@ -416,7 +423,10 @@ function extractPendingPlannerCheckback(events: RunEvent[]): PlannerCheckbackPay
   // payload (distinguishable from the legacy NVG-tier `plan_checkback_sent`
   // by the presence of `checkbackPayload`). Cleared by the next
   // `plan_created` (operator accepted suggestions → new run took over),
-  // `run_closed`, `user_cancelled_run`, or `run_cancelled` (legacy).
+  // `run_closed`, or `user_cancelled_run` — the HL#4 canonical clearing
+  // events. The legacy `run_cancelled` alias was removed from RunEventType
+  // 2026-05-23; historical ledgers carrying it pair with `run_closed`
+  // (which IS in the clearing set), so playback ends with the modal cleared.
   let lastPlannerCheckback: RunEvent | null = null;
   for (const ev of events) {
     if (
@@ -428,7 +438,6 @@ function extractPendingPlannerCheckback(events: RunEvent[]): PlannerCheckbackPay
     } else if (
       ev.type === 'plan_created' ||
       ev.type === 'run_closed' ||
-      ev.type === 'run_cancelled' ||
       ev.type === 'user_cancelled_run'
     ) {
       lastPlannerCheckback = null;
@@ -591,9 +600,7 @@ function describeCompile(events: RunEvent[]): string[] {
   const modeSel = events.find(e => e.type === 'compile_mode_selected');
   const template = events.find(e => e.type === 'compile_template_loaded');
   const assembly = events.find(e => e.type === 'compile_assembly_complete');
-  const skipped = events.find(
-    e => e.type === 'compile_skipped' || e.type === 'compile_not_applicable'
-  );
+  const skipped = events.find(e => e.type === 'compile_not_applicable');
   const lines: string[] = [];
   if (skipped?.detail) {
     const reason = str(skipped.detail['reason']);
@@ -685,8 +692,7 @@ function statusForStage(stageId: StageId, ctx: StageStatusContext): StageStatus 
   // unambiguous and must override the implicit-completion logic below.
   switch (stageId) {
     case 'planning': {
-      if (own.some(e => e.type === 'plan_rejected' || e.type === 'planner_infeasible'))
-        return 'denied';
+      if (own.some(e => e.type === 'planner_infeasible')) return 'denied';
       break;
     }
     case 'plan_review': {
@@ -712,13 +718,12 @@ function statusForStage(stageId: StageId, ctx: StageStatusContext): StageStatus 
       break;
     }
     case 'agent_response': {
-      if (own.some(e => e.type === 'dag_failed' || e.type === 'dag_step_error')) return 'error';
+      if (own.some(e => e.type === 'dag_step_error')) return 'error';
       break;
     }
     case 'compile': {
       if (own.some(e => e.type === 'compile_guard_halt')) return 'error';
-      if (own.some(e => e.type === 'compile_skipped' || e.type === 'compile_not_applicable'))
-        return 'skipped';
+      if (own.some(e => e.type === 'compile_not_applicable')) return 'skipped';
       break;
     }
     default:
@@ -767,8 +772,8 @@ function statusForStage(stageId: StageId, ctx: StageStatusContext): StageStatus 
 
   // No events for this stage. If the run failed earlier OR closed without
   // reaching here, this stage is 'pending' visually (gray). When the run
-  // closed cleanly without us, treat as 'skipped' (e.g. compile_skipped path
-  // can leave compile/final_response empty).
+  // closed cleanly without us, treat as 'skipped' (e.g. compile_not_applicable
+  // path can leave compile/final_response empty).
   if (runClosed && runFailed) return 'pending';
   if (runClosed) return 'skipped';
   return 'pending';
@@ -960,12 +965,7 @@ export function computeRunTimeline(events: RunEvent[]): RunTimelineState {
       if (closeReason && closeReason !== 'completed' && closeReason !== 'success') return true;
       if (!closeReason && reason && reason !== 'completed' && reason !== 'success') return true;
     }
-    if (
-      (buckets.get('planning') ?? []).some(
-        e => e.type === 'plan_rejected' || e.type === 'planner_infeasible'
-      )
-    )
-      return true;
+    if ((buckets.get('planning') ?? []).some(e => e.type === 'planner_infeasible')) return true;
     // Plan-review denial = user clicked Deny on the checkback card.
     if (
       (buckets.get('plan_review') ?? []).some(
@@ -979,12 +979,7 @@ export function computeRunTimeline(events: RunEvent[]): RunTimelineState {
       )
     )
       return true;
-    if (
-      (buckets.get('agent_response') ?? []).some(
-        e => e.type === 'dag_failed' || e.type === 'dag_step_error'
-      )
-    )
-      return true;
+    if ((buckets.get('agent_response') ?? []).some(e => e.type === 'dag_step_error')) return true;
     if ((buckets.get('compile') ?? []).some(e => e.type === 'compile_guard_halt')) return true;
     return false;
   })();
@@ -1017,9 +1012,7 @@ export function computeRunTimeline(events: RunEvent[]): RunTimelineState {
       case 'planning': {
         detailLines = describePlanning(own);
         if (status === 'denied') {
-          const rejected = own.find(
-            e => e.type === 'plan_rejected' || e.type === 'planner_infeasible'
-          );
+          const rejected = own.find(e => e.type === 'planner_infeasible');
           const reason = str(rejected?.detail?.['reason']);
           const reasonDetail = str(rejected?.detail?.['reasonDetail']);
           failureCode = reason ?? 'planner_infeasible';
@@ -1065,7 +1058,7 @@ export function computeRunTimeline(events: RunEvent[]): RunTimelineState {
       case 'agent_response': {
         detailLines = describeAgentResponse(own);
         if (status === 'error') {
-          const failed = own.find(e => e.type === 'dag_failed' || e.type === 'dag_step_error');
+          const failed = own.find(e => e.type === 'dag_step_error');
           const reason = str(failed?.detail?.['reason']);
           failureCode = reason ?? 'dag_step_error';
           failureMessage = '';
@@ -1080,9 +1073,7 @@ export function computeRunTimeline(events: RunEvent[]): RunTimelineState {
           failureCode = haltReason ?? 'compile_guard_halt';
           failureMessage = '';
         } else if (status === 'skipped') {
-          const skipped = own.find(
-            e => e.type === 'compile_skipped' || e.type === 'compile_not_applicable'
-          );
+          const skipped = own.find(e => e.type === 'compile_not_applicable');
           const reason = str(skipped?.detail?.['reason']);
           failureCode = reason ?? 'compile_not_applicable';
           failureMessage = '';

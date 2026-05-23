@@ -244,9 +244,11 @@ describe('RunEventType union — planner_plan_trace', () => {
   });
 
   it('still accepts existing planner-related event types', () => {
+    // HL#4 canonical names — legacy `plan_rejected` was removed from
+    // RunEventType 2026-05-23 (fix-spec post-consolidation).
     const created: RunEventType = 'plan_created';
-    const rejected: RunEventType = 'plan_rejected';
+    const infeasible: RunEventType = 'planner_infeasible';
     const checkback: RunEventType = 'plan_checkback_sent';
-    expect([created, rejected, checkback]).toHaveLength(3);
+    expect([created, infeasible, checkback]).toHaveLength(3);
   });
 });

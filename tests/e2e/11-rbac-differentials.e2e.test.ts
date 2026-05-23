@@ -7,8 +7,9 @@
  * canonical denial event(s). Higher-role allowance legs that require
  * Gate 04/05 approval flows or revoke-mid-run admin endpoints submit
  * the catalog-named request and accept any honest production outcome
- * (approval requested, plan_rejected, or executed) — but never silent
- * success without governance events.
+ * (approval requested, planner_infeasible, or executed) — but never
+ * silent success without governance events. (HL#4 canonical name;
+ * legacy `plan_rejected` alias removed from RunEventType 2026-05-23.)
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FINAL_OUTCOME } from '@nexus/contracts';
@@ -37,11 +38,8 @@ function assertDeniedShape(snap: RunSnap, label: string): void {
     return typeof fo === 'string' && fo !== FINAL_OUTCOME.EXECUTED;
   });
   expect(
-    driftEvents.length > 0 ||
-      denied ||
-      types.includes('plan_rejected') ||
-      types.includes('planner_infeasible'),
-    `${label} — must be denied (intersection / dispatch denial / planner_infeasible|plan_rejected)`
+    driftEvents.length > 0 || denied || types.includes('planner_infeasible'),
+    `${label} — must be denied (intersection / dispatch denial / planner_infeasible)`
   ).toBe(true);
 
   const executed = nxsActions.filter(
@@ -249,16 +247,17 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
     const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 240_000 });
     const types = snap.ledgerEvents.map(e => e.eventType);
     // Catalog: NVG firewall/tier denial is the load-bearing surface.
-    // delegation_empty_intersection and plan_rejected would fire even
-    // if firewall_transit_rights were misconfigured — those do NOT
-    // prove the firewall/tier ceiling did its job.
+    // delegation_empty_intersection and planner_infeasible would fire
+    // even if firewall_transit_rights were misconfigured — those do NOT
+    // prove the firewall/tier ceiling did its job. (HL#4 canonical name;
+    // legacy `plan_rejected` alias removed 2026-05-23.)
     const nvgDenied =
       types.includes('firewall_egress_denied') ||
       types.includes('tier_ceiling_exceeded') ||
       types.includes('firewall_transit_rights_denied');
     expect(
       nvgDenied,
-      'E2E-105 — NVG firewall/tier denial required (firewall_egress_denied / tier_ceiling_exceeded / firewall_transit_rights_denied); intersection/plan_rejected do not satisfy'
+      'E2E-105 — NVG firewall/tier denial required (firewall_egress_denied / tier_ceiling_exceeded / firewall_transit_rights_denied); intersection/planner_infeasible do not satisfy'
     ).toBe(true);
   }, 300_000);
 
@@ -314,12 +313,13 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
     const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 300_000 });
     const types = snap.ledgerEvents.map(e => e.eventType);
     // Catalog: maxChainDepth ceiling — the load-bearing surface is
-    // chain_depth_exceeded. plan_rejected / plan_checkback_required
+    // chain_depth_exceeded. planner_infeasible / plan_checkback_required
     // would fire for many other reasons; accepting them would mask
-    // chain-depth being unconfigured.
+    // chain-depth being unconfigured. (HL#4 canonical name; legacy
+    // `plan_rejected` alias removed 2026-05-23.)
     expect(
       types,
-      'E2E-107 — chain_depth_exceeded required; generic plan_rejected/checkback does not satisfy'
+      'E2E-107 — chain_depth_exceeded required; generic planner_infeasible/checkback does not satisfy'
     ).toContain('chain_depth_exceeded');
   }, 360_000);
 
@@ -344,9 +344,9 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
     const types = snap.ledgerEvents.map(e => e.eventType);
     // Production-shape: an env-mismatch request must EXPLICITLY deny —
     // a silent final_response that ignored the env hint is the gap.
+    // HL#4 canonical names (legacy `plan_rejected` alias removed 2026-05-23).
     const denied =
       types.includes('environment_mismatch') ||
-      types.includes('plan_rejected') ||
       types.includes('planner_infeasible') ||
       types.includes('delegation_empty_intersection');
     expect(denied, 'env-mismatch request must surface a denial event').toBe(true);

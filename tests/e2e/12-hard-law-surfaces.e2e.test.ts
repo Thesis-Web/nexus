@@ -84,10 +84,9 @@ describe('E2E Category 12 — Hard Law surfaces', () => {
     });
     const snap = await harness.waitForRunClosed(jwt, runId, { timeoutMs: 180_000 });
     const types = snap.ledgerEvents.map(e => e.eventType);
+    // HL#4 canonical names (legacy `plan_rejected` alias removed 2026-05-23).
     const callbackOrRejected =
-      types.includes('plan_checkback_required') ||
-      types.includes('plan_rejected') ||
-      types.includes('planner_infeasible');
+      types.includes('plan_checkback_required') || types.includes('planner_infeasible');
     expect(
       callbackOrRejected,
       'HL#4 — planner must surface a callback or structured rejection on unresolvable preference'
