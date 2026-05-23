@@ -25,6 +25,8 @@
     "gate:no-wildcard-authority": "tsx scripts/gates/no-wildcard-authority.ts",
     "gate:no-e2e-skip": "tsx scripts/gates/no-e2e-skip.ts",
     "nexus": "tsx scripts/nexus-main.ts",
+    "nexus:run": "tsx scripts/nexus-run.ts",
+    "nexus:stop": "tsx scripts/nexus-stop.ts",
     "nexus:mcp": "tsx scripts/nexus-main.ts -- serve-mcp",
     "lexicon:build": "tsx scripts/build-wordnet-lexicon.ts",
     "lexicon:validate": "tsx scripts/validate-governed-lexicon.ts"
