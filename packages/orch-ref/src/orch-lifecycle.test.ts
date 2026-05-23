@@ -511,3 +511,135 @@ describe('ORCH-23: API cancel route', () => {
     expect(content).toContain('.cancel(');
   });
 });
+
+// ─── HL#4 canonical event names (fix-spec post-consolidation 2026-05-23 §6) ───
+//
+// Negative-coverage suite. The canonical-law session (commits b59a020..a59b978)
+// renamed terminal events. The fix-spec post-consolidation session removed
+// the legacy aliases from the RunEventType union. These tests pin the
+// coordinator's actual ledger emissions so a future refactor cannot
+// accidentally re-introduce a legacy name — they assert BOTH that the
+// canonical event fires AND that the legacy alias does NOT appear in the
+// emission set.
+
+class RejectingPlanner implements Planner {
+  readonly plannerType: NonEmpty = 'rejection-stub' as NonEmpty;
+  readonly plannerVersion: NonEmpty = '0.0.0' as NonEmpty;
+  async plan(): Promise<ExecutionPlan | PlanRejection> {
+    return {
+      rejected: true,
+      reason: 'no_capable_agent',
+      reasonDetail: 'RejectingPlanner — capability ceiling miss for HL#4 test' as NonEmpty,
+      suggestedAlternatives: [],
+    };
+  }
+}
+
+describe('HL#4 canonical event names', () => {
+  it('planner infeasibility emits planner_infeasible, never plan_rejected', async () => {
+    const agentId = uuid();
+    const agent = makeAgent(agentId);
+    const manifest = makeManifest();
+    const ledger = makeLedgerWriter();
+    const deps = buildCoordinatorDeps(
+      { planner: new RejectingPlanner(), runLedgerWriter: ledger },
+      [agent]
+    );
+    const coordinator = new RefRunCoordinator(manifest, deps, orchestratorActorId);
+    const orch = new RefOrchestrator('ref-orch-v1' as NonEmpty, '1.0.0' as NonEmpty, coordinator);
+
+    await orch.dispatch(makeRequest([agentId]));
+
+    const eventTypes = ledger.events.map(e => e.eventType);
+    expect(eventTypes).toContain('planner_infeasible');
+    // The legacy alias was removed from RunEventType 2026-05-23; the assertion
+    // is a string match (not type-narrowed) so a regression that re-introduced
+    // the alias would still be caught here.
+    expect(eventTypes).not.toContain('plan_rejected');
+  });
+
+  it('executor error emits dag_step_error, never dag_failed', async () => {
+    const agentId = uuid();
+    const agent = makeAgent(agentId);
+    const manifest = makeManifest();
+    const ledger = makeLedgerWriter();
+    const deps = buildCoordinatorDeps(
+      {
+        runLedgerWriter: ledger,
+        dispatchToGovernance: vi.fn(
+          async (): Promise<NodeDispatchResult> => ({
+            success: false,
+            completionMetadata: null,
+            failureReason: 'agent_error' as NonEmpty,
+            governanceDenied: false,
+          })
+        ),
+      },
+      [agent]
+    );
+    const coordinator = new RefRunCoordinator(manifest, deps, orchestratorActorId);
+    const orch = new RefOrchestrator('ref-orch-v1' as NonEmpty, '1.0.0' as NonEmpty, coordinator);
+
+    await orch.dispatch(makeRequest([agentId]));
+
+    const eventTypes = ledger.events.map(e => e.eventType);
+    expect(eventTypes).toContain('dag_step_error');
+    expect(eventTypes).not.toContain('dag_failed');
+  });
+
+  it('no-eligible-results emits compile_not_applicable, never compile_skipped', async () => {
+    const agentId = uuid();
+    const agent = makeAgent(agentId);
+    const manifest = makeManifest();
+    const ledger = makeLedgerWriter();
+    const deps = buildCoordinatorDeps(
+      {
+        runLedgerWriter: ledger,
+        // Same dispatch-fails pattern as ORCH-16's failed-DAG test — no
+        // node produces eligible output, so compile is not applicable.
+        dispatchToGovernance: vi.fn(
+          async (): Promise<NodeDispatchResult> => ({
+            success: false,
+            completionMetadata: null,
+            failureReason: 'fail' as NonEmpty,
+            governanceDenied: false,
+          })
+        ),
+      },
+      [agent]
+    );
+    const coordinator = new RefRunCoordinator(manifest, deps, orchestratorActorId);
+    const orch = new RefOrchestrator('ref-orch-v1' as NonEmpty, '1.0.0' as NonEmpty, coordinator);
+
+    await orch.dispatch(makeRequest([agentId]));
+
+    const eventTypes = ledger.events.map(e => e.eventType);
+    expect(eventTypes).toContain('compile_not_applicable');
+    expect(eventTypes).not.toContain('compile_skipped');
+  });
+
+  it('user cancel emits user_cancelled_run, never run_cancelled', async () => {
+    const agentId = uuid();
+    const agent = makeAgent(agentId);
+    const manifest = makeManifest();
+    const ledger = makeLedgerWriter();
+    // buildCoordinatorDeps does not honor sendPlanCheckback as an override
+    // slot today (the overrides whitelist only covers planner, ledger,
+    // dispatchToGovernance, issueDelegation, triggerCompile, planner-request
+    // builder, agentRegistry, capabilityCeiling, maxSplitDepth). Patch the
+    // dep on the returned object so the deny-the-plan path fires.
+    const deps = buildCoordinatorDeps({ runLedgerWriter: ledger }, [agent]);
+    (deps as { sendPlanCheckback: () => Promise<boolean> }).sendPlanCheckback = vi.fn(
+      async () => false
+    );
+    const coordinator = new RefRunCoordinator(manifest, deps, orchestratorActorId);
+    const orch = new RefOrchestrator('ref-orch-v1' as NonEmpty, '1.0.0' as NonEmpty, coordinator);
+
+    const request = { ...makeRequest([agentId]), planCheckbackRequested: true };
+    await orch.dispatch(request);
+
+    const eventTypes = ledger.events.map(e => e.eventType);
+    expect(eventTypes).toContain('user_cancelled_run');
+    expect(eventTypes).not.toContain('run_cancelled');
+  });
+});
