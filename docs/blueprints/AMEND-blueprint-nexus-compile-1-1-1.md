@@ -4,28 +4,37 @@
 # Date: 2026-05-01
 # Status: OWNER-RATIFIED
 # Ratified by: James Huson, Session 21
-# Subordinate to: nexus-blueprint-v1-5-13.md
-# This document is canonical compile-ref implementation law.
+# Subordinate to: nexus-blueprint-v1-5-13.md (under the §Governing Precedence
+#   chain in docs/alignment/nexus-component-outline-v0-1-0.md)
+# This document is compile-ref implementation law within that precedence chain.
+# (Older header banner "This document is canonical compile-ref implementation
+# law." was softened 2026-05-23 — fix-spec post-consolidation, §11 Document
+# Hygiene Law — to avoid header-as-law drift.)
 
 ---
 
 ## 0. Precedence
 
-This blueprint is subordinate compile-ref law under the existing Nexus law stack.
-It does not supersede any existing canonical document. Conflicts resolve upward
-through the established precedence order:
+This AMEND is subordinate compile-ref law under the governing precedence chain
+ratified 2026-05-23. The chain is owned by the component outline at
+`docs/alignment/nexus-component-outline-v0-1-0.md §Governing Precedence`:
 
-1. `nexus-complete-end-to-end-flow-v4.8.md` — locked canonical outline
-2. `nexus-blueprint-v1-5-13.md` — primary blueprint law
-3. `AMEND-blueprint-nexus-infra-externals-v1-0-0.md` — externals amendment law
-4. `nexus-engineering-spec-v1-8-26.md` — base engineering spec
-5. `AMEND-spec-nexus-infra-externals-v0-2-5.md` — externals spec amendment
-6. This blueprint — compile-ref implementation law only
+```
+1. nexus-complete-end-to-end-flow-v4.8.md (LOCKED)
+2. nexus-owner-ratification-v1-4-12.md (LOCKED)
+3. docs/alignment/nexus-component-outline-v0-1-0.md
+4. nexus-blueprint-v1-5-13.md
+5. nexus-engineering-spec-v1-8-26.md
+6. Owner-approved AMENDs (this AMEND lives here)
+7. Implementation
+```
 
-Where this blueprint touches existing law (OCT-COMPILE, compile modes,
+Where this AMEND touches existing law (OCT-COMPILE, compile modes,
 FinalResponseArtifact signing, Run Ledger events), it inherits that law
 exactly. This document adds compile-ref implementation detail — it does not
-redefine or weaken upstream law.
+redefine or weaken upstream law. (The previous §0 enumerated a partial,
+pre-outline chain; replaced 2026-05-23 with a pointer to the outline's
+canonical chain per §11 Document Hygiene Law.)
 
 ### 0.1 Naming Clarity
 

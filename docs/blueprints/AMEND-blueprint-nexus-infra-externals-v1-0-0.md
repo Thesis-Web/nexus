@@ -3,7 +3,15 @@
 # Status: DRAFT — ratification-readiness fixes incorporated; not canonical until owner ratification
 # Owner: James Huson / Lake Area LLC
 # Date: 2026-04-30
-# Governing canon: nexus-blueprint-v1-5-13.md, nexus-engineering-spec-v1-8-26.md, nexus-complete-end-to-end-flow-v4.8.md
+# Governing precedence: see
+#   docs/alignment/nexus-component-outline-v0-1-0.md §Governing Precedence
+# (Ratified chain 2026-05-23: end-to-end flow v4.8 / owner-ratification v1.4.12 /
+#  component outline v0.1.0 / blueprint v1.5.13 / engineering spec v1.8.26 /
+#  owner-approved AMENDs / implementation. Older "Governing canon: blueprint,
+#  spec, end-to-end flow" header was retired 2026-05-23 — fix-spec post-
+#  consolidation, §11 Document Hygiene Law — because it omitted the outline
+#  and the locked owner-ratification document, both above this AMEND in the
+#  chain.)
 
 ## 0. Ratification / Addition Log
 

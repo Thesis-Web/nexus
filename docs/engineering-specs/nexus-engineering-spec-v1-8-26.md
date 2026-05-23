@@ -5866,8 +5866,25 @@ ALL of the following must be true:
 
 ## 44. Final Spec Statement
 
-This document is the **canonical engineering spec** for the Nexus Stack build.
-Status: CANONICAL — governing law / build not yet build-cleared.
+This document is the engineering spec for the Nexus Stack build.
+**Position in the governing precedence chain (ratified 2026-05-23, see
+`docs/alignment/nexus-component-outline-v0-1-0.md §Governing Precedence`):**
+
+```
+1. nexus-complete-end-to-end-flow-v4.8.md (LOCKED)
+2. nexus-owner-ratification-v1-4-12.md (LOCKED)
+3. docs/alignment/nexus-component-outline-v0-1-0.md
+4. nexus-blueprint-v1-5-13.md
+5. nexus-engineering-spec-v1-8-26.md  ← this document
+6. Owner-approved AMENDs
+7. Implementation
+```
+
+This spec is law under the blueprint and component outline. Where the
+outline or blueprint contradict text here, the outline/blueprint win and
+this spec is the artifact that must be revised. Older "this document is
+the canonical engineering spec / governing law" framing was retired
+2026-05-23 (fix-spec post-consolidation, §11 Document Hygiene Law).
 
 Nexus Stack v1.5.13 is a two-checkpoint, seven-layer, TypeScript-strict governed runtime.
 Two enforcement checkpoints: NVG (wall enforcement) and NXS (action authority). Three
@@ -5876,9 +5893,6 @@ always runs. Timeout produces denial, never auto-approval. The machine governs, 
 mints bounded execution authority, classifies data, enforces model-tier ceilings, and
 produces tamper-evident proof. Human operators remain the final decision authority.
 
-Blueprint governs purpose and architecture.
-Spec governs implementation law.
-No spec section may contradict blueprint law. Blueprint wins all conflicts.
 Build instructions govern builder-session behavior only.
 
 ---

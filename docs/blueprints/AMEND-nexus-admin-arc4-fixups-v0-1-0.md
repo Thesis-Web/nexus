@@ -195,4 +195,13 @@ wiring, not new invariants).
 
 ---
 
-*End of spec. Build per §4 sequence.*
+_End of AMEND spec._
+
+This AMEND is law under the governing precedence chain (see
+`docs/alignment/nexus-component-outline-v0-1-0.md §Governing Precedence`).
+Build sequencing is owned by the active build queue, not this footer —
+"Build per §4 sequence" was retired 2026-05-23 (fix-spec post-
+consolidation, §11 Document Hygiene Law) because build-state belongs in
+`runs/` BUILD-LOG and BUILD-QUEUE files, not in amend footers that decay
+as soon as the queue advances. The §4 sequence remains the authoritative
+ordering for re-applying this AMEND from scratch.

@@ -1868,4 +1868,12 @@ the five additions and accounts for them.
 
 ---
 
-End of spec v0.2.1. **Build-clear.** Begin Phase D Commit 1.
+End of AMEND spec v0.2.1.
+
+This AMEND is law under the governing precedence chain (see
+`docs/alignment/nexus-component-outline-v0-1-0.md §Governing Precedence`).
+Build sequencing is owned by the active build queue, not this footer —
+the original "Build-clear. Begin Phase D Commit 1." directive was retired
+2026-05-23 (fix-spec post-consolidation, §11 Document Hygiene Law) because
+build-state belongs in `runs/` BUILD-LOG and BUILD-QUEUE files, not in
+amend footers that decay as soon as the queue advances.
