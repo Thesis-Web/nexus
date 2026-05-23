@@ -1272,18 +1272,19 @@ const program = createCli({
             // The user prompt (initialMessages includes one user message
             // populated from node.taskPrompt ?? request.prompt at line
             // ~1117) arrives via the workspace POST that opened this run
-            // — its provenance is `workspace_upload`, a trusted §3.3
-            // source. Contribute it to the aggregator alongside upstream
-            // mailbox items. The aggregator picks the LEAST trusted of
-            // the union, so a downstream leg with `agent_output` upstream
-            // items still resolves to `agent_output` (and the §3.3
-            // empty-labels case split doesn't fire because the upstream
-            // items also supply validLabels); a fresh-prompt leg with no
-            // upstream items resolves to `workspace_upload` (trusted),
-            // letting the §3.3 case split floor classification to
-            // 'internal' instead of quarantining the dispatch.
+            // — its provenance is `workspace_prompt` per component outline
+            // §C.2 (typed prompt text is NOT a file upload). It is a
+            // trusted §3.3 source. Contribute it to the aggregator
+            // alongside upstream mailbox items. The aggregator picks the
+            // LEAST trusted of the union, so a downstream leg with
+            // `agent_output` upstream items still resolves to `agent_output`
+            // (and the §3.3 empty-labels case split doesn't fire because
+            // the upstream items also supply validLabels); a fresh-prompt
+            // leg with no upstream items resolves to `workspace_prompt`
+            // (trusted), letting the §3.3 case split floor classification
+            // to 'internal' instead of quarantining the dispatch.
             const aggregatedProvenance = resolveAggregatedProvenance(upstreamMailboxItems, [
-              'workspace_upload',
+              'workspace_prompt',
             ]);
             const nvgRequest: NvgOutboundRequest = {
               requestId: crypto.randomUUID() as Uuid,
@@ -1979,13 +1980,14 @@ const program = createCli({
           // F4.11 / HL #6 — probe-side aggregation. Pre-flight has no
           // upstream mailbox items (the dispatch hasn't run yet), so the
           // label surface comes from the binding-axis floor only.
-          // Provenance is 'workspace_upload' because the probe's payload
-          // is the user's prompt, which originates at the workspace
-          // trust boundary — semantically the same trust model as the
-          // spec's attachment binder, just for prompt body. When both
-          // binding and labels are empty (free_chat agent with no
-          // connectors), the §3.3 case split treats workspace_upload as
-          // trusted and floors to 'internal' rather than quarantining.
+          // Provenance is 'workspace_prompt' per component outline §C.2
+          // because the probe's payload is the user's typed prompt
+          // (request.prompt), not a file upload. Both workspace_prompt
+          // and workspace_upload are trusted workspace-ingress sources
+          // under the §3.3 case split; when both binding and labels are
+          // empty (free_chat agent with no connectors), the gate treats
+          // them as trusted and floors classification to 'internal'
+          // rather than quarantining.
           const probeAggregatedLabels = aggregatePayloadLabels([], probeBoundClasses);
           const probe: NvgOutboundRequest = {
             requestId: crypto.randomUUID() as Uuid,
@@ -2004,7 +2006,7 @@ const program = createCli({
             // the checkback message can name a concrete unavailable model.
             preferredEndpointId: request.preferredEndpointId,
             carriedClaims: probeCarriedClaims,
-            provenance: 'workspace_upload',
+            provenance: 'workspace_prompt',
           };
 
           const routing = await br.nvgService.previewRouting(probe);
