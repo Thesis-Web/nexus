@@ -162,6 +162,48 @@ const ActorUpdateSchema = z
   })
   .strict();
 
+// ── Principal RBAC writes (fix-spec post-consolidation 2026-05-23 §5) ──────
+//
+// The Mailpit corridor spec requires `mailpit-local` to be added to specific
+// user personas' allowedSystems through the admin dashboard, NOT by editing
+// seed scripts. The legacy /principals POST in routes/principals.ts is admin-
+// token-protected but lacks Zod validation, wildcard rejection, signed-mutation
+// envelopes, and audit-trail emission. These two schemas back the new
+// /workspace/admin/principals POST + PUT routes that close the gap.
+//
+// firewallTransitRights is a FirewallTransitMap (record keyed by
+// FirewallSlot string → array of allowed FirewallSlot strings); the loader-
+// side type guards already enforce slot enumeration. We accept it as a free-
+// shape record here so future slot additions don't require simultaneous
+// writer-side edits — the registry layer is the second line of validation.
+const PrincipalCreateSchema = z
+  .object({
+    principalId: z.string().uuid(),
+    displayName: z.string().min(1),
+    email: z.string().min(1),
+    registeredAt: z.string().min(1).optional(),
+    maxDelegableRiskTier: z.string().min(1),
+    allowedSystems: z.array(concreteSystem).min(0),
+    permittedCapabilities: z.array(z.string().min(1)).optional(),
+    firewallTransitRights: z.record(z.array(z.string().min(1))).optional(),
+    permittedRunTypes: z.array(z.string().min(1)).optional(),
+    octLevel: z.string().min(1).optional(),
+  })
+  .strict();
+
+const PrincipalUpdateSchema = z
+  .object({
+    displayName: z.string().min(1).optional(),
+    email: z.string().min(1).optional(),
+    maxDelegableRiskTier: z.string().min(1).optional(),
+    allowedSystems: z.array(concreteSystem).min(0).optional(),
+    permittedCapabilities: z.array(z.string().min(1)).optional(),
+    firewallTransitRights: z.record(z.array(z.string().min(1))).optional(),
+    permittedRunTypes: z.array(z.string().min(1)).optional(),
+    octLevel: z.string().min(1).optional(),
+  })
+  .strict();
+
 const ConnectorCreateSchema = z
   .object({
     connectorId: z.string().min(1),
@@ -1648,6 +1690,101 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
           return {
             kind: 'ok',
             result: { actorId, deleted: true, requiresRestart: false },
+          };
+        } catch (err) {
+          return failureFromError(err);
+        }
+      },
+    })
+  );
+
+  // ═══ SURFACE 2b: Principals (SQLite — immediate; fix-spec 2026-05-23 §5) ═══
+  //
+  // Production-quality writer for user principals — the surface admins use to
+  // update an existing persona's allowedSystems (e.g. add `mailpit-local` to
+  // manager / sr_manager / director when the Mailpit corridor goes live).
+  //
+  // Auth posture: same chain as every other route in this file (workspace JWT
+  // → nexus-admin role → X-Elevated-Session → signed AdminMutation envelope).
+  // The legacy /principals POST (routes/principals.ts) survives for bootstrap-
+  // time use by the seed loader but is intentionally NOT how a live admin
+  // updates a persona — it lacks the audit chain.
+  app.post(
+    '/workspace/admin/principals',
+    withAdminMutation<z.infer<typeof PrincipalCreateSchema>>(deps, {
+      mutationKind: 'principal_register',
+      parsePayload: parsePayloadWithZod(PrincipalCreateSchema),
+      handler: async payload => {
+        if (!deps.principalRegistry) {
+          return { kind: 'failed', reason: 'Principal registry not configured', statusCode: 501 };
+        }
+        try {
+          const existing = await deps.principalRegistry.get(payload.principalId as Uuid);
+          if (existing !== null) {
+            return {
+              kind: 'failed',
+              reason: `principal ${payload.principalId} already registered`,
+              statusCode: 409,
+            };
+          }
+          // Cast through unknown into the Principal contract — payload has
+          // already been Zod-validated at the boundary; the registry layer
+          // re-validates row shape on persist.
+          await deps.principalRegistry.register({
+            ...payload,
+            registeredAt: payload.registeredAt ?? nowIso(),
+          } as unknown as Parameters<typeof deps.principalRegistry.register>[0]);
+          return {
+            kind: 'ok',
+            result: { principalId: payload.principalId, requiresRestart: false },
+          };
+        } catch (err) {
+          return failureFromError(err);
+        }
+      },
+    })
+  );
+
+  app.put(
+    '/workspace/admin/principals/:principalId',
+    withAdminMutation<z.infer<typeof PrincipalUpdateSchema>>(deps, {
+      mutationKind: 'principal_update',
+      parsePayload: parsePayloadWithZod(PrincipalUpdateSchema),
+      handler: async (payload, ctx) => {
+        if (!deps.principalRegistry) {
+          return { kind: 'failed', reason: 'Principal registry not configured', statusCode: 501 };
+        }
+        try {
+          const principalId = String(ctx.req.params['principalId'] ?? '');
+          if (!principalId) {
+            return {
+              kind: 'failed',
+              reason: 'missing path parameter principalId',
+              statusCode: 400,
+            };
+          }
+          const existing = await deps.principalRegistry.get(principalId as Uuid);
+          if (existing === null) {
+            return {
+              kind: 'failed',
+              reason: `principal ${principalId} not found`,
+              statusCode: 404,
+            };
+          }
+          // Merge payload into the existing row. Every field on
+          // PrincipalUpdateSchema is optional; absent fields preserve the
+          // current value. `registeredAt` is preserved from the existing row.
+          const merged = {
+            ...existing,
+            ...payload,
+          };
+          await deps.principalRegistry.update(
+            principalId as Uuid,
+            merged as unknown as Parameters<typeof deps.principalRegistry.update>[1]
+          );
+          return {
+            kind: 'ok',
+            result: { principalId, requiresRestart: false },
           };
         } catch (err) {
           return failureFromError(err);

@@ -754,7 +754,16 @@ export type AdminMutationKind =
   | 'manifest_entry_update'
   | 'manifest_entry_remove'
   | 'policy_bundle_swap'
-  | 'oct_assign';
+  | 'oct_assign'
+  // ── Principal RBAC writes (HL #15 envelope intersection axis) ─────────────
+  // Added 2026-05-23 (fix-spec post-consolidation §5) so the admin dashboard
+  // can update user-persona allowedSystems / permittedCapabilities /
+  // firewallTransitRights / permittedRunTypes / octLevel through the same
+  // signed-mutation + audit-trail pipeline the rest of the writers use.
+  // Required by the Mailpit corridor spec — adding `mailpit-local` to a
+  // persona's allowedSystems is a principal_update, not a seed-script edit.
+  | 'principal_register'
+  | 'principal_update';
 
 export interface SignedAdminMutation<TPayload> {
   readonly mutationKind: AdminMutationKind;
