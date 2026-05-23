@@ -261,9 +261,11 @@ export class NvgServiceImpl implements NvgService {
     // When the request arrives with NO valid labels AND no connector
     // bindings to contribute the binding-axis floor, the gate must decide
     // by provenance:
-    //   - trusted source (nxs_connector_result / workspace_upload /
-    //     planner_history) → allow, classifier floors to 'internal' below,
-    //     log data_label_floored_internal.
+    //   - trusted source (TRUSTED_PROVENANCE_SOURCES per component
+    //     outline §C.2 — workspace_prompt, workspace_upload,
+    //     nxs_connector_result, nvg_model_result, planner_history) →
+    //     allow, classifier floors to 'internal' below, log
+    //     data_label_floored_internal.
     //   - untrusted (agent_output without trusted-agent declaration) or
     //     'unknown' → deny with NVG_UNKNOWN_PROVENANCE_PAYLOAD. The
     //     retired "empty labels classify as public" assertion (P0-030) is

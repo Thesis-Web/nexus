@@ -29,12 +29,15 @@ function makeItem(id: string, classes: DataClass[], provenance: AggItem['provena
 }
 
 describe('provenanceFromSourceType', () => {
-  it('maps nxs_execution_result → nxs_connector_result (trusted)', () => {
+  it('maps nxs_execution_result → nxs_connector_result (trusted gate output)', () => {
     expect(provenanceFromSourceType('nxs_execution_result')).toBe('nxs_connector_result');
   });
 
-  it('maps nvg_result + agent_partial → agent_output (untrusted)', () => {
-    expect(provenanceFromSourceType('nvg_result')).toBe('agent_output');
+  it('maps nvg_result → nvg_model_result (trusted gate output, component outline §C.2)', () => {
+    expect(provenanceFromSourceType('nvg_result')).toBe('nvg_model_result');
+  });
+
+  it('maps agent_partial → agent_output (untrusted post-gate writer)', () => {
     expect(provenanceFromSourceType('agent_partial')).toBe('agent_output');
   });
 
@@ -89,14 +92,28 @@ describe('resolveAggregatedProvenance', () => {
 
   it('returns the additionalSources weakest when items are empty', () => {
     // Chat first-leg path: no upstream items, the user prompt
-    // contribution is `workspace_upload`. The aggregator returns
-    // workspace_upload (trusted), letting NVG §3.3 floor empty-labels
+    // contribution is `workspace_prompt`. The aggregator returns
+    // workspace_prompt (trusted), letting NVG §3.3 floor empty-labels
     // dispatches to 'internal' rather than quarantining as unknown.
+    expect(resolveAggregatedProvenance([], ['workspace_prompt'])).toBe('workspace_prompt');
+  });
+
+  it('preserves the workspace_upload path for file uploads bound to a run', () => {
     expect(resolveAggregatedProvenance([], ['workspace_upload'])).toBe('workspace_upload');
   });
 
+  it('keeps workspace_prompt and workspace_upload distinct in the aggregate', () => {
+    // Same trust tier (3) but distinct provenance sources. When the
+    // aggregator encounters peer-trust entries, ties are stable on the
+    // first encountered candidate — both are equally trusted, so either
+    // answer is correct, but the helper must NOT collapse them to a
+    // single identity.
+    expect(resolveAggregatedProvenance([], ['workspace_prompt'])).not.toBe('workspace_upload');
+    expect(resolveAggregatedProvenance([], ['workspace_upload'])).not.toBe('workspace_prompt');
+  });
+
   it('picks the LEAST trusted across multiple additionalSources', () => {
-    expect(resolveAggregatedProvenance([], ['workspace_upload', 'agent_output'])).toBe(
+    expect(resolveAggregatedProvenance([], ['workspace_prompt', 'agent_output'])).toBe(
       'agent_output'
     );
   });
@@ -147,15 +164,23 @@ describe('aggregatePayloadLabels', () => {
 });
 
 describe('isTrustedProvenance + TRUSTED_PROVENANCE_SOURCES', () => {
-  it('matches the spec §3.3 trusted set', () => {
+  it('matches the component outline §C.2 trusted set', () => {
     expect(TRUSTED_PROVENANCE_SOURCES).toEqual(
-      new Set(['nxs_connector_result', 'workspace_upload', 'planner_history'])
+      new Set([
+        'nxs_connector_result',
+        'nvg_model_result',
+        'workspace_upload',
+        'workspace_prompt',
+        'planner_history',
+      ])
     );
   });
 
   it('returns true for trusted sources', () => {
     expect(isTrustedProvenance('nxs_connector_result')).toBe(true);
+    expect(isTrustedProvenance('nvg_model_result')).toBe(true);
     expect(isTrustedProvenance('workspace_upload')).toBe(true);
+    expect(isTrustedProvenance('workspace_prompt')).toBe(true);
     expect(isTrustedProvenance('planner_history')).toBe(true);
   });
 

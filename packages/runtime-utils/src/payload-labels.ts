@@ -23,22 +23,28 @@ import type {
 } from '@nexus/contracts';
 
 /**
- * Map a MailboxItem's OutputSourceType to a ProvenanceSource per spec
- * §2.1. NVG return payloads (model output) and agent partials both
- * resolve to `agent_output` since the model's output IS the agent's
- * surface to compile; NXS connector results are trusted because the
- * NXS bridge populated them from a connector dispatch the planner
- * already authorized.
+ * Map a MailboxItem's OutputSourceType to a ProvenanceSource per
+ * component outline §C.2.
  *
- * 'workspace_upload' and 'planner_history' are reachable only from
- * future writers (attachment binder, multi-turn chat-history loader)
- * neither of which has a production code path today.
+ * - NXS connector results: trusted (the NXS bridge populated them from
+ *   a connector dispatch the planner already authorized).
+ * - NVG returns: trusted as `nvg_model_result` (NVG normalized the
+ *   model output through its governed gate before the mailbox drop).
+ * - Agent partials: untrusted `agent_output` (the agent runtime may
+ *   have post-processed the payload after NVG's last gate).
+ *
+ * `workspace_prompt` and `workspace_upload` are produced by the
+ * workspace ingress writer (scripts/nexus-main.ts dispatch + probe
+ * paths) and contributed via `resolveAggregatedProvenance`'s
+ * `additionalSources` rather than this mapping. `planner_history`
+ * is reserved for the multi-turn chat-history loader.
  */
 export function provenanceFromSourceType(sourceType: OutputSourceType): ProvenanceSource {
   switch (sourceType) {
     case 'nxs_execution_result':
       return 'nxs_connector_result';
     case 'nvg_result':
+      return 'nvg_model_result';
     case 'agent_partial':
       return 'agent_output';
   }
@@ -50,13 +56,22 @@ export function provenanceFromSourceType(sourceType: OutputSourceType): Provenan
  * across multiple upstream items. The aggregate picks the LEAST
  * trusted of the contributing sources so the empty-labels case split
  * (§3.3) reflects the weakest link.
+ *
+ * Trust tiers (component outline §C.2):
+ *   0 — `unknown` (quarantine)
+ *   1 — `agent_output` (untrusted post-gate writer)
+ *   2 — `planner_history` (governed planner-selected prior context)
+ *   3 — workspace ingress (`workspace_prompt`, `workspace_upload`)
+ *   4 — governed gate outputs (`nxs_connector_result`, `nvg_model_result`)
  */
 const PROVENANCE_TRUST_RANK: Record<ProvenanceSource, number> = {
   unknown: 0,
   agent_output: 1,
   planner_history: 2,
+  workspace_prompt: 3,
   workspace_upload: 3,
   nxs_connector_result: 4,
+  nvg_model_result: 4,
 };
 
 /**
@@ -148,11 +163,16 @@ export function aggregatePayloadLabels(
 
 /**
  * Pre-defined trusted-provenance set used by the NVG case split.
- * Exported so NVG and the CI gate share one canonical list.
+ * Exported so NVG and the CI gate share one canonical list. Matches
+ * trust tiers ≥2 from PROVENANCE_TRUST_RANK (component outline §C.2):
+ * workspace ingress, governed gate outputs, and planner-selected
+ * history are all trusted by the §3.3 empty-labels floor.
  */
-export const TRUSTED_PROVENANCE_SOURCES: ReadonlySet<ProvenanceSource> = new Set([
+export const TRUSTED_PROVENANCE_SOURCES: ReadonlySet<ProvenanceSource> = new Set<ProvenanceSource>([
   'nxs_connector_result',
+  'nvg_model_result',
   'workspace_upload',
+  'workspace_prompt',
   'planner_history',
 ]);
 

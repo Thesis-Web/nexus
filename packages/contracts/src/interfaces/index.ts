@@ -1873,12 +1873,15 @@ export interface DataLabel {
 // Every mailbox item and every NVG request must carry provenance so the
 // classify-and-route gate can apply the §3.3 empty-labels case split
 // (Spec F4.11). Untrusted/unknown provenance with empty labels → deny.
+// Taxonomy ratified by component outline §C.2 (Owner-Ratified 2026-05-23).
 export type ProvenanceSource =
-  | 'workspace_upload'
-  | 'nxs_connector_result'
-  | 'agent_output'
-  | 'planner_history'
-  | 'unknown';
+  | 'workspace_prompt' // typed or pasted prompt text submitted through workspace
+  | 'workspace_upload' // file/blob uploaded through workspace and bound to a run
+  | 'nxs_connector_result' // output from governed NXS connector/action result
+  | 'nvg_model_result' // normalized model return through NVG inbound
+  | 'agent_output' // agent-produced result dropped to mailbox
+  | 'planner_history' // prior plan/run context selected by orch/planner
+  | 'unknown'; // quarantine / deny until classified
 
 export interface NvgOutboundRequest {
   requestId: Uuid;
