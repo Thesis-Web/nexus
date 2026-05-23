@@ -10,6 +10,10 @@
 
 ---
 
+> **Governing precedence:** see docs/alignment/nexus-component-outline-v0-1-0.md §Governing Precedence. This document is level 4 (blueprint) in the precedence chain.
+
+---
+
 ## Changelog from v0.3.6
 
 This version incorporates all ratified amendments A–I from nexus-complete-end-to-end-flow-v4.8.md,

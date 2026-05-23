@@ -12,6 +12,10 @@
 
 ---
 
+> **Governing precedence:** see docs/alignment/nexus-component-outline-v0-1-0.md §Governing Precedence. This document is level 5 (spec) in the precedence chain.
+
+---
+
 ## Changelog from v0-4-6
 
 Major version jump. This spec implements blueprint v1.5.13 (which carries all v1.4.12 law)
@@ -127,6 +131,14 @@ blueprint §2). REST API is the polyglot integration surface.
 - All CI/CD gates
 
 ### 4.2 Out of Scope — This Build
+
+> **Historical scope note (2026-05-23):** The out-of-scope list below was
+> written for the original NXS-only build phase. Several surfaces listed as
+> out of scope (Dashboard UI, admin writers, workspace reference implementation)
+> are now in active scope under the component outline and owner-ratified AMENDs.
+> Current active scope is governed by the precedence chain above, not by this
+> historical list. When this list conflicts with the component outline or
+> ratified AMENDs, those higher-precedence documents govern.
 
 - REST Adapter v2 (interface contract locked; implementation next cycle)
 - Webhook Approval Channel v2 (interface contract locked; implementation next cycle)

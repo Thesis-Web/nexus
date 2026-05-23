@@ -18,6 +18,23 @@
 
 ---
 
+## Governing Precedence (Owner-Ratified 2026-05-23)
+
+```text
+1. nexus-complete-end-to-end-flow-v4.8.md — LOCKED original product vision
+2. nexus-owner-ratification-v1-4-12.md — LOCKED owner decisions
+3. THIS DOCUMENT (component outline v0.1.0) — ratified module/hard-law alignment
+   Supersedes blueprint/spec/AMENDs on: module responsibility, hard laws,
+   run corridor semantics, V1 required surfaces, workspace/orch/mailbox/
+   agent/compile/return relationships
+4. nexus-blueprint-v1-5-13.md — design law (valid where above are silent)
+5. nexus-engineering-spec-v1-8-26.md — build law (valid where above are silent)
+6. Owner-approved AMENDs — pre-outline survive except on contradicted points
+7. Implementation — evidence of current state, not law when docs conflict
+```
+
+---
+
 ## §0 How to read this document
 
 This is the canonical statement of what every Nexus module does, what it
@@ -67,13 +84,20 @@ they do not infer.
 never sees, calls, or routes around any other module directly. The
 workspace is the surface; everything else is server-side.
 
-**4. Orch has zero power to kill a run.** Orch may: pass through,
-callback to user (accept / deny+send-anyway / restart), or hand to
-NVG/NXS for execution. Orch may NOT deny, reject, terminate, or fail a
-run for any reason. Only NVG, NXS, or the user (via callback) ends a
-run. Orch is not part of governance; orch is plug-and-play and may
-itself be a non-deterministic implementation, so it cannot hold
-governance authority.
+**4. Orch has zero governance authority over runs.** Orch may not deny,
+reject, terminate, or fail a run for governance, policy, risk, authority,
+data-classification, or wall-enforcement reasons. Those terminal decisions
+belong to NVG, NXS, or the user through workspace callback.
+
+When the planner cannot produce a valid plan for orchestration reasons —
+no capable agent exists, the request is structurally malformed, required
+input is missing, structural limits are exceeded, or multiple
+user-selectable paths exist — the planner returns a typed infeasibility
+or callback request to the run coordinator. The run coordinator presents
+it to the user through workspace callback as a rephrase / provide data /
+pick alternative / cancel decision. The user may cancel the run. NVG may
+deny model egress. NXS may deny system action authority. Orch itself does
+not emit a terminal run-closed event.
 
 **5. NXS is the sole action-governance authority.** Every CRUD on a
 target system passes through NXS. NXS validates principal + agent +
@@ -95,14 +119,16 @@ inter-module data movement passes through a mailbox. No back-channel
 calls between agents, between NXS and the agent, between NVG and the
 agent, between any two modules. The mailbox is the only seam.
 
-**9. The agentic agent actor has its own runtime.** An agent is not a
-registry record. It is a runtime that registers, holds config, listens
-to one or more mailboxes, may pre-process inputs, may invoke its paired
-LLM via NVG (if the work requires synthesis), may post-process, and
-drops its result into the assigned next mailbox. The runtime spectrum
-ranges from pure deterministic (no LLM) through LLM-paired, multi-step
-agentic, autonomous, timed, and third-party-shim — all sharing one
-runtime contract.
+**9. Agents implement the governed agent contract.** An agent is not merely
+a registry record. An agent implements the governed agent contract: it
+receives work through assigned mailboxes, returns work through assigned
+mailboxes, and never calls NXS, NVG, orch, or ledger directly. The agent
+execution model is plug-and-play — it may be a lightweight runtime hosted
+by a governed agent execution service, an external process or service, an
+MCP server connected through the MCP adapter, a third-party shim, or
+another implementation that satisfies the mailbox-only agent contract.
+The agent is independent of the orchestrator. Swapping the orchestrator
+must not break agents that satisfy the governed agent contract.
 
 **10. Everything signed, everything logged, fail-closed.** Every signed
 envelope (mode change, approval response, compile artifact, delegation,
@@ -261,6 +287,33 @@ For each module: **WHAT** it is, **RESPONSIBILITIES**, **LISTENS TO**,
   shape is the planner's decision (chat-fan-out-to-multi-agent), not a
   separate radio button.
 
+### C.1 Workspace Ingress Model (Owner-Ratified 2026-05-23)
+
+Workspace ingress is the only authorized user entry point for governed work.
+A user may submit prompt text, files, or prompt+files through the workspace.
+The workspace creates a WorkspaceIngressPackage and assigns the run ID. The
+package is handed to the orchestrator for planning. User files are never
+uploaded directly to the LLM by the user. User prompt text is not a file
+upload. Prompt text and uploads are distinct ingress parts with distinct
+provenance sources, but they may belong to the same WorkspaceIngressPackage.
+
+### C.2 Provenance Taxonomy (Owner-Ratified 2026-05-23)
+
+Every governed data payload carries a ProvenanceSource identifying its origin:
+
+- `workspace_prompt` — typed or pasted prompt text submitted through workspace
+- `workspace_upload` — file/blob uploaded through workspace and bound to a run
+- `nxs_connector_result` — output from governed NXS connector/action result
+- `nvg_model_result` — normalized model return through NVG inbound
+- `agent_output` — agent-produced result dropped to mailbox
+- `planner_history` — prior plan/run context selected by orch/planner
+- `unknown` — quarantine / deny until classified
+
+Continuation is NOT a provenance source. A payload dropped into orch-input
+retains the provenance of the producer that created the data and may carry
+separate continuation metadata. Orch coordinates; it does not become the
+producer provenance for governed data payloads.
+
 ### D. Orchestrator (PLUG-AND-PLAY)
 
 - **WHAT**: The planner + run coordinator + DAG executor. Deterministic
@@ -308,6 +361,28 @@ For each module: **WHAT** it is, **RESPONSIBILITIES**, **LISTENS TO**,
   DAG executor (under build — current code is too light per §7).
 - **TARGET ADAPTERS**: on-prem LLM orchestrator, frontier LLM
   orchestrator, alternate inference-DB orchestrator.
+
+### D.1 Orch Continuation Model (Owner-Ratified 2026-05-23)
+
+Orch may be a participant in its own run plan. After planning and dispatch,
+orch may listen to assigned orch-input mailboxes when the plan requires
+continuation, replanning, compile readiness, or linked child-run opening.
+
+Three externally meaningful continuation kinds:
+- `same_run_continue` — orch continues the existing run plan, which may
+  include plan amendment/replanning as part of continuation
+- `linked_child_run` — continuation opens a new governed run because the
+  next work is materially distinct or must restart from governance boundary
+- `user_callback_required` — orch cannot decide next step; workspace asks user
+
+Internal executor states (compile_ready, terminal_condition_check, replan
+bookkeeping) are internal plan/DAG state transitions until a concrete
+corridor proves they must cross a mailbox boundary as payloads.
+
+Orch-input does not grant governance authority. Any model-bound traffic
+still routes through NVG. Any system-action traffic still routes through NXS.
+Any user decision routes through workspace callback. Orch may not
+governance-deny or terminal-close the run on its own.
 
 ### E. Lexicon Database — Mini-Substrate (PLUG-AND-PLAY data; BAKED contract)
 
@@ -534,6 +609,12 @@ For each module: **WHAT** it is, **RESPONSIBILITIES**, **LISTENS TO**,
   - Compile-input mailbox — what compile listens to
   - Orch-input mailbox — what orch listens to (for continuation /
     second-run triggers / mid-run replanning)
+
+  V1 mailbox allocation includes all five roles: NXS-drop, NVG-drop,
+  agent-input, compile-input, and orch-input. The planner assigns required
+  mailboxes at plan-confirm time. Existing implementations that read broadly
+  from actor mailboxes are interim implementation state only and must not be
+  described as the target architecture. (Owner-Ratified 2026-05-23)
 - **LISTENS TO** (as service): Drop calls from NXS, NVG, Agent
   runtimes, Orch.
 - **DROPS / WRITES** (as service): Items requested by listeners.
@@ -574,6 +655,16 @@ For each module: **WHAT** it is, **RESPONSIBILITIES**, **LISTENS TO**,
   (currently skeleton; needs template-aware production build).
 - **TARGET ADAPTERS**: on-prem synthesis agent (compile-mode 2),
   frontier synthesis agent (compile-mode 3), customer-built assembler.
+
+#### J.1 File/Bundle Return Law (Owner-Ratified 2026-05-23)
+
+The final response returns through the workspace only. If compile produces
+files, bundles, rendered documents, exports, attachments, or any other
+downloadable body, the signed FinalResponseArtifact must include file
+metadata and stable workspace download routes. The workspace is responsible
+for displaying the final response and serving authorized downloads for the
+user. A file existing in runtime storage is not sufficient proof of return.
+A log path is not a return path. A debug route is not a user return path.
 
 ### K. Admin Dashboard (BAKED — not plug-and-play)
 
@@ -1012,6 +1103,22 @@ spec/build can proceed:
 - Pricing / licensing model.
 
 These belong in downstream documents that reference this outline.
+
+---
+
+## §11 Document Hygiene Law (Owner-Ratified 2026-05-23)
+
+Headers, comments, status banners, changelog notes, and inline comments are
+not independent sources of law. They may summarize document identity,
+version, status, and pointers, but all binding law must live in governed
+body sections. If a header/comment/status banner contradicts the governed
+body or active precedence stack, it is stale and must be patched. Builders
+and auditors must not rely on header/comment law without confirming the
+governed body section.
+
+No new canonical law may be introduced only in a file header, code comment,
+table caption, changelog bullet, or status banner. Every law-bearing
+statement must have a governed body section ID.
 
 ---
 
