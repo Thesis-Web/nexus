@@ -145,12 +145,28 @@ function App() {
         if (res.ok && res.data) {
           const { runId, planPreview } = res.data;
 
+          // HL#4 (component outline §HL #4 + fix-spec 2026-05-23 §4): the
+          // synchronous OrchestratorPlanPreview signals a planner-infeasibility
+          // user-decision state via `requiresUserApproval: true`. When the
+          // planner attached an executable RejectionCheckbackPayload, it
+          // lands on `preview.rejection` carrying reason + reasonDetail —
+          // we read those for an immediate UI hint while the SSE stream
+          // catches up. (When `rejection` is null — malformed plan or
+          // planner-without-alternatives — the SSE-driven timeline picks
+          // up the reason from the `planner_infeasible` event detail.)
+          //
+          // Pre-2026-05-23 this branch checked `preview['rejected'] === true`,
+          // a field that does not exist on OrchestratorPlanPreview — the
+          // check was dead and the synchronous hint never rendered.
           const preview = planPreview as Record<string, unknown> | null;
-          if (preview && preview['rejected'] === true) {
-            setPlanRejection({
-              reason: (preview['reason'] as string) ?? 'unknown',
-              reasonDetail: (preview['reasonDetail'] as string) ?? '',
-            });
+          if (preview && preview['requiresUserApproval'] === true) {
+            const rejection = preview['rejection'] as Record<string, unknown> | null;
+            if (rejection !== null && rejection !== undefined) {
+              setPlanRejection({
+                reason: (rejection['reason'] as string) ?? 'planner_infeasible',
+                reasonDetail: (rejection['reasonDetail'] as string) ?? '',
+              });
+            }
           }
 
           const newRun: RunEntry = {

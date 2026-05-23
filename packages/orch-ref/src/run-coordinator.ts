@@ -199,14 +199,28 @@ export class RefRunCoordinator implements RunCoordinator {
 
     if ('rejected' in planResult && (planResult as PlanRejection).rejected) {
       const rejection = planResult as PlanRejection;
-      // HL#4 revision (component outline §HL #4, Owner-Ratified 2026-05-23):
-      // orch has zero governance authority. Planner infeasibility is an
-      // orchestration callback signal, not a governance-deny. Emit the
-      // canonical `planner_infeasible` event. KNOWN GAP: the full
-      // planner-infeasibility-to-workspace-callback UX is not yet built —
-      // the run coordinator returns the OrchestratorPlanPreview to the caller
-      // and the workspace UI surfaces the rejection / alternatives modal;
-      // the dedicated callback queue is a future session.
+      // HL#4 revision (component outline §HL #4, Owner-Ratified 2026-05-23 +
+      // fix-spec post-consolidation 2026-05-23 §4): orch has zero governance
+      // authority. Planner infeasibility is an orchestration callback
+      // signal, not a governance-deny. Behavioral contract:
+      //
+      //   1. Emit canonical `planner_infeasible` event.
+      //   2. Do NOT emit `run_closed` — the run stays OPEN until the user
+      //      decides (cancel / rephrase / pick an alternative).
+      //   3. Return OrchestratorPlanPreview with `requiresUserApproval: true`
+      //      — that flag IS the spec §4.3 step 3 callback signal. The
+      //      workspace either renders the Accept-Suggestions / Cancel-Run
+      //      modal from `plan_checkback_sent` (when the planner attached an
+      //      executable RejectionCheckbackPayload — Path A below) OR shows a
+      //      fallback "Plan failed — Cancel Run" UI keyed off
+      //      `requiresUserApproval` (when no checkback payload is available
+      //      — Path B). Either way the only terminal close path is
+      //      POST /workspace/runs/:runId/close → `user_cancelled_run` +
+      //      `run_closed { closeReason: 'user_cancelled' }`.
+      //   4. If the user accepts the recommended alternatives, the workspace
+      //      issues a fresh WorkspaceRunRequest (new runId) — the rejected
+      //      run is left in its open-with-rejection state until explicitly
+      //      cancelled.
       await this.writeLedger(request.runId, 'planner_infeasible', {
         reason: rejection.reason,
         reasonDetail: rejection.reasonDetail,
@@ -643,12 +657,20 @@ export class RefRunCoordinator implements RunCoordinator {
     rejection: PlanRejection,
     checkback: RejectionCheckbackPayload | null = null
   ): OrchestratorPlanPreview {
-    // When the planner produced a counter-suggestion (Branch 3 reject
-    // path), the coordinator attaches the executable RejectionCheckbackPayload
-    // to `preview.rejection`. Workspace UI consumes this to drive the
-    // Accept-Suggestions / Cancel-Run modal. `requiresUserApproval` flips
-    // to true so the workspace shell treats this as a user-decision
-    // state rather than a terminal rejection.
+    // HL#4 (component outline §HL #4 + fix-spec 2026-05-23 §4): every
+    // planner-infeasibility return ALWAYS requires a user decision (cancel,
+    // rephrase, or — if alternatives exist — pick one). `requiresUserApproval`
+    // is the synchronous callback signal per spec §4.3 step 3, separate from
+    // the SSE-driven `plan_checkback_sent` event that carries the modal
+    // payload when the planner attached one. Without this flag, the
+    // workspace shell sees an empty preview and has no honest way to render
+    // "the plan failed; here are your options" — it would either silently
+    // hang or treat the run as terminally failed, both of which violate
+    // HL#4 (orch has zero authority to terminate a run; only the user does).
+    // Prior to 2026-05-23 the flag was gated on `checkback !== null`, which
+    // left malformed-plan + planner-without-alternatives paths emitting
+    // `planner_infeasible` but signalling no user action needed.
+    void rejection;
     return {
       runId: request.runId,
       orchestratorSocketId: this.manifest.orchestratorSocketId,
@@ -658,7 +680,7 @@ export class RefRunCoordinator implements RunCoordinator {
           ? 'deterministic'
           : this.manifest.plannerMode,
       selectedAgents: [],
-      requiresUserApproval: checkback !== null,
+      requiresUserApproval: true,
       planDigest: '' as Sha256Hex,
       plan: null,
       rejection: checkback,
