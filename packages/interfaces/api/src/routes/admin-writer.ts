@@ -183,6 +183,14 @@ const PrincipalCreateSchema = z
     email: z.string().min(1),
     registeredAt: z.string().min(1).optional(),
     maxDelegableRiskTier: z.string().min(1),
+    // .min(0) is intentional and asymmetric with ActorCreateSchema (.min(1)
+    // above). A principal with an empty allowedSystems set is a valid
+    // default-deny posture: it can be registered first and then granted
+    // systems individually via PUT /workspace/admin/principals/:id (see the
+    // Mailpit-corridor flow documented at the top of this block). Actors
+    // must enter the registry already capable of at least one system, so
+    // their schema requires .min(1); principals are RBAC anchors and need
+    // the empty-set option.
     allowedSystems: z.array(concreteSystem).min(0),
     permittedCapabilities: z.array(z.string().min(1)).optional(),
     firewallTransitRights: z.record(z.array(z.string().min(1))).optional(),
