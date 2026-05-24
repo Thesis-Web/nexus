@@ -228,8 +228,12 @@ export function RunDisplay({ runId, events, status, planRejection }: RunDisplayP
             a planner_infeasible event WITHOUT an attached checkback payload
             (Paths B / C in the run-coordinator HL#4 contract block). Orch
             has zero governance authority — this card SUGGESTS the run won't
-            reach final response and offers Cancel-Run / Edit-Prompt-and-
-            Retry, both of which are user-decisions. PlanCheckbackModal above
+            reach final response and offers a single Cancel-Run affordance
+            (owner ratification 2026-05-23 second round: Edit Prompt pulled
+            as a prompt-rewrite bypass surface; user-retry goes back through
+            the primary PromptPanel which carries the full orch preflight).
+            "Run It Anyway" / bypass orch is logged at DRIFT-LOG D-03 pending
+            contract + RBAC + audit-event design. PlanCheckbackModal above
             handles the Path A case (planner attached executable alternatives).
             RunDenialCard below handles real governance denials (NVG / Gate
             04/05 / etc.) where the framing genuinely IS "request denied".
@@ -239,8 +243,6 @@ export function RunDisplay({ runId, events, status, planRejection }: RunDisplayP
             sourceRunId={runId}
             reason={failure.code}
             reasonDetail={failure.message ?? ''}
-            prompt={checkbackPrompt}
-            preferredEndpointId={checkbackPreferredEndpointId}
             onResolved={() => {
               // The originating run is now closed (or being closed); the
               // SSE-driven timeline will pick up the terminal event and
