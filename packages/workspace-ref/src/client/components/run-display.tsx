@@ -16,6 +16,7 @@ import { RunDagSection } from './run-dag-section.js';
 import { RunDenialCard } from './run-denial-card.js';
 import { RunCheckbackCard } from './run-checkback-card.js';
 import { PlanCheckbackModal } from './plan-checkback-modal.js';
+import { PlannerSuggestionCard } from './planner-suggestion-card.js';
 import { computeRunTimeline, type RunTimelineState } from './run-stage-reducer.js';
 
 interface RunDisplayProps {
@@ -222,9 +223,38 @@ export function RunDisplay({ runId, events, status, planRejection }: RunDisplayP
           />
         )}
 
-        {/* Denial card — shown when the timeline detected a failure stage.
-            Suppresses the Governed Response card below. */}
-        {failure && <RunDenialCard failure={failure} />}
+        {/* HL#4 + fix-spec 2026-05-23 §4 / DRIFT-LOG D-02 — planner suggestion
+            card. Renders when the failure landed at the planning stage from
+            a planner_infeasible event WITHOUT an attached checkback payload
+            (Paths B / C in the run-coordinator HL#4 contract block). Orch
+            has zero governance authority — this card SUGGESTS the run won't
+            reach final response and offers Cancel-Run / Edit-Prompt-and-
+            Retry, both of which are user-decisions. PlanCheckbackModal above
+            handles the Path A case (planner attached executable alternatives).
+            RunDenialCard below handles real governance denials (NVG / Gate
+            04/05 / etc.) where the framing genuinely IS "request denied".
+            Mutually exclusive — gated by stageId + pendingPlannerCheckback. */}
+        {failure && failure.stageId === 'planning' && !timeline.pendingPlannerCheckback && runId ? (
+          <PlannerSuggestionCard
+            sourceRunId={runId}
+            reason={failure.code}
+            reasonDetail={failure.message ?? ''}
+            prompt={checkbackPrompt}
+            preferredEndpointId={checkbackPreferredEndpointId}
+            onResolved={() => {
+              // The originating run is now closed (or being closed); the
+              // SSE-driven timeline will pick up the terminal event and
+              // remove this card on the next reducer pass. No local
+              // dismissal flag needed — the failure-stage match itself
+              // unmounts the card once `failure` clears.
+            }}
+          />
+        ) : (
+          /* Denial card — shown when the timeline detected a failure stage
+             that is NOT a planner suggestion case (i.e., governance denial
+             at NVG / Approval gates / etc., or any non-planning stage). */
+          failure && <RunDenialCard failure={failure} />
+        )}
 
         {/* Final response — FinalResponseArtifact display [GWS4-AUD-02].
             Only render on success runs; denial paths show the denial card
