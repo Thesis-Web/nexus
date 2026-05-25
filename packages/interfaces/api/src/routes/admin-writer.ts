@@ -1753,6 +1753,45 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
     })
   );
 
+  // GET /workspace/admin/principals/:principalId — admin-authenticated read.
+  //
+  // The legacy /principals/:id route (routes/principals.ts) is admin-bearer-
+  // token-gated; the workspace admin dashboard authenticates with a workspace
+  // JWT + elevated session and has no admin bearer. Without a parallel GET
+  // here, the dashboard (and tests built on the dashboard contract) cannot
+  // read the current Principal record before issuing a merge PUT — the PUT
+  // side already lives at this path with the same auth chain.
+  //
+  // Read-only: no mutation envelope required, no ledger emission. Same auth
+  // posture as the read sections of admin-setup (workspace JWT → admin role
+  // → X-Elevated-Session).
+  app.get('/workspace/admin/principals/:principalId', async (req: Request, res: Response) => {
+    const auth = await checkAdminAuth(req, res, deps);
+    if (!auth.ok) {
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return;
+    }
+    if (!deps.principalRegistry) {
+      res.status(501).json({ ok: false, error: 'Principal registry not configured' });
+      return;
+    }
+    const principalId = String(req.params['principalId'] ?? '');
+    if (!principalId) {
+      res.status(400).json({ ok: false, error: 'missing path parameter principalId' });
+      return;
+    }
+    try {
+      const principal = await deps.principalRegistry.get(principalId as Uuid);
+      if (principal === null) {
+        res.status(404).json({ ok: false, error: `principal ${principalId} not found` });
+        return;
+      }
+      res.json({ ok: true, data: principal });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: san(err) });
+    }
+  });
+
   app.put(
     '/workspace/admin/principals/:principalId',
     withAdminMutation<z.infer<typeof PrincipalUpdateSchema>>(deps, {

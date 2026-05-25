@@ -163,13 +163,17 @@ async function addMailpitSystemToPrincipal(
   // GET current principal, merge mailpit-local into allowedSystems, PUT back.
   // Adding the system here is the spec §5.4 RBAC change — going through the
   // dashboard writer (PUT /workspace/admin/principals/:principalId) rather
-  // than editing scripts/seeds/user-ladder-seeds.ts directly.
+  // than editing scripts/seeds/user-ladder-seeds.ts directly. The matching
+  // GET on the same path is the elevated-admin read; the legacy
+  // /principals/:id route lives behind the admin-bearer-token middleware
+  // which the dashboard never holds.
   const headers = await adminHeaders(harness);
-  const getRes = await fetch(`${harness.baseUrl}/principals/${principalId}`, {
-    headers: { Authorization: headers['Authorization']! },
+  const getRes = await fetch(`${harness.baseUrl}/workspace/admin/principals/${principalId}`, {
+    headers,
   });
   if (!getRes.ok) {
-    throw new Error(`principal lookup failed: HTTP ${getRes.status}`);
+    const body = await getRes.text();
+    throw new Error(`principal lookup failed: HTTP ${getRes.status} ${body}`);
   }
   const getBody = (await getRes.json()) as { data?: { allowedSystems?: ReadonlyArray<string> } };
   const current = getBody.data?.allowedSystems ?? [];
