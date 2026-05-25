@@ -1,7 +1,7 @@
 manifestVersion: '1.0'
 issuer: nexus-dev
-issuedAt: '2026-05-10T23:32:04.287Z'
-signature: 29xRLjjjKhWYSkLKv1pqGbdhJaFP45dCS5fc1hh9DJkGfFtmaI46dNKJl0iiR-hYeXSPO1f15Z6vqr-MV-OMDg
+issuedAt: '2026-05-25T17:33:34.917Z'
+signature: a8x1ovcSIzbKlgd3sa-rw_eAintjrODBVgpnhOn0t_jpWAfuo2AGsrTse8W6f_n9i5QbwMP17LlKZwc42fXpBA
 body:
   endpoints:
     - endpointId: local-ollama
@@ -37,7 +37,7 @@ body:
         prefix: 'Bearer '
       enabled: true
     - endpointId: ollama-blackmac
-      url: http://10.31.1.137:11434/api/chat
+      url: http://192.168.1.59:11434/api/chat
       adapterId: ollama-chat-v1
       modelName: qwen3.5:0.8b
       tier: on_prem_general
@@ -55,7 +55,7 @@ body:
       auth:
         kind: none
     - endpointId: ollama-jameshp2
-      url: http://10.31.1.125:11434/api/chat
+      url: http://10.31.1.112:11434/api/chat
       adapterId: ollama-chat-v1
       modelName: gemma2:2b
       tier: on_prem_sensitive
@@ -64,7 +64,7 @@ body:
       auth:
         kind: none
     - endpointId: ollama-jamesImac
-      url: http://10.31.1.109:11434/api/chat
+      url: http://10.31.1.108:11434/api/chat
       adapterId: ollama-chat-v1
       modelName: qwen2.5:1.5b
       tier: on_prem_general

@@ -414,6 +414,7 @@ export const CAPABILITY_IDS = {
   DELETE_RECORD_BULK: 'delete:record:bulk',
   SEND_MESSAGE_INTERNAL: 'send:message:internal',
   SEND_MESSAGE_EXTERNAL: 'send:message:external',
+  COMPOSE_EMAIL: 'compose:email',
   PUBLISH_CONTENT_INTERNAL: 'publish:content:internal',
   PUBLISH_CONTENT_EXTERNAL: 'publish:content:external',
   EXPORT_DATA_SINGLE: 'export:data:single',
