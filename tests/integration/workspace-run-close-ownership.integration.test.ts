@@ -131,6 +131,12 @@ interface Harness {
   baseUrl: string;
   token: string;
   setTerminal: (terminal: RunOrchestrationTerminalKind | 'none') => void;
+  /** Dispatch invocations per runId — proves the workspace calls
+   *  `dispatchToOrchestrator` exactly once per POST /workspace/runs, which
+   *  guards against a regression where the refactored route accidentally
+   *  re-runs orchestration (and thus NXS actions, model calls, ledger
+   *  events, side effects) on the same request. */
+  dispatchInvocations: Map<string, number>;
   ledger: ReturnType<typeof ledgerWriter>;
   close: () => Promise<void>;
 }
@@ -140,11 +146,13 @@ async function startHarness(): Promise<Harness> {
   app.use(express.json({ limit: '4mb' }));
 
   const ledger = ledgerWriter();
+  const dispatchInvocations = new Map<string, number>();
   let activeTerminal: RunOrchestrationTerminalKind | 'none' = 'none';
 
   const dispatchToOrchestrator = async (
     request: WorkspaceRunRequest
   ): Promise<OrchestratorDispatchResult> => {
+    dispatchInvocations.set(request.runId, (dispatchInvocations.get(request.runId) ?? 0) + 1);
     const preview = fakePreview(request.runId);
     if (activeTerminal === 'none') {
       return { preview, terminal: null };
@@ -190,6 +198,7 @@ async function startHarness(): Promise<Harness> {
     setTerminal: (kind: RunOrchestrationTerminalKind | 'none') => {
       activeTerminal = kind;
     },
+    dispatchInvocations,
     ledger,
     close: () =>
       new Promise<void>((resolve, reject) => server.close(err => (err ? reject(err) : resolve()))),
@@ -324,5 +333,34 @@ describe('HOLE-LIFECYCLE-001 — workspace owns canonical run_closed', () => {
       close,
       'workspace must not invent a close when the orch reports no terminal'
     ).toBeUndefined();
+  });
+
+  // HOLE-LIFECYCLE-001 regression guard: prove the workspace invokes
+  // `dispatchToOrchestrator` exactly once per POST /workspace/runs across
+  // every terminal kind. A double-dispatch would silently duplicate every
+  // run-coordinator side effect — NXS pipeline actions, NVG model calls,
+  // delegation issuance, mailbox writes, ledger operational events — and
+  // typecheck cannot catch it. This test pins the boundary.
+  describe('dispatch-call-count invariant', () => {
+    const allKinds: Array<RunOrchestrationTerminalKind | 'none'> = [
+      'compile_dispatched',
+      'no_compile_inputs',
+      'executor_error',
+      'user_cancelled_plan',
+      'user_cancelled_during_run',
+      'planner_infeasible',
+      'none',
+    ];
+    for (const kind of allKinds) {
+      it(`terminal=${kind} → dispatchToOrchestrator called exactly once`, async () => {
+        harness.setTerminal(kind);
+        const { runId } = await postRun();
+        const count = harness.dispatchInvocations.get(runId) ?? 0;
+        expect(
+          count,
+          `workspace must call dispatchToOrchestrator exactly once per request; observed ${count} for terminal=${kind}`
+        ).toBe(1);
+      });
+    }
   });
 });
