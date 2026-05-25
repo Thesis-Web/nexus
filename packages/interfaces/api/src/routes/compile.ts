@@ -99,6 +99,8 @@ async function closeRunOnCompileError(
       actorId: null,
       detail: {
         closeReason: 'error',
+        finalOutcome: 'error',
+        closedBy: 'compile',
         error: san(error),
       },
     });

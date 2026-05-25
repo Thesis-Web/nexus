@@ -332,6 +332,7 @@ export class RefRunCoordinator implements RunCoordinator {
           runId: request.runId,
           closedBy: 'orch-ref',
           closeReason: 'user_cancelled',
+          finalOutcome: 'cancelled',
         });
         return preview;
       }
@@ -510,6 +511,8 @@ export class RefRunCoordinator implements RunCoordinator {
         planId: plan.planId,
         runId: request.runId,
         closedBy: 'orch-ref',
+        closeReason: 'error',
+        finalOutcome: 'error',
         reason: 'executor_error',
       });
       return this.buildPlanPreview(request, plan);
@@ -542,6 +545,8 @@ export class RefRunCoordinator implements RunCoordinator {
         planId: plan.planId,
         runId: request.runId,
         closedBy: 'orch-ref',
+        closeReason: 'user_cancelled',
+        finalOutcome: 'cancelled',
         reason: 'user_cancelled_run',
       });
       return this.buildPlanPreview(request, plan);
@@ -616,6 +621,8 @@ export class RefRunCoordinator implements RunCoordinator {
         planId: plan.planId,
         runId: request.runId,
         closedBy: 'orch-ref',
+        closeReason: 'compile_not_applicable',
+        finalOutcome: 'no_eligible_results',
         reason: 'compile_not_applicable',
       });
     }

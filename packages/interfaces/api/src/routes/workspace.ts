@@ -747,7 +747,11 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
               eventType: 'run_closed',
               timestamp: nowIso(),
               actorId: null,
-              detail: { closeReason: `Attachment ${attachId} not found or not staged` },
+              detail: {
+                closeReason: `Attachment ${attachId} not found or not staged`,
+                finalOutcome: 'error',
+                closedBy: 'workspace',
+              },
             });
             res.status(400).json({ ok: false, error: `Attachment ${attachId} invalid` });
             return;
@@ -783,7 +787,11 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
               eventType: 'run_closed',
               timestamp: nowIso(),
               actorId: null,
-              detail: { closeReason: `File ${attachId} quarantined` },
+              detail: {
+                closeReason: `File ${attachId} quarantined`,
+                finalOutcome: 'error',
+                closedBy: 'workspace',
+              },
             });
             res.status(400).json({ ok: false, error: `File ${attachId} quarantined` });
             return;
@@ -829,6 +837,8 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
               actorId: null,
               detail: {
                 closeReason: `Attachment ${attachId} bound but blob unreadable`,
+                finalOutcome: 'error',
+                closedBy: 'workspace',
               },
             });
             res.status(500).json({
@@ -984,6 +994,8 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
               actorId: null,
               detail: {
                 closeReason: 'error',
+                finalOutcome: 'error',
+                closedBy: 'workspace',
                 error: dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr),
               },
             });

@@ -219,6 +219,8 @@ export function registerCompileReturnRoutes(
         actorId: null,
         detail: {
           closeReason: 'completed',
+          finalOutcome: 'completed',
+          closedBy: 'compile-return',
           returnEndpointId: request.returnEndpointId,
           artifactId: request.artifact.artifactId,
           acceptedAt: nowIso(),
@@ -247,6 +249,8 @@ export function registerCompileReturnRoutes(
             actorId: null,
             detail: {
               closeReason: 'error',
+              finalOutcome: 'error',
+              closedBy: 'compile-return',
               error: san(err),
             },
           });

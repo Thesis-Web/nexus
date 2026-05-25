@@ -1872,6 +1872,8 @@ const program = createCli({
             actorId: null,
             detail: {
               closeReason: 'error',
+              finalOutcome: 'error',
+              closedBy: 'compile',
               error: (err as Error).message,
             },
           });
@@ -2589,6 +2591,17 @@ const program = createCli({
 
       // run_closed bracket — symmetric to run_opened above.
       if (input.bracketRun) {
+        // Derive a canonical closeReason from the evidence outcome so
+        // downstream consumers (workspace UI reducer, harness, audit)
+        // can route on a fixed vocabulary regardless of where in the
+        // dispatch the run actually terminated.
+        const fo = evidence.finalOutcome;
+        const closeReason =
+          fo === FINAL_OUTCOME.EXECUTED
+            ? 'completed'
+            : typeof fo === 'string' && fo.startsWith('denied_')
+              ? 'governance_denied'
+              : 'error';
         await coreDeps.runLedgerWriter!.writeEvent({
           runId,
           eventType: 'run_closed',
@@ -2596,6 +2609,8 @@ const program = createCli({
           actorId: null,
           detail: {
             ...input.bracketRun.runOpenDetail,
+            closedBy: 'nxs-dispatch-bracket',
+            closeReason,
             finalOutcome: evidence.finalOutcome,
             evidenceRecordId: evidence.recordId,
           },
