@@ -266,7 +266,7 @@ describe('ORCH-15: Full lifecycle', () => {
     const orch = new RefOrchestrator('ref-orch-v1' as NonEmpty, '1.0.0' as NonEmpty, coordinator);
 
     const request = makeRequest([agentId]);
-    const preview = await orch.dispatch(request);
+    const { preview, terminal } = await orch.dispatch(request);
 
     expect(preview.runId).toBe(request.runId);
     expect(preview.plan).not.toBeNull();
@@ -274,6 +274,11 @@ describe('ORCH-15: Full lifecycle', () => {
 
     // triggerCompile should have been called (all nodes succeeded)
     expect(deps.triggerCompile).toHaveBeenCalledWith(request.runId);
+
+    // HOLE-LIFECYCLE-001: success-path terminal is `compile_dispatched`
+    // so the workspace knows compile-return will own the run_closed.
+    expect(terminal).not.toBeNull();
+    expect(terminal!.kind).toBe('compile_dispatched');
   });
 
   it('compile_not_applicable does NOT call triggerCompile', async () => {
@@ -340,7 +345,7 @@ describe('ORCH-16: Run Ledger events', () => {
     expect(dagCompletedIdx).toBeLessThan(compileTriggeredIdx);
   });
 
-  it('emits compile_not_applicable + final_response + run_closed for failed DAG', async () => {
+  it('emits compile_not_applicable + final_response + returns terminal=no_compile_inputs for failed DAG', async () => {
     const agentId = uuid();
     const agent = makeAgent(agentId);
     const manifest = makeManifest();
@@ -363,7 +368,7 @@ describe('ORCH-16: Run Ledger events', () => {
     const orch = new RefOrchestrator('ref-orch-v1' as NonEmpty, '1.0.0' as NonEmpty, coordinator);
 
     const request = makeRequest([agentId]);
-    await orch.dispatch(request);
+    const { terminal } = await orch.dispatch(request);
 
     const eventTypes = ledger.events.map(e => e.eventType);
 
@@ -373,8 +378,16 @@ describe('ORCH-16: Run Ledger events', () => {
     expect(eventTypes).toContain('dag_step_error');
     expect(eventTypes).toContain('compile_not_applicable');
     expect(eventTypes).toContain('final_response');
-    expect(eventTypes).toContain('run_closed');
     expect(eventTypes).not.toContain('compile_triggered');
+
+    // HOLE-LIFECYCLE-001: orch is a plug-and-play package; it MUST NOT
+    // write the terminal `run_closed` event. The workspace owns
+    // lifecycle authority (component outline §3 / §HL #4).
+    expect(eventTypes, 'orch must not write run_closed').not.toContain('run_closed');
+    // The typed terminal carries `no_compile_inputs` so the workspace
+    // can write the canonical close itself.
+    expect(terminal).not.toBeNull();
+    expect(terminal!.kind).toBe('no_compile_inputs');
   });
 });
 
@@ -397,15 +410,19 @@ describe('ORCH-17: Two-level replacement', () => {
     const customOrch: Orchestrator = {
       orchestratorSocketId: 'custom-orch' as NonEmpty,
       orchestratorVersion: '2.0.0' as NonEmpty,
-      dispatch: vi.fn(async () => customPreview),
+      // HOLE-LIFECYCLE-001: dispatch returns OrchestratorDispatchResult.
+      // A custom orch may still be empty-terminal (no terminal) — the
+      // workspace treats that as "still running" and does not auto-close.
+      dispatch: vi.fn(async () => ({ preview: customPreview, terminal: null })),
       cancel: vi.fn(async () => {}),
     };
 
-    // The contract is the same — dispatch returns OrchestratorPlanPreview
+    // The contract is the same shape — dispatch returns
+    // OrchestratorDispatchResult; the preview lives at result.preview.
     const request = makeRequest([]);
     const result = await customOrch.dispatch(request);
 
-    expect(result.orchestratorSocketId).toBe('custom-orch');
+    expect(result.preview.orchestratorSocketId).toBe('custom-orch');
     expect(customOrch.dispatch).toHaveBeenCalled();
   });
 
@@ -462,7 +479,7 @@ describe('ORCH-17: Two-level replacement', () => {
     const orch = new RefOrchestrator('ref-orch-v1' as NonEmpty, '1.0.0' as NonEmpty, coordinator);
 
     const request = makeRequest([agentId]);
-    const preview = await orch.dispatch(request);
+    const { preview } = await orch.dispatch(request);
 
     // Custom planner was invoked
     expect(customPlanner.plan).toHaveBeenCalled();
@@ -548,7 +565,7 @@ describe('HL#4 canonical event names', () => {
     const coordinator = new RefRunCoordinator(manifest, deps, orchestratorActorId);
     const orch = new RefOrchestrator('ref-orch-v1' as NonEmpty, '1.0.0' as NonEmpty, coordinator);
 
-    await orch.dispatch(makeRequest([agentId]));
+    const { terminal } = await orch.dispatch(makeRequest([agentId]));
 
     const eventTypes = ledger.events.map(e => e.eventType);
     expect(eventTypes).toContain('planner_infeasible');
@@ -556,6 +573,11 @@ describe('HL#4 canonical event names', () => {
     // is a string match (not type-narrowed) so a regression that re-introduced
     // the alias would still be caught here.
     expect(eventTypes).not.toContain('plan_rejected');
+    // HOLE-LIFECYCLE-001: orch must not write `run_closed`. The run stays
+    // OPEN on planner_infeasible until the user explicitly cancels.
+    expect(eventTypes, 'orch must not write run_closed').not.toContain('run_closed');
+    expect(terminal).not.toBeNull();
+    expect(terminal!.kind).toBe('planner_infeasible');
   });
 
   it('executor error emits dag_step_error, never dag_failed', async () => {
@@ -580,11 +602,19 @@ describe('HL#4 canonical event names', () => {
     const coordinator = new RefRunCoordinator(manifest, deps, orchestratorActorId);
     const orch = new RefOrchestrator('ref-orch-v1' as NonEmpty, '1.0.0' as NonEmpty, coordinator);
 
-    await orch.dispatch(makeRequest([agentId]));
+    const { terminal } = await orch.dispatch(makeRequest([agentId]));
 
     const eventTypes = ledger.events.map(e => e.eventType);
     expect(eventTypes).toContain('dag_step_error');
     expect(eventTypes).not.toContain('dag_failed');
+    // HOLE-LIFECYCLE-001: orch must not write `run_closed` — workspace
+    // owns the terminal close via the typed terminal handoff.
+    expect(eventTypes, 'orch must not write run_closed').not.toContain('run_closed');
+    expect(terminal).not.toBeNull();
+    // Executor-error path returns a terminal of either `executor_error`
+    // (thrown) or `no_compile_inputs` (failed dispatches but no throw).
+    // This test uses the no-throw failing-dispatch pattern.
+    expect(['executor_error', 'no_compile_inputs']).toContain(terminal!.kind);
   });
 
   it('no-eligible-results emits compile_not_applicable, never compile_skipped', async () => {
@@ -611,11 +641,15 @@ describe('HL#4 canonical event names', () => {
     const coordinator = new RefRunCoordinator(manifest, deps, orchestratorActorId);
     const orch = new RefOrchestrator('ref-orch-v1' as NonEmpty, '1.0.0' as NonEmpty, coordinator);
 
-    await orch.dispatch(makeRequest([agentId]));
+    const { terminal } = await orch.dispatch(makeRequest([agentId]));
 
     const eventTypes = ledger.events.map(e => e.eventType);
     expect(eventTypes).toContain('compile_not_applicable');
     expect(eventTypes).not.toContain('compile_skipped');
+    // HOLE-LIFECYCLE-001: orch returns typed terminal; does NOT close.
+    expect(eventTypes, 'orch must not write run_closed').not.toContain('run_closed');
+    expect(terminal).not.toBeNull();
+    expect(terminal!.kind).toBe('no_compile_inputs');
   });
 
   it('user cancel emits user_cancelled_run, never run_cancelled', async () => {
@@ -636,10 +670,15 @@ describe('HL#4 canonical event names', () => {
     const orch = new RefOrchestrator('ref-orch-v1' as NonEmpty, '1.0.0' as NonEmpty, coordinator);
 
     const request = { ...makeRequest([agentId]), planCheckbackRequested: true };
-    await orch.dispatch(request);
+    const { terminal } = await orch.dispatch(request);
 
     const eventTypes = ledger.events.map(e => e.eventType);
     expect(eventTypes).toContain('user_cancelled_run');
     expect(eventTypes).not.toContain('run_cancelled');
+    // HOLE-LIFECYCLE-001: orch may not write `run_closed`. The user-
+    // cancelled-plan terminal kind tells the workspace to do so.
+    expect(eventTypes, 'orch must not write run_closed').not.toContain('run_closed');
+    expect(terminal).not.toBeNull();
+    expect(terminal!.kind).toBe('user_cancelled_plan');
   });
 });

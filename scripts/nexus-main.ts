@@ -2327,6 +2327,12 @@ const program = createCli({
       // Build per-request issuer + dispatcher + checkback closing over the
       // requesting user's principalId AND the originating prompt — handleRun
       // threads them into every plan-node dispatch and the pre-flight probe.
+      //
+      // HOLE-LIFECYCLE-001 — handleRun now returns OrchestratorDispatchResult
+      // (preview + typed terminal). We forward it verbatim; the workspace
+      // route consumes both — preview for the SSE payload, terminal kind
+      // to decide whether to write the canonical run_closed (or skip
+      // because compile-return / a later user callback owns it).
       const issueDelegation = makeIssueDelegation(request.principalId, request.runId);
       const dispatchToGovernance = makeDispatchToGovernance(request);
       const sendPlanCheckback = makeSendPlanCheckback(request);

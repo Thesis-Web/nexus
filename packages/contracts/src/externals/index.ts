@@ -14,7 +14,10 @@ export type {
   OrchestratorSelectedAgent,
   OrchestratorPlanPreview,
   Orchestrator,
+  OrchestratorDispatchResult,
   RejectionCheckbackPayload,
+  RunOrchestrationTerminal,
+  RunOrchestrationTerminalKind,
 } from './orchestrator.js';
 
 export type {

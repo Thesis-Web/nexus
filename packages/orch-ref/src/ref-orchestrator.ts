@@ -8,7 +8,7 @@
 
 import type {
   Orchestrator,
-  OrchestratorPlanPreview,
+  OrchestratorDispatchResult,
   WorkspaceRunRequest,
   NonEmpty,
   Uuid,
@@ -29,7 +29,7 @@ export class RefOrchestrator implements Orchestrator {
     this.orchestratorVersion = version;
   }
 
-  async dispatch(request: WorkspaceRunRequest): Promise<OrchestratorPlanPreview> {
+  async dispatch(request: WorkspaceRunRequest): Promise<OrchestratorDispatchResult> {
     return this.coordinator.handleRun(request);
   }
 

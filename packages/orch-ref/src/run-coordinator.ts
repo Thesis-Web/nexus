@@ -19,6 +19,8 @@ import type {
   NodeDelegationBinding,
   RunDagState,
   OrchestratorPlanPreview,
+  OrchestratorDispatchResult,
+  RunOrchestrationTerminal,
   OrchestratorSelectedAgent,
   OrchestratorManifestRecord,
   PlannerRequest,
@@ -103,10 +105,20 @@ export interface RunCoordinatorPerRunDeps {
 }
 
 export interface RunCoordinator {
+  /**
+   * HOLE-LIFECYCLE-001: returns `OrchestratorDispatchResult` so the workspace
+   * (composition-root caller) owns the terminal `run_closed` decision.
+   * The coordinator MUST NOT write `run_closed` itself — it is a plug-in
+   * package and lifecycle authority lives at workspace/composition-root.
+   * It MAY emit operational events inside its coordination scope
+   * (plan_created, orchestrator_dispatched, node_*, dag_*, compile_triggered,
+   * compile_not_applicable, final_response, planner_infeasible,
+   * user_cancelled_run).
+   */
   handleRun(
     request: WorkspaceRunRequest,
     perRunDeps?: RunCoordinatorPerRunDeps
-  ): Promise<OrchestratorPlanPreview>;
+  ): Promise<OrchestratorDispatchResult>;
   cancelRun(runId: Uuid): Promise<void>;
 }
 
@@ -159,7 +171,7 @@ export class RefRunCoordinator implements RunCoordinator {
   async handleRun(
     request: WorkspaceRunRequest,
     perRunDeps?: RunCoordinatorPerRunDeps
-  ): Promise<OrchestratorPlanPreview> {
+  ): Promise<OrchestratorDispatchResult> {
     const { deps, manifest } = this;
     // Per-request principal-bound functions take precedence over the
     // construction-time fallbacks. SPEC-DELEGATION-RUNTIME-PRINCIPAL-FIX §6.
@@ -274,7 +286,14 @@ export class RefRunCoordinator implements RunCoordinator {
         });
       }
 
-      return this.planPreviewFromRejection(request, rejection, checkback);
+      // HOLE-LIFECYCLE-001 — planner_infeasible is NOT a terminal close
+      // signal. Per HL #4 the run stays OPEN until the user explicitly
+      // cancels (POST /workspace/runs/:runId/close). Workspace must NOT
+      // auto-close when terminal.kind === 'planner_infeasible'.
+      return {
+        preview: this.planPreviewFromRejection(request, rejection, checkback),
+        terminal: { kind: 'planner_infeasible', reason: rejection.reason as NonEmpty },
+      };
     }
 
     const plan = planResult as ExecutionPlan;
@@ -294,12 +313,15 @@ export class RefRunCoordinator implements RunCoordinator {
         reasonDetail: validation.reason,
         suggestedCount: 0,
       });
-      return this.planPreviewFromRejection(request, {
-        rejected: true,
-        reason: 'malformed_request',
-        reasonDetail: validation.reason!,
-        suggestedAlternatives: [],
-      });
+      return {
+        preview: this.planPreviewFromRejection(request, {
+          rejected: true,
+          reason: 'malformed_request',
+          reasonDetail: validation.reason!,
+          suggestedAlternatives: [],
+        }),
+        terminal: { kind: 'planner_infeasible', reason: 'malformed_request' as NonEmpty },
+      };
     }
 
     await this.writeLedger(request.runId, 'plan_created', {
@@ -318,23 +340,24 @@ export class RefRunCoordinator implements RunCoordinator {
       if (!confirmed) {
         // HL#4 revision — a user-rejected plan IS a user cancellation, not
         // a planner-side infeasibility. Emit the canonical
-        // `user_cancelled_run` event under the user-initiated terminal
-        // class. The workspace surfaces the rejection / alternatives modal
-        // off the returned OrchestratorPlanPreview.
+        // `user_cancelled_run` operational event (this stays inside the
+        // orchestrator's coordination scope per outline §3). The workspace
+        // surfaces the rejection / alternatives modal off the returned
+        // OrchestratorPlanPreview, then receives terminal.kind ===
+        // 'user_cancelled_plan' and writes the canonical `run_closed`
+        // itself per HOLE-LIFECYCLE-001 — orch may not close runs.
         await this.writeLedger(request.runId, 'user_cancelled_run', {
+          planId: plan.planId,
           reason: 'user_rejected_plan',
         });
-        // CHECKBACK-spec Part 4: a user-rejected checkback must close the run
-        // cleanly. Without this the workspace's status endpoint never flips
-        // to 'closed' and the timeline hangs on the rejected planning stage.
-        await this.writeLedger(request.runId, 'run_closed', {
-          planId: plan.planId,
-          runId: request.runId,
-          closedBy: 'orch-ref',
-          closeReason: 'user_cancelled',
-          finalOutcome: 'cancelled',
-        });
-        return preview;
+        return {
+          preview,
+          terminal: {
+            kind: 'user_cancelled_plan',
+            reason: 'user_rejected_plan' as NonEmpty,
+            planId: plan.planId,
+          },
+        };
       }
     }
 
@@ -489,6 +512,11 @@ export class RefRunCoordinator implements RunCoordinator {
       // surfaced a step-level error; not a governance-deny). Compile is
       // emitted as `compile_not_applicable` because there is nothing to
       // assemble (HL#11 pass-through path).
+      //
+      // HOLE-LIFECYCLE-001 — orch does NOT write `run_closed`. It emits
+      // the operational signals (dag_step_error / compile_not_applicable /
+      // final_response) inside its coordination scope and returns the
+      // typed terminal so the workspace writes the canonical close.
       await this.writeLedger(request.runId, 'dag_step_error', {
         planId: plan.planId,
         completedCount: 0,
@@ -507,22 +535,22 @@ export class RefRunCoordinator implements RunCoordinator {
         outcome: 'executor_error',
         payload: null,
       });
-      await this.writeLedger(request.runId, 'run_closed', {
-        planId: plan.planId,
-        runId: request.runId,
-        closedBy: 'orch-ref',
-        closeReason: 'error',
-        finalOutcome: 'error',
-        reason: 'executor_error',
-      });
-      return this.buildPlanPreview(request, plan);
+      return {
+        preview: this.buildPlanPreview(request, plan),
+        terminal: {
+          kind: 'executor_error',
+          reason: 'executor_error' as NonEmpty,
+          planId: plan.planId,
+        },
+      };
     } finally {
       this.activeRuns.delete(request.runId);
     }
 
     // 7. Terminal classification — cancelled check FIRST [§7.3]
     if (dagResult.finalState.cancelled) {
-      // HL#4 revision — canonical user-initiated terminal event.
+      // HL#4 revision — canonical user-initiated operational event. The
+      // run_closed write is workspace-owned (HOLE-LIFECYCLE-001).
       await this.writeLedger(request.runId, 'user_cancelled_run', {
         planId: plan.planId,
         runId: request.runId,
@@ -541,15 +569,14 @@ export class RefRunCoordinator implements RunCoordinator {
         outcome: 'cancelled',
         payload: null,
       });
-      await this.writeLedger(request.runId, 'run_closed', {
-        planId: plan.planId,
-        runId: request.runId,
-        closedBy: 'orch-ref',
-        closeReason: 'user_cancelled',
-        finalOutcome: 'cancelled',
-        reason: 'user_cancelled_run',
-      });
-      return this.buildPlanPreview(request, plan);
+      return {
+        preview: this.buildPlanPreview(request, plan),
+        terminal: {
+          kind: 'user_cancelled_during_run',
+          reason: 'user_cancelled_run' as NonEmpty,
+          planId: plan.planId,
+        },
+      };
     }
 
     // 8. Evaluate completion [§4.9]
@@ -602,32 +629,36 @@ export class RefRunCoordinator implements RunCoordinator {
         runId: request.runId,
       });
       await deps.triggerCompile(request.runId);
-    } else {
-      // HL#4 revision — nothing to compile (HL#11 pass-through, but with
-      // no eligible results). Emit `compile_not_applicable` (canonical
-      // name) and close with the same reason string.
-      await this.writeLedger(request.runId, 'compile_not_applicable', {
-        planId: plan.planId,
-        runId: request.runId,
-        reason: 'no_eligible_results',
-      });
-      await this.writeLedger(request.runId, 'final_response', {
-        planId: plan.planId,
-        runId: request.runId,
-        outcome: 'no_eligible_results',
-        payload: null,
-      });
-      await this.writeLedger(request.runId, 'run_closed', {
-        planId: plan.planId,
-        runId: request.runId,
-        closedBy: 'orch-ref',
-        closeReason: 'compile_not_applicable',
-        finalOutcome: 'no_eligible_results',
-        reason: 'compile_not_applicable',
-      });
+      // HOLE-LIFECYCLE-001: compile-return delivery path writes run_closed
+      // when the workspace acknowledges the artifact. Workspace must
+      // NOT also close — that would double-write.
+      return {
+        preview: this.buildPlanPreview(request, plan),
+        terminal: { kind: 'compile_dispatched', planId: plan.planId },
+      };
     }
-
-    return this.buildPlanPreview(request, plan);
+    // HL#4 revision — nothing to compile (HL#11 pass-through, but with
+    // no eligible results). Emit operational `compile_not_applicable` +
+    // `final_response`; workspace owns the canonical `run_closed`.
+    await this.writeLedger(request.runId, 'compile_not_applicable', {
+      planId: plan.planId,
+      runId: request.runId,
+      reason: 'no_eligible_results',
+    });
+    await this.writeLedger(request.runId, 'final_response', {
+      planId: plan.planId,
+      runId: request.runId,
+      outcome: 'no_eligible_results',
+      payload: null,
+    });
+    return {
+      preview: this.buildPlanPreview(request, plan),
+      terminal: {
+        kind: 'no_compile_inputs',
+        reason: 'no_eligible_results' as NonEmpty,
+        planId: plan.planId,
+      },
+    };
   }
 
   // ─── cancelRun [§7.3, OD-ORCH-05] ───

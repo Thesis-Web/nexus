@@ -651,19 +651,28 @@ function describeRunClosed(closedEvent: RunEvent | undefined): {
     return { lines: [], status: 'pending', failureCode: null, failureMessage: null };
   }
   const closeReason = str(closedEvent.detail['closeReason']);
+  const closeReasonDetail = str(closedEvent.detail['closeReasonDetail']);
   const reason = str(closedEvent.detail['reason']);
   const error = str(closedEvent.detail['error']);
   const isSuccess = closeReason === 'completed' || closeReason === 'success';
   const lines: string[] = [];
-  if (closeReason) lines.push(`Reason: ${closeReason}`);
+  // HOLE-LIFECYCLE-001: the canonical machine value lives in `closeReason`
+  // (always one of the small canonical-machine set after the workspace
+  // refactor). The human-readable diagnostic, when present, lives in
+  // `closeReasonDetail`. Show the detail first when both are present so
+  // the user sees "Attachment X not found" instead of "Reason: error".
+  if (closeReasonDetail) lines.push(`Reason: ${closeReasonDetail}`);
+  else if (closeReason) lines.push(`Reason: ${closeReason}`);
   else if (reason) lines.push(`Reason: ${reason}`);
   if (error) lines.push(error);
   if (isSuccess) {
     return { lines, status: 'complete', failureCode: null, failureMessage: null };
   }
-  // Non-success closure → error stage. Surface the most specific signal we have.
+  // Non-success closure → error stage. The CODE is the canonical machine
+  // closeReason (or its legacy fallback); the MESSAGE prefers the human
+  // detail when present.
   const code = closeReason ?? reason ?? 'error';
-  const message = error ?? reason ?? closeReason ?? '';
+  const message = error ?? closeReasonDetail ?? reason ?? closeReason ?? '';
   return {
     lines,
     status: 'error',

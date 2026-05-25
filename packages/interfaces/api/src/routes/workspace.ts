@@ -741,16 +741,22 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
         for (const attachId of input.attachmentIds) {
           const fileRef = await Promise.resolve(deps.workspaceFileStore.get(attachId as Uuid));
           if (!fileRef || fileRef.status !== 'staged') {
-            // Write run_closed on bind failure (hard rule 26)
+            // Write run_closed on bind failure (hard rule 26).
+            // HOLE-LIFECYCLE-001 step 6 — canonical machine fields stay
+            // machine-typed; the English diagnostic moves to
+            // `closeReasonDetail` so the UI reducer can render it without
+            // it being mistaken for a canonical closeReason value.
             await deps.runLedgerWriter.writeEvent({
               runId,
               eventType: 'run_closed',
               timestamp: nowIso(),
               actorId: null,
               detail: {
-                closeReason: `Attachment ${attachId} not found or not staged`,
+                closeReason: 'error',
                 finalOutcome: 'error',
                 closedBy: 'workspace',
+                terminalKind: 'attachment_missing',
+                closeReasonDetail: `Attachment ${attachId} not found or not staged`,
               },
             });
             res.status(400).json({ ok: false, error: `Attachment ${attachId} invalid` });
@@ -788,9 +794,11 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
               timestamp: nowIso(),
               actorId: null,
               detail: {
-                closeReason: `File ${attachId} quarantined`,
+                closeReason: 'error',
                 finalOutcome: 'error',
                 closedBy: 'workspace',
+                terminalKind: 'file_quarantined',
+                closeReasonDetail: `File ${attachId} quarantined`,
               },
             });
             res.status(400).json({ ok: false, error: `File ${attachId} quarantined` });
@@ -836,9 +844,11 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
               timestamp: nowIso(),
               actorId: null,
               detail: {
-                closeReason: `Attachment ${attachId} bound but blob unreadable`,
+                closeReason: 'error',
                 finalOutcome: 'error',
                 closedBy: 'workspace',
+                terminalKind: 'blob_unreadable',
+                closeReasonDetail: `Attachment ${attachId} bound but blob unreadable`,
               },
             });
             res.status(500).json({
@@ -969,20 +979,106 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
 
       // §6.2: dispatch to orchestrator if wired.
       //
+      // HOLE-LIFECYCLE-001: orchestrator returns `OrchestratorDispatchResult`
+      // ({ preview, terminal }). Plug-in orchestrators MUST NOT write
+      // `run_closed` themselves — workspace owns the terminal lifecycle
+      // (component outline §3 / §HL #4). For each terminal kind:
+      //   - `compile_dispatched`     -> compile-return delivery path closes
+      //   - `planner_infeasible`     -> run STAYS OPEN until user cancels
+      //                                 (POST /workspace/runs/:runId/close)
+      //   - `no_compile_inputs`      -> workspace closes
+      //                                 closeReason='compile_not_applicable'
+      //                                 finalOutcome='no_eligible_results'
+      //   - `executor_error`         -> workspace closes
+      //                                 closeReason='error', finalOutcome='error'
+      //   - `user_cancelled_plan`    -> workspace closes
+      //                                 closeReason='user_cancelled',
+      //                                 finalOutcome='cancelled'
+      //   - `user_cancelled_during_run` same
+      //
       // CLAUDE-CODE-FIX-SSE-AND-PLAN-REVIEW BUG-1 (Cause A) — the run was
       // already created on disk (run_opened was written and ACL stored), so
       // the POST must always return `{ ok:true, runId }` so the client can
-      // establish the SSE subscription. Governed denials flow through the
-      // coordinator cleanly today, but an UNEXPECTED throw inside the
-      // dispatch chain previously bubbled to the catch below and surfaced as
-      // a 500 with no runId — leaving the client unable to subscribe and
-      // unable to recover without a hard refresh. Catch here, log, and
-      // persist a synthetic run_closed so the run doesn't hang forever and
-      // the timeline shows error state via the SSE replay.
+      // establish the SSE subscription. The dispatch-threw branch is still
+      // workspace-owned and writes a canonical error close.
       let planPreview: unknown = null;
       if (deps.dispatchToOrchestrator) {
         try {
-          planPreview = await deps.dispatchToOrchestrator(request);
+          const dispatchResult = (await deps.dispatchToOrchestrator(request)) as {
+            preview?: unknown;
+            terminal?: {
+              kind:
+                | 'compile_dispatched'
+                | 'no_compile_inputs'
+                | 'executor_error'
+                | 'user_cancelled_plan'
+                | 'user_cancelled_during_run'
+                | 'planner_infeasible';
+              reason?: string;
+              planId?: string;
+            } | null;
+          } | null;
+
+          // Accept both new shape ({preview, terminal}) and legacy shape
+          // (bare preview) so a future plug-in orchestrator that forgets to
+          // adopt the dispatch-result envelope still produces a valid SSE
+          // response. Missing terminal -> we don't close; run hangs open
+          // (treated the same as a misbehaving orchestrator — fail loud
+          // via the run-status route rather than write a fake close).
+          if (
+            dispatchResult !== null &&
+            typeof dispatchResult === 'object' &&
+            'preview' in dispatchResult
+          ) {
+            planPreview = (dispatchResult as { preview?: unknown }).preview ?? null;
+            const terminal = (dispatchResult as { terminal?: unknown }).terminal ?? null;
+            if (terminal !== null && typeof terminal === 'object' && 'kind' in terminal) {
+              const t = terminal as { kind: string; reason?: string; planId?: string };
+              let closeReason: string | null = null;
+              let finalOutcome: string | null = null;
+              switch (t.kind) {
+                case 'compile_dispatched':
+                case 'planner_infeasible':
+                  // delivery path / explicit-user-cancel route closes; not us.
+                  break;
+                case 'no_compile_inputs':
+                  closeReason = 'compile_not_applicable';
+                  finalOutcome = 'no_eligible_results';
+                  break;
+                case 'executor_error':
+                  closeReason = 'error';
+                  finalOutcome = 'error';
+                  break;
+                case 'user_cancelled_plan':
+                case 'user_cancelled_during_run':
+                  closeReason = 'user_cancelled';
+                  finalOutcome = 'cancelled';
+                  break;
+                default:
+                  // unknown terminal kind — fail loud via the run-status route
+                  break;
+              }
+              if (closeReason !== null && finalOutcome !== null) {
+                await deps.runLedgerWriter.writeEvent({
+                  runId,
+                  eventType: 'run_closed',
+                  timestamp: nowIso(),
+                  actorId: null,
+                  detail: {
+                    closeReason,
+                    finalOutcome,
+                    closedBy: 'workspace',
+                    terminalKind: t.kind,
+                    ...(t.reason !== undefined ? { closeReasonDetail: t.reason } : {}),
+                    ...(t.planId !== undefined ? { planId: t.planId } : {}),
+                  },
+                });
+              }
+            }
+          } else {
+            // Legacy bare-preview shape — pre-HOLE-LIFECYCLE-001 plug-in.
+            planPreview = dispatchResult;
+          }
         } catch (dispatchErr) {
           // eslint-disable-next-line no-console
           console.error('[workspace] dispatchToOrchestrator threw —', dispatchErr);
@@ -996,6 +1092,7 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
                 closeReason: 'error',
                 finalOutcome: 'error',
                 closedBy: 'workspace',
+                terminalKind: 'dispatch_threw',
                 error: dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr),
               },
             });
