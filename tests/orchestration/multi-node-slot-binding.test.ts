@@ -453,7 +453,7 @@ describe('multi-node slot-binding loop (end-to-end)', () => {
       subTaskEdges: null,
     };
 
-    const preview = await coordinator.handleRun(request);
+    const { preview } = await coordinator.handleRun(request);
 
     expect(preview.plan).not.toBeNull();
     expect(preview.plan!.nodes).toHaveLength(2);

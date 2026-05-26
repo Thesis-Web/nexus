@@ -256,18 +256,20 @@ describe('Connector Manifest Loader', () => {
   });
 
   it('loads real config/connectors/connectors.v1.yaml from repo', async () => {
-    // Default-shipped connectors include stub + vault + postgres-sales-finance +
-    // postgres-warehouse. The fixture registers all three connector types so
-    // the manifest loads cleanly; postgres-sales-finance + postgres-warehouse
-    // are enabled by default per the demo bootstrap.
+    // Default-shipped connectors: stub + vault + postgres-sales-finance +
+    // postgres-warehouse + mailpit-local. The fixture registers all four
+    // connector types so the manifest loads cleanly; stub +
+    // postgres-sales-finance + postgres-warehouse + mailpit-local are
+    // enabled by default per the demo bootstrap.
     const records = await loadConnectorManifest({
       manifestPath: 'config/connectors/connectors.v1.yaml',
       controlPlanePublicKey: publicKey,
-      factoryRegistry: registryWith('stub', 'vault', 'postgres'),
+      factoryRegistry: registryWith('stub', 'vault', 'postgres', 'mailpit'),
     });
     const ids = records.map(r => r.connectorId).sort();
     expect(ids).toContain('stub');
     expect(ids).toContain('postgres-sales-finance');
     expect(ids).toContain('postgres-warehouse');
+    expect(ids).toContain('mailpit-local');
   });
 });
