@@ -925,7 +925,15 @@ function EndpointForm({
       {/* Phase 8 — admin-configurable concurrency cap. Empty defers to the
           runtime default (DEFAULT_MAX_CONCURRENT = 4). NVG uses this to
           decide when to skip a saturated endpoint and try the next one in
-          the lawful tier. Widening the tier on capacity is forbidden. */}
+          the lawful tier. Widening the tier on capacity is forbidden.
+
+          AUDIT FIX 2026-05-26: validate onChange BEFORE setState so the
+          form rejects zero / negative / non-integer values at typing
+          time. The HTML5 `min={1}` attribute is a UX hint only — browsers
+          let you type "0" / "-3" / "abc" anyway. Server zod ALSO rejects
+          (defense-in-depth), but the form should never accept the value
+          into state in the first place. Empty string stays accepted (it
+          means "defer to runtime default"). */}
       <div className="nx-admin-endpoint-form__row">
         <label className="nx-admin-endpoint-form__field">
           <span className="nx-admin-endpoint-form__label">Max concurrent requests</span>
@@ -936,11 +944,30 @@ function EndpointForm({
             step={1}
             placeholder="4 (default)"
             value={draft.maxConcurrentRequests}
-            onChange={e => setDraft(d => ({ ...d, maxConcurrentRequests: e.target.value }))}
+            onChange={e => {
+              const raw = e.target.value;
+              // Allow empty (defer to runtime default).
+              if (raw === '') {
+                setDraft(d => ({ ...d, maxConcurrentRequests: '' }));
+                return;
+              }
+              // Reject anything that isn't a positive integer.
+              // Number.parseInt('0', 10) === 0 → rejected.
+              // Number.parseInt('-3', 10) === -3 → rejected.
+              // Number.parseInt('abc', 10) === NaN → rejected.
+              // Number.parseInt('3.5', 10) === 3 → re-stringify so the
+              //   field shows the integer the value will actually carry.
+              const parsed = Number.parseInt(raw, 10);
+              if (!Number.isFinite(parsed) || parsed <= 0) {
+                // Do not setState — leave the existing value in place.
+                return;
+              }
+              setDraft(d => ({ ...d, maxConcurrentRequests: String(parsed) }));
+            }}
           />
           <span className="nx-admin-endpoint-form__hint">
             Saturated endpoints are skipped in favor of the next healthy one in the same lawful
-            tier. Empty = use the runtime default (4).
+            tier. Empty = use the runtime default (4). Positive integers only.
           </span>
         </label>
       </div>

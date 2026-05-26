@@ -138,58 +138,67 @@ describe('E2E Category 14 — shared-harness concurrency (Phase 7)', () => {
       harness.jwtFor('sr_analyst'),
       harness.jwtFor('manager'),
     ]);
-    const runA = await harness.createRun(jwtA, {
-      workspaceSocketId: 'reference-workspace',
-      promptMode: 'free_text',
-      prompt: 'concurrency-mailbox-A',
-      agents: [SALES_AGENT_ACTOR_ID],
-      subTasks: [
-        {
-          kind: 'nxs',
-          subTaskKey: 'leg-A',
-          agentId: SALES_AGENT_ACTOR_ID,
-          taskSummary: 'A',
-          expectedOutputSlots: ['rows'],
-          inputSlotReads: [],
-          actionTemplate: {
-            capability: 'read:record:bulk',
-            target: {
-              system: 'sales-finance',
-              resourceType: 'sales_orders',
-              resourceScope: 'bulk',
+    // AUDIT FIX 2026-05-26: dispatch A and B CONCURRENTLY via Promise.all.
+    // The prior shape was `const runA = await ...; const runB = await ...;`
+    // — sequential dispatch then concurrent wait, which left the
+    // dispatch-concurrency invariant unexercised. The downstream isolation
+    // assertions below (mailbox disjointness, runId-keyed ledger filtering)
+    // only mean something if both dispatches were ACTUALLY in flight at the
+    // same time against the shared server.
+    const [runA, runB] = await Promise.all([
+      harness.createRun(jwtA, {
+        workspaceSocketId: 'reference-workspace',
+        promptMode: 'free_text',
+        prompt: 'concurrency-mailbox-A',
+        agents: [SALES_AGENT_ACTOR_ID],
+        subTasks: [
+          {
+            kind: 'nxs',
+            subTaskKey: 'leg-A',
+            agentId: SALES_AGENT_ACTOR_ID,
+            taskSummary: 'A',
+            expectedOutputSlots: ['rows'],
+            inputSlotReads: [],
+            actionTemplate: {
+              capability: 'read:record:bulk',
+              target: {
+                system: 'sales-finance',
+                resourceType: 'sales_orders',
+                resourceScope: 'bulk',
+              },
+              rawPayload: { sql: 'SELECT order_code FROM sales_orders LIMIT 1', params: [] },
             },
-            rawPayload: { sql: 'SELECT order_code FROM sales_orders LIMIT 1', params: [] },
           },
-        },
-      ] as ReadonlyArray<unknown>,
-      subTaskEdges: [],
-    });
-    const runB = await harness.createRun(jwtB, {
-      workspaceSocketId: 'reference-workspace',
-      promptMode: 'free_text',
-      prompt: 'concurrency-mailbox-B',
-      agents: [SALES_AGENT_ACTOR_ID],
-      subTasks: [
-        {
-          kind: 'nxs',
-          subTaskKey: 'leg-B',
-          agentId: SALES_AGENT_ACTOR_ID,
-          taskSummary: 'B',
-          expectedOutputSlots: ['rows'],
-          inputSlotReads: [],
-          actionTemplate: {
-            capability: 'read:record:bulk',
-            target: {
-              system: 'sales-finance',
-              resourceType: 'sales_orders',
-              resourceScope: 'bulk',
+        ] as ReadonlyArray<unknown>,
+        subTaskEdges: [],
+      }),
+      harness.createRun(jwtB, {
+        workspaceSocketId: 'reference-workspace',
+        promptMode: 'free_text',
+        prompt: 'concurrency-mailbox-B',
+        agents: [SALES_AGENT_ACTOR_ID],
+        subTasks: [
+          {
+            kind: 'nxs',
+            subTaskKey: 'leg-B',
+            agentId: SALES_AGENT_ACTOR_ID,
+            taskSummary: 'B',
+            expectedOutputSlots: ['rows'],
+            inputSlotReads: [],
+            actionTemplate: {
+              capability: 'read:record:bulk',
+              target: {
+                system: 'sales-finance',
+                resourceType: 'sales_orders',
+                resourceScope: 'bulk',
+              },
+              rawPayload: { sql: 'SELECT order_code FROM sales_orders LIMIT 1', params: [] },
             },
-            rawPayload: { sql: 'SELECT order_code FROM sales_orders LIMIT 1', params: [] },
           },
-        },
-      ] as ReadonlyArray<unknown>,
-      subTaskEdges: [],
-    });
+        ] as ReadonlyArray<unknown>,
+        subTaskEdges: [],
+      }),
+    ]);
     // Wait for both — concurrent waits, sharing the server's compile + return path.
     const [snapA, snapB] = await Promise.all([
       harness.waitForRunClosed(jwtA, runA.runId, { timeoutMs: 180_000 }),
@@ -290,57 +299,66 @@ describe('E2E Category 14 — shared-harness concurrency (Phase 7)', () => {
       harness.jwtFor('sr_analyst'),
       harness.jwtFor('sr_analyst'),
     ]);
-    // Same persona, two concurrent dispatches against DIFFERENT target
+    // Same persona, two SIMULTANEOUS dispatches against DIFFERENT target
     // systems. The delegation mint must produce scopes that target each
     // system disjointly — A→sales-finance only, B→warehouse only.
-    const runA = await harness.createRun(jwtA, {
-      workspaceSocketId: 'reference-workspace',
-      promptMode: 'free_text',
-      prompt: 'scope-A-sales',
-      agents: [SALES_AGENT_ACTOR_ID],
-      subTasks: [
-        {
-          kind: 'nxs',
-          subTaskKey: 'sales-leg',
-          agentId: SALES_AGENT_ACTOR_ID,
-          taskSummary: 'sales pull',
-          expectedOutputSlots: ['rows'],
-          inputSlotReads: [],
-          actionTemplate: {
-            capability: 'read:record:bulk',
-            target: {
-              system: 'sales-finance',
-              resourceType: 'sales_orders',
-              resourceScope: 'bulk',
+    //
+    // AUDIT FIX 2026-05-26: dispatch A and B CONCURRENTLY via Promise.all
+    // (was sequential await runA; await runB). The "simultaneous NXS
+    // dispatches" invariant in the test name only mean something if both
+    // createRun calls fire against the shared server at the same time;
+    // otherwise the delegation-mint isolation proof collapses to "two
+    // serial mints produced disjoint scopes" — which is trivially true.
+    const [runA, runB] = await Promise.all([
+      harness.createRun(jwtA, {
+        workspaceSocketId: 'reference-workspace',
+        promptMode: 'free_text',
+        prompt: 'scope-A-sales',
+        agents: [SALES_AGENT_ACTOR_ID],
+        subTasks: [
+          {
+            kind: 'nxs',
+            subTaskKey: 'sales-leg',
+            agentId: SALES_AGENT_ACTOR_ID,
+            taskSummary: 'sales pull',
+            expectedOutputSlots: ['rows'],
+            inputSlotReads: [],
+            actionTemplate: {
+              capability: 'read:record:bulk',
+              target: {
+                system: 'sales-finance',
+                resourceType: 'sales_orders',
+                resourceScope: 'bulk',
+              },
+              rawPayload: { sql: 'SELECT order_code FROM sales_orders LIMIT 1', params: [] },
             },
-            rawPayload: { sql: 'SELECT order_code FROM sales_orders LIMIT 1', params: [] },
           },
-        },
-      ] as ReadonlyArray<unknown>,
-      subTaskEdges: [],
-    });
-    const runB = await harness.createRun(jwtB, {
-      workspaceSocketId: 'reference-workspace',
-      promptMode: 'free_text',
-      prompt: 'scope-B-warehouse',
-      agents: [WAREHOUSE_AGENT_ACTOR_ID],
-      subTasks: [
-        {
-          kind: 'nxs',
-          subTaskKey: 'warehouse-leg',
-          agentId: WAREHOUSE_AGENT_ACTOR_ID,
-          taskSummary: 'warehouse pull',
-          expectedOutputSlots: ['rows'],
-          inputSlotReads: [],
-          actionTemplate: {
-            capability: 'read:record:bulk',
-            target: { system: 'warehouse', resourceType: 'inventory', resourceScope: 'bulk' },
-            rawPayload: { sql: 'SELECT sku FROM inventory LIMIT 1', params: [] },
+        ] as ReadonlyArray<unknown>,
+        subTaskEdges: [],
+      }),
+      harness.createRun(jwtB, {
+        workspaceSocketId: 'reference-workspace',
+        promptMode: 'free_text',
+        prompt: 'scope-B-warehouse',
+        agents: [WAREHOUSE_AGENT_ACTOR_ID],
+        subTasks: [
+          {
+            kind: 'nxs',
+            subTaskKey: 'warehouse-leg',
+            agentId: WAREHOUSE_AGENT_ACTOR_ID,
+            taskSummary: 'warehouse pull',
+            expectedOutputSlots: ['rows'],
+            inputSlotReads: [],
+            actionTemplate: {
+              capability: 'read:record:bulk',
+              target: { system: 'warehouse', resourceType: 'inventory', resourceScope: 'bulk' },
+              rawPayload: { sql: 'SELECT sku FROM inventory LIMIT 1', params: [] },
+            },
           },
-        },
-      ] as ReadonlyArray<unknown>,
-      subTaskEdges: [],
-    });
+        ] as ReadonlyArray<unknown>,
+        subTaskEdges: [],
+      }),
+    ]);
     const [snapA, snapB] = await Promise.all([
       harness.waitForRunClosed(jwtA, runA.runId, { timeoutMs: 240_000 }),
       harness.waitForRunClosed(jwtB, runB.runId, { timeoutMs: 240_000 }),
