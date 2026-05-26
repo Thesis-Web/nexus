@@ -1671,6 +1671,19 @@ export type RunEventType =
   // consolidation); historical ledger files fall through the UI reducer's
   // unknown-event path.
   | 'compile_not_applicable'
+  // ── F4.12 — HL #11 multi-item pass-through quarantine ────────────────────
+  // Compile is pass-through when there's nothing to compile (outline §3 J,
+  // Hard Law #11). Single-agent + no output contract = forward verbatim;
+  // multi-agent + no output contract = bundle verbatim. Per F4.12 §3.1, both
+  // pass-through paths run `verifyMailboxItems` first (sha256 recompute +
+  // provenance check). On verify failure the run does NOT produce a final
+  // artifact — compile emits `compile_quarantined` with `{reason,
+  // mailboxItemId, sourceMailboxId}` detail; the workspace receipt
+  // explains. No bypass-partial on this path (bypass-partial remains
+  // valid for the templated/assembler path — see compile-assembler-bypass
+  // .test.ts). Owner ratified 2026-05-26 alongside the §C.3 test
+  // migration that closes GOV-06 + GOV-07.
+  | 'compile_quarantined'
   // ── Workspace-Ref Run Ledger Events (AMEND-nexus-spec-workspace §8.1) ──────
   | 'workspace_vault_session_opened'
   | 'workspace_vault_session_closed'

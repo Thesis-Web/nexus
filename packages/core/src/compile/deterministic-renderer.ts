@@ -13,7 +13,7 @@
  * - Actor-registration exempt.
  * - No registry writes (template or otherwise).
  */
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { join, dirname } from 'node:path';
 import type {
@@ -34,6 +34,7 @@ import { signArtifact } from './final-response-signer.js';
 import type { TemplateLoader } from './template-loader.js';
 import type { DefaultTemplateGenerator } from './default-template-generator.js';
 import type { CompileAssembler } from './compile-assembler.js';
+import { verifyMailboxItems } from './verify-mailbox-items.js';
 
 export class DeterministicRenderer implements Compiler {
   readonly compilerSocketId: NonEmpty;
@@ -81,22 +82,39 @@ export class DeterministicRenderer implements Compiler {
     contract: OutputContract,
     items: MailboxItem[]
   ): Promise<FinalResponseArtifact> {
-    // ── Step 0: Pass-through eligibility [Nexus default-secure architecture] ──
-    // F4.12 / Hard Law #11 — Compile is pass-through when there's nothing
-    // to compile. Single agent + no template: forward verbatim. The
-    // multi-item no-template case still routes through the assembler
-    // path below pending Phase B completion HANDOFF §E.1 Patch 32, which
-    // lands the bundle pass-through helper alongside the
-    // compile-bypass.integration.test.ts migration (§C.3 protocol).
-    if (request.templateId === undefined && items.length === 1) {
-      return this.compilePassThrough(request, contract, items[0]!);
+    // ── Step 0: Pass-through eligibility [Hard Law #11 / F4.12] ──
+    // Outline §3 J + §1 HL #11: compile is pass-through when there's
+    // nothing to compile. Single-agent + no output contract = forward
+    // verbatim; multi-agent without output contract = SAME (bundle).
+    // Owner ratification 2026-05-26 closed the §C.3 test-migration
+    // blocker that previously kept multi-item routing through the
+    // assembler via defaultTemplateGenerator (HL #11 violation).
+    //
+    // Both pass-through paths call `verifyMailboxItems` first (F4.12
+    // §3.1 — single source of truth for digest + provenance check).
+    // On verify failure the run does NOT produce a final artifact;
+    // both paths emit `compile_quarantined` and throw. No bypass-
+    // partial on the pass-through path (bypass-partial remains valid
+    // for the templated/assembler path — see compile-assembler-bypass
+    // .test.ts).
+    if (request.templateId === undefined) {
+      if (items.length === 1) {
+        return this.compilePassThrough(request, contract, items[0]!);
+      }
+      return this.compilePassThroughBundle(request, contract, items);
     }
 
     // ── Step 1: Template resolution [spec §9.2] ──
-    const template =
-      request.templateId !== undefined
-        ? await this.templateLoader.loadAndVerify(request.templateId, request.templateVersion)
-        : this.defaultTemplateGenerator.generate(request.runId, items, request.preferences ?? null);
+    // Templated path only — the no-template fallback to
+    // defaultTemplateGenerator was retired by F4.12 (HL #11 violation:
+    // fabricating a template where the law mandates verbatim pass-
+    // through). DefaultTemplateGeneratorImpl is preserved as a class
+    // (CMP-09 ci:gate still checks it exists) for any future synthesis-
+    // mode plug-in that might want a default template generator.
+    const template = await this.templateLoader.loadAndVerify(
+      request.templateId,
+      request.templateVersion
+    );
 
     // ── Step 2: Emit compile_template_loaded ──
     await this.runLedgerWriter.writeEvent({
@@ -335,29 +353,44 @@ export class DeterministicRenderer implements Compiler {
   }
 
   /**
-   * Pass-through compile: single agent + no output contract.
-   * Reads the single mailbox item's bytes via the configured payload
-   * resolvers and writes them verbatim as the final artifact body.
-   * No template, no slot validation, no JSON.parse — bytes flow through.
+   * Pass-through compile (single-item): one agent + no output contract.
+   * F4.12 §3.2 — verify the item via `verifyMailboxItems` first, then
+   * write the resolved bytes verbatim as the final artifact body. No
+   * template, no slot validation, no JSON.parse, no bypass partial.
+   *
+   * On any verify failure: emit `compile_quarantined` ledger event with
+   * `{reason, mailboxItemId, sourceMailboxId, passThrough: 'single'}`
+   * detail, then throw. The run does NOT produce a final artifact
+   * (HL #11 fail-closed; workspace receives the throw and closes the
+   * run with the appropriate closeReason).
    */
   private async compilePassThrough(
     request: CompileRequest,
     contract: OutputContract,
     item: MailboxItem
   ): Promise<FinalResponseArtifact> {
-    // Resolve the mailbox item's bytes via the registered resolvers.
-    let bodyBytes: Uint8Array | null = null;
-    for (const resolver of this.payloadResolvers) {
-      if (resolver.canResolve(item.resultRef)) {
-        bodyBytes = await resolver.resolveBytes(item.resultRef);
-        break;
-      }
-    }
-    if (bodyBytes === null) {
+    // F4.12 §3.1 — verify FIRST, before any artifact construction.
+    const verifyResult = await verifyMailboxItems([item], this.payloadResolvers);
+    if (!verifyResult.ok) {
+      await this.runLedgerWriter.writeEvent({
+        runId: request.runId,
+        eventType: 'compile_quarantined',
+        timestamp: nowIso(),
+        actorId: null,
+        detail: {
+          reason: verifyResult.reason,
+          mailboxItemId: verifyResult.mailboxItemId,
+          sourceMailboxId: verifyResult.sourceMailboxId,
+          itemCount: 1,
+          passThrough: 'single',
+          detail: verifyResult.detail,
+        },
+      });
       throw new Error(
-        `compile pass-through: no payload resolver accepted resultRef '${item.resultRef}'`
+        `compile pass-through (single): quarantine — ${verifyResult.reason}: ${verifyResult.detail}`
       );
     }
+    const bodyBytes = verifyResult.resolvedItems[0]!.bytes;
 
     const artifactId = randomUUID() as Uuid;
     const bodyPath = join(this.outputRoot, 'compile', request.runId, `${artifactId}.txt`);
@@ -406,6 +439,135 @@ export class DeterministicRenderer implements Compiler {
       createdAt: nowIso(),
       // Pass-through has no template + no slot validation, so no
       // bypass partials are possible at this layer.
+      bypassPartials: [],
+    };
+
+    const signature = await signArtifact(artifactBase, this.signingKey);
+    return { ...artifactBase, signature };
+  }
+
+  /**
+   * Pass-through bundle compile (multi-item + no output contract).
+   * F4.12 §3.3 — verify all items via `verifyMailboxItems` first; on
+   * success deterministically concat their bytes (sorted by
+   * `mailboxItemId` so replay is byte-identical) and write the
+   * concatenation as the artifact body.
+   *
+   * `aggregateDigest` (the Merkle-style sha256 of the canonical concat
+   * of per-item resultDigests, per F4.12 §3.3 step 2) is emitted in the
+   * `compile_assembly_complete` ledger event detail for audit. The
+   * flat artifact's `bodyDigest` is sha256 of the concatenated body
+   * bytes — the natural digest of what's on disk and what consumers
+   * read back. The two digests serve different purposes: bodyDigest =
+   * "did the file change?"; aggregateDigest = "did the set of inputs
+   * change?".
+   *
+   * On any verify failure: emit `compile_quarantined` + throw (same
+   * shape as single-item path). The pass-through bundle path does NOT
+   * support bypass-partial — per F4.12 §1 scope, partial-quarantine is
+   * not permitted; any item failure quarantines the whole bundle.
+   */
+  private async compilePassThroughBundle(
+    request: CompileRequest,
+    contract: OutputContract,
+    items: MailboxItem[]
+  ): Promise<FinalResponseArtifact> {
+    // F4.12 §3.1 — verify FIRST, before any artifact construction.
+    const verifyResult = await verifyMailboxItems(items, this.payloadResolvers);
+    if (!verifyResult.ok) {
+      await this.runLedgerWriter.writeEvent({
+        runId: request.runId,
+        eventType: 'compile_quarantined',
+        timestamp: nowIso(),
+        actorId: null,
+        detail: {
+          reason: verifyResult.reason,
+          mailboxItemId: verifyResult.mailboxItemId,
+          sourceMailboxId: verifyResult.sourceMailboxId,
+          itemCount: items.length,
+          passThrough: 'bundle',
+          detail: verifyResult.detail,
+        },
+      });
+      throw new Error(
+        `compile pass-through (bundle): quarantine — ${verifyResult.reason}: ${verifyResult.detail}`
+      );
+    }
+
+    // Deterministic order: sort by mailboxItemId so replay is byte-
+    // identical regardless of mailbox-listing order (allocations may
+    // come back in any order from listMailboxesForRun).
+    const ordered = [...verifyResult.resolvedItems].sort((a, b) =>
+      a.item.mailboxItemId < b.item.mailboxItemId
+        ? -1
+        : a.item.mailboxItemId > b.item.mailboxItemId
+          ? 1
+          : 0
+    );
+
+    // Canonical concat of per-item bytes (deterministic order).
+    const totalLength = ordered.reduce((sum, r) => sum + r.bytes.length, 0);
+    const bodyBytes = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const { bytes } of ordered) {
+      bodyBytes.set(bytes, offset);
+      offset += bytes.length;
+    }
+    const bodyDigest = sha256Hex(bodyBytes);
+
+    // F4.12 §3.3 step 2 — aggregateDigest = sha256(canonical concat of
+    // per-item resultDigests, in the same deterministic order).
+    const aggregateDigest = createHash('sha256')
+      .update(ordered.map(r => r.item.resultDigest).join(''))
+      .digest('hex');
+
+    const artifactId = randomUUID() as Uuid;
+    const bodyPath = join(this.outputRoot, 'compile', request.runId, `${artifactId}.txt`);
+    await fs.mkdir(dirname(bodyPath), { recursive: true });
+    await fs.writeFile(bodyPath, bodyBytes);
+    const bodyRef = `file://${bodyPath}` as NonEmpty;
+
+    await this.runLedgerWriter.writeEvent({
+      runId: request.runId,
+      eventType: 'compile_assembly_complete',
+      timestamp: nowIso(),
+      actorId: null,
+      detail: {
+        templateId: 'pass_through_bundle',
+        templateVersion: '0',
+        format: 'raw',
+        itemCount: ordered.length,
+        unmatchedCount: 0,
+        orphanedCount: 0,
+        validationFailureCount: 0,
+        guardsFired: 0,
+        warningCount: 0,
+        partial: false,
+        bodyDigest,
+        passThrough: true,
+        bundle: true,
+        aggregateDigest,
+        sourceMailboxItemIds: ordered.map(r => r.item.mailboxItemId),
+      },
+    });
+
+    const artifactBase: Omit<FinalResponseArtifact, 'signature'> = {
+      artifactId,
+      runId: request.runId,
+      compilerSocketId: this.compilerSocketId,
+      compilerActorId: null,
+      compileMode: 'deterministic_render',
+      bodyRef,
+      bodyDigest,
+      outputClassifications: contract.inputDataClasses,
+      sourceMailboxItems: ordered.map(r => r.item.mailboxItemId),
+      evidenceRefs: contract.evidenceRefs,
+      routingTrailRefs: contract.routingTrailRefs,
+      runLedgerRefs: contract.runLedgerRefs,
+      createdAt: nowIso(),
+      // Pass-through bundle: per F4.12 §1 scope, no partial-quarantine
+      // — any verify failure aborts the whole bundle (see early-return
+      // above). So bypassPartials is always empty here.
       bypassPartials: [],
     };
 

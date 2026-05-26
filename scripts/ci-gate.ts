@@ -2359,21 +2359,111 @@ function enforceGov05NvgPayloadLabels(): void {
 function enforceGov06CompileMultiItemPassThrough(): void {
   // F4.12 §3.3 — multi-item no-template runs must route through the
   // pass-through bundle helper (verifyMailboxItems + canonical-concat +
-  // signed bundle artifact). RED until Patch 32 completes the gate
-  // condition flip + the compile-bypass test migration via the §C.3
-  // test-breakage protocol. (The dead compilePassThroughBundle method
-  // from Phase B session 1 was deleted in Patch 26.)
-  fail(
-    'GOV-06: compile multi-item pass-through not yet activated — F4.12 §3.3 / Phase B completion HANDOFF §E.1 Patch 32 (test migration via HANDOFF §C.3 protocol pending)'
+  // signed bundle artifact). Activated 2026-05-26 alongside the §C.3
+  // test-migration ratification (owner-ratified explicit go).
+  //
+  // Three invariants enforced on packages/core/src/compile/
+  // deterministic-renderer.ts source:
+  //   1. `compilePassThroughBundle` method exists.
+  //   2. The HL #11-violating `defaultTemplateGenerator.generate(`
+  //      call site (multi-item fallback to fabricated template) is GONE.
+  //   3. The entry-point `compile()` routes templateId-undefined to
+  //      one of the two pass-through methods — neither falls through
+  //      to the templated/assembler path.
+  const rendererPath = path.join('packages', 'core', 'src', 'compile', 'deterministic-renderer.ts');
+  if (!fs.existsSync(rendererPath)) {
+    fail(`GOV-06: ${rendererPath} not found`);
+  }
+  const source = stripTsComments(fs.readFileSync(rendererPath, 'utf-8'));
+
+  if (!/private async compilePassThroughBundle\(/.test(source)) {
+    fail(
+      `GOV-06: ${rendererPath} missing compilePassThroughBundle method (F4.12 §3.3 — multi-item no-template pass-through helper)`
+    );
+  }
+  if (/defaultTemplateGenerator\.generate\(/.test(source)) {
+    fail(
+      `GOV-06: ${rendererPath} still calls defaultTemplateGenerator.generate(...) — multi-item no-template MUST route to compilePassThroughBundle (HL #11; F4.12 §3.3 retires the fabrication fallback)`
+    );
+  }
+  // Entry-point routing: templateId === undefined must dispatch to both
+  // pass-through methods (single + bundle).
+  if (
+    !/templateId === undefined[\s\S]{0,400}compilePassThrough\(/.test(source) ||
+    !/templateId === undefined[\s\S]{0,400}compilePassThroughBundle\(/.test(source)
+  ) {
+    fail(
+      `GOV-06: ${rendererPath} entry-point compile() must route templateId-undefined to compilePassThrough (1 item) and compilePassThroughBundle (multi-item) — HL #11 / F4.12 §3.3`
+    );
+  }
+
+  pass(
+    'compile multi-item pass-through (compilePassThroughBundle wired; defaultTemplateGenerator.generate fallback retired; HL #11 / F4.12 §3.3 active)'
   );
 }
 
 function enforceGov07CompilePassThroughDigest(): void {
-  // F4.12 §3.3 — bundle pass-through helper must compute
-  // bodyDigest = sha256Hex(canonical-concat(items)). RED until Patch 32
-  // re-introduces the bundle helper correctly + activates it.
-  fail(
-    'GOV-07: compile pass-through bundle digest not yet implemented — F4.12 §3.3 / Phase B completion HANDOFF §E.1 Patch 32'
+  // F4.12 §3.1 + §3.3 — both pass-through paths (single + bundle) MUST
+  // call `verifyMailboxItems` BEFORE constructing any artifact, AND
+  // the bundle path MUST compute the aggregateDigest as
+  // sha256(canonical concat of item.resultDigest in deterministic order).
+  // Activated 2026-05-26.
+  //
+  // Three invariants enforced:
+  //   1. deterministic-renderer.ts imports `verifyMailboxItems` from
+  //      the shared helper file.
+  //   2. Both compilePassThrough + compilePassThroughBundle call
+  //      `verifyMailboxItems(...)`.
+  //   3. compilePassThroughBundle computes the aggregateDigest:
+  //      `createHash('sha256').update(... resultDigest ...)`.
+  const rendererPath = path.join('packages', 'core', 'src', 'compile', 'deterministic-renderer.ts');
+  const verifyHelperPath = path.join(
+    'packages',
+    'core',
+    'src',
+    'compile',
+    'verify-mailbox-items.ts'
+  );
+  if (!fs.existsSync(verifyHelperPath)) {
+    fail(
+      `GOV-07: ${verifyHelperPath} missing — F4.12 §3.1 single-source-of-truth helper for pass-through digest/provenance verification`
+    );
+  }
+  const source = stripTsComments(fs.readFileSync(rendererPath, 'utf-8'));
+
+  if (!/from ['"]\.\/verify-mailbox-items\.js['"]/.test(source)) {
+    fail(`GOV-07: ${rendererPath} must import verifyMailboxItems from ./verify-mailbox-items.js`);
+  }
+  // Slice each pass-through method body. The single path ends where the
+  // bundle path begins. The bundle path runs to end-of-class.
+  const ptSingleMatch = source.match(
+    /private async compilePassThrough\([\s\S]+?(?=private async compilePassThroughBundle\()/
+  );
+  const ptBundleMatch = source.match(/private async compilePassThroughBundle\([\s\S]+/);
+  if (!ptSingleMatch || !/verifyMailboxItems\(/.test(ptSingleMatch[0])) {
+    fail(
+      `GOV-07: ${rendererPath} compilePassThrough (single-item) must call verifyMailboxItems before artifact construction (F4.12 §3.1)`
+    );
+  }
+  if (!ptBundleMatch || !/verifyMailboxItems\(/.test(ptBundleMatch[0])) {
+    fail(
+      `GOV-07: ${rendererPath} compilePassThroughBundle must call verifyMailboxItems before artifact construction (F4.12 §3.1)`
+    );
+  }
+  // Bundle path must compute the F4.12 §3.3 step-2 aggregateDigest.
+  if (
+    !ptBundleMatch ||
+    !/aggregateDigest[\s\S]{0,300}createHash\(['"]sha256['"]\)[\s\S]{0,300}resultDigest/.test(
+      ptBundleMatch[0]
+    )
+  ) {
+    fail(
+      `GOV-07: ${rendererPath} compilePassThroughBundle must compute aggregateDigest = sha256(canonical concat of item.resultDigest) per F4.12 §3.3 step 2`
+    );
+  }
+
+  pass(
+    'compile pass-through digest/provenance verification (verifyMailboxItems wired in both single + bundle paths; bundle aggregateDigest = sha256 of canonical concat of item.resultDigest; F4.12 §3.1 + §3.3)'
   );
 }
 
@@ -2443,17 +2533,44 @@ function enforceGov08SignedAdminMutation(): void {
   if (!/from\s+['"].*signed-admin-mutation\.js['"]/.test(adminWriterSrc)) {
     fail(`GOV-08: ${adminWriterPath} must import the SignedAdminMutation wrapper (F4.13 §3.1)`);
   }
-  if (!/\bwithAdminMutation\s*\(/.test(adminWriterSrc)) {
+  // Allow the TypeScript-generic call shape `withAdminMutation<TFoo>(` —
+  // every real call site in admin-writer.ts uses generics, so the
+  // pre-2026-05-26 regex `\bwithAdminMutation\s*\(` failed to match
+  // ANY call (the bug never surfaced because ci:gate stopped at GOV-06
+  // before reaching this gate; the F4.12 fix that lands GOV-06 green
+  // exposed this drift).
+  const withAdminMutationCall = /\bwithAdminMutation\s*(?:<[^>]+(?:<[^>]*>[^>]*)*>)?\s*\(/;
+  if (!withAdminMutationCall.test(adminWriterSrc)) {
     fail(`GOV-08: ${adminWriterPath} must register routes through withAdminMutation( (F4.13 §3.1)`);
   }
-  // Scan every governance-relevant mutation site. Routes under /signing/*
-  // and /mode/unlock are SigningCouncil federated (Spec F4.1) and exempt.
+  // Scan every governance-relevant mutation site. Exemption list (each
+  // entry justified by a separate spec — these routes have their own
+  // audit / signing pattern that supersedes the F4.13 wrapper):
+  //   /mode/unlock         — SigningCouncil federated (Spec F4.1)
+  //   /signing/requests    — SigningCouncil federated (Spec F4.1)
+  //   /lexicon/            — All lexicon mutation routes route through
+  //                          signingCouncil.open(operation='lexicon_mutation')
+  //                          per GOV-14 (Spec F4.8 §3.3). The mutation
+  //                          itself happens in the SigningCouncil
+  //                          dispatcher after 2-of-2 ratification — not
+  //                          in the route handler. Wrapping in
+  //                          withAdminMutation would double-audit the
+  //                          intent (council emits federated_operation_*
+  //                          + lexicon_mutation_applied).
+  //   /probe               — Diagnostic connectivity probe. Emits
+  //                          'admin_probe' event (not admin_mutation_*).
+  //                          Not a state mutation per outline §K.
   const lines = adminWriterSrc.split(/\r?\n/);
-  const exemptPathFragments: ReadonlyArray<string> = ['/mode/unlock', '/signing/requests'];
+  const exemptPathFragments: ReadonlyArray<string> = [
+    '/mode/unlock',
+    '/signing/requests',
+    '/lexicon/',
+    '/probe',
+  ];
   const mutationLineRegex = /\bapp\.(post|put|delete)\s*\(\s*['"`]([^'"`]+)['"`]/;
   const wrapperHits = new Set<number>();
   for (let i = 0; i < lines.length; i++) {
-    if (/\bwithAdminMutation\s*\(/.test(lines[i]!)) wrapperHits.add(i);
+    if (withAdminMutationCall.test(lines[i]!)) wrapperHits.add(i);
   }
   const violations: string[] = [];
   for (let i = 0; i < lines.length; i++) {

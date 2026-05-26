@@ -2020,7 +2020,23 @@ export function registerAdminWriterRoutes(app: Express, deps: AdminWriterRouteDe
       readonly adminActorId: string;
     }
   ): Promise<void> {
-    if (!deps.runLedgerWriter) return; // no ledger wired → no-op (best effort)
+    // F4.13 §3.3 — fail-closed when audit is unavailable. The prior
+    // silent short-circuit pattern was retired because it lets the
+    // probe silently succeed when the diagnostic trail cannot be
+    // written. GOV-10 catches the retired pattern; the throw below is
+    // the canonical replacement — the route handler's outer try/catch
+    // surfaces it as a 500 to the caller, who can investigate why the
+    // ledger is unavailable rather than getting a silent success.
+    //
+    // Follow-up: the unconditional swallow-catch at the end of this
+    // body is its own §3.3 concern (silent-error pattern); the bounded
+    // fix here addresses the GOV-10 trigger only. The broader catch
+    // surface needs a separate spec amendment.
+    if (!deps.runLedgerWriter) {
+      throw new Error(
+        'admin probe audit: AUDIT_UNAVAILABLE — F4.13 §3.3 requires fail-closed when run ledger is not wired'
+      );
+    }
     const infraRunId = deps.infraRunIdNamespace?.next() ?? (randomUUID() as NonEmpty);
     try {
       await deps.runLedgerWriter.writeEvent({
