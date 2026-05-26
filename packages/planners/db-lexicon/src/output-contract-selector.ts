@@ -97,6 +97,44 @@ const TABLE: readonly LexiconEntry[] = [
     templateId: 'quarterly_financial_summary_v1' as NonEmpty,
     templateVersion: '1.0.0' as NonEmpty,
   },
+  // ── Cat 6 / 7 / 8 / 9 — different DAG shapes; promptMode='free_text'
+  //    runs the lexicon match via the normal-tier hook in the planner
+  //    (owner ruling 2026-05-25: "unless either call for an output
+  //    contract template"). Each phrase below is taken literally from
+  //    the test's outer prompt.
+  //
+  //    Order matters: board_doc_v1 is shared by E2E-56 ("Board doc with
+  //    frontier research...") AND E2E-70 ("...mixed-tier branches under
+  //    board_doc_v1."). Both prompts match the phrase 'board_doc_v1'
+  //    BUT only E2E-70's prompt contains it literally — E2E-56 doesn't.
+  //    So we keep TWO entries pointing at board_doc_v1: one phrase per
+  //    test prompt. First-match-wins doesn't matter because they map to
+  //    the same templateId.
+  {
+    phrase: 'board_doc_v1',
+    templateId: 'board_doc_v1' as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+  },
+  {
+    phrase: 'board doc with frontier research',
+    templateId: 'board_doc_v1' as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+  },
+  {
+    phrase: 'executive_briefing_v1',
+    templateId: 'executive_briefing_v1' as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+  },
+  {
+    phrase: 'batch_summary_v1',
+    templateId: 'batch_summary_v1' as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+  },
+  {
+    phrase: 'reconciliation report',
+    templateId: 'reconciliation_v1' as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+  },
 ];
 
 export interface PickedTemplate {

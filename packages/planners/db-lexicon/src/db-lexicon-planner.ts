@@ -142,7 +142,7 @@ export class DbLexiconTransformerPlanner
     if (reqNM.subTasks && reqNM.subTasks.length > 0) {
       const result = await planFromSubTasks(reqNM, context, deps);
       this.lastTrace = this.buildPreResolvedTrace(reqNM, result);
-      return result;
+      return this.maybeAttachTemplateForNormal(result, reqNM);
     }
 
     // ── Branch 3: preferred-agents preflight ──
@@ -160,7 +160,7 @@ export class DbLexiconTransformerPlanner
       switch (pre.kind) {
         case 'pass':
           this.lastTrace = this.buildPreflightTrace(reqNM, pre, 'plan_created', null, null);
-          return pre.plan;
+          return this.maybeAttachTemplateForNormal(pre.plan, reqNM);
         case 'reject_with_suggestions':
           this.lastRejectionCheckback = pre.checkback;
           this.lastTrace = this.buildPreflightTrace(
@@ -182,7 +182,8 @@ export class DbLexiconTransformerPlanner
 
     // ── Branch 4: lexical decomposition (normal tier with prompt) ──
     if (reqNM.tier === 'normal' && reqNM.prompt) {
-      return this.lexicalDecompositionBranch(reqNM, context, deps);
+      const result = await this.lexicalDecompositionBranch(reqNM, context, deps);
+      return this.maybeAttachTemplateForNormal(result, reqNM);
     }
 
     // No branch matched — malformed request
@@ -427,6 +428,53 @@ export class DbLexiconTransformerPlanner
       return plan;
     }
 
+    return attachOutputContractTemplate(
+      plan,
+      picked.templateId,
+      picked.templateVersion,
+      this.computeDigest
+    );
+  }
+
+  /**
+   * Normal-tier / metadata-tier lexicon attachment (owner ruling
+   * 2026-05-25: chat/secure can have templates "unless either call for
+   * an output contract template"). For each successfully-produced
+   * ExecutionPlan in the normal-tier branches (Branch 2 subTasks DAG,
+   * Branch 3 preflight pass, Branch 4 lexical decomposition), this
+   * runs the prompt->templateId lexicon. If a template is picked, the
+   * plan gains outputContractTemplateId + outputContractTemplateVersion
+   * and its planDigest is re-stamped. Misses are silent — compile then
+   * follows Hard Law #11 (pass-through verbatim or default-template-
+   * generator for multi-item).
+   *
+   * Tier scope: normal + metadata. NOT chat (HL#11 single-agent
+   * pass-through path; outline §5 #1 does not include a template
+   * channel). NOT oct_secure (planner has no prompt visibility, so the
+   * lexicon cannot match by construction).
+   *
+   * Plan-rejection input is returned unchanged.
+   * Plan that already carries a templateId (defensive — shouldn't
+   * happen for normal-tier today) is returned unchanged.
+   */
+  private maybeAttachTemplateForNormal(
+    plan: ExecutionPlan | PlanRejection,
+    request: NormalPlannerRequest | MetadataPlannerRequest
+  ): ExecutionPlan | PlanRejection {
+    if ('rejected' in plan) {
+      return plan;
+    }
+    if (plan.outputContractTemplateId !== undefined) {
+      return plan;
+    }
+    // Metadata-tier requests carry no prompt (visibility law). Skip.
+    if (request.tier !== 'normal') {
+      return plan;
+    }
+    const picked = pickTemplateForPrompt(request.prompt);
+    if (picked === null) {
+      return plan;
+    }
     return attachOutputContractTemplate(
       plan,
       picked.templateId,

@@ -376,6 +376,260 @@ function buildEmailDraftV1(): Omit<CompileTemplate, 'templateDigest' | 'signatur
   };
 }
 
+// ─── Cat 6/7/8/9 template builders ─────────────────────────────────────────
+//
+// Distinct DAG shapes from Cat 5's runContractTwoLeg. Each builder
+// documents the slots it must place at the top.
+//
+// board_doc_v1 — covers BOTH:
+//   - E2E-56 (06-mixed-tier runMixedTwoLeg): 2 NVG legs → slot 'response' × 2
+//   - E2E-70 (07-branching createBranching): 2 NXS pulls (slot 'rows' × 2)
+//                                            + 2 NVG narrative/polish (slot 'response' × 2)
+//   → declare BOTH slot bindings; rows-side `required: false` so the
+//     response-only E2E-56 plan doesn't trip the assembler.
+// executive_briefing_v1 — E2E-65 (07-branching): 4 NVG legs → slot 'response' × 4.
+// batch_summary_v1     — E2E-76 (08-batch): 1 NXS pull (slot 'rows') +
+//                                            1 NVG summarize (slot 'response').
+// reconciliation_v1    — E2E-90 (09-multi-source-merge): 2 NXS pulls
+//                                            (slot 'rows' × 2) + 1 NVG merge
+//                                            (slot 'response' × 1).
+
+function locationForSlot(
+  locationId: NonEmpty,
+  expectedSlotId: NonEmpty,
+  slotType: SlotType,
+  required: boolean,
+  placeholder: string
+): CompileLocation {
+  return {
+    locationId,
+    position: 0,
+    assignedAgentId: TEMPLATE_AGENT_SENTINEL,
+    expectedSlotId,
+    slotType,
+    required,
+    placeholder,
+  };
+}
+
+function buildBoardDocV1(): Omit<CompileTemplate, 'templateDigest' | 'signature'> {
+  const tplId = 'board_doc_v1';
+  const sections: CompileSection[] = [
+    {
+      sectionId: `${tplId}.source_pulls` as NonEmpty,
+      position: 0,
+      title: 'Source Data (Pulls)',
+      assignedAgentId: TEMPLATE_AGENT_SENTINEL,
+      expectedContentType: 'mixed',
+      locations: [
+        locationForSlot(
+          `${tplId}.source_pulls.rows.a` as NonEmpty,
+          'rows' as NonEmpty,
+          { type: 'table', granularity: 'block' },
+          false,
+          'first source pull'
+        ),
+        locationForSlot(
+          `${tplId}.source_pulls.rows.b` as NonEmpty,
+          'rows' as NonEmpty,
+          { type: 'table', granularity: 'block' },
+          false,
+          'second source pull'
+        ),
+      ],
+      formatHint: 'board-doc-source-pulls',
+    },
+    {
+      sectionId: `${tplId}.narrative` as NonEmpty,
+      position: 1,
+      title: 'Board-Ready Narrative',
+      assignedAgentId: TEMPLATE_AGENT_SENTINEL,
+      expectedContentType: 'prose',
+      locations: [
+        locationForSlot(
+          `${tplId}.narrative.response.a` as NonEmpty,
+          'response' as NonEmpty,
+          { type: 'prose', granularity: 'paragraph' },
+          false,
+          'first narrative pass'
+        ),
+        locationForSlot(
+          `${tplId}.narrative.response.b` as NonEmpty,
+          'response' as NonEmpty,
+          { type: 'prose', granularity: 'paragraph' },
+          false,
+          'second narrative pass'
+        ),
+      ],
+      formatHint: 'board-doc-narrative',
+    },
+  ];
+  return {
+    templateId: tplId as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+    format: 'mixed',
+    sections,
+    guards: [],
+    denialHandling: 'inline',
+    createdAt: nowIso(),
+    createdBy: 'default',
+  };
+}
+
+function buildExecutiveBriefingV1(): Omit<CompileTemplate, 'templateDigest' | 'signature'> {
+  const tplId = 'executive_briefing_v1';
+  const titles = [
+    'Macro Context',
+    'Company-Specific Performance',
+    'Risk Register',
+    'Strategic Recommendations',
+  ];
+  const sections: CompileSection[] = titles.map((title, i) => ({
+    sectionId: `${tplId}.leg_${i + 1}` as NonEmpty,
+    position: i,
+    title,
+    assignedAgentId: TEMPLATE_AGENT_SENTINEL,
+    expectedContentType: 'prose',
+    locations: [
+      locationForSlot(
+        `${tplId}.leg_${i + 1}.response` as NonEmpty,
+        'response' as NonEmpty,
+        { type: 'prose', granularity: 'paragraph' },
+        false,
+        `briefing leg ${i + 1}`
+      ),
+    ],
+    formatHint: `briefing-leg-${i + 1}`,
+  }));
+  return {
+    templateId: tplId as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+    format: 'prose',
+    sections,
+    guards: [],
+    denialHandling: 'inline',
+    createdAt: nowIso(),
+    createdBy: 'default',
+  };
+}
+
+function buildBatchSummaryV1(): Omit<CompileTemplate, 'templateDigest' | 'signature'> {
+  const tplId = 'batch_summary_v1';
+  const sections: CompileSection[] = [
+    {
+      sectionId: `${tplId}.batch_rows` as NonEmpty,
+      position: 0,
+      title: 'Batch Rows',
+      assignedAgentId: TEMPLATE_AGENT_SENTINEL,
+      expectedContentType: 'table',
+      locations: [
+        locationForSlot(
+          `${tplId}.batch_rows.rows` as NonEmpty,
+          'rows' as NonEmpty,
+          { type: 'table', granularity: 'block' },
+          false,
+          'batch pull rows'
+        ),
+      ],
+      formatHint: 'batch-rows-table',
+    },
+    {
+      sectionId: `${tplId}.summary` as NonEmpty,
+      position: 1,
+      title: 'LLM Summary',
+      assignedAgentId: TEMPLATE_AGENT_SENTINEL,
+      expectedContentType: 'prose',
+      locations: [
+        locationForSlot(
+          `${tplId}.summary.response` as NonEmpty,
+          'response' as NonEmpty,
+          { type: 'prose', granularity: 'paragraph' },
+          false,
+          'summarize batch result'
+        ),
+      ],
+      formatHint: 'batch-summary-prose',
+    },
+  ];
+  return {
+    templateId: tplId as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+    format: 'mixed',
+    sections,
+    guards: [],
+    denialHandling: 'inline',
+    createdAt: nowIso(),
+    createdBy: 'default',
+  };
+}
+
+function buildReconciliationV1(): Omit<CompileTemplate, 'templateDigest' | 'signature'> {
+  const tplId = 'reconciliation_v1';
+  const sections: CompileSection[] = [
+    {
+      sectionId: `${tplId}.sales_source` as NonEmpty,
+      position: 0,
+      title: 'Sales Source',
+      assignedAgentId: TEMPLATE_AGENT_SENTINEL,
+      expectedContentType: 'table',
+      locations: [
+        locationForSlot(
+          `${tplId}.sales_source.rows` as NonEmpty,
+          'rows' as NonEmpty,
+          { type: 'table', granularity: 'block' },
+          false,
+          'sales-finance rows'
+        ),
+      ],
+      formatHint: 'reconciliation-sales-source',
+    },
+    {
+      sectionId: `${tplId}.warehouse_source` as NonEmpty,
+      position: 1,
+      title: 'Warehouse Source',
+      assignedAgentId: TEMPLATE_AGENT_SENTINEL,
+      expectedContentType: 'table',
+      locations: [
+        locationForSlot(
+          `${tplId}.warehouse_source.rows` as NonEmpty,
+          'rows' as NonEmpty,
+          { type: 'table', granularity: 'block' },
+          false,
+          'warehouse rows'
+        ),
+      ],
+      formatHint: 'reconciliation-warehouse-source',
+    },
+    {
+      sectionId: `${tplId}.merge` as NonEmpty,
+      position: 2,
+      title: 'Cross-System Reconciliation',
+      assignedAgentId: TEMPLATE_AGENT_SENTINEL,
+      expectedContentType: 'prose',
+      locations: [
+        locationForSlot(
+          `${tplId}.merge.response` as NonEmpty,
+          'response' as NonEmpty,
+          { type: 'prose', granularity: 'paragraph' },
+          false,
+          'merge narrative'
+        ),
+      ],
+      formatHint: 'reconciliation-merge-prose',
+    },
+  ];
+  return {
+    templateId: tplId as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+    format: 'mixed',
+    sections,
+    guards: [],
+    denialHandling: 'inline',
+    createdAt: nowIso(),
+    createdBy: 'default',
+  };
+}
+
 function buildQuarterlyFinancialSummaryV1(): Omit<CompileTemplate, 'templateDigest' | 'signature'> {
   return {
     templateId: 'quarterly_financial_summary_v1' as NonEmpty,
@@ -450,6 +704,11 @@ export function seedOutputContractTemplates(
     buildCitedResearchV1(),
     buildEmailDraftV1(),
     buildQuarterlyFinancialSummaryV1(),
+    // Cat 6/7/8/9 — different DAG shapes than Cat 5's runContractTwoLeg.
+    buildBoardDocV1(),
+    buildExecutiveBriefingV1(),
+    buildBatchSummaryV1(),
+    buildReconciliationV1(),
   ];
 
   for (const base of bases) {

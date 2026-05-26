@@ -135,4 +135,45 @@ describe('pickTemplateForPrompt — lexicon match', () => {
       }
     });
   });
+
+  // Phase 4 Cat 6/7/8/9: these tests submit `promptMode: 'free_text'`
+  // and rely on the planner's normal-tier lexicon hook to attach a
+  // template when the prompt explicitly calls for one (owner ruling
+  // 2026-05-25). Same lexicon mapper; different prompts.
+  describe('Cat 6/7/8/9 end-to-end test prompt coverage', () => {
+    const CROSS_CAT_PAIRS: ReadonlyArray<{ test: string; prompt: string; templateId: string }> = [
+      {
+        test: 'E2E-56 (Cat 6 mixed-tier)',
+        prompt: 'Board doc with frontier research and on-prem formatting.',
+        templateId: 'board_doc_v1',
+      },
+      {
+        test: 'E2E-65 (Cat 7 branching)',
+        prompt: 'Four-agent DAG rendered through executive_briefing_v1 contract.',
+        templateId: 'executive_briefing_v1',
+      },
+      {
+        test: 'E2E-70 (Cat 7 branching, mixed-tier)',
+        prompt: 'Deepest happy path: mixed-tier branches under board_doc_v1.',
+        templateId: 'board_doc_v1',
+      },
+      {
+        test: 'E2E-76 (Cat 8 batch)',
+        prompt: '100 rows through batch_summary_v1 contract.',
+        templateId: 'batch_summary_v1',
+      },
+      {
+        test: 'E2E-90 (Cat 9 multi-source-merge)',
+        prompt: 'Cross-system audit reconciliation report.',
+        templateId: 'reconciliation_v1',
+      },
+    ];
+    for (const { test, prompt, templateId } of CROSS_CAT_PAIRS) {
+      it(`${test} → ${templateId}`, () => {
+        const picked = pickTemplateForPrompt(prompt);
+        expect(picked, `prompt should resolve: ${prompt}`).not.toBeNull();
+        expect(picked!.templateId).toBe(templateId);
+      });
+    }
+  });
 });
