@@ -19,6 +19,7 @@
     "test:integration:pg": "tsx scripts/integration-pg.ts",
     "test:threat": "vitest run --config vitest.threat.config.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:e2e:shared": "vitest run --config vitest.e2e.shared.config.ts",
     "build": "turbo build && pnpm run build:entry",
     "build:entry": "esbuild scripts/nexus-main.ts --bundle --platform=node --format=cjs --outfile=dist/nexus-main.js --tsconfig=tsconfig.base.json --external:better-sqlite3 --sourcemap",
     "ci:gate": "tsx scripts/ci-gate.ts",

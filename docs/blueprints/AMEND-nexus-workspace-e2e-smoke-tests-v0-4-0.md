@@ -281,32 +281,69 @@ Each test targets one Hard Law's enforcement surface directly. Asserts the gate 
 ```ts
 export interface E2EHarness {
   readonly baseUrl: string;            // http://127.0.0.1:<dynamic port>
+  readonly cwd: string;                // ledger/mailbox cwd (mode-dependent)
   shutdown(): Promise<void>;
   jwtFor(role: UserRole): Promise<string>;
-  elevatedSessionFor(role: UserRole): Promise<string>;
+  elevatedSessionFor(role: UserRole, jwt: string): Promise<string>;
   createRun(jwt: string, body: WorkspaceRunRequestBody): Promise<{ runId: Uuid; planPreview: OrchestratorPlanPreview }>;
   resolveCheckback(jwt: string, runId: Uuid, decision: boolean | { picked: NonEmpty }): Promise<void>;
   waitForRunClosed(jwt: string, runId: Uuid, opts?: { timeoutMs?: number }): Promise<RunClosedSnapshot>;
   readLedger(runId: Uuid): Promise<readonly RunLedgerEntry[]>;
-  readMailboxItems(runId: Uuid, mailboxId: NonEmpty): Promise<readonly MailboxItem[]>;
+  readMailboxItems(runId: Uuid): Promise<readonly MailboxItem[]>;
 }
 
 export async function bootHarness(opts?: {
-  port?: number;
-  ollamaEndpoint?: string;
-  enableFrontier?: boolean;
+  startupTimeoutMs?: number;
+  verbose?: boolean;
+  mode?: 'isolated' | 'shared'; // default: auto-detect from env
 }): Promise<E2EHarness>;
 ```
 
-**Behavior:**
-- `bootHarness()` creates a temp cwd, generates a clean keypair + admin token + JWT secret, copies the policy fixture, registers the 10 user seeds via the workspace bootstrap, starts a `pnpm nexus serve` process on a free port, waits for health.
-- Each test file's `beforeAll` calls `bootHarness()`; each `afterAll` calls `shutdown()`. Suites do NOT share state — every test file is an isolated composition.
-- `jwtFor(role)` posts to `/workspace/auth/login` with the API key from the seed; returns the workspace JWT.
-- `createRun` POSTs to `/workspace/runs` and returns the runId + planPreview from the response.
-- `waitForRunClosed` polls `/workspace/runs/:runId` until `runClosed` is true, with a default 60s timeout.
-- `readLedger` reads `runs/<runId>/ledger.jsonl` directly off disk for assertion.
+### §4.1 Two execution modes (CANONICAL — both first-class designs)
 
-**Per-suite isolation:** each suite uses a fresh tmpdir (e.g., `os.mkdtemp(prefix='nx-e2e-XX-')`). Parallel suites are fine — port allocator picks unused ports.
+The harness supports two modes. Test bodies are mode-agnostic — they call `bootHarness()` and the harness auto-detects which mode to run in based on the `NEXUS_E2E_BASE_URL` env variable.
+
+#### Shared mode — production-shape default
+
+**Slogan:** *one Nexus server, many users/personas/runs concurrently.*
+
+This is how Nexus is actually deployed and used. A single long-lived server hosts every persona, every concurrent run, every NXS dispatch and NVG inference for the entire wall. Triggered by `vitest.e2e.shared.config.ts` (script: `pnpm test:e2e:shared`), which wires a globalSetup at `tests/e2e/_shared/global-setup.ts` to:
+
+1. mkdtemp a fresh shared cwd
+2. Symlink `keys/`, `config/`, `fixtures/` from the repo
+3. Spawn ONE `pnpm nexus serve` subprocess
+4. Wait for `/health`
+5. Export `NEXUS_E2E_BASE_URL` + `NEXUS_E2E_SERVER_CWD` into the env
+6. After the wall, SIGTERM the server and rm the tmpdir
+
+Cross-test isolation is enforced by the **runtime**, not by the harness:
+
+- Every run has a server-minted UUID (no collision)
+- Per-(runId, actorId) mailbox storage (HL#8 — proven by E2E-116; per-runId JSONL files at `runs/mailbox/<runId>.jsonl`)
+- Per-event `runId`-keyed ledger filtering (the infra run-ledger is one shared JSONL; `readRunEvents` filters by runId)
+- HTTP run-status scope (a workspace JWT for user A cannot read user B's `/workspace/runs/:runId`)
+- Symmetric delegation intersection (HL#15 — proven by E2E-119; agents scope independently of broader user claims)
+
+`tests/e2e/14-shared-harness-concurrency.e2e.test.ts` is the canonical proof — 7 cases covering login parity, unique runIds, mailbox isolation, cross-user run scope, ledger runId filtering, per-run final_response, and per-principal NXS scopes under simultaneous dispatch.
+
+#### Isolated mode — forensic-debug fallback
+
+Each test file spawns its own `pnpm nexus serve` subprocess against a fresh tmpdir. Triggered by `vitest.e2e.config.ts` (script: `pnpm test:e2e`) — the env var is NOT set, the harness's auto-detect picks isolated.
+
+Use this mode when investigating a single suite without any other test's state on disk. It is **not** the production-shaped default — do not confuse "isolated" with "correct." The runtime isolates concurrent users by construction; per-file spawn is a debugging convenience, not an isolation requirement.
+
+`vitest.e2e.config.ts` excludes `tests/e2e/14-shared-harness-concurrency.e2e.test.ts` because that test's invariants only mean something against a shared server.
+
+### §4.2 Behavior (mode-agnostic)
+
+- `bootHarness()` returns a structured handle. In shared mode it connects to the existing server (env-supplied URL); in isolated mode it spawns one.
+- `jwtFor(role)` posts to `/workspace/auth/login` with the API key from the seed; returns the workspace JWT.
+- `elevatedSessionFor(role, jwt)` runs the challenge → verify cycle for admin operations.
+- `createRun(jwt, body)` POSTs to `/workspace/runs` and returns the runId + planPreview from the response.
+- `waitForRunClosed(jwt, runId)` polls `/workspace/runs/:runId` until `runClosed === true` OR a terminal `planner_infeasible` lands; default 90s timeout.
+- `readLedger(runId)` reads `<cwd>/runs/infra.run-ledger.jsonl` directly off disk, filtered by runId.
+- `readMailboxItems(runId)` reads `<cwd>/runs/mailbox/<runId>.jsonl` directly off disk.
+- `shutdown()` in isolated mode SIGTERMs the subprocess + rms the tmpdir. In shared mode it is a NO-OP — the server is owned by the globalSetup, not the per-suite handle.
 
 ---
 
