@@ -42,6 +42,8 @@ interface EndpointEntry extends Record<string, unknown> {
   modelName: string;
   auth: Record<string, unknown>;
   enabled: boolean;
+  /** Phase 8 — admin-configurable concurrency cap (default 4 when absent). */
+  maxConcurrentRequests?: number;
 }
 
 interface DraftEndpoint {
@@ -54,6 +56,12 @@ interface DraftEndpoint {
   authSecretRef: string;
   authHeaderName: string;
   authPrefix: string;
+  /**
+   * Phase 8 — text input field; empty string → omit from payload (runtime
+   * applies DEFAULT_MAX_CONCURRENT = 4). Non-empty must parse as a positive
+   * integer; the writer rejects non-positive values via zod.
+   */
+  maxConcurrentRequests: string;
 }
 
 const EMPTY_DRAFT: DraftEndpoint = {
@@ -66,6 +74,7 @@ const EMPTY_DRAFT: DraftEndpoint = {
   authSecretRef: '',
   authHeaderName: '',
   authPrefix: '',
+  maxConcurrentRequests: '',
 };
 
 interface Feedback {
@@ -172,7 +181,24 @@ function entryToDraft(entry: EndpointEntry): DraftEndpoint {
     authSecretRef: a.secretRef,
     authHeaderName: a.headerName,
     authPrefix: a.prefix,
+    maxConcurrentRequests:
+      typeof entry.maxConcurrentRequests === 'number' ? String(entry.maxConcurrentRequests) : '',
   };
+}
+
+/**
+ * Phase 8 — parse the form's text input into a payload fragment.
+ *   ''         → {} (defer to runtime default DEFAULT_MAX_CONCURRENT = 4)
+ *   '4', '10'  → { maxConcurrentRequests: 4 }
+ *   non-int / non-positive → {} (server-side zod rejects negatives too;
+ *                                this UI-side guard avoids the round-trip)
+ */
+function parseMaxConcurrentRequests(raw: string): { maxConcurrentRequests?: number } {
+  const trimmed = raw.trim();
+  if (trimmed === '') return {};
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return {};
+  return { maxConcurrentRequests: parsed };
 }
 
 /**
@@ -403,6 +429,10 @@ export function ModelEndpointSetupPanel({
       tier: addDraft.tier,
       enabled: true,
       auth: draftToAuth(addDraft),
+      // Phase 8 — only include maxConcurrentRequests when the admin
+      // typed a positive integer; empty string defers to the runtime
+      // default (DEFAULT_MAX_CONCURRENT = 4).
+      ...parseMaxConcurrentRequests(addDraft.maxConcurrentRequests),
     });
     setBusy(false);
     if (res.ok) {
@@ -460,6 +490,7 @@ export function ModelEndpointSetupPanel({
       modelName: editDraft.modelName,
       tier: editDraft.tier,
       auth: draftToAuth(editDraft),
+      ...parseMaxConcurrentRequests(editDraft.maxConcurrentRequests),
     });
     setBusy(false);
     if (res.ok) {
@@ -888,6 +919,29 @@ function EndpointForm({
               Probe succeeded but no models reported.
             </span>
           )}
+        </label>
+      </div>
+
+      {/* Phase 8 — admin-configurable concurrency cap. Empty defers to the
+          runtime default (DEFAULT_MAX_CONCURRENT = 4). NVG uses this to
+          decide when to skip a saturated endpoint and try the next one in
+          the lawful tier. Widening the tier on capacity is forbidden. */}
+      <div className="nx-admin-endpoint-form__row">
+        <label className="nx-admin-endpoint-form__field">
+          <span className="nx-admin-endpoint-form__label">Max concurrent requests</span>
+          <input
+            className="nx-admin-endpoint-form__input"
+            type="number"
+            min={1}
+            step={1}
+            placeholder="4 (default)"
+            value={draft.maxConcurrentRequests}
+            onChange={e => setDraft(d => ({ ...d, maxConcurrentRequests: e.target.value }))}
+          />
+          <span className="nx-admin-endpoint-form__hint">
+            Saturated endpoints are skipped in favor of the next healthy one in the same lawful
+            tier. Empty = use the runtime default (4).
+          </span>
         </label>
       </div>
 

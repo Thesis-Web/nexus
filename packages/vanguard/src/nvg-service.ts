@@ -46,6 +46,7 @@ import { enforceOctModelCeiling } from './classifier/ceiling-enforcer.js';
 import { readLabels } from './classifier/label-reader.js';
 import { evaluateRoutingPolicy, validateRoutingPolicy } from './router/policy-engine.js';
 import { invokeModel } from './router/model-router.js';
+import { type CapacityTracker, InProcessCapacityTracker } from './router/capacity-tracker.js';
 import { handleInboundResponse, handleNvgDenial } from './inbound/response-logger.js';
 import type { TierRegistry } from './router/tier-registry.js';
 
@@ -74,6 +75,13 @@ export interface NvgServiceDeps {
    */
   readonly claimVerifier?: ClaimVerificationPort;
   readonly runLedger?: RunLedgerWriter;
+  /**
+   * Phase 8 — per-endpoint concurrency tracker. When absent, the
+   * NvgServiceImpl constructs an `InProcessCapacityTracker` default so
+   * production bootstraps "just work" with the safe in-process driver.
+   * Multi-process deploys inject a Redis-backed driver here.
+   */
+  readonly capacityTracker?: CapacityTracker;
 }
 
 // ── NVG Service Implementation ──────────────────────────────────────────────
@@ -86,6 +94,13 @@ export class NvgServiceImpl implements NvgService {
   // immutable; attempts to re-attach throw.
   private lateClaimVerifier: ClaimVerificationPort | null = null;
   private lateRunLedger: RunLedgerWriter | null = null;
+  /**
+   * Phase 8 — capacity tracker. Pulled from deps when present;
+   * otherwise the constructor mints an InProcessCapacityTracker so
+   * classifyAndRoute always has a tracker available for model-router's
+   * capacity-aware retry loop.
+   */
+  private readonly capacityTracker: CapacityTracker;
 
   /**
    * Construct with full deps for classifyAndRoute composition.
@@ -93,6 +108,7 @@ export class NvgServiceImpl implements NvgService {
    */
   constructor(deps?: NvgServiceDeps) {
     this.deps = deps ?? null;
+    this.capacityTracker = deps?.capacityTracker ?? new InProcessCapacityTracker();
   }
 
   /**
@@ -539,7 +555,9 @@ export class NvgServiceImpl implements NvgService {
       classification,
       tierRegistry,
       transportContext,
-      preferredEndpoint
+      preferredEndpoint,
+      this.capacityTracker,
+      runLedger
     );
 
     // ── F4.9 §3.2 — claim-drift verification at NVG return-precheck ──────

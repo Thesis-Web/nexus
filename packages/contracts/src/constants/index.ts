@@ -316,6 +316,15 @@ export const DENIAL_CODE = {
   NVG_FALLBACK_DENIED: 'nvg_fallback_denied',
   NVG_ENDPOINT_TIMEOUT: 'nvg_endpoint_timeout',
   NVG_ENDPOINT_UNREACHABLE: 'nvg_endpoint_unreachable',
+  // Phase 8 — capacity routing: all healthy endpoints in the lawful tier
+  // were at maxConcurrentRequests at the moment NVG tried to dispatch,
+  // even after the bounded backoff retry loop. Distinct from
+  // NVG_ENDPOINT_TIMEOUT (a single endpoint took too long once) and
+  // NVG_ENDPOINT_UNREACHABLE (transport-level failure). This denial
+  // means "the tier is saturated; widening to a non-lawful tier is
+  // forbidden by the OCT ceiling." NVG retries CAPACITY only; never
+  // widens the tier.
+  NVG_CAPACITY_EXHAUSTED_TIER: 'nvg_capacity_exhausted_tier',
   NVG_POLICY_SIG_INVALID: 'nvg_routing_policy_signature_invalid',
   // F4.11 §3.3 — NVG quarantines payloads that arrive with empty
   // dataLabels and provenance from an untrusted source (agent_output

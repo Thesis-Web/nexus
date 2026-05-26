@@ -1863,7 +1863,33 @@ export type RunEventType =
   | 'environment_mismatch'
   | 'gate_04_require_approval'
   | 'gate_05_require_approval'
-  | 'tier_ceiling_exceeded';
+  | 'tier_ceiling_exceeded'
+  // ── Phase 8 — NVG capacity routing audit surfaces ───────────────────────
+  // Owning module: packages/vanguard/src/router/model-router.ts (BAKED).
+  // Architecture note: orchestrator is plug-and-play; capacity retry MUST
+  // NOT be hosted there. NVG returns one final result; orch waits. Any
+  // plug-and-play orch swap inherits capacity routing for free.
+  //
+  //   nvg_endpoint_skipped_saturated — emitted per attempt when the
+  //     in-flight counter for that endpoint is at maxConcurrentRequests.
+  //     The router records the attempt + tries the next healthy endpoint
+  //     in the lawful tier.
+  //
+  //   nvg_capacity_retry_waiting — emitted before each backoff wait when
+  //     ALL endpoints in the lawful tier were saturated on the most
+  //     recent pass. Detail carries `attemptIndex`, `nextWaitMs`,
+  //     `endpointsAtCapacity[]`. The existing run-event-bus.ts SSE fanout
+  //     automatically delivers these to the workspace stream so the UI
+  //     can render a "models busy, waiting..." countdown.
+  //
+  //   nvg_capacity_exhausted — emitted ONCE when the retry budget is
+  //     exhausted (default 3 attempts with 500/1000/2000ms backoff).
+  //     The router returns DENIAL_CODE.NVG_CAPACITY_EXHAUSTED_TIER as
+  //     the final result; orch closes the run cleanly with the canonical
+  //     capacity-exhausted outcome.
+  | 'nvg_endpoint_skipped_saturated'
+  | 'nvg_capacity_retry_waiting'
+  | 'nvg_capacity_exhausted';
 
 export interface RunLedgerEntry {
   entryId: Uuid;
@@ -2067,8 +2093,27 @@ export interface ModelEndpoint {
   modelName: NonEmpty;
   /** §12.3.38 — governed auth shape (discriminated by kind) */
   auth: ModelEndpointAuth;
-  /** Per-endpoint timeout override in ms; default 30_000 */
+  /**
+   * Per-endpoint timeout override in ms. When absent, the adapter
+   * resolves a tier-aware default: on-prem tiers (`on_prem_general`,
+   * `on_prem_sensitive`) default to 120_000ms (Phase 8); frontier tiers
+   * default to 30_000ms. Explicit per-endpoint value always wins.
+   */
   timeoutMs?: number;
+  /**
+   * Phase 8 — maximum concurrent in-flight requests this endpoint will
+   * accept before NVG considers it saturated and skips it for the next
+   * healthy endpoint in the same lawful tier. When all endpoints in the
+   * tier are saturated, NVG enters a bounded backoff retry loop
+   * (`nvg_capacity_retry_waiting` events fan out via SSE for live UX);
+   * after the retry budget is exhausted, NVG returns
+   * `NVG_CAPACITY_EXHAUSTED_TIER`. NVG NEVER widens the tier because of
+   * capacity — that would bypass the OCT ceiling.
+   *
+   * When absent, the runtime treats this endpoint as if the limit were
+   * 4 (admin-configurable default; see admin model-endpoint-setup-panel).
+   */
+  maxConcurrentRequests?: number;
   /** Per-adapter config, schema-validated at manifest load (§26.5 Step 6.5) */
   adapterConfig?: Record<string, unknown>;
   healthy: boolean;

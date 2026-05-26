@@ -161,6 +161,9 @@ export async function loadEndpointManifest(
       lastCheckAt: now,
     };
     if (entry.timeoutMs !== undefined) ep.timeoutMs = entry.timeoutMs;
+    if (entry.maxConcurrentRequests !== undefined) {
+      ep.maxConcurrentRequests = entry.maxConcurrentRequests;
+    }
     if (entry.adapterConfig !== undefined) ep.adapterConfig = entry.adapterConfig;
     endpoints.push(ep);
   }

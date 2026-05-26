@@ -23,7 +23,11 @@ import {
   type ToolSchemaDescriptor,
 } from '@nexus/contracts';
 import { toOpenAITools } from '../tool-schema-translators.js';
+import { getDefaultTimeoutMsForTier } from '../../router/tier-timeout.js';
 
+// Phase 8 — retained for backward-compat imports. Production path now
+// resolves via getDefaultTimeoutMsForTier so on-prem endpoints get a
+// realistic default; frontier stays at 30s.
 const TIMEOUT_DEFAULT_MS = 30_000;
 
 export const OpenAiAdapterConfigSchema = z
@@ -73,7 +77,7 @@ export class OpenAiChatV1Adapter implements ModelTransportAdapter<OpenAiAdapterC
     secretSource: SecretSource
   ): Promise<ModelEndpointResponse> {
     const startMs = Date.now();
-    const timeoutMs = endpoint.timeoutMs ?? TIMEOUT_DEFAULT_MS;
+    const timeoutMs = endpoint.timeoutMs ?? getDefaultTimeoutMsForTier(endpoint.tier);
 
     // 1. Auth resolution — OpenAI uses Authorization: Bearer <secret>
     const headers: Record<string, string> = {

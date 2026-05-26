@@ -100,6 +100,9 @@ const EndpointCreateSchema = z
     enabled: z.boolean().optional(),
     adapterConfig: z.record(z.unknown()).optional(),
     timeoutMs: z.number().int().positive().optional(),
+    // Phase 8 — admin-configurable concurrency cap per endpoint. Absent
+    // → runtime defaults to InProcessCapacityTracker.DEFAULT_MAX_CONCURRENT (4).
+    maxConcurrentRequests: z.number().int().positive().optional(),
   })
   .strict();
 
@@ -119,6 +122,8 @@ const EndpointUpdateSchema = z
     enabled: z.boolean().optional(),
     adapterConfig: z.record(z.unknown()).optional(),
     timeoutMs: z.number().int().positive().optional(),
+    // Phase 8 — admin-configurable concurrency cap per endpoint.
+    maxConcurrentRequests: z.number().int().positive().optional(),
   })
   .strict();
 

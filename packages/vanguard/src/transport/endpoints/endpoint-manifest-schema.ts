@@ -51,6 +51,14 @@ export const EndpointManifestEntrySchema = z
     auth: ModelEndpointAuthSchema,
     timeoutMs: z.number().int().positive().optional(),
     /**
+     * Phase 8 — maxConcurrentRequests cap for in-flight tracking. When
+     * absent, the runtime treats this endpoint as if the cap were 4
+     * (admin-configurable via model-endpoint-setup-panel). NVG skips
+     * saturated endpoints in favor of the next healthy one in the lawful
+     * tier; widening tier is forbidden.
+     */
+    maxConcurrentRequests: z.number().int().positive().optional(),
+    /**
      * NEW in r4 per audit B1.
      * Open shape at the manifest layer. Loader §26.5 Step 6.4 rejects forbidden keys;
      * Step 6.5 invokes the registered adapter's configSchema for shape validation.

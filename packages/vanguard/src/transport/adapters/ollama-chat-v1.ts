@@ -19,6 +19,7 @@
  * num_predict: inside options.num_predict per Ollama wire format (audit C-C).
  */
 import { z } from 'zod';
+import { getDefaultTimeoutMsForTier } from '../../router/tier-timeout.js';
 import {
   DENIAL_CODE,
   type ModelEndpoint,
@@ -31,6 +32,9 @@ import {
 } from '@nexus/contracts';
 import { toOllamaTools } from '../tool-schema-translators.js';
 
+// Phase 8 — TIMEOUT_DEFAULT_MS is retained for backward-compat callers
+// that may import it. New code path uses getDefaultTimeoutMsForTier
+// which gives on-prem endpoints a more realistic 120s default.
 const TIMEOUT_DEFAULT_MS = 30_000;
 
 // Per-adapter config schema (§12.3.40 configSchema; audit B1).
@@ -82,7 +86,7 @@ export class OllamaChatV1Adapter implements ModelTransportAdapter<OllamaAdapterC
     secretSource: SecretSource
   ): Promise<ModelEndpointResponse> {
     const startMs = Date.now();
-    const timeoutMs = endpoint.timeoutMs ?? TIMEOUT_DEFAULT_MS;
+    const timeoutMs = endpoint.timeoutMs ?? getDefaultTimeoutMsForTier(endpoint.tier);
 
     // 1. Auth resolution
     const headers: Record<string, string> = {
