@@ -37,11 +37,13 @@ import type {
   PlannerRequest,
   PlannerTraceReader,
   RejectionCheckbackPayload,
+  SectionedPlannerRequest,
   Sha256Hex,
   Uuid,
 } from '@nexus/contracts';
 import { nowIso } from '@nexus/contracts';
 import {
+  attachOutputContractTemplate,
   buildChatPlan,
   planFromSubTasks,
   planOctSecure,
@@ -53,6 +55,7 @@ import { decomposeLexically } from './internal/lexical-decomposition.js';
 import { resolveLexical } from './internal/lexical-resolver.js';
 import { runPreflight } from './internal/preflight.js';
 import type { LexiconTablesV1 } from './internal/types.js';
+import { pickTemplateForPrompt, type PickedTemplate } from './output-contract-selector.js';
 
 // ─── Package-local interface for checkback stash ───
 // Symmetric with `PlannerTraceReader` but kept package-local because
@@ -113,6 +116,17 @@ export class DbLexiconTransformerPlanner
     // 3-style checkback when selected agent lacks synthesize capability.
     if (request.tier === 'chat') {
       return this.planChatBranch(request, context, deps);
+    }
+
+    // ── Branch 0b: sectioned tier (outline §5 #3, §D, §J + owner ruling 2026-05-25) ──
+    // Structured-template path. Reuses the normal-tier planning machinery
+    // (subTasks DAG OR preferred-agents preflight) to produce a base
+    // ExecutionPlan, then attaches the output contract template — user
+    // pre-pick wins; else prompt->templateId lexicon match. The orch is
+    // not a governor: the planner only PICKS the template; compile does
+    // the actual rendering.
+    if (request.tier === 'sectioned') {
+      return this.planSectionedBranch(request, context, deps);
     }
 
     // ── Branch 1: oct_secure tier ──
@@ -329,6 +343,96 @@ export class DbLexiconTransformerPlanner
       true
     );
     return plan;
+  }
+
+  // ─── Branch 0b implementation (sectioned tier) ───
+  //
+  // Outline §5 #3 + §D + owner ruling 2026-05-25.
+  //
+  // The sectioned-tier request structurally mirrors NormalPlannerRequest:
+  // it carries `prompt`, `selectedAgentIds`, optional `subTasks` /
+  // `subTaskEdges`. The PLANNING (which agents, which DAG) reuses the
+  // same machinery as normal tier — there is no separate sectioned-DAG
+  // shape. The ONLY sectioned-specific behavior is template attachment:
+  //   - user pre-pick (request.userOutputContractTemplate) wins;
+  //   - else the prompt->templateId lexicon mapper picks;
+  //   - else no template (compile follows HL #11 pass-through).
+  //
+  // V1 vertical-slice scope: only the subTasks-present subpath is
+  // supported. selectedAgents-preflight and lexical-decomposition for
+  // sectioned tier are follow-on commits (the existing inner machinery
+  // expects a NormalPlannerRequest type; widening it is out of scope
+  // for this slice). Sectioned requests without subTasks return a
+  // typed PlanRejection so the boundary is honest — not a stub.
+
+  private async planSectionedBranch(
+    request: SectionedPlannerRequest,
+    context: PlannerContext,
+    deps: PlanAssemblyDeps
+  ): Promise<ExecutionPlan | PlanRejection> {
+    if (!request.subTasks || request.subTasks.length === 0) {
+      // Sectioned without an explicit sub-task DAG is a follow-on case
+      // (planner-picks-agents-from-lexicon-for-sectioned). Reject
+      // honestly so the caller sees the boundary instead of silent
+      // default-template behavior.
+      return reject(
+        'malformed_request',
+        'sectioned tier without subTasks is not supported in V1 ' +
+          '(future: lexical decomposition for sectioned)'
+      );
+    }
+
+    // Construct a shadow NormalPlannerRequest from the sectioned
+    // request so we can call the shared planFromSubTasks helper with
+    // honest types — no casts. The shadow has identical execution
+    // semantics; only the template-attachment step below differs.
+    const shadowNormal: NormalPlannerRequest = {
+      tier: 'normal',
+      runId: request.runId,
+      userId: request.userId,
+      principalId: request.principalId,
+      prompt: request.prompt,
+      selectedAgentIds: request.selectedAgentIds,
+      requiredCapabilities: [] as NonEmpty[],
+      edgeHints: [],
+      workspaceSocketId: request.workspaceSocketId,
+      planCheckbackRequested: request.planCheckbackRequested,
+      enteredAt: request.enteredAt,
+      preferredEndpointId: request.preferredEndpointId,
+      subTasks: request.subTasks,
+      subTaskEdges: request.subTaskEdges ?? null,
+    };
+
+    const plan = await planFromSubTasks(shadowNormal, context, deps);
+    // Preserve the existing pre-resolved trace shape so consumers that
+    // read `lastTrace` (the coordinator) see the same path detail.
+    this.lastTrace = this.buildPreResolvedTrace(shadowNormal, plan);
+
+    if ('rejected' in plan) {
+      return plan;
+    }
+
+    // Pick the template. User pre-pick beats lexicon match; both are
+    // OPTIONAL — when neither resolves, return the plan as-is and
+    // compile follows HL #11 (default-template-generator for multi-item).
+    const picked: PickedTemplate | null =
+      request.userOutputContractTemplate !== null
+        ? {
+            templateId: request.userOutputContractTemplate.templateId,
+            templateVersion: request.userOutputContractTemplate.templateVersion,
+          }
+        : pickTemplateForPrompt(request.prompt);
+
+    if (picked === null) {
+      return plan;
+    }
+
+    return attachOutputContractTemplate(
+      plan,
+      picked.templateId,
+      picked.templateVersion,
+      this.computeDigest
+    );
   }
 
   private buildChatTrace(

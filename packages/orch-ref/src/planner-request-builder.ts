@@ -21,6 +21,7 @@ import type {
   NonEmpty,
   NormalPlannerRequest,
   PlannerRequest,
+  SectionedPlannerRequest,
   Uuid,
   WorkspaceManifestRecord,
   WorkspaceRunRequest,
@@ -42,8 +43,15 @@ export interface BuildPlannerRequestArgs {
 export function buildPlannerRequestForWorkspace(args: BuildPlannerRequestArgs): PlannerRequest {
   const { request, workspace, nowIso } = args;
 
+  // workspace.entryMode is the signed upper-bound: a free_chat workspace
+  // can only do chat. Within a governed workspace, request.promptMode
+  // discriminates normal vs sectioned (outline §5 + owner ruling
+  // 2026-05-25 — sectioned is the structured-template path).
   if (workspace?.entryMode === 'free_chat') {
     return buildChatPlannerRequestFromRun(request, nowIso);
+  }
+  if (request.promptMode === 'sectioned') {
+    return buildSectionedPlannerRequestFromRun(request, nowIso);
   }
   return buildNormalPlannerRequestFromRun(request, nowIso);
 }
@@ -91,6 +99,33 @@ function buildNormalPlannerRequestFromRun(
     planCheckbackRequested: request.planCheckbackRequested,
     enteredAt: nowIso(),
     preferredEndpointId: request.preferredEndpointId,
+    subTasks: request.subTasks ?? null,
+    subTaskEdges: request.subTaskEdges ?? null,
+  };
+}
+
+// Outline §5 #3 (Sectioned) + §D (Orchestrator picks output contract).
+// Carries the user's pre-pick (when any) AND the sub-task DAG when the
+// sectioned tab submitted one. The planner reads
+// `userOutputContractTemplate` to decide: use it OR lexicon-pick OR
+// suggest-callback (when the planner has a stronger candidate).
+function buildSectionedPlannerRequestFromRun(
+  request: WorkspaceRunRequest,
+  nowIso: () => IsoTimestamp
+): SectionedPlannerRequest {
+  return {
+    tier: 'sectioned',
+    runId: request.runId,
+    userId: request.userId,
+    principalId: request.principalId,
+    workspaceSocketId: request.workspaceSocketId,
+    prompt: request.prompt,
+    selectedAgentIds: request.selectedAgentIds,
+    preferredEndpointId: request.preferredEndpointId,
+    planCheckbackRequested: request.planCheckbackRequested,
+    checkbackSourceRunId: request.checkbackSourceRunId,
+    enteredAt: nowIso(),
+    userOutputContractTemplate: request.outputContractTemplate,
     subTasks: request.subTasks ?? null,
     subTaskEdges: request.subTaskEdges ?? null,
   };

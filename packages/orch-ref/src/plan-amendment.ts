@@ -200,7 +200,9 @@ export function mergePlans(
 
   const mergedEdges = [...currentPlan.edges, ...extension.edges].sort(compareEdges);
 
-  // §8.2.6: recompute planDigest over full merged plan
+  // §8.2.6: recompute planDigest over full merged plan. Carry the
+  // current plan's output contract template choice (if any) into the
+  // amended plan's digest — amendment cannot change template choice.
   const mergedDigest = computeDigest({
     planId: currentPlan.planId,
     runId: currentPlan.runId,
@@ -208,6 +210,12 @@ export function mergePlans(
     edges: mergedEdges,
     plannerType: currentPlan.plannerType,
     plannerVersion: currentPlan.plannerVersion,
+    ...(currentPlan.outputContractTemplateId !== undefined
+      ? { outputContractTemplateId: currentPlan.outputContractTemplateId }
+      : {}),
+    ...(currentPlan.outputContractTemplateVersion !== undefined
+      ? { outputContractTemplateVersion: currentPlan.outputContractTemplateVersion }
+      : {}),
   });
 
   return {
@@ -219,6 +227,14 @@ export function mergePlans(
     plannerType: currentPlan.plannerType,
     plannerVersion: currentPlan.plannerVersion,
     createdAt: currentPlan.createdAt,
+    // Amendment preserves the original template choice — orch cannot
+    // change the contract mid-run; the user/planner picked it at plan-time.
+    ...(currentPlan.outputContractTemplateId !== undefined
+      ? { outputContractTemplateId: currentPlan.outputContractTemplateId }
+      : {}),
+    ...(currentPlan.outputContractTemplateVersion !== undefined
+      ? { outputContractTemplateVersion: currentPlan.outputContractTemplateVersion }
+      : {}),
   };
 }
 

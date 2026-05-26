@@ -319,12 +319,19 @@ const FreeTextSchema = z
   })
   .strict();
 
+// Outline §5 #3 (Sectioned) + owner ruling 2026-05-25: a sectioned run
+// is the structured-template path. The user MAY pre-pick a templateId in
+// the workspace UI (prompt-panel.tsx Sectioned tab); when omitted, the
+// planner picks via the prompt->templateId lexicon. Schema makes both
+// templateId AND templateVersion optional. The pair-validity check
+// (both-or-neither) runs in the route handler, NOT as a schema refine,
+// because Zod's discriminatedUnion does not accept ZodEffects members.
 const SectionedSchema = z
   .object({
     promptMode: z.literal('sectioned'),
     prompt: z.string().min(1),
-    templateId: z.string(),
-    templateVersion: z.string(),
+    templateId: z.string().optional(),
+    templateVersion: z.string().optional(),
     outputFormat: z.enum(['prose', 'table', 'raw', 'mixed', 'file_bundle']).optional(),
     connectors: z.array(z.string()).optional(),
     executionMode: z.enum(['human_in_the_loop', 'autonomous']).optional(),
@@ -333,6 +340,14 @@ const SectionedSchema = z
     modelPreferences: z.array(ModelPreferenceSchema).optional(),
     attachmentIds: z.array(z.string()).optional(),
     workspaceSocketId: WorkspaceSocketIdField,
+    // Outline §5 #3 (Sectioned: "multi-agent capability, loops, tool
+    // calls"). Same pre-baked sub-task DAG shape `free_text` accepts —
+    // the bash-script workflows (parallel fan-out, sequential pipes,
+    // judge routing) and the 13 sectioned E2E tests all submit through
+    // this field. The planner's sectioned branch reads them via the
+    // shared planFromSubTasks helper.
+    subTasks: z.array(SubTaskDeclSchema).optional(),
+    subTaskEdges: z.array(SubTaskEdgeHintSchema).optional(),
   })
   .strict();
 
@@ -576,6 +591,10 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
       const planCheckbackRequested = false;
       let subTasks: z.infer<typeof SubTaskDeclSchema>[] | null = null;
       let subTaskEdges: z.infer<typeof SubTaskEdgeHintSchema>[] | null = null;
+      // Outline §D + §J — sectioned-tab user pre-pick. Both fields are
+      // optional (planner picks when null); when present they always
+      // travel as a pair (Zod schema's refine rule enforces this).
+      let sectionedUserTemplate: WorkspaceRunRequest['outputContractTemplate'] = null;
 
       switch (input.promptMode) {
         case 'free_text':
@@ -610,6 +629,43 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
             if (firstPref && firstPref.modelTier !== '') {
               preferredEndpointId = firstPref.modelTier;
             }
+          }
+          // Outline §D + §J — capture the sectioned-tab user pre-pick.
+          // Schema-level refine is not available (discriminatedUnion +
+          // ZodEffects incompatibility), so the pair-validity check
+          // runs here. Both-or-neither: reject a half-specified pair
+          // with HTTP 400 BEFORE writing run_opened.
+          {
+            const hasTplId = typeof input.templateId === 'string' && input.templateId.length > 0;
+            const hasTplVer =
+              typeof input.templateVersion === 'string' && input.templateVersion.length > 0;
+            if (hasTplId !== hasTplVer) {
+              res.status(400).json({
+                ok: false,
+                error:
+                  'templateId and templateVersion must both be present (user pre-pick) or both absent (planner picks).',
+              });
+              return;
+            }
+            if (hasTplId && hasTplVer) {
+              sectionedUserTemplate = {
+                templateId: input.templateId as NonEmpty,
+                templateVersion: input.templateVersion as NonEmpty,
+                ...(input.outputFormat !== undefined ? { outputFormat: input.outputFormat } : {}),
+                ...(input.executionMode !== undefined
+                  ? { executionMode: input.executionMode }
+                  : {}),
+              };
+            }
+          }
+          // Outline §5 #3 — sectioned runs may carry a pre-baked
+          // sub-task DAG (multi-agent fan-out, sequential pipes, judge
+          // routing). When present, the planner emits one node per
+          // sub-task and overlays the output contract template on the
+          // resulting plan. Mirrors the free_text capture above.
+          if (input.subTasks && input.subTasks.length > 0) {
+            subTasks = input.subTasks;
+            subTaskEdges = input.subTaskEdges ?? [];
           }
           break;
         case 'secure_rails':
@@ -927,6 +983,14 @@ export function registerWorkspaceRoutes(app: Express, deps: Partial<WorkspaceRou
           input.promptMode === 'free_text' && input.checkbackSourceRunId
             ? (input.checkbackSourceRunId as Uuid)
             : null,
+        // Outline §5 — workspace run-type discriminator. Mirrored from
+        // the POST body's promptMode literal; the planner branches on
+        // it via planner-request-builder.
+        promptMode: input.promptMode,
+        // Outline §D + §J — user pre-pick captured above. Null on
+        // free_text / secure_rails and on sectioned-without-pick (the
+        // planner picks in the latter case).
+        outputContractTemplate: sectionedUserTemplate,
       };
 
       // §8.1/§8.2: secure rail events (gate 14) — write if promptMode === 'secure_rails'

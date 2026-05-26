@@ -188,9 +188,26 @@ export interface PlanEdge {
 //   planId, runId,
 //   nodes sorted by planOrderIndex,
 //   edges sorted by [sourceNodeId, targetNodeId, edgeType, edgeId],
-//   plannerType, plannerVersion
+//   plannerType, plannerVersion,
+//   outputContractTemplateId?,         // included only when present
+//   outputContractTemplateVersion?,    // included only when present
 // }))
 // createdAt is EXCLUDED from digest — evidence metadata only.
+//
+// Output contract template fields law (outline §D / §J):
+// The planner picks the compile template the assembler will use. On
+// sectioned runs the user may pre-pick a templateId; if the user did
+// not, the planner picks from the template DB via the prompt->template
+// lexicon mapper. On chat / secure runs the planner only emits these
+// fields when the prompt itself calls for a template ("unless either
+// call for an output contract template"). Both fields travel together
+// or are both absent. When both absent, compile follows Hard Law #11
+// (pass-through verbatim for single-item; default-template-generator
+// for multi-item).
+//
+// Replay-determinism note: the fields are included in planDigest only
+// when present, so plans that pre-date Phase 4 (no template choice)
+// keep their original digest values — additive change, no migration.
 
 export interface ExecutionPlan {
   planId: Uuid;
@@ -201,6 +218,12 @@ export interface ExecutionPlan {
   plannerType: NonEmpty;
   plannerVersion: NonEmpty;
   createdAt: IsoTimestamp; // evidence metadata only, excluded from digest
+  /** Output contract template the planner selected for this run.
+   *  Absent means no template — compile follows Hard Law #11. */
+  outputContractTemplateId?: NonEmpty;
+  /** Version of the selected template (registry getByVersion key).
+   *  Required when outputContractTemplateId is present. */
+  outputContractTemplateVersion?: NonEmpty;
 }
 
 // ─── PlanRejection ───

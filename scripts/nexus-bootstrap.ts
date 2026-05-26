@@ -127,6 +127,7 @@ import { CompileReturnDispatcherImpl } from '../packages/core/src/compile/compil
 import type { CompileReturnDispatcher } from '../packages/core/src/compile/compile-return-dispatcher.js';
 // ── Core: compile-ref (AMEND-spec-nexus-compile §12) ────────────────────────
 import { TemplateRegistryStoreImpl } from '../packages/core/src/compile/template-registry-store.js';
+import { seedOutputContractTemplates } from './seeds/output-contract-templates.js';
 import { TemplateValidatorImpl } from '../packages/core/src/compile/template-schemas.js';
 import {
   TemplateVerifierImpl,
@@ -791,6 +792,12 @@ export async function bootstrap(trailDir: string): Promise<BootstrapResult> {
   const templateDb = new Database(templateDbPath);
   const templateStore = new TemplateRegistryStoreImpl(templateDb);
   templateStore.initialize();
+
+  // Phase 4 vertical slice: ingest the named output contract templates
+  // the planner picks via prompt->templateId lexicon. Idempotent —
+  // re-running boot does not duplicate rows; the seed checks
+  // `templateStore.exists` before each ingest.
+  seedOutputContractTemplates(templateStore, privKey);
 
   // 2. Template validator (Zod + structural)
   const templateValidator = new TemplateValidatorImpl();

@@ -1779,8 +1779,17 @@ const program = createCli({
     // FinalResponseArtifact), resolve the compile-return endpoint for the run,
     // dispatch via the signed-callback transport, and only mark mailbox items
     // consumed once the workspace has acknowledged acceptance.
-    const triggerCompile = async (runId: Uuid): Promise<void> => {
-      console.log('[compile] triggered for run:', runId);
+    const triggerCompile = async (
+      runId: Uuid,
+      template?: { readonly templateId: NonEmpty; readonly templateVersion: NonEmpty }
+    ): Promise<void> => {
+      console.log(
+        '[compile] triggered for run:',
+        runId,
+        template !== undefined
+          ? `template=${template.templateId}@${template.templateVersion}`
+          : 'template=none (HL #11 pass-through path)'
+      );
       try {
         // AMEND-nexus-mailbox-pit-v0-2-1 §3.5 — compile reads from every
         // per-actor mailbox allocated for the run, not a primary mailbox.
@@ -1825,12 +1834,19 @@ const program = createCli({
         const allocatedMailboxIdsSorted = Array.from(contract.mailboxAllocations.values()).sort();
         const compileRequestMailboxId =
           (allocatedMailboxIdsSorted[0] as NonEmpty | undefined) ?? ('compile-empty' as NonEmpty);
+        // Phase 4: forward the planner-selected output contract
+        // template into the CompileRequest so the renderer loads it
+        // from the registry (vs. the default-template-generator
+        // fallback). Both fields travel as a pair or both absent.
         const compileRequest: CompileRequest = {
           runId,
           compilerSocketId: compiler.compilerSocketId,
           mailboxId: compileRequestMailboxId,
           outputContractId: contract.outputContractId,
           requestedAt: nowIso(),
+          ...(template !== undefined
+            ? { templateId: template.templateId, templateVersion: template.templateVersion }
+            : {}),
         };
         const artifact = await br.externals.compileService.compile(compileRequest, contract, items);
         console.log(

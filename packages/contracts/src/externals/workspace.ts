@@ -20,6 +20,7 @@ import type { Uuid, IsoTimestamp, Sha256Hex, NonEmpty } from '../types/index.js'
 import type { DenialCode } from '../constants/index.js';
 import type { CompileReturnRequest } from './compile-return.js';
 import type { SubTaskDecl, SubTaskEdgeHint } from './planner.js';
+import type { OutputFormat } from './workspace-governed.js';
 
 // ─── WorkspaceRunRequest ───
 
@@ -94,6 +95,34 @@ export interface WorkspaceRunRequest {
    * depends on it being non-null. DIFF-PLANNER-LEXICON-CONTRACT-001.
    */
   checkbackSourceRunId: Uuid | null;
+  /**
+   * Outline §5 — workspace run-type discriminator. The workspace route
+   * sets this from the POST body's `promptMode` discriminator (one of
+   * free_text / sectioned / secure_rails). The planner branches on it
+   * to derive the correct PlannerRequest tier. Required field per
+   * WorkspaceRunEnvelope at workspace-governed.ts §3.8.2.
+   */
+  promptMode: 'free_text' | 'sectioned' | 'secure_rails';
+  /**
+   * Outline §D + §J — output contract template the user pre-picked on a
+   * sectioned-mode submission. Null when:
+   *   - promptMode is 'free_text' or 'secure_rails' (the planner may
+   *     still emit a template if the prompt itself calls for one;
+   *     this field only captures USER intent)
+   *   - promptMode is 'sectioned' AND the user did not pre-pick
+   *     (planner will pick via the prompt->template lexicon)
+   *
+   * Both `templateId` and `templateVersion` travel together. When the
+   * planner picks (no user choice), it writes its choice to the
+   * ExecutionPlan's outputContractTemplateId/Version fields instead.
+   * This request-side field is only the user's pre-pick.
+   */
+  outputContractTemplate: {
+    readonly templateId: NonEmpty;
+    readonly templateVersion: NonEmpty;
+    readonly outputFormat?: OutputFormat;
+    readonly executionMode?: 'human_in_the_loop' | 'autonomous';
+  } | null;
 }
 
 // ─── CompileReturnAck ───

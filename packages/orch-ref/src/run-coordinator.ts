@@ -75,7 +75,16 @@ export interface RunCoordinatorDeps {
     plan: ExecutionPlan
   ) => Promise<NodeDispatchResult>;
   issueDelegation: (agentId: Uuid, scope: DelegationScope) => Promise<Uuid>;
-  triggerCompile: (runId: Uuid) => Promise<void>;
+  /** Phase 4: composition root's compile entry. The optional second
+   *  argument carries the output contract template the planner selected
+   *  (when sectioned-mode user pre-picked OR lexicon-matched). When
+   *  absent, compile follows Hard Law #11 — pass-through verbatim for
+   *  single-item, default-template-generator for multi-item. Both
+   *  templateId and templateVersion travel together. */
+  triggerCompile: (
+    runId: Uuid,
+    template?: { readonly templateId: NonEmpty; readonly templateVersion: NonEmpty }
+  ) => Promise<void>;
   sendPlanCheckback: (preview: OrchestratorPlanPreview) => Promise<boolean>;
   buildPlannerRequest: (request: WorkspaceRunRequest) => PlannerRequest;
   agentRegistry: AgentRegistryReader;
@@ -627,8 +636,29 @@ export class RefRunCoordinator implements RunCoordinator {
       await this.writeLedger(request.runId, 'compile_triggered', {
         planId: plan.planId,
         runId: request.runId,
+        ...(plan.outputContractTemplateId !== undefined
+          ? { outputContractTemplateId: plan.outputContractTemplateId }
+          : {}),
+        ...(plan.outputContractTemplateVersion !== undefined
+          ? { outputContractTemplateVersion: plan.outputContractTemplateVersion }
+          : {}),
       });
-      await deps.triggerCompile(request.runId);
+      // Phase 4: forward the planner-selected output contract template
+      // (when present) to composition-root triggerCompile so the
+      // CompileRequest carries templateId + templateVersion.
+      const template =
+        plan.outputContractTemplateId !== undefined &&
+        plan.outputContractTemplateVersion !== undefined
+          ? {
+              templateId: plan.outputContractTemplateId,
+              templateVersion: plan.outputContractTemplateVersion,
+            }
+          : undefined;
+      if (template !== undefined) {
+        await deps.triggerCompile(request.runId, template);
+      } else {
+        await deps.triggerCompile(request.runId);
+      }
       // HOLE-LIFECYCLE-001: compile-return delivery path writes run_closed
       // when the workspace acknowledges the artifact. Workspace must
       // NOT also close — that would double-write.

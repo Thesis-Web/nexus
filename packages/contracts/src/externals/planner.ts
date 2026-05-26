@@ -151,9 +151,49 @@ export interface ChatPlannerRequest {
   enteredAt: IsoTimestamp;
 }
 
+// Outline §5 (Run Types) + §D (Orchestrator responsibilities):
+// Sectioned runs are the structured-template-driven path. The user MAY
+// pre-pick a templateId on the workspace POST (carried as
+// `userOutputContractTemplate` here); when the user did NOT pick, the
+// planner picks via the prompt->templateId lexicon and emits the choice
+// on `ExecutionPlan.outputContractTemplateId`. When the user DID pick
+// and the planner thinks a different template is better, the planner
+// surfaces a suggestion via the same `plan_checkback_sent` callback flow
+// the planner_infeasible path already uses (Q5 / §HL #4 — orch cannot
+// kill or override; it suggests + waits for user accept/deny/cancel).
+
+export interface SectionedPlannerRequest {
+  tier: 'sectioned';
+  runId: Uuid;
+  userId: NonEmpty;
+  principalId: Uuid;
+  workspaceSocketId: NonEmpty;
+  prompt: NonEmpty;
+  selectedAgentIds: Uuid[];
+  preferredEndpointId: NonEmpty | null;
+  planCheckbackRequested: boolean;
+  checkbackSourceRunId: Uuid | null;
+  enteredAt: IsoTimestamp;
+  /** User's pre-picked output contract template. Null when the user
+   *  left the template field blank on the sectioned tab — planner
+   *  picks via prompt->templateId lexicon and emits the choice on
+   *  ExecutionPlan.outputContractTemplateId. */
+  userOutputContractTemplate: {
+    readonly templateId: NonEmpty;
+    readonly templateVersion: NonEmpty;
+    readonly outputFormat?: NonEmpty;
+    readonly executionMode?: 'human_in_the_loop' | 'autonomous';
+  } | null;
+  /** Sectioned runs may submit an explicit sub-task DAG (same shape as
+   *  NormalPlannerRequest). When null, planner emits 1-node-per-agent. */
+  subTasks?: SubTaskDecl[] | null;
+  subTaskEdges?: SubTaskEdgeHint[] | null;
+}
+
 export type PlannerRequest =
   | ChatPlannerRequest
   | NormalPlannerRequest
+  | SectionedPlannerRequest
   | MetadataPlannerRequest
   | OctSecurePlannerRequest;
 

@@ -116,6 +116,7 @@ export type {
   MetadataPlannerRequest,
   OctSecurePlannerRequest,
   ChatPlannerRequest,
+  SectionedPlannerRequest,
   PlannerRequest,
   EdgeHint,
   SubTaskDecl,

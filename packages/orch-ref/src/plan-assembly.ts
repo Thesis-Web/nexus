@@ -341,7 +341,12 @@ export function buildPlan(
   const planId = randomUUID() as Uuid;
   const createdAt = nowIso();
 
-  // §3.2: planDigest excludes createdAt
+  // §3.2: planDigest excludes createdAt. Output contract template fields
+  // (when present) ARE included in the digest because they drive compile
+  // output deterministically. plan-assembly currently lands plans without
+  // a template; the planner attaches the template AFTER assembly when it
+  // selects one, so this site computes the no-template baseline digest.
+  // The planner re-stamps the digest after attaching template fields.
   const planDigest = deps.computeDigest({
     planId,
     runId,
@@ -360,6 +365,41 @@ export function buildPlan(
     plannerType: deps.plannerType,
     plannerVersion: deps.plannerVersion,
     createdAt,
+  };
+}
+
+// ─── Output contract template attachment ───
+//
+// Outline §D ("Pick output contract / compile template from template DB
+// or none") + execution-plan.ts planDigest law. The planner picks the
+// template AFTER assembling the plan (sub-tasks → DAG → digest); this
+// helper attaches the template choice + re-stamps the digest with the
+// new fields included per the planDigest formula. Caller MUST provide
+// both templateId AND templateVersion (the contract requires them as a
+// pair). Returns a NEW plan object — the input plan is not mutated, so
+// caller-held references stay stable.
+
+export function attachOutputContractTemplate(
+  plan: ExecutionPlan,
+  templateId: NonEmpty,
+  templateVersion: NonEmpty,
+  computeDigest: (obj: unknown) => Sha256Hex
+): ExecutionPlan {
+  const reDigest = computeDigest({
+    planId: plan.planId,
+    runId: plan.runId,
+    nodes: [...plan.nodes].sort((a, b) => a.planOrderIndex - b.planOrderIndex),
+    edges: [...plan.edges].sort(compareEdges),
+    plannerType: plan.plannerType,
+    plannerVersion: plan.plannerVersion,
+    outputContractTemplateId: templateId,
+    outputContractTemplateVersion: templateVersion,
+  });
+  return {
+    ...plan,
+    outputContractTemplateId: templateId,
+    outputContractTemplateVersion: templateVersion,
+    planDigest: reDigest,
   };
 }
 

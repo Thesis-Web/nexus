@@ -94,7 +94,10 @@ export function validateExecutionPlan(
     );
   }
 
-  // Check 2: planDigest re-derives exactly per §3.2 digest law
+  // Check 2: planDigest re-derives exactly per §3.2 digest law.
+  // Output contract template fields are included ONLY when present so
+  // plans that pre-date Phase 4 (no template choice) keep their original
+  // digest values — additive change, no migration.
   const expectedDigest = computeDigest({
     planId: plan.planId,
     runId: plan.runId,
@@ -102,6 +105,12 @@ export function validateExecutionPlan(
     edges: [...plan.edges].sort(compareEdges),
     plannerType: plan.plannerType,
     plannerVersion: plan.plannerVersion,
+    ...(plan.outputContractTemplateId !== undefined
+      ? { outputContractTemplateId: plan.outputContractTemplateId }
+      : {}),
+    ...(plan.outputContractTemplateVersion !== undefined
+      ? { outputContractTemplateVersion: plan.outputContractTemplateVersion }
+      : {}),
   });
   if (plan.planDigest !== expectedDigest) {
     return fail('Check 2: planDigest does not match re-derived digest');

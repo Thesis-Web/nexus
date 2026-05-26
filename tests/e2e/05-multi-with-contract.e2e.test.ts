@@ -1,14 +1,21 @@
 /**
  * tests/e2e/05-multi-with-contract.e2e.test.ts — E2E v0.4.0 §3.5
  *
- * Category 5: multi-agent runs WITH output contract templates. The
- * workspace POST schema is strict (z.object().strict()) and currently
- * exposes no per-run `outputContractTemplateId` field — bodies submit
- * a multi-leg DAG and assert that compile_assembly_complete fires with
- * a non-pass-through templateId. Until the template library + the
- * wire-up land, compile reports `passThrough: true` / templateId =
- * 'pass_through' and these tests stay red on the explicit assertion
- * — surfacing the OUTPUT-CONTRACT-TEMPLATE-LIBRARY-V1 gap.
+ * Category 5: multi-agent runs WITH output contract templates. Each
+ * body submits a multi-leg DAG under `promptMode: 'sectioned'` WITHOUT
+ * a user pre-pick (no templateId / templateVersion in the request) —
+ * exercising the planner-picks branch (outline §D: "Pick output
+ * contract / compile template from template DB"). The planner consults
+ * the prompt->templateId lexicon
+ * (packages/planners/db-lexicon/src/output-contract-selector.ts); a
+ * registered template (seeded at composition-root boot via
+ * scripts/seeds/output-contract-templates.ts) is then loaded by the
+ * renderer and the assembly event reports `passThrough: false` with
+ * the resolved templateId.
+ *
+ * Tests for which a template + lexicon entry are NOT yet seeded stay
+ * red — surfacing the per-template gap one row at a time as the
+ * registry + selector table grow.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { bootHarness, type E2EHarness } from './harness.js';
@@ -26,7 +33,12 @@ async function runContractTwoLeg(
   const jwt = await harness.jwtFor(role);
   const { runId } = await harness.createRun(jwt, {
     workspaceSocketId: 'reference-workspace',
-    promptMode: 'free_text',
+    // Phase 4 — sectioned tier exercises the planner-picks branch.
+    // No templateId/templateVersion: the planner walks the
+    // prompt->templateId lexicon and emits its choice on
+    // ExecutionPlan.outputContractTemplateId. The renderer loads from
+    // the registry; assembly fires with passThrough=false.
+    promptMode: 'sectioned',
     prompt,
     agents: [SALES_AGENT_ACTOR_ID, WAREHOUSE_AGENT_ACTOR_ID],
     subTasks: [

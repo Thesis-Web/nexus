@@ -303,6 +303,11 @@ export class DeterministicRenderer implements Compiler {
         warningCount: result.guardResult.warnings.length,
         partial: result.partial,
         bodyDigest: result.bodyDigest,
+        // Phase 4: explicit `passThrough: false` on the assemble branch so
+        // downstream consumers + tests can discriminate
+        // template-driven output from Hard Law #11 pass-through (which
+        // emits passThrough: true in `compilePassThrough` below).
+        passThrough: false,
       },
     });
 

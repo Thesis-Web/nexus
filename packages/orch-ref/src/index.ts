@@ -32,6 +32,7 @@ export {
   buildEdges,
   buildPlan,
   buildTaskSummary,
+  attachOutputContractTemplate,
   NODE_TIMEOUT_MS,
 } from './plan-assembly.js';
 
