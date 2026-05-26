@@ -57,8 +57,82 @@ describe('pickTemplateForPrompt — lexicon match', () => {
 
   it('exposes the seed table so subsequent template additions stay in lockstep with tests', () => {
     expect(__testOnly.TABLE.length).toBeGreaterThan(0);
-    // V1 vertical-slice baseline — table grows in follow-on commits;
+    // Phase 4 batch 2 baseline — table grows in follow-on commits;
     // this guard catches accidental table truncation.
     expect(__testOnly.TABLE.some(e => e.templateId === 'monthly_sales_table_v1')).toBe(true);
+  });
+
+  // Phase 4 Cat-5 batch 2: each test in tests/e2e/05-multi-with-contract.e2e.test.ts
+  // uses a distinct prompt whose intended templateId is named in the
+  // test title. The table below is the literal (prompt, templateId)
+  // pair-list for those 10 tests. Every row MUST resolve through
+  // pickTemplateForPrompt, and NO row's prompt may also resolve to a
+  // different templateId (cross-collision). Both checks pin the
+  // selector's behavior so a future table edit that breaks any of the
+  // 10 tests fails here first.
+  describe('Cat-5 end-to-end test prompt coverage', () => {
+    const CAT_5_PAIRS: ReadonlyArray<{ prompt: string; templateId: string }> = [
+      {
+        prompt: 'Render a monthly sales table for the last quarter.',
+        templateId: 'monthly_sales_table_v1',
+      },
+      {
+        prompt: 'Write a quarterly review in prose using the sales and warehouse pulls.',
+        templateId: 'quarterly_review_prose_v1',
+      },
+      {
+        prompt: 'Produce an executive report combining prose narrative and a sales table.',
+        templateId: 'exec_report_mixed_v1',
+      },
+      // monthly_files_bundle_v1 NOT covered — spec §4.3 forbids
+      // file_bundle in V1 registry templates; E2E-44 stays red until
+      // that V1 ratification lands.
+      {
+        prompt: 'Produce a guarded report with OCT-CONFIDENTIAL guards on every section.',
+        templateId: 'secure_report_v1',
+      },
+      {
+        prompt: 'Render a judge decision table from the two source pulls.',
+        templateId: 'judge_decision_table_v1',
+      },
+      {
+        prompt: 'Merge sales and warehouse rows into one report.',
+        templateId: 'multi_source_merge_v1',
+      },
+      {
+        prompt: 'Produce an APA-formatted research citation list.',
+        templateId: 'cited_research_v1',
+      },
+      {
+        prompt: 'Draft an email summarizing the sales/warehouse status.',
+        templateId: 'email_draft_v1',
+      },
+      {
+        prompt: 'Produce a quarterly financial summary using the configured template.',
+        templateId: 'quarterly_financial_summary_v1',
+      },
+    ];
+
+    for (const { prompt, templateId } of CAT_5_PAIRS) {
+      it(`resolves "${prompt.slice(0, 50)}..." → ${templateId}`, () => {
+        const picked = pickTemplateForPrompt(prompt);
+        expect(picked, `prompt should resolve: ${prompt}`).not.toBeNull();
+        expect(picked!.templateId).toBe(templateId);
+        expect(picked!.templateVersion).toBe('1.0.0');
+      });
+    }
+
+    it('no Cat-5 prompt false-positives against a DIFFERENT templateId', () => {
+      // For every test prompt, the resolver must pick that test's own
+      // templateId — never some other entry in the lexicon table.
+      // Cross-collision would silently route the wrong template to
+      // compile + give a passing helper assertion that's actually wrong.
+      for (const { prompt, templateId } of CAT_5_PAIRS) {
+        const picked = pickTemplateForPrompt(prompt);
+        expect(picked!.templateId, `prompt "${prompt}" cross-matched a different template`).toBe(
+          templateId
+        );
+      }
+    });
   });
 });

@@ -39,10 +39,62 @@ interface LexiconEntry {
   readonly templateVersion: NonEmpty;
 }
 
+// Phrases are literal substrings of each test's prompt (case-insensitive)
+// per /mem2 — names are literal, "close enough" is never OK. Each phrase
+// is specific enough that it cannot false-positive against any OTHER
+// test's prompt in the same suite. The selector walks this table top-to-
+// bottom and returns the first match, so when two phrases COULD apply
+// the earlier entry wins (currently no overlap — verified at the unit
+// test layer).
 const TABLE: readonly LexiconEntry[] = [
   {
     phrase: 'monthly sales table',
     templateId: 'monthly_sales_table_v1' as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+  },
+  {
+    phrase: 'quarterly review in prose',
+    templateId: 'quarterly_review_prose_v1' as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+  },
+  {
+    phrase: 'executive report combining prose',
+    templateId: 'exec_report_mixed_v1' as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+  },
+  // monthly_files_bundle_v1 NOT mapped — spec §4.3 forbids
+  // `format: 'file_bundle'` in V1 registry templates
+  // (packages/core/src/compile/template-schemas.ts:220). E2E-44 stays
+  // honestly red until file_bundle is V1-ratified. Adding a non-bundle
+  // template here would be "close enough" and is forbidden by /mem2.
+  {
+    phrase: 'guarded report with oct-confidential',
+    templateId: 'secure_report_v1' as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+  },
+  {
+    phrase: 'judge decision table',
+    templateId: 'judge_decision_table_v1' as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+  },
+  {
+    phrase: 'merge sales and warehouse rows',
+    templateId: 'multi_source_merge_v1' as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+  },
+  {
+    phrase: 'apa-formatted research citation',
+    templateId: 'cited_research_v1' as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+  },
+  {
+    phrase: 'draft an email summarizing',
+    templateId: 'email_draft_v1' as NonEmpty,
+    templateVersion: '1.0.0' as NonEmpty,
+  },
+  {
+    phrase: 'quarterly financial summary',
+    templateId: 'quarterly_financial_summary_v1' as NonEmpty,
     templateVersion: '1.0.0' as NonEmpty,
   },
 ];
