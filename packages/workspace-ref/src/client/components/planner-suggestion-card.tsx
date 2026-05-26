@@ -57,12 +57,18 @@ export interface PlannerSuggestionCardProps {
   onResolved: (newRunId: null) => void;
 }
 
+// Return type intentionally inferred — the package's tsconfig uses
+// `"jsx": "react-jsx"` (React 17+ automatic runtime) which does NOT
+// expose a global `JSX` namespace. Other components in this package
+// (PlanCheckbackModal, Sidebar, Login, RunDisplay, PromptPanel) all
+// rely on inference. Adding `: JSX.Element` here was a 2026-05-23 drift
+// caught by the pre-push ci:gate audit; canonical pattern is to infer.
 export function PlannerSuggestionCard({
   sourceRunId,
   reason,
   reasonDetail,
   onResolved,
-}: PlannerSuggestionCardProps): JSX.Element {
+}: PlannerSuggestionCardProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

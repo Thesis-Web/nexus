@@ -312,7 +312,11 @@ describe('db-lexicon planner integration — Scenario 1: lexical decomposition (
       }) as NormalPlannerRequest;
     const { coordinator, ledger, planner } = await makeCoordinator(buildPlannerRequest, tables);
 
-    const preview: OrchestratorPlanPreview = await coordinator.handleRun(request);
+    // HOLE-LIFECYCLE-001 contract — handleRun returns
+    // OrchestratorDispatchResult = { preview, terminal }. Destructure the
+    // preview so the OrchestratorPlanPreview-shaped assertions below stay
+    // unchanged.
+    const { preview } = await coordinator.handleRun(request);
     expect(preview.plan).not.toBeNull();
     if (!preview.plan) return;
     expect(preview.plan.nodes.length).toBe(3);
@@ -358,7 +362,9 @@ describe('db-lexicon planner integration — Scenario 2: preflight pass (Branch 
       }) as NormalPlannerRequest;
     const { coordinator, ledger, planner } = await makeCoordinator(buildPlannerRequest, tables);
 
-    const preview = await coordinator.handleRun(request);
+    // HOLE-LIFECYCLE-001 contract — destructure preview from
+    // OrchestratorDispatchResult so the existing assertions stay.
+    const { preview } = await coordinator.handleRun(request);
     expect(preview.plan).not.toBeNull();
     expect(preview.rejection).toBeNull();
 
@@ -401,7 +407,9 @@ describe('db-lexicon planner integration — Scenario 3: preflight reject + coun
       }) as NormalPlannerRequest;
     const { coordinator, ledger, planner } = await makeCoordinator(buildPlannerRequest, tables);
 
-    const preview = await coordinator.handleRun(request);
+    // HOLE-LIFECYCLE-001 contract — destructure preview from
+    // OrchestratorDispatchResult so the existing assertions stay.
+    const { preview } = await coordinator.handleRun(request);
     expect(preview.plan).toBeNull();
     expect(preview.rejection).not.toBeNull();
     expect(preview.rejection?.reason).toBe('no_capable_agent');

@@ -306,7 +306,10 @@ describe('db-lexicon chat integration — Scenario CHAT-INT-01: happy path', () 
     const request = makeRunRequest({ selectedAgentIds: [CHAT_AGENT_ID] });
     const { coordinator, planner, ledger } = await makeCoordinator(tables);
 
-    const preview: OrchestratorPlanPreview = await coordinator.handleRun(request);
+    // HOLE-LIFECYCLE-001 contract — handleRun returns
+    // OrchestratorDispatchResult = { preview, terminal }. Destructure the
+    // preview so the OrchestratorPlanPreview-shaped assertions below stay.
+    const { preview } = await coordinator.handleRun(request);
     expect(preview.rejection).toBeNull();
     expect(preview.plan).not.toBeNull();
     if (!preview.plan) return;
@@ -351,7 +354,10 @@ describe('db-lexicon chat integration — Scenario CHAT-INT-03: rejection + Acce
     // planChatBranch rejects with RejectionCheckbackPayload.
     const firstRequest = makeRunRequest({ selectedAgentIds: [SALES_AGENT_ID] });
     const { coordinator: c1, planner: p1, ledger: l1 } = await makeCoordinator(tables);
-    const firstPreview = await c1.handleRun(firstRequest);
+    // HOLE-LIFECYCLE-001 — handleRun returns { preview, terminal }; rename
+    // the destructured preview so the variable name keeps its semantic
+    // meaning across this two-pass scenario (first vs second run).
+    const { preview: firstPreview } = await c1.handleRun(firstRequest);
     expect(firstPreview.plan).toBeNull();
     expect(firstPreview.rejection).not.toBeNull();
     const checkback = firstPreview.rejection;
@@ -379,7 +385,8 @@ describe('db-lexicon chat integration — Scenario CHAT-INT-03: rejection + Acce
       checkbackSourceRunId: firstRequest.runId,
     });
     const { coordinator: c2, planner: p2 } = await makeCoordinator(tables);
-    const secondPreview = await c2.handleRun(secondRequest);
+    // HOLE-LIFECYCLE-001 — destructure preview from OrchestratorDispatchResult.
+    const { preview: secondPreview } = await c2.handleRun(secondRequest);
     expect(secondPreview.rejection).toBeNull();
     expect(secondPreview.plan).not.toBeNull();
     if (!secondPreview.plan) return;
