@@ -247,6 +247,22 @@ export class RefRunCoordinator implements RunCoordinator {
         reasonDetail: rejection.reasonDetail,
         suggestedCount: rejection.suggestedAlternatives.length,
       });
+      // Phase 5 — HL#4 (orch cannot kill): every planner-infeasibility
+      // IS a user-callback opportunity by definition. The run stays
+      // OPEN until the user decides (cancel / rephrase / pick from
+      // alternatives — see plan_checkback_modal.tsx + the run-stage-
+      // reducer at packages/workspace-ref/.../run-stage-reducer.ts:714
+      // which already treats plan_checkback_required as "active waiting
+      // on user"). `plan_checkback_sent` (below) is the additional
+      // payload-carrier event when alternatives exist; `plan_checkback_
+      // required` is the unconditional "needs user input" audit signal
+      // that wall tests filter on (E2E-66 ambiguous-agent, E2E-79
+      // oversize-batch, E2E-112 HL#4).
+      await this.writeLedger(request.runId, 'plan_checkback_required', {
+        reason: rejection.reason,
+        reasonDetail: rejection.reasonDetail,
+        suggestedCount: rejection.suggestedAlternatives.length,
+      });
 
       // AMEND-nexus-planner-db-lexicon-v0-2-1.md §3.3.3 + §3.7 — read the
       // RejectionCheckbackPayload via duck-type. When non-null, emit
@@ -318,6 +334,13 @@ export class RefRunCoordinator implements RunCoordinator {
     if (validation.failed) {
       // HL#4 revision — malformed plan is an orchestration infeasibility.
       await this.writeLedger(request.runId, 'planner_infeasible', {
+        reason: 'malformed_request',
+        reasonDetail: validation.reason,
+        suggestedCount: 0,
+      });
+      // Phase 5 — HL#4: even on malformed_request the run stays open
+      // and the user gets a callback to rephrase or cancel.
+      await this.writeLedger(request.runId, 'plan_checkback_required', {
         reason: 'malformed_request',
         reasonDetail: validation.reason,
         suggestedCount: 0,

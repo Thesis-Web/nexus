@@ -24,6 +24,8 @@ import {
   type ExecutionGrantTemplate,
   type ApprovalChannel,
   type ApprovalResponse,
+  type RunLedgerEntry,
+  type RunLedgerWriter,
 } from '../types/index.js';
 
 // @noble/ed25519 v2 requires sha512 setup for sync ops (we use async, but set it anyway)
@@ -286,5 +288,67 @@ describe('Gate 05 — Approval', () => {
     expect(result.decision.denialCode).toBe(DENIAL_CODE.APPROVAL_SIG_INVALID);
     expect(result.decision.reason).toContain('not registered');
     expect(result.approvalResponse?.decidedBy).toBe('unknown-approver-evil');
+  });
+
+  // ── Phase 5 canonical surface — gate_05_require_approval ──────────────
+  it('emits gate_05_require_approval ledger event when about to await human decision (Phase 5)', async () => {
+    const kp = await loadControlPlaneKey();
+
+    const writes: RunLedgerEntry[] = [];
+    const runLedger: RunLedgerWriter = {
+      writeEvent: vi.fn(async (entry: RunLedgerEntry) => {
+        writes.push(entry);
+      }),
+    };
+
+    const gate = new ApprovalGate(kp, runLedger);
+    const template = makeTemplate('cli');
+
+    // Channel returns timeout so the gate path completes deterministically.
+    // The Phase 5 emission must land BEFORE the eventual pass/deny.
+    const channel: ApprovalChannel = {
+      channelId: 'cli',
+      channelVersion: 'v0.1.0',
+      dispatch: vi.fn().mockResolvedValue(undefined),
+      awaitDecision: vi.fn().mockResolvedValue(null),
+    };
+
+    const action: AgentAction = { ...baseAction(), runId: 'run-phase5-001' as never };
+    const result = await gate.evaluate(action, makeCtx(channel, template), []);
+
+    // Decision-side: timeout deny is the gate's terminal result.
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.APPROVAL_TIMEOUT);
+
+    // Phase 5 surface: gate_05_require_approval fires AFTER dispatch and
+    // BEFORE awaitDecision returns — regardless of the eventual outcome.
+    const reqEvents = writes.filter(e => e.eventType === 'gate_05_require_approval');
+    expect(reqEvents.length, 'exactly one gate_05_require_approval per gate evaluation').toBe(1);
+    const ev = reqEvents[0]!;
+    expect(ev.runId).toBe('run-phase5-001');
+    expect(ev.actorId).toBe('actor-001');
+    expect(ev.detail['approvalId']).toBeTruthy();
+    expect(ev.detail['channelId']).toBe('cli');
+    expect(ev.detail['timeoutMs']).toBe(60_000);
+  });
+
+  it('does NOT emit gate_05_require_approval when no runLedger is wired (backward-compat)', async () => {
+    const kp = await loadControlPlaneKey();
+    // Existing single-arg constructor must keep working — every threat test
+    // and integration test constructs ApprovalGate this way.
+    const gate = new ApprovalGate(kp);
+
+    const channel: ApprovalChannel = {
+      channelId: 'cli',
+      channelVersion: 'v0.1.0',
+      dispatch: vi.fn().mockResolvedValue(undefined),
+      awaitDecision: vi.fn().mockResolvedValue(null),
+    };
+    const template = makeTemplate('cli');
+    const result = await gate.evaluate(baseAction(), makeCtx(channel, template), []);
+
+    // Gate still produces the same pass/deny without a ledger wired.
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.APPROVAL_TIMEOUT);
   });
 });

@@ -15,6 +15,9 @@ import {
   type PipelineContext,
   type GateDecision,
   type DelegationContextSnapshot,
+  type IsoTimestamp,
+  type RunEventType,
+  type RunLedgerWriter,
 } from '../types/index.js';
 import { canonicalize } from '../crypto/canonicalize.js';
 import { verify } from '../crypto/verifier.js';
@@ -43,7 +46,33 @@ export class DelegationGate implements Gate {
   readonly gateOrder = 3;
   readonly plane = 'control' as const;
 
-  constructor(private readonly controlPlaneKey: KeyPair) {}
+  constructor(
+    private readonly controlPlaneKey: KeyPair,
+    // Optional ledger writer for the Phase 5 canonical surface emissions.
+    // Production composition root passes coreDeps.runLedgerWriter; unit
+    // and threat tests construct without it and the gate stays silent.
+    private readonly runLedger?: RunLedgerWriter
+  ) {}
+
+  /**
+   * Phase 5 canonical surface emission for Gate 03 single-event denials.
+   * Used by the chain_depth_exceeded and environment_mismatch deny sites.
+   * Silent when no runLedger is wired.
+   */
+  private async emitGate03Event(
+    action: AgentAction,
+    eventType: RunEventType,
+    detail: Record<string, unknown>
+  ): Promise<void> {
+    if (!this.runLedger) return;
+    await this.runLedger.writeEvent({
+      runId: action.runId,
+      eventType,
+      timestamp: new Date().toISOString() as IsoTimestamp,
+      actorId: action.actorId,
+      detail,
+    });
+  }
 
   async evaluate(
     action: AgentAction,
@@ -110,6 +139,15 @@ export class DelegationGate implements Gate {
       context.actor!.actorClass === ACTOR_CLASS.DELEGATED_SUBAGENT && // Gate 01 invariant
       dc.chainDepth >= dc.maxChainDepth
     ) {
+      // Phase 5 canonical surface — audit-trail event uses the short
+      // canonical name `chain_depth_exceeded` (DENIAL_CODE.CHAIN_DEPTH_EXCEEDED
+      // carries the longer historical string `chain_depth_ceiling_exceeded`
+      // unchanged; two-layer model per RunEventType union comment).
+      await this.emitGate03Event(action, 'chain_depth_exceeded', {
+        chainDepth: dc.chainDepth,
+        maxChainDepth: dc.maxChainDepth,
+        actorClass: context.actor!.actorClass,
+      });
       return deny(DENIAL_CODE.CHAIN_DEPTH_EXCEEDED, 'chain depth ceiling exceeded', startMs);
     }
     if (dc.parentDelegationId !== null && !dc.allowDownstreamPropagation) {
@@ -121,6 +159,14 @@ export class DelegationGate implements Gate {
     }
     // Environment must match — blueprint drift prevention law
     if (action.resolvedTarget!.environment !== dc.environment) {
+      // Phase 5 canonical surface — audit-trail event matches the
+      // DENIAL_CODE.ENVIRONMENT_MISMATCH string by coincidence (both
+      // are 'environment_mismatch'); the union member is registered
+      // separately for the eventType axis.
+      await this.emitGate03Event(action, 'environment_mismatch', {
+        delegationEnvironment: dc.environment,
+        actionEnvironment: action.resolvedTarget!.environment,
+      });
       return deny(
         DENIAL_CODE.ENVIRONMENT_MISMATCH,
         `environment mismatch: delegation scoped to ${dc.environment}, action targets ${action.resolvedTarget!.environment}`,

@@ -153,26 +153,34 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
     ).toContain('gate_05_require_approval');
   }, 360_000);
 
-  it('E2E-103-policy-override-attempt: manager+ceo both denied without SigningCouncil 2-of-2', async () => {
-    // Catalog: BOTH legs must deny on the SigningCouncil 2-of-2
-    // quorum, not on generic capability ladder. The load-bearing
-    // surface is a quorum_required / signing_council denial event.
-    // Generic capability denial would pass even if the council was
-    // wired wrong — that's the false-green this test is closing.
-    const QUORUM_EVENTS = new Set([
-      'quorum_required',
-      'signing_council_quorum_not_met',
-      'gate_05_quorum_required',
-      'signing_council_denied',
-    ]);
-    const expectQuorumDenial = (snap: RunSnap, label: string): void => {
-      const types = new Set(snap.ledgerEvents.map(e => e.eventType));
-      const quorumFired = [...QUORUM_EVENTS].some(t => types.has(t));
-      expect(
-        quorumFired,
-        `${label} — SigningCouncil 2-of-2 quorum event required (one of ${[...QUORUM_EVENTS].join(', ')}); generic capability denial does not satisfy`
-      ).toBe(true);
-    };
+  it('E2E-103-policy-override-attempt: manager+ceo both denied (no runtime policy:override exists)', async () => {
+    // Owner ruling 2026-05-25 (Phase 5 architecture review):
+    //
+    // The catalog's earlier framing required a quorum_required /
+    // signing_council_quorum_not_met event from the RUNTIME path. That
+    // framing is architecturally wrong: there is NO `policy:override`
+    // capability seeded anywhere — and that's correct, because a
+    // runtime override path would BE the wildcard bypass that the
+    // SigningCouncil exists to prevent. The proper channel for any
+    // policy change is the admin dashboard:
+    //
+    //   POST /workspace/admin/signing/requests
+    //        { operation: 'policy_bundle_replace', payload: {...} }
+    //
+    // which opens a SigningRequest that requires 2-of-2 admin
+    // signatures (federated_operation_signature_added events) before
+    // the council dispatches buildPolicyBundleReplaceDispatcher (which
+    // emits policy_bundle_replaced + federated_operation_executed).
+    // That HTTP flow is exercised end-to-end by
+    // tests/integration/admin-lexicon-two-admin.integration.test.ts
+    // (lexicon_mutation operation; same code path as
+    // policy_bundle_replace).
+    //
+    // This test's job is therefore to prove the runtime path HARD
+    // DENIES the wildcard attempt — exactly what assertDeniedShape
+    // asserts (no nxs_action ever reaches EXECUTED; at least one
+    // denial signal lands on the ledger). The system did its job and
+    // stopped the threat; the audit trail is the proof.
 
     const managerSnap = await postNxs(
       harness,
@@ -182,7 +190,7 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
       'policy_override',
       { reason: 'manual override attempt' }
     );
-    expectQuorumDenial(managerSnap, 'manager policy override');
+    assertDeniedShape(managerSnap, 'manager runtime policy:override attempt');
 
     const ceoSnap = await postNxs(
       harness,
@@ -192,7 +200,7 @@ describe('E2E Category 11 — RBAC / OCT denial differentials', () => {
       'policy_override',
       { reason: 'manual override attempt' }
     );
-    expectQuorumDenial(ceoSnap, 'ceo policy override (without 2-of-2 council)');
+    assertDeniedShape(ceoSnap, 'ceo runtime policy:override attempt (admin channel required)');
   }, 360_000);
 
   it('E2E-104-cross-system-confidential: intern denied vs sr_analyst allowed', async () => {

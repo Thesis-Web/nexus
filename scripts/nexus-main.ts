@@ -585,11 +585,12 @@ const program = createCli({
           new VerbNormalizer(LexicalVerbResolver.loadFromFixture(process.cwd())),
           new TargetNormalizer(),
           new DataClassifier(),
-          new RiskClassifier(capRegistry)
+          new RiskClassifier(capRegistry),
+          coreDeps.runLedgerWriter
         ),
-        delegation: new DelegationGate(controlPlaneKey),
-        policy: new PolicyGate(),
-        approval: new ApprovalGate(controlPlaneKey),
+        delegation: new DelegationGate(controlPlaneKey, coreDeps.runLedgerWriter),
+        policy: new PolicyGate(coreDeps.runLedgerWriter),
+        approval: new ApprovalGate(controlPlaneKey, coreDeps.runLedgerWriter),
         execution: new ExecutionGate(controlPlaneKey),
         evidence: new EvidenceGate(coreDeps.ledgerBackend, controlPlaneKey),
       },

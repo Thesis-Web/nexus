@@ -19,6 +19,8 @@ import {
   type AgentAction,
   type PipelineContext,
   type GateDecision,
+  type IsoTimestamp,
+  type RunLedgerWriter,
 } from '../types/index.js';
 import { matchesCondition, type PolicyEvalEnvelope } from '../policy/evaluator.js';
 import { buildGrantTemplate } from '../policy/grant-template-builder.js';
@@ -27,6 +29,13 @@ export class PolicyGate implements Gate {
   readonly gateId = GATE_ID.G04;
   readonly gateOrder = 4;
   readonly plane = 'control' as const;
+
+  constructor(
+    // Optional ledger writer for the Phase 5 canonical surface emission.
+    // Production composition root passes coreDeps.runLedgerWriter; unit
+    // tests construct without it and the gate stays silent.
+    private readonly runLedger?: RunLedgerWriter
+  ) {}
 
   async evaluate(
     action: AgentAction,
@@ -109,6 +118,28 @@ export class PolicyGate implements Gate {
     }
 
     const template = buildGrantTemplate(action, matchedRule, context);
+
+    // Phase 5 canonical surface — emit `gate_04_require_approval` when
+    // the policy rule's outcome routes the request through Gate 05 for
+    // human-in-the-loop approval. This is the audit-trail signal that
+    // policy decided approval IS required (distinct from a deny, distinct
+    // from a clean allow). Gate 05 then runs the approval workflow and
+    // emits its own `gate_05_require_approval` once the signed request
+    // has been dispatched to the channel. Only emits when a
+    // RunLedgerWriter is wired — keeps unit-test constructors clean.
+    if (outcome === OUTCOME_LABEL.REQUIRE_APPROVAL && this.runLedger) {
+      await this.runLedger.writeEvent({
+        runId: action.runId,
+        eventType: 'gate_04_require_approval',
+        timestamp: new Date().toISOString() as IsoTimestamp,
+        actorId: action.actorId,
+        detail: {
+          policyRuleId,
+          capability: action.resolvedCapability!,
+          targetSystem: action.resolvedTarget!.system,
+        },
+      });
+    }
 
     return {
       decision: {

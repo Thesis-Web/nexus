@@ -9,6 +9,7 @@ import { loadControlPlaneKey } from '../crypto/key-manager.js';
 import { sign } from '../crypto/signer.js';
 import { canonicalize } from '../crypto/canonicalize.js';
 import { nowIso, addSeconds } from '../utils/time.js';
+import { vi } from 'vitest';
 import {
   GATE_ID,
   DENIAL_CODE,
@@ -21,6 +22,8 @@ import {
   type KeyPair,
   type Actor,
   type Principal,
+  type RunLedgerEntry,
+  type RunLedgerWriter,
 } from '../types/index.js';
 
 // ─── keypair: loaded ONCE in beforeAll — MUST be awaited ─────────────────────
@@ -460,5 +463,133 @@ describe('Gate 03 — Delegation', () => {
     const result = await gate.evaluate(action, ctx, []);
     // Chain-depth check is conditional on DELEGATED_SUBAGENT — must pass for other classes
     expect(result.decision.outcome).toBe('pass');
+  });
+
+  // ── Phase 5 canonical surface — Gate 03 single-event denials ──────────
+
+  it('Phase 5 — emits chain_depth_exceeded event when DELEGATED_SUBAGENT hits ceiling', async () => {
+    const dc = await makeSignedDelegation({
+      chainDepth: 3,
+      maxChainDepth: 3,
+      allowDownstreamPropagation: true,
+      environment: 'dev',
+    });
+    const writes: RunLedgerEntry[] = [];
+    const runLedger: RunLedgerWriter = {
+      writeEvent: vi.fn(async (entry: RunLedgerEntry) => {
+        writes.push(entry);
+      }),
+    };
+    const gate = new DelegationGate(controlPlanePair, runLedger);
+    const action = makeAction({
+      actorId: dc.actorId,
+      principalId: dc.principalId,
+      delegationId: dc.delegationId,
+      resolvedCapability: 'read:record:single',
+      resolvedTarget: {
+        system: 'vault',
+        resourceType: 'secret',
+        resourceScope: 'single',
+        environment: 'dev',
+        externalFacing: false,
+      },
+      resolvedRiskTier: RISK_TIER.LOW,
+    });
+    const ctx = {
+      delegationContext: dc,
+      delegationStore: makeStore(dc),
+      actor: {
+        ...makeActor(dc.actorId, dc.principalId),
+        actorClass: ACTOR_CLASS.DELEGATED_SUBAGENT,
+      },
+      principal: makePrincipal(dc.principalId),
+    } as unknown as PipelineContext;
+
+    const result = await gate.evaluate(action, ctx, []);
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.CHAIN_DEPTH_EXCEEDED);
+
+    const events = writes.filter(e => e.eventType === 'chain_depth_exceeded');
+    expect(events.length, 'exactly one chain_depth_exceeded event per denial').toBe(1);
+    expect(events[0]!.detail['chainDepth']).toBe(3);
+    expect(events[0]!.detail['maxChainDepth']).toBe(3);
+    expect(events[0]!.detail['actorClass']).toBe(ACTOR_CLASS.DELEGATED_SUBAGENT);
+  });
+
+  it('Phase 5 — emits environment_mismatch event when action env differs from delegation env', async () => {
+    const dc = await makeSignedDelegation({
+      chainDepth: 0,
+      maxChainDepth: 3,
+      allowDownstreamPropagation: false,
+      environment: 'dev',
+    });
+    const writes: RunLedgerEntry[] = [];
+    const runLedger: RunLedgerWriter = {
+      writeEvent: vi.fn(async (entry: RunLedgerEntry) => {
+        writes.push(entry);
+      }),
+    };
+    const gate = new DelegationGate(controlPlanePair, runLedger);
+    const action = makeAction({
+      actorId: dc.actorId,
+      principalId: dc.principalId,
+      delegationId: dc.delegationId,
+      resolvedCapability: 'read:record:single',
+      resolvedTarget: {
+        system: 'vault',
+        resourceType: 'secret',
+        resourceScope: 'single',
+        // Action targets prod; delegation is dev → mismatch
+        environment: 'prod',
+        externalFacing: false,
+      },
+      resolvedRiskTier: RISK_TIER.LOW,
+    });
+    const ctx = makeContext(dc) as PipelineContext;
+    const result = await gate.evaluate(action, ctx, []);
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.ENVIRONMENT_MISMATCH);
+
+    const events = writes.filter(e => e.eventType === 'environment_mismatch');
+    expect(events.length, 'exactly one environment_mismatch event per denial').toBe(1);
+    expect(events[0]!.detail['delegationEnvironment']).toBe('dev');
+    expect(events[0]!.detail['actionEnvironment']).toBe('prod');
+  });
+
+  it('Phase 5 — does NOT emit chain_depth_exceeded when no runLedger is wired', async () => {
+    // Backward-compat: single-arg constructor stays silent.
+    const dc = await makeSignedDelegation({
+      chainDepth: 3,
+      maxChainDepth: 3,
+      allowDownstreamPropagation: true,
+      environment: 'dev',
+    });
+    const gate = new DelegationGate(controlPlanePair);
+    const action = makeAction({
+      actorId: dc.actorId,
+      principalId: dc.principalId,
+      delegationId: dc.delegationId,
+      resolvedCapability: 'read:record:single',
+      resolvedTarget: {
+        system: 'vault',
+        resourceType: 'secret',
+        resourceScope: 'single',
+        environment: 'dev',
+        externalFacing: false,
+      },
+      resolvedRiskTier: RISK_TIER.LOW,
+    });
+    const ctx = {
+      delegationContext: dc,
+      delegationStore: makeStore(dc),
+      actor: {
+        ...makeActor(dc.actorId, dc.principalId),
+        actorClass: ACTOR_CLASS.DELEGATED_SUBAGENT,
+      },
+      principal: makePrincipal(dc.principalId),
+    } as unknown as PipelineContext;
+    const result = await gate.evaluate(action, ctx, []);
+    expect(result.decision.outcome).toBe('deny');
+    expect(result.decision.denialCode).toBe(DENIAL_CODE.CHAIN_DEPTH_EXCEEDED);
   });
 });

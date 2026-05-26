@@ -852,3 +852,67 @@ describe('NVG classifyAndRoute — F4.11 §3.3 empty-labels case split', () => {
     expect(result.modelTierInvoked).toBeNull();
   });
 });
+
+// ─── Phase 5 — tier_ceiling_exceeded ledger emission ──────────────────────
+//
+// NVG's OCT-ceiling deny paths (primary tier + preferred-endpoint) now
+// write a `tier_ceiling_exceeded` Run Ledger event so wall tests
+// (E2E-60 / E2E-105) and audit consumers can filter on the NVG-tier-
+// ceiling decision distinct from the broader nvg_denied umbrella. The
+// existing Routing Provenance Trail entry written by handleNvgDenial is
+// unchanged.
+
+describe('NVG classifyAndRoute — Phase 5 tier_ceiling_exceeded emission', () => {
+  function captureLedger(): {
+    runLedger: RunLedgerWriter;
+    entries: Array<{ eventType: string; detail: Record<string, unknown>; runId: string }>;
+  } {
+    const entries: Array<{ eventType: string; detail: Record<string, unknown>; runId: string }> =
+      [];
+    return {
+      entries,
+      runLedger: {
+        writeEvent: async entry => {
+          entries.push({
+            eventType: entry.eventType as string,
+            detail: (entry.detail ?? {}) as Record<string, unknown>,
+            runId: entry.runId as string,
+          });
+        },
+        getByRunId: async () => [],
+        tail: async () => [],
+        getLatestRunId: async () => null,
+      },
+    };
+  }
+
+  it('writes tier_ceiling_exceeded when primary tier exceeds OCT ceiling', async () => {
+    const captured = captureLedger();
+    const policy = makePolicy({
+      rules: [
+        {
+          ruleId: 'rule-public-frontier' as NonEmpty,
+          priority: 100,
+          conditions: { dataClasses: ['public'] },
+          routeTo: MODEL_TIER.FRONTIER_GENERAL,
+        },
+      ],
+    });
+    const nvg = new NvgServiceImpl(
+      makeDeps({ routingPolicy: policy, runLedger: captured.runLedger })
+    );
+    // OCT-SECURE is only allowed ON_PREM_SENSITIVE → FRONTIER_GENERAL denied
+    const request = makeRequest({ octLevel: OCT_LEVEL.SECURE as OctLevel });
+
+    const result = await nvg.classifyAndRoute(request);
+    expect(result.allowed).toBe(false);
+    expect(result.denialCode).toBe(DENIAL_CODE.NVG_OCT_CEILING_DENIED);
+
+    const events = captured.entries.filter(e => e.eventType === 'tier_ceiling_exceeded');
+    expect(events.length, 'exactly one tier_ceiling_exceeded per primary-tier denial').toBe(1);
+    expect(events[0]!.runId).toBe(request.runId);
+    expect(events[0]!.detail['scope']).toBe('primary');
+    expect(events[0]!.detail['octLevel']).toBe(OCT_LEVEL.SECURE);
+    expect(events[0]!.detail['approvedTier']).toBe(MODEL_TIER.FRONTIER_GENERAL);
+  });
+});

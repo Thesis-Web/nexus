@@ -146,11 +146,12 @@ export async function cmdServeMcp(opts: ServeMcpOptions): Promise<void> {
       verbNormalizer,
       targetNormalizer,
       dataClassifier,
-      riskClassifier
+      riskClassifier,
+      runEventLedger
     ),
-    delegation: new DelegationGate(controlPlaneKey),
-    policy: new PolicyGate(),
-    approval: new ApprovalGate(controlPlaneKey),
+    delegation: new DelegationGate(controlPlaneKey, runEventLedger),
+    policy: new PolicyGate(runEventLedger),
+    approval: new ApprovalGate(controlPlaneKey, runEventLedger),
     execution: new ExecutionGate(controlPlaneKey),
     evidence: new EvidenceGate(ledger, controlPlaneKey),
   };

@@ -403,11 +403,12 @@ async function runScenario(
         new VerbNormalizer(LexicalVerbResolver.loadFromFixture(process.cwd())),
         new TargetNormalizer(),
         new DataClassifier(),
-        riskClassifier
+        riskClassifier,
+        runEventLedger
       ),
-      delegation: new DelegationGate(controlPlaneKey),
-      policy: new PolicyGate(),
-      approval: new ApprovalGate(controlPlaneKey),
+      delegation: new DelegationGate(controlPlaneKey, runEventLedger),
+      policy: new PolicyGate(runEventLedger),
+      approval: new ApprovalGate(controlPlaneKey, runEventLedger),
       execution: new ExecutionGate(controlPlaneKey),
       evidence: new EvidenceGate(ledger, controlPlaneKey),
     },

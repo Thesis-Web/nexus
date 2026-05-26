@@ -21,6 +21,8 @@ import {
   type PipelineContext,
   type LoadedPolicyFile,
   type PolicyRule,
+  type RunLedgerEntry,
+  type RunLedgerWriter,
 } from '../types/index.js';
 
 const NOW = new Date().toISOString();
@@ -210,5 +212,68 @@ describe('Gate 04 — Policy', () => {
     expect(result.decision.outcome).toBe('deny');
     expect(result.decision.denialCode).toBe(DENIAL_CODE.POLICY_ENVELOPE_MISSING_OCT);
     expect(result.decision.reason).toMatch(/policy_envelope_missing_oct/);
+  });
+
+  // ── Phase 5 canonical surface — gate_04_require_approval ──────────────
+  it('emits gate_04_require_approval ledger event when matched rule outcome is require_approval (Phase 5)', async () => {
+    const writes: RunLedgerEntry[] = [];
+    const runLedger: RunLedgerWriter = {
+      writeEvent: vi.fn(async (entry: RunLedgerEntry) => {
+        writes.push(entry);
+      }),
+    };
+
+    const action: AgentAction = { ...baseAction(), runId: 'run-phase5-g04' as never };
+    const gate = new PolicyGate(runLedger);
+    const result = await gate.evaluate(
+      action,
+      makeCtx(makePolicy(OUTCOME_LABEL.REQUIRE_APPROVAL)),
+      []
+    );
+
+    // Decision-side: outcome remains require_approval; orchestrator
+    // routes to Gate 05 from here. The new surface is additive audit.
+    expect(result.decision.outcome).toBe(OUTCOME_LABEL.REQUIRE_APPROVAL);
+    expect(result.grantTemplate).toBeDefined();
+
+    // Phase 5 surface: gate_04_require_approval fires exactly once when
+    // policy resolves to REQUIRE_APPROVAL, with the matched ruleId +
+    // capability + targetSystem in detail.
+    const reqEvents = writes.filter(e => e.eventType === 'gate_04_require_approval');
+    expect(reqEvents.length, 'exactly one gate_04_require_approval per matched approval rule').toBe(
+      1
+    );
+    const ev = reqEvents[0]!;
+    expect(ev.runId).toBe('run-phase5-g04');
+    expect(ev.actorId).toBe('actor-001');
+    expect(ev.detail['policyRuleId']).toBe('rule-001');
+    expect(ev.detail['capability']).toBe('read:record:single');
+    expect(ev.detail['targetSystem']).toBe('stub');
+  });
+
+  it('does NOT emit gate_04_require_approval when rule outcome is allow (Phase 5 negative)', async () => {
+    const writes: RunLedgerEntry[] = [];
+    const runLedger: RunLedgerWriter = {
+      writeEvent: vi.fn(async (entry: RunLedgerEntry) => {
+        writes.push(entry);
+      }),
+    };
+    const gate = new PolicyGate(runLedger);
+    const result = await gate.evaluate(baseAction(), makeCtx(makePolicy(OUTCOME_LABEL.ALLOW)), []);
+    expect(result.decision.outcome).toBe(OUTCOME_LABEL.ALLOW);
+    const reqEvents = writes.filter(e => e.eventType === 'gate_04_require_approval');
+    expect(reqEvents.length, 'allow path must not emit gate_04_require_approval').toBe(0);
+  });
+
+  it('does NOT emit gate_04_require_approval when no runLedger is wired (backward-compat)', async () => {
+    // Single-arg constructor must keep working — integration scenarios +
+    // existing unit tests all construct PolicyGate this way.
+    const gate = new PolicyGate();
+    const result = await gate.evaluate(
+      baseAction(),
+      makeCtx(makePolicy(OUTCOME_LABEL.REQUIRE_APPROVAL)),
+      []
+    );
+    expect(result.decision.outcome).toBe(OUTCOME_LABEL.REQUIRE_APPROVAL);
   });
 });

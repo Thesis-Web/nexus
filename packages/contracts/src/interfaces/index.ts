@@ -1820,7 +1820,50 @@ export type RunEventType =
   // Emitted when a plan checkback times out. NOT plan_checkback_resolved
   // with decision='deny' — that conflated timeout with denial. The run
   // stays open; the user decides whether to dismiss/restart/extend.
-  | 'plan_checkback_expired';
+  | 'plan_checkback_expired'
+  // ── Phase 5 Canonical Gate Denial / Approval-Required Audit Surfaces ──
+  // Each gate's specific decision gets its own audit-trail event in
+  // addition to the existing nxs_action / nvg_outbound umbrella events.
+  // Decision labels (DENIAL_CODE constants in @nexus/contracts/constants)
+  // and audit event types (this union) are separate canonical layers —
+  // DENIAL_CODE describes the gate's internal decision; eventType
+  // describes the audit-trail surface that ledger consumers (UI reducer,
+  // audit tools, tests, E2E wall) filter / route / display on.
+  //
+  // Owning gates:
+  //   - gate_02_oct_denied, oct_ceiling_exceeded         → NXS Gate 02 (classification)
+  //   - gate_02_risk_denied, risk_ceiling_exceeded       → NXS Gate 02 (classification)
+  //   - chain_depth_exceeded                             → NXS Gate 03 (delegation chain)
+  //   - environment_mismatch                             → NXS Gate 03 (delegation env)
+  //   - gate_04_require_approval                         → NXS Gate 04 (policy approval pending)
+  //   - gate_05_require_approval                         → NXS Gate 05 (approval orchestration pending)
+  //   - tier_ceiling_exceeded                            → NVG (OCT model-tier ceiling exceeded)
+  //
+  // Naming note: `chain_depth_exceeded` is intentionally the canonical
+  // audit-event name; `DENIAL_CODE.CHAIN_DEPTH_EXCEEDED` (the gate's
+  // internal denial label) carries the longer historical string value
+  // `'chain_depth_ceiling_exceeded'`. Two-layer model — both names refer
+  // to the same Gate 03 decision; the audit surface uses the shorter
+  // canonical form, the internal denial code is unchanged.
+  //
+  // Out of scope for Phase 5 (S7 deep-dive 2026-05-25T23:55):
+  //   - firewall_egress_denied / firewall_transit_rights_denied
+  //     NVG firewall transit-rights enforcement does not exist in production
+  //     code yet (FirewallTransitMap + seeded TRANSIT_* maps in
+  //     scripts/seeds/user-ladder-seeds.ts are threaded through
+  //     scripts/nexus-main.ts:1611-1673 but never consumed for any deny
+  //     decision in packages/vanguard/src). Adding union members without
+  //     write sites would violate /mem2 (no orphans). They land when the
+  //     NVG firewall arc gets built — separate scope.
+  | 'gate_02_oct_denied'
+  | 'gate_02_risk_denied'
+  | 'oct_ceiling_exceeded'
+  | 'risk_ceiling_exceeded'
+  | 'chain_depth_exceeded'
+  | 'environment_mismatch'
+  | 'gate_04_require_approval'
+  | 'gate_05_require_approval'
+  | 'tier_ceiling_exceeded';
 
 export interface RunLedgerEntry {
   entryId: Uuid;

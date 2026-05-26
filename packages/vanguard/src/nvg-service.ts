@@ -132,6 +132,28 @@ export class NvgServiceImpl implements NvgService {
     return { verifier: v, ledger: l };
   }
 
+  /**
+   * Phase 5 canonical surface emission for NVG tier-ceiling denials.
+   * Writes a `tier_ceiling_exceeded` Run Ledger event so wall tests
+   * (E2E-60 / E2E-105) and audit consumers can filter on the
+   * NVG-tier-ceiling decision distinct from the broader `nvg_denied`
+   * umbrella. The Routing Provenance Trail entry is written by the
+   * existing `handleNvgDenial` call at the same deny site.
+   */
+  private async emitTierCeilingExceeded(
+    request: NvgOutboundRequest,
+    runLedger: RunLedgerWriter,
+    detail: Record<string, unknown>
+  ): Promise<void> {
+    await runLedger.writeEvent({
+      runId: request.runId,
+      eventType: 'tier_ceiling_exceeded',
+      timestamp: new Date().toISOString() as IsoTimestamp,
+      actorId: request.actorId,
+      detail,
+    });
+  }
+
   // ── Individual methods (unchanged from HOLE-S7-001) ──────────────────────
 
   classify(labels: DataLabel[]): NvgClassificationResult {
@@ -389,6 +411,17 @@ export class NvgServiceImpl implements NvgService {
       const code = ceilingPrimary.denialCode ?? DENIAL_CODE.NVG_OCT_CEILING_DENIED;
       const reason = ceilingPrimary.reason ?? 'OCT ceiling denied primary tier';
       await handleNvgDenial(request, code, reason, trailWriter, policyVersion, correlationId);
+      // Phase 5 canonical surface — write to run ledger so wall tests
+      // (E2E-60 / E2E-105) and audit consumers can filter on the
+      // NVG-tier-ceiling decision distinct from the broader nvg_denied
+      // umbrella. handleNvgDenial above writes the Routing Provenance
+      // Trail entry; this writes the Run Ledger event.
+      await this.emitTierCeilingExceeded(request, runLedger, {
+        approvedTier,
+        octLevel: request.octLevel,
+        scope: 'primary',
+        denialCode: code,
+      });
       return this.buildResult({
         allowed: false,
         classification,
@@ -422,6 +455,16 @@ export class NvgServiceImpl implements NvgService {
           const reason =
             ceilingPreferred.reason ?? `OCT ceiling denied preferred endpoint ${ep.endpointId}`;
           await handleNvgDenial(request, code, reason, trailWriter, policyVersion, correlationId);
+          // Phase 5 canonical surface — preferred-endpoint variant of the
+          // tier-ceiling deny path. Same Run Ledger event so consumers
+          // don't need to discriminate primary vs preferred.
+          await this.emitTierCeilingExceeded(request, runLedger, {
+            approvedTier: ep.tier,
+            octLevel: request.octLevel,
+            scope: 'preferred_endpoint',
+            preferredEndpointId: ep.endpointId,
+            denialCode: code,
+          });
           return this.buildResult({
             allowed: false,
             classification,

@@ -21,6 +21,8 @@ import {
   type PipelineContext,
   type GateDecision,
   type CapabilityCeiling,
+  type IsoTimestamp,
+  type RunLedgerWriter,
 } from '../types/index.js';
 import type { VerbNormalizer } from '../classification/verb-normalizer.js';
 import type { TargetNormalizer } from '../classification/target-normalizer.js';
@@ -55,8 +57,49 @@ export class ClassificationGate implements Gate {
     private readonly verbNormalizer: VerbNormalizer,
     private readonly targetNormalizer: TargetNormalizer,
     private readonly dataClassifier: DataClassifier,
-    private readonly riskClassifier: RiskClassifier
+    private readonly riskClassifier: RiskClassifier,
+    // Optional ledger writer for the Phase 5 canonical surface emissions.
+    // Production composition root passes coreDeps.runLedgerWriter; unit
+    // tests construct without it and the gate stays silent.
+    private readonly runLedger?: RunLedgerWriter
   ) {}
+
+  /**
+   * Phase 5 canonical surface emission for Gate 02 denials. Each kind
+   * fires two events: the gate-level event (gate_02_*) and the
+   * ceiling-specific event (*_ceiling_exceeded). Both are in the
+   * RunEventType union; tests assert either one is sufficient. Silent
+   * when no runLedger is wired.
+   *
+   *   kind='oct'  → gate_02_oct_denied + oct_ceiling_exceeded
+   *   kind='risk' → gate_02_risk_denied + risk_ceiling_exceeded
+   */
+  private async emitGate02Denial(
+    action: AgentAction,
+    kind: 'oct' | 'risk',
+    reason: string,
+    extraDetail: Record<string, unknown> = {}
+  ): Promise<void> {
+    if (!this.runLedger) return;
+    const timestamp = new Date().toISOString() as IsoTimestamp;
+    const gateEventType = kind === 'oct' ? 'gate_02_oct_denied' : 'gate_02_risk_denied';
+    const ceilingEventType = kind === 'oct' ? 'oct_ceiling_exceeded' : 'risk_ceiling_exceeded';
+    const detail = { reason, ...extraDetail };
+    await this.runLedger.writeEvent({
+      runId: action.runId,
+      eventType: gateEventType,
+      timestamp,
+      actorId: action.actorId,
+      detail,
+    });
+    await this.runLedger.writeEvent({
+      runId: action.runId,
+      eventType: ceilingEventType,
+      timestamp,
+      actorId: action.actorId,
+      detail,
+    });
+  }
 
   async evaluate(
     action: AgentAction,
@@ -81,6 +124,7 @@ export class ClassificationGate implements Gate {
     // DEF-S10-001: Missing or unknown octLevel is a deterministic deny.
     // OCT-001: null octLevel is permitted in DB — fail closed here.
     if (!actor.octLevel) {
+      await this.emitGate02Denial(action, 'oct', 'oct_unassigned', { octLevel: null });
       return deny(
         DENIAL_CODE.OCT_UNASSIGNED,
         `actor ${actor.actorId} has null OCT level — assign via signed oct_assignment`,
@@ -89,6 +133,7 @@ export class ClassificationGate implements Gate {
     }
     const octCeiling = OCT_CEILINGS[actor.octLevel];
     if (!octCeiling) {
+      await this.emitGate02Denial(action, 'oct', 'oct_unknown', { octLevel: actor.octLevel });
       return deny(
         DENIAL_CODE.OCT_UNASSIGNED,
         `actor ${actor.actorId} has unknown OCT level: ${actor.octLevel}`,
@@ -98,6 +143,14 @@ export class ClassificationGate implements Gate {
 
     // ── §11.2: OCT-COMPILE actors cannot execute system actions ──────────
     if (octCeiling.actionRiskCeiling === EVIDENCE_SENTINEL) {
+      // OCT class itself forbids actions — this is an OCT-axis denial
+      // (not a risk-tier denial). The DENIAL_CODE.RISK_CEILING_EXCEEDED
+      // label is retained for backward compatibility with consumers that
+      // read the gate's internal code; the audit-trail event uses the
+      // OCT name because the axis at fault is OCT.
+      await this.emitGate02Denial(action, 'oct', 'oct_compile_forbids_actions', {
+        octLevel: actor.octLevel,
+      });
       return deny(
         DENIAL_CODE.RISK_CEILING_EXCEEDED,
         'OCT-COMPILE actors cannot execute system actions',
@@ -151,6 +204,16 @@ export class ClassificationGate implements Gate {
     // NVG integration, and bypass path enforcement.
     context.effectiveCeiling = effective;
     if (riskTierExceeds(riskTier, effective.maxRiskTier)) {
+      // Risk-tier denial: action's resolved risk exceeds the effective
+      // ceiling (min of OCT-side and identity-side). Phase 5 audit
+      // surface — emit gate_02_risk_denied + risk_ceiling_exceeded.
+      await this.emitGate02Denial(action, 'risk', 'risk_tier_exceeds_effective_ceiling', {
+        riskTier,
+        effectiveCeiling: effective.maxRiskTier,
+        octLevel: actor.octLevel,
+        identityMaxRiskTier: identityCeiling.maxRiskTier,
+        capability: capabilityId,
+      });
       return deny(
         DENIAL_CODE.RISK_CEILING_EXCEEDED,
         `risk tier ${riskTier} exceeds effective ceiling ${effective.maxRiskTier} ` +

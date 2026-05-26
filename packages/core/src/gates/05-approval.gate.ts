@@ -15,6 +15,8 @@ import {
   type GateDecision,
   type ApprovalResponse,
   type ApprovalRequest,
+  type IsoTimestamp,
+  type RunLedgerWriter,
 } from '../types/index.js';
 import { buildSignedApprovalRequest } from '../approval/packager.js';
 import { verify } from '../crypto/verifier.js';
@@ -51,7 +53,13 @@ export class ApprovalGate implements Gate {
   readonly gateOrder = 5;
   readonly plane = 'control' as const;
 
-  constructor(private readonly controlPlaneKey: KeyPair) {}
+  constructor(
+    private readonly controlPlaneKey: KeyPair,
+    // Optional ledger writer for the Phase 5 canonical surface emission.
+    // Production composition root passes coreDeps.runLedgerWriter; unit
+    // and threat tests construct without it and the gate stays silent.
+    private readonly runLedger?: RunLedgerWriter
+  ) {}
 
   async evaluate(
     action: AgentAction,
@@ -104,6 +112,29 @@ export class ApprovalGate implements Gate {
     await channel.dispatch(signedRequest);
 
     const timeoutMs = approvalConfig.timeoutSeconds * 1000;
+
+    // Phase 5 canonical surface — at this point the gate has CONCLUDED
+    // that approval is required and dispatched a signed request to the
+    // human-approval channel. Emit `gate_05_require_approval` so the
+    // run ledger / wall tests can prove the approval surface fired
+    // (distinct from a generic capability denial). The GateDecision
+    // outcome still carries the final pass/deny once awaitDecision
+    // returns; this event is an audit-trail signal of the in-flight
+    // approval, not a terminal status.
+    if (this.runLedger) {
+      await this.runLedger.writeEvent({
+        runId: action.runId,
+        eventType: 'gate_05_require_approval',
+        timestamp: new Date().toISOString() as IsoTimestamp,
+        actorId: action.actorId,
+        detail: {
+          approvalId: signedRequest.approvalId,
+          channelId,
+          timeoutMs,
+        },
+      });
+    }
+
     const response = await channel.awaitDecision(signedRequest.approvalId, timeoutMs);
 
     if (!response) {
